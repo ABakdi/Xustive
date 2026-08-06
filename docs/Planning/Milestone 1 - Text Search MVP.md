@@ -47,11 +47,14 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 ## M1-T03 — [[Language Detector]]
 
 - [x] M1-T03.1 Script detection by Unicode block ratio
-- [x] M1-T03.2 `lingua-rs` integration restricted to ar/fr/en
+- [x] M1-T03.2 Statistical detection restricted to ar/fr/en — **`whatlang`, not `lingua-rs`**
+      (see [[Language Detector]] §4.2 for why)
 - [x] M1-T03.3 Darija marker lexicon loader (`data/lang/`, hot-reload)
 - [x] M1-T03.4 Arabizi marker detection (digit-consonants + token list)
 - [x] M1-T03.5 Short-query confidence scaling; `Und` as the safe default
-- [x] M1-T03.6 **Labelled set: 1 000 strings**, ≥ 92 % overall / ≥ 85 % `ary`
+- [~] M1-T03.6 Labelled set at 59 strings (target 1 000); 100 % overall, 100 % `ary`. The
+      number is partly self-confirming — the set was written alongside the lexicons. A
+      native-speaker set is what would make it meaningful.
 - [~] M1-T03.7 Darija marker lexicon at ~200 terms (target 1 500) ← *needs a native
       speaker to review what is there and extend it; blocker B7*
 

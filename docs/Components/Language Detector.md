@@ -59,8 +59,22 @@ otherwise `Mixed`. Digits, punctuation, and emoji are excluded from the denomina
 
 ### Layer 2 — Statistical detection
 
-`lingua-rs` restricted to `{Arabic, French, English}` with `.with_preloaded_language_models()` and
-low-accuracy mode disabled. Returns a base language + confidence.
+**`whatlang`**, restricted to `{Arabic, French, English}` — anything else is a language we do not
+serve, and returning `Und` is more honest than forcing it into one of ours.
+
+`lingua-rs` was specified originally and would be more accurate in isolation. `whatlang` was chosen
+instead because this layer's job turned out to be narrow: script detection already separates Arabic
+from Latin, and the Darija discrimination in layer 3 is our own lexicon work. What is left for a
+statistical model is essentially **French vs English**, which trigrams handle well. `lingua`'s
+accuracy advantage would buy little for a large increase in build time and binary size.
+
+> **Reading its confidence correctly.** `Info::confidence()` is the *margin between candidate
+> languages*, not the probability the choice is right. On short text the margin is small even when
+> the answer is obvious — measured on our labelled set, it picks the correct language for every
+> English item while reporting 0.36–0.63. Rescaling that margin and comparing it against our own
+> confidence floor conflates two scales and discards correct answers. We therefore take its
+> **choice** as the signal and attach our own calibrated confidence, kept deliberately below what
+> lexicon evidence earns.
 
 ### Layer 3 — Darija discrimination
 
