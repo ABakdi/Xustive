@@ -1,0 +1,17 @@
+[package]
+name = "xustive-lang"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Language detection and query expansion for Arabic, Darija, Arabizi, French and English."
+
+[dependencies]
+xustive-text = { path = "../xustive-text" }
+xustive-core = { path = "../xustive-core" }
+thiserror.workspace = true
+tracing.workspace = true
+whatlang = "0.16"
+
+[dev-dependencies]
+proptest = "1"

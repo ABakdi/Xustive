@@ -1,0 +1,203 @@
+# Algerian Darija written in Latin script (Arabizi).
+#
+# Format:  term <TAB> weight <TAB> gloss
+#
+# NEEDS NATIVE-SPEAKER REVIEW — see the note in darija-ar.tsv. Blocker B7.
+#
+# Spelling in Arabizi is not standardised, so most concepts appear here in several forms. That
+# is deliberate: the point of this file is recall, and a user typing `ch7al` or `chhal` or
+# `chehal` means the same thing.
+#
+# Terms must NOT appear in french-common.tsv — a token in both makes Latin-script detection
+# ambiguous every time it occurs. A test enforces that.
+
+# --- copula / pronouns ------------------------------------------------------------------
+rani	strong	I am
+rak	strong	you are (m)
+raki	strong	you are (f)
+rahou	strong	he is
+rahu	strong	he is
+rahi	strong	she is
+rana	strong	we are
+rakom	strong	you are (pl)
+rakoum	strong	you are (pl)
+rahom	strong	they are
+rahoum	strong	they are
+
+# --- interrogatives ---------------------------------------------------------------------
+wach	strong	what
+wech	strong	what
+wach	strong	what
+wachnou	strong	what
+chnou	strong	what
+kifach	strong	how
+kifash	strong	how
+kifah	strong	how
+win	strong	where
+wine	strong	where
+3lach	strong	why
+alach	strong	why
+w3lah	strong	why
+ch7al	strong	how much
+chhal	strong	how much
+chehal	strong	how much
+b\ch7al	weak	for how much
+chkoun	strong	who
+chkon	strong	who
+wa9tach	strong	when
+weqtach	strong	when
+
+# --- quantity / degree -------------------------------------------------------------------
+bezaf	strong	a lot
+bzaf	strong	a lot
+bezzaf	strong	a lot
+chwiya	strong	a little
+chwia	strong	a little
+chouia	strong	a little
+ga3	strong	all / at all
+gaa3	strong	all
+qa3	strong	all
+berk	strong	only / just
+brk	strong	only
+yasser	weak	a lot (western)
+
+# --- possession ----------------------------------------------------------------------------
+nta3	strong	of
+ta3	strong	of
+nataa	weak	of
+dyal	weak	of (Moroccan-leaning)
+
+# --- existence -----------------------------------------------------------------------------
+kayen	strong	there is
+kayn	strong	there is
+kayna	strong	there is (f)
+makach	strong	there isn't
+makanch	strong	there isn't
+mkach	strong	there isn't
+walou	strong	nothing
+walu	strong	nothing
+
+# --- negation ------------------------------------------------------------------------------
+machi	strong	not
+manich	strong	I am not
+manish	strong	I am not
+makch	strong	you are not
+mazal	weak	still / not yet
+
+# --- time / place --------------------------------------------------------------------------
+drok	strong	now
+derwek	strong	now
+druk	strong	now
+tema	strong	there
+lehih	strong	over there
+lbareh	strong	yesterday
+elbareh	strong	yesterday
+ghedwa	strong	tomorrow
+lyoum	weak	today
+
+# --- discourse -----------------------------------------------------------------------------
+bsah	strong	but
+besah	strong	but
+bessah	strong	but
+za3ma	strong	meaning
+zaama	strong	meaning
+ya3ni	weak	meaning
+bli	strong	that
+bach	strong	in order to
+bech	strong	in order to
+kima	strong	like / as
+haka	strong	like this
+hakda	strong	like this
+sah	weak	true
+yakhi	strong	right?
+ya khi	strong	right?
+
+# --- demonstratives ------------------------------------------------------------------------
+had	weak	this
+hadi	strong	this (f)
+hada	strong	this
+hado	strong	these
+hadchi	strong	this thing
+dik	strong	that (f)
+
+# --- common verbs ---------------------------------------------------------------------------
+ndir	strong	I do
+dir	strong	do
+dert	strong	I did
+ndiro	strong	we do
+nrouh	strong	I go
+trouh	strong	you go
+jit	strong	I came
+golt	strong	I said
+goltlkom	strong	I told you (pl)
+galek	strong	he told you
+ygolek	strong	he tells you
+choft	strong	I saw
+nchouf	strong	I see
+tchouf	strong	you see
+3andi	strong	I have
+3andek	strong	you have
+ne9der	strong	I can
+neqder	strong	I can
+te9der	strong	you can
+lazem	strong	must
+ylzemni	strong	I need
+7ab	strong	wanting
+hab	weak	wanting
+n7ab	strong	I want
+nhab	weak	I want
+n3ref	strong	I know
+ta3ref	strong	you know
+se9si	strong	ask
+nse9si	strong	I ask
+yesqsiw	strong	they ask
+jaweb	strong	answer
+jawbouni	strong	answer me (pl)
+nelqa	strong	I find
+nlqa	strong	I find
+
+# --- descriptors ------------------------------------------------------------------------------
+mlih	strong	good
+mli7	strong	good
+mliha	strong	good (f)
+khayeb	strong	bad
+khayb	strong	bad
+zwin	strong	pretty
+zwina	strong	pretty (f)
+wa3er	strong	tough / impressive
+waar	weak	tough
+
+# --- everyday nouns ----------------------------------------------------------------------------
+blasa	strong	place
+khedma	strong	work / job
+khdma	strong	work
+khoya	strong	my brother
+khouya	strong	my brother
+khawti	strong	my brothers
+khti	strong	my sister
+weld	weak	boy / son
+bent	weak	girl / daughter
+dar	weak	house
+bled	strong	country / hometown
+sardouk	strong	rooster
+kaskrout	strong	sandwich
+tomobil	strong	car
+trisiti	strong	electricity
+babor	strong	ship / ferry
+sbitar	strong	hospital
+simana	strong	week
+kaghet	strong	paper
+
+# --- greetings / fixed expressions ---------------------------------------------------------------
+sahit	strong	thanks / well done
+saha	strong	cheers / thanks
+sa7a	strong	cheers / thanks
+labas	strong	all good?
+labes	strong	all good?
+ya3ichek	strong	thank you
+3aslema	strong	hello (Tunisian-origin, widely used)
+hamdoullah	weak	praise God
+inchallah	weak	God willing
+mabrouk	weak	congratulations
+wallah	weak	I swear
+wallahi	weak	I swear

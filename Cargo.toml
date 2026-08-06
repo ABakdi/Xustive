@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/xustive-text",
     "crates/xustive-core",
+    "crates/xustive-lang",
     "crates/xustive-search",
     "crates/xustive-api",
     "crates/xustive-cli",

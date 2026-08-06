@@ -1,0 +1,121 @@
+# Very common French words.
+#
+# Used only to distinguish French from Latin-script Darija, which is the genuinely hard call on
+# a short query. It is not a stopword list — those live in the index settings.
+#
+# No entry here may also appear in arabizi.tsv. A token in both would make every Latin-script
+# query containing it ambiguous, and a test enforces the separation.
+
+# --- articles / determiners ------------------------------------------------------------
+le	strong	the
+la	strong	the (f)
+les	strong	the (pl)
+un	strong	a
+une	strong	a (f)
+des	strong	some
+du	strong	of the
+au	strong	to the
+aux	strong	to the (pl)
+ce	strong	this
+cette	strong	this (f)
+ces	strong	these
+mon	strong	my
+ma	strong	my (f)
+mes	strong	my (pl)
+son	strong	his/her
+leur	strong	their
+notre	strong	our
+votre	strong	your
+
+# --- prepositions / conjunctions ---------------------------------------------------------
+de	strong	of
+et	strong	and
+ou	strong	or
+dans	strong	in
+pour	strong	for
+avec	strong	with
+sur	strong	on
+sans	strong	without
+sous	strong	under
+par	strong	by
+chez	strong	at
+vers	strong	towards
+entre	strong	between
+depuis	strong	since
+pendant	strong	during
+mais	strong	but
+donc	strong	so
+car	strong	because
+comme	strong	like
+quand	strong	when
+si	weak	if
+que	strong	that
+qui	strong	who
+
+# --- pronouns -----------------------------------------------------------------------------
+je	strong	I
+tu	strong	you
+il	strong	he
+elle	strong	she
+nous	strong	we
+vous	strong	you (pl)
+ils	strong	they
+elles	strong	they (f)
+moi	strong	me
+toi	strong	you
+lui	strong	him
+eux	strong	them
+
+# --- very common verbs ----------------------------------------------------------------------
+est	strong	is
+sont	strong	are
+etait	strong	was
+sera	strong	will be
+avoir	strong	to have
+etre	strong	to be
+faire	strong	to do
+peut	strong	can
+peuvent	strong	can (pl)
+doit	strong	must
+veut	strong	wants
+fait	strong	does
+avez	strong	you have
+avons	strong	we have
+
+# --- common nouns / adverbs -------------------------------------------------------------------
+plus	strong	more
+tres	strong	very
+tout	strong	all
+tous	strong	all (pl)
+toute	strong	all (f)
+bien	strong	well
+aussi	strong	also
+encore	strong	again
+deja	strong	already
+toujours	strong	always
+jamais	strong	never
+beaucoup	strong	a lot
+peu	strong	few
+maintenant	strong	now
+aujourd	strong	today (elided)
+hier	strong	yesterday
+demain	strong	tomorrow
+
+# --- domain words common in Algerian French content ---------------------------------------------
+emploi	weak	employment
+travail	weak	work
+facture	weak	invoice
+paiement	weak	payment
+service	weak	service
+dossier	weak	file
+demande	weak	request
+inscription	weak	registration
+concours	weak	competitive exam
+logement	weak	housing
+sante	weak	health
+transport	weak	transport
+prix	weak	price
+wilaya	weak	province
+commune	weak	municipality
+ministere	weak	ministry
+gouvernement	weak	government

@@ -1,0 +1,195 @@
+# Algerian Darija markers written in Arabic script.
+#
+# Format:  term <TAB> weight <TAB> gloss
+# weight:  strong = distinctly Darija, one occurrence is enough to call it
+#          weak   = used in Darija but also in MSA or other dialects, needs corroboration
+#
+# NEEDS NATIVE-SPEAKER REVIEW. This is a working starter list assembled to get detection
+# functioning; it has not been reviewed by a native Algerian speaker. Blocker B7 in the plan.
+# Two specific risks a reviewer should look for:
+#   - Moroccan/Tunisian terms wrongly included as Algerian
+#   - terms marked strong that are actually common in MSA news copy
+#
+# Terms are normalised on load, so writing them with or without harakat makes no difference.
+
+# --- copula / pronouns: the strongest single signal ------------------------------------
+راني	strong	I am
+راك	strong	you are (m)
+راكي	strong	you are (f)
+راهو	strong	he is
+راهي	strong	she is
+رانا	strong	we are
+راكم	strong	you are (pl)
+راهم	strong	they are
+رانى	strong	I am (variant)
+واني	weak	and I am
+
+# --- interrogatives ---------------------------------------------------------------------
+واش	strong	what
+وشنو	strong	what (variant)
+اشنو	strong	what (variant)
+كيفاش	strong	how
+كيفاه	strong	how (variant)
+وين	strong	where
+فين	weak	where (variant, also Moroccan)
+علاش	strong	why
+واعلاه	strong	why (variant)
+لاش	weak	why (short)
+شحال	strong	how much
+بشحال	strong	for how much
+شكون	strong	who
+اشكون	strong	who (variant)
+وقتاش	strong	when
+وينتا	strong	when (variant)
+امتى	weak	when
+
+# --- quantity / degree -------------------------------------------------------------------
+بزاف	strong	a lot
+بزف	strong	a lot (variant)
+شوية	strong	a little
+شويا	strong	a little (variant)
+قاع	strong	all / at all
+گاع	strong	all (with gaf)
+ياسر	weak	a lot (more western Algeria)
+برك	strong	only / just
+غير	weak	just / only
+حتى	weak	even / until
+
+# --- possession / relation ----------------------------------------------------------------
+نتاع	strong	of / belonging to
+تاع	strong	of (short)
+ديال	weak	of (more Moroccan, appears in west)
+متاع	weak	of (more Tunisian)
+
+# --- existence ----------------------------------------------------------------------------
+كاين	strong	there is
+كاينة	strong	there is (f)
+كاينين	strong	there are
+ماكاش	strong	there isn't
+مكاش	strong	there isn't (variant)
+مافماش	weak	there isn't (variant)
+والو	strong	nothing
+حتاجة	weak	nothing at all
+
+# --- negation ------------------------------------------------------------------------------
+ماشي	strong	not
+مانيش	strong	I am not
+ماكش	strong	you are not
+ماهوش	strong	he is not
+ماراهش	strong	he is not (variant)
+مازال	weak	still / not yet
+مابقاش	weak	no longer
+
+# --- time / place ---------------------------------------------------------------------------
+دروك	strong	now
+ضروك	strong	now (variant)
+دابا	weak	now (Moroccan, sometimes heard)
+تما	strong	there
+لهيه	strong	over there
+هنا	weak	here
+البارح	strong	yesterday
+ليوم	weak	today
+غدوة	strong	tomorrow
+
+# --- discourse ------------------------------------------------------------------------------
+بصح	strong	but
+بالصح	strong	but (variant)
+زعما	strong	meaning / so to speak
+يعني	weak	meaning
+بلي	strong	that (complementiser)
+باش	strong	in order to
+كيما	strong	like / as
+هكا	strong	like this
+هكذا	weak	like this (MSA)
+صح	weak	true / right
+ياخي	strong	right? / isn't it
+وعلاباله	strong	and he knows
+
+# --- demonstratives -------------------------------------------------------------------------
+هاد	strong	this
+هادي	strong	this (f)
+هاذي	strong	this (variant)
+هاك	strong	that
+ديك	strong	that (f)
+هادو	strong	these
+هاذو	strong	these (variant)
+هادشي	weak	this thing
+
+# --- common verbs ----------------------------------------------------------------------------
+ندير	strong	I do
+دير	strong	do (imperative)
+درت	strong	I did
+نديرو	strong	we do
+يدير	strong	he does
+نروح	strong	I go
+تروح	strong	you go
+راح	weak	went
+جيت	strong	I came
+نجي	weak	I come
+قلت	weak	I said
+قالك	strong	he told you
+يقولك	strong	he tells you
+شفت	strong	I saw
+نشوف	strong	I see
+تشوف	strong	you see
+عندي	weak	I have
+عندك	weak	you have
+نقدر	weak	I can
+تقدر	weak	you can
+لازم	weak	must
+يلزمني	strong	I need
+حاب	strong	wanting
+حابة	strong	wanting (f)
+نحب	weak	I want / like
+بغيت	weak	I wanted (more Moroccan)
+عرفت	weak	I knew
+نعرف	weak	I know
+تعرف	weak	you know
+سقسي	strong	ask
+نسقسي	strong	I ask
+يسقسيو	strong	they ask
+جاوبني	strong	answer me
+جاوبوني	strong	answer me (pl)
+
+# --- descriptors -------------------------------------------------------------------------------
+مليح	strong	good
+مليحة	strong	good (f)
+خايب	strong	bad
+زوين	strong	pretty
+زوينة	strong	pretty (f)
+شاب	weak	nice / young man
+واعر	strong	tough / impressive
+سهل	weak	easy
+
+# --- everyday nouns ------------------------------------------------------------------------------
+بلاصة	strong	place
+خدمة	weak	work / job
+خاوتي	strong	my brothers (address)
+خويا	strong	my brother
+ختي	strong	my sister
+ولد	weak	boy / son
+بنت	weak	girl / daughter
+دار	weak	house
+بلاد	weak	country
+سردوك	strong	rooster
+كاسكروت	strong	sandwich
+طوموبيل	strong	car
+تريسيتي	strong	electricity
+بابور	strong	ship / ferry
+سبيطار	strong	hospital
+كوزينة	weak	kitchen
+فرشيطة	weak	fork
+سيمانة	strong	week
+كاغط	strong	paper
+بريك	weak	brick
+
+# --- greetings / fixed expressions -----------------------------------------------------------------
+صحيت	strong	thanks / well done
+صحة	weak	health / cheers
+لاباس	strong	all good?
+واش راك	strong	how are you
+يعيشك	strong	thank you
+ربي يحفظك	weak	may God protect you
+انشاء الله	weak	God willing
+الحمد لله	weak	praise God
+مبروك	weak	congratulations
