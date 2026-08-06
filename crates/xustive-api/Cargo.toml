@@ -1,0 +1,31 @@
+[package]
+name = "xustive-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "HTTP surface: routing, validation, limits, error shaping, and the search handler."
+
+[dependencies]
+xustive-core = { path = "../xustive-core" }
+xustive-text = { path = "../xustive-text" }
+xustive-search = { path = "../xustive-search" }
+
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+http.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+thiserror.workspace = true
+ulid.workspace = true
+clap.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tower = { workspace = true, features = ["util"] }
+http-body-util = "0.1"

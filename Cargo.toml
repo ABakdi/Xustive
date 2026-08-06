@@ -4,6 +4,7 @@ members = [
     "crates/xustive-text",
     "crates/xustive-core",
     "crates/xustive-search",
+    "crates/xustive-api",
 ]
 
 [workspace.package]
