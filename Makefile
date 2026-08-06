@@ -11,6 +11,10 @@ help: ## Show this help
 
 # --- infrastructure -----------------------------------------------------------------
 
+.PHONY: setup
+setup: ## Check prerequisites, install git hooks, create .env
+	@./scripts/setup.sh
+
 .PHONY: up
 up: dev-up corpus seed ## Everything needed to serve search, then tells you what to run next
 	@echo
@@ -82,11 +86,12 @@ fmt: ## Format
 	cargo fmt --all
 
 .PHONY: lint
-lint: ## Format check, clippy, and the telemetry privacy lint
+lint: ## Format check, clippy, and the privacy/topology/docs lints
 	cargo fmt --all -- --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	./scripts/lint-telemetry.sh
 	./scripts/lint-compose.sh
+	./scripts/lint-docs.sh
 
 .PHONY: audit
 audit: ## Dependency advisories and licence check
