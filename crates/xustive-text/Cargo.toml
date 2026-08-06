@@ -1,0 +1,13 @@
+[package]
+name = "xustive-text"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared text normalisation for Xustive. Called at BOTH query time and index time."
+
+[dependencies]
+unicode-normalization.workspace = true
+
+[dev-dependencies]
+proptest = "1"
