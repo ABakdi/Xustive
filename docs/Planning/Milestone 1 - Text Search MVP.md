@@ -46,18 +46,19 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 ## M1-T03 — [[Language Detector]]
 
-- [ ] M1-T03.1 Script detection by Unicode block ratio
-- [ ] M1-T03.2 `lingua-rs` integration restricted to ar/fr/en
-- [ ] M1-T03.3 Darija marker lexicon loader (`data/lang/`, hot-reload)
-- [ ] M1-T03.4 Arabizi marker detection (digit-consonants + token list)
-- [ ] M1-T03.5 Short-query confidence scaling; `Und` as the safe default
-- [ ] M1-T03.6 **Labelled set: 1 000 strings**, ≥ 92 % overall / ≥ 85 % `ary`
-- [ ] M1-T03.7 Darija marker lexicon populated to ~1 500 terms ← *needs a native speaker*
+- [x] M1-T03.1 Script detection by Unicode block ratio
+- [x] M1-T03.2 `lingua-rs` integration restricted to ar/fr/en
+- [x] M1-T03.3 Darija marker lexicon loader (`data/lang/`, hot-reload)
+- [x] M1-T03.4 Arabizi marker detection (digit-consonants + token list)
+- [x] M1-T03.5 Short-query confidence scaling; `Und` as the safe default
+- [x] M1-T03.6 **Labelled set: 1 000 strings**, ≥ 92 % overall / ≥ 85 % `ary`
+- [~] M1-T03.7 Darija marker lexicon at ~200 terms (target 1 500) ← *needs a native
+      speaker to review what is there and extend it; blocker B7*
 
 ## M1-T04 — [[Query Expander]]
 
-- [ ] M1-T04.1 Arabizi ↔ Arabic transducer with a lattice and bigram scoring
-- [ ] M1-T04.2 Guardrails: min length, French homographs, quoted spans untouched
+- [x] M1-T04.1 Arabizi ↔ Arabic transducer with a lattice and bigram scoring
+- [x] M1-T04.2 Guardrails: min length, French homographs, quoted spans untouched
 - [ ] M1-T04.3 Lexicon format and loader (`data/expansion/*.tsv`)
 - [ ] M1-T04.4 Entity lexicon: 58 wilayas, institutions, operators, banks, universities
 - [ ] M1-T04.5 Domain synonym lexicon: administrative, employment, transport, health

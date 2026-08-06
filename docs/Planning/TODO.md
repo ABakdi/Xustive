@@ -71,7 +71,7 @@ Tick as tasks complete in the milestone notes.
 ### M1 — Text Search MVP
 - [ ] M1-T01 `xustive-telemetry` with privacy guards
 - [ ] M1-T02 [[API Gateway]] middleware stack
-- [ ] M1-T03 [[Language Detector]] + lexicons
+- [x] M1-T03 [[Language Detector]] + lexicons
 - [ ] M1-T04 [[Query Expander]] + transliteration + lexicons
 - [ ] M1-T05 [[Query Pipeline]] orchestration and re-rank
 - [ ] M1-T06 [[Ranking and Relevance]] implementation and tuning
