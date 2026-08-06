@@ -1,0 +1,13 @@
+/target
+**/*.rs.bk
+.env
+/models/
+# Build output. Hand-authored UI source lives in web/public/ and IS committed.
+/web/dist/
+/web/node_modules/
+/eval/reports/
+/data/local/
+*.log
+.DS_Store
+tests/fixtures/corpus/*.jsonl
+docs/.obsidian/workspace.json
