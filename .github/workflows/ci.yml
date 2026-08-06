@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Fast feedback: everything that needs no containers. Target is under 10 minutes total for
+  # the whole workflow — slower than that and people learn to ignore it.
+  check:
+    name: fmt · clippy · lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # The privacy guarantee, enforced rather than promised.
+      - name: Telemetry lint (no query or credential fields in logs)
+        run: ./scripts/lint-telemetry.sh
+
+      # The production topology must not publish a database port.
+      - name: Compose lint
+        run: ./scripts/lint-compose.sh
+
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Advisories, and licences that must permit commercial use. Finding a copyleft transitive
+      # dependency before launch is a nuisance; finding it after is a problem.
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories licenses bans sources
+
+  egress:
+    name: egress guarantee
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bring up the production topology
+        run: docker compose -f deploy/docker-compose.yml up -d --no-start
+      # Passes only if the connection FAILS. This is what makes "queries never leave" a
+      # property of the network rather than a claim about the code.
+      - name: Egress test
+        run: ./scripts/test-egress.sh
+
+  test:
+    name: unit · integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test --workspace --all-features
+
+  # End-to-end against real infrastructure. Mocking Meilisearch would only test our idea of
+  # Meilisearch, which is exactly the thing that turns out to be wrong.
+  e2e:
+    name: end-to-end
+    runs-on: ubuntu-latest
+    services:
+      meilisearch:
+        image: getmeili/meilisearch:v1.13
+        env:
+          MEILI_ENV: development
+          MEILI_NO_ANALYTICS: "true"
+        ports: ["7700:7700"]
+        options: >-
+          --health-cmd "curl -fsS http://localhost:7700/health || exit 1"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --workspace
+
+      - name: Generate corpus
+        run: python3 scripts/gen_corpus.py --count 2000 --out tests/fixtures/corpus/documents.jsonl
+
+      - name: Migrate
+        run: cargo run -q -p xustive-cli -- --config config/ci.toml migrate
+
+      - name: Settings drift check
+        run: cargo run -q -p xustive-cli -- --config config/ci.toml migrate --check
+
+      - name: Seed
+        run: cargo run -q -p xustive-cli -- --config config/ci.toml seed
+
+      - name: Start API
+        run: |
+          ./target/debug/xustive-api --config config/ci.toml > /tmp/xustive-api.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fsS http://localhost:8080/readyz >/dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://localhost:8080/readyz
+
+      # Covers the exit gate: cross-language search, normalisation symmetry reaching the index,
+      # the error contract, XSS escaping, the no-JS path, and the query-log canary.
+      - name: Smoke suite
+        run: ./scripts/smoke.sh
+
+      - name: API log on failure
+        if: failure()
+        run: cat /tmp/xustive-api.log
