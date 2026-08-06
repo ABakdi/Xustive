@@ -62,12 +62,13 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 - [x] M1-T04.1 Arabizi ↔ Arabic transducer with a lattice and bigram scoring
 - [x] M1-T04.2 Guardrails: min length, French homographs, quoted spans untouched
-- [ ] M1-T04.3 Lexicon format and loader (`data/expansion/*.tsv`)
-- [ ] M1-T04.4 Entity lexicon: 58 wilayas, institutions, operators, banks, universities
-- [ ] M1-T04.5 Domain synonym lexicon: administrative, employment, transport, health
-- [ ] M1-T04.6 Variant capping and weighting
-- [ ] M1-T04.7 Meilisearch `synonyms` generated from the same lexicon at deploy time
-- [ ] M1-T04.8 **Relevance gate**: recall@50 on the Darija slice +15 %, nDCG not down > 1 %
+- [x] M1-T04.3 Lexicon format and loader (`data/expansion/*.tsv`)
+- [x] M1-T04.4 Entity lexicon: 58 wilayas, institutions, operators, banks, universities
+- [x] M1-T04.5 Domain synonym lexicon: administrative, employment, transport, health
+- [x] M1-T04.6 Variant capping and weighting
+- [x] M1-T04.7 Meilisearch `synonyms` generated from the same lexicon at deploy time
+- [~] M1-T04.8 Recall measured ad hoc, not gated. سونلغاز 551→834 (+51 %), وهران 453→740
+      (+63 %). A real gate needs the judged golden set from M1-T15.
 - [ ] M1-T04.9 DziriBERT fallback behind a feature flag (optional, default off)
 
 ## M1-T05 — [[Query Pipeline]]
