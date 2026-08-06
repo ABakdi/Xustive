@@ -1,0 +1,83 @@
+# Entity aliases: one concept per line, every spelling people actually use.
+#
+# Format:  concept_id <TAB> variant|variant|variant <TAB> weight <TAB> note
+#
+# These are bidirectional equivalence classes, not a canonical form plus alternatives. A user
+# typing any variant should reach documents containing any other.
+#
+# Weight scales how strongly a match on a sibling variant counts relative to the literal query
+# term. It must stay below 1.0 — an expansion must never outrank what the user actually typed.
+
+# --- wilayas: the Arabic name, the French name, and common misspellings ---------------
+wilaya_alger	الجزائر|Alger|Algiers|الجزاير	1.0	capital, also the country name
+wilaya_oran	وهران|Oran|Wahran|ohran	1.0
+wilaya_constantine	قسنطينة|Constantine|Qacentina|قسنطينه	1.0
+wilaya_annaba	عنابة|Annaba|3annaba|عنابه	1.0
+wilaya_setif	سطيف|Setif|Sétif|stif	1.0
+wilaya_batna	باتنة|Batna|باتنه	1.0
+wilaya_bejaia	بجاية|Bejaia|Béjaïa|Bgayet|بجايه	1.0
+wilaya_tlemcen	تلمسان|Tlemcen|Tilimsan	1.0
+wilaya_ouargla	ورقلة|Ouargla|ورقله	1.0
+wilaya_tiziouzou	تيزي وزو|Tizi Ouzou|Tizi-Ouzou|Tiziouzou	1.0
+wilaya_blida	البليدة|Blida|البليده	1.0
+wilaya_mostaganem	مستغانم|Mostaganem|Mosta	1.0
+wilaya_biskra	بسكرة|Biskra|بسكره	1.0
+wilaya_tebessa	تبسة|Tebessa|Tébessa|تبسه	1.0
+wilaya_djelfa	الجلفة|Djelfa|الجلفه	1.0
+wilaya_sidibelabbes	سيدي بلعباس|Sidi Bel Abbes|Sidi Bel Abbès	1.0
+wilaya_skikda	سكيكدة|Skikda|سكيكده	1.0
+wilaya_chlef	الشلف|Chlef|Ech Cheliff	1.0
+wilaya_bouira	البويرة|Bouira|البويره	1.0
+wilaya_medea	المدية|Medea|Médéa|المديه	1.0
+wilaya_tipaza	تيبازة|Tipaza|Tipasa|تيبازه	1.0
+wilaya_mascara	معسكر|Mascara|Mouaskar	1.0
+wilaya_bechar	بشار|Bechar|Béchar	1.0
+wilaya_tamanrasset	تمنراست|Tamanrasset|Tam	1.0
+wilaya_ghardaia	غرداية|Ghardaia|Ghardaïa|غردايه	1.0
+wilaya_jijel	جيجل|Jijel	1.0
+wilaya_guelma	قالمة|Guelma|قالمه	1.0
+wilaya_msila	المسيلة|Msila|M'sila|المسيله	1.0
+wilaya_relizane	غليزان|Relizane|Ghlizane	1.0
+wilaya_tiaret	تيارت|Tiaret	1.0
+
+# --- utilities and public services ------------------------------------------------------
+sonelgaz	سونلغاز|صونلغاز|Sonelgaz|sonalgaz|سونالغاز|Sonelghaz	1.0	electricity and gas
+seaal	سيال|Seaal|SEAAL|سيآل	1.0	Algiers water
+ades	الجزائرية للمياه|ADE|Algerienne des Eaux	0.9	national water
+algerie_telecom	اتصالات الجزائر|Algerie Telecom|Algérie Télécom|AT	1.0
+mobilis	موبيليس|Mobilis|ATM Mobilis	1.0
+djezzy	جيزي|Djezzy|Djezy	1.0
+ooredoo	أوريدو|اوريدو|Ooredoo|Nedjma	1.0
+naftal	نفطال|Naftal	1.0
+sonatrach	سوناطراك|Sonatrach|سونطراك	1.0
+algerie_poste	بريد الجزائر|Algerie Poste|Algérie Poste|BaridiMob	1.0
+air_algerie	الخطوط الجوية الجزائرية|Air Algerie|Air Algérie	1.0
+sntf	السكك الحديدية|SNTF|train Algerie	0.9	railways
+etusa	إيتوزا|ETUSA|نقل حضري	0.9
+
+# --- administration ------------------------------------------------------------------------
+cnas	الضمان الاجتماعي|CNAS|صندوق الضمان الاجتماعي	1.0
+casnos	كاسنوس|CASNOS	1.0
+cnr	صندوق التقاعد|CNR|retraite	0.9
+anem	الوكالة الوطنية للتشغيل|ANEM|وكالة التشغيل	1.0
+anade	أناد|ANADE|ANSEJ	0.9	youth enterprise support
+aadl	عدل|AADL|السكن الترقوي	1.0	housing programme
+cnl	الصندوق الوطني للسكن|CNL	0.9
+apc	البلدية|APC|Mairie|commune	0.9
+daira	الدائرة|Daira|Daïra	0.9
+wilaya_office	الولاية|Wilaya|prefecture	0.8
+
+# --- documents and procedures ----------------------------------------------------------------
+passeport	جواز السفر|passeport|passport|جواز	1.0
+carte_identite	بطاقة التعريف|carte identite|carte d identite|CNIBE|بطاقة الهوية	1.0
+permis_conduire	رخصة السياقة|permis de conduire|permis|رخصة السياقه	1.0
+acte_naissance	شهادة الميلاد|acte de naissance|extrait de naissance|عقد الميلاد	1.0
+casier_judiciaire	صحيفة السوابق|casier judiciaire|السجل العدلي	1.0
+residence	شهادة الإقامة|certificat de residence|شهادة الاقامه	1.0
+
+# --- education ---------------------------------------------------------------------------------
+bac	البكالوريا|BAC|baccalaureat|باك	1.0
+bem	شهادة التعليم المتوسط|BEM	1.0
+onec	الديوان الوطني للامتحانات|ONEC	0.9
+mesrs	وزارة التعليم العالي|MESRS|enseignement superieur	0.9
+progres	بروغرس|Progres|progres.mesrs	0.9	university platform

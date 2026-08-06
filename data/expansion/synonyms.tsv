@@ -1,0 +1,85 @@
+# Domain synonyms across MSA, Darija, Arabizi and French.
+#
+# Format:  concept_id <TAB> variant|variant|variant <TAB> weight <TAB> note
+#
+# This is the file that makes a Darija query reach an MSA document. Someone asking `شحال` and a
+# ministry page saying `كم` are asking and answering the same question, and without this they
+# never meet.
+#
+# NEEDS NATIVE-SPEAKER REVIEW alongside the detection lexicons — blocker B7. The risk here is
+# different from detection: a wrong entry does not just mislabel, it actively pollutes results
+# for every user of that term.
+#
+# Weights stay below 1.0 so an expansion can never outrank the literal query term.
+
+# --- question words ------------------------------------------------------------------------
+q_how_much	شحال|بشحال|ch7al|chhal|chehal|كم|combien|بكم	0.9
+q_how	كيفاش|kifach|kifash|كيف|comment	0.9
+q_where	وين|win|أين|اين|ou|où	0.9
+q_why	علاش|3lach|alach|لماذا|pourquoi	0.9
+q_when	وقتاش|wa9tach|متى|quand	0.9
+q_who	شكون|chkoun|chkon|من هو|qui	0.85
+q_what	واش|wach|wech|ماذا|ما هو|quoi	0.85
+
+# --- employment ------------------------------------------------------------------------------
+work	خدمة|khedma|khdma|عمل|وظيفة|travail|emploi|boulot|job	0.85
+job_offer	عرض عمل|إعلان توظيف|offre emploi|offre d emploi|recrutement|توظيف	0.9
+cv	السيرة الذاتية|CV|curriculum vitae|سيرة ذاتية	0.9
+interview	مقابلة|entretien|entretien d embauche|مقابلة عمل	0.85
+salary	الراتب|الأجر|salaire|paie|خلاص	0.85
+competition	مسابقة|concours|مسابقة توظيف	0.9
+
+# --- administration ----------------------------------------------------------------------------
+file_dossier	ملف|dossier|الملف|lmalaf	0.9
+document	وثيقة|وثائق|document|documents|papiers|الأوراق|watiqa	0.85
+request	طلب|demande|talab|الطلب	0.85
+deadline	الآجال|أجل|delai|date limite	0.85
+online	عبر الإنترنت|en ligne|online|أونلاين|رقمي	0.85
+appointment	موعد|rendez vous|RDV|rdv	0.9
+form	استمارة|formulaire|imprime	0.85
+
+# --- utilities and bills --------------------------------------------------------------------------
+bill	فاتورة|facture|الفاتورة|fatoura	0.9
+payment	دفع|تسديد|paiement|payer|خلاص|الدفع	0.85
+electricity	الكهرباء|electricite|électricité|تريسيتي|trisiti|كهرباء	0.9
+gas	الغاز|gaz|الغازالطبيعي	0.9
+water	الماء|المياه|eau|الما	0.85
+internet	الإنترنت|الانترنت|internet|connexion|تدفق	0.85
+subscription	اشتراك|abonnement|الاشتراك	0.85
+
+# --- transport --------------------------------------------------------------------------------------
+transport	النقل|transport|المواصلات	0.85
+bus	الحافلة|bus|autobus|الباص	0.85
+train	القطار|train|SNTF|تران	0.85
+plane	الطائرة|avion|vol|الطيارة	0.85
+ticket	التذكرة|billet|ticket|تيكي	0.85
+road	الطريق|route|الطرق|triq	0.8
+
+# --- health ---------------------------------------------------------------------------------------------
+health	الصحة|sante|santé|صحة	0.85
+hospital	المستشفى|hopital|hôpital|سبيطار|sbitar	0.9
+doctor	الطبيب|medecin|médecin|docteur|طبيب	0.85
+pharmacy	الصيدلية|pharmacie|صيدلية	0.85
+appointment_med	موعد طبي|rendez vous medical	0.85
+vaccine	التلقيح|اللقاح|vaccin|vaccination	0.9
+
+# --- housing ----------------------------------------------------------------------------------------------
+housing	السكن|logement|السكنات|dar	0.85
+rent	الكراء|الإيجار|location|loyer|كراء	0.85
+buy	شراء|achat|acheter|نشري	0.8
+price	السعر|الثمن|prix|tarif|الأسعار	0.85
+
+# --- education ---------------------------------------------------------------------------------------------
+registration	التسجيل|التسجيلات|inscription|inscriptions|تسجيل	0.9
+university	الجامعة|universite|université|جامعة	0.9
+student	الطالب|etudiant|étudiant|طالب	0.85
+result	النتائج|النتيجة|resultat|résultats|نتائج	0.9
+exam	الامتحان|examen|epreuve|امتحان	0.85
+scholarship	المنحة|bourse|منحة	0.85
+
+# --- general descriptors --------------------------------------------------------------------------------------
+good	مليح|mlih|mli7|جيد|حسن|bon|bien	0.8
+bad	خايب|khayeb|سيء|mauvais	0.8
+new	جديد|nouveau|neuf|الجديد	0.8
+free_cost	مجاني|gratuit|بلاش|blach	0.85
+fast	سريع|rapide|بسرعة|degage	0.75

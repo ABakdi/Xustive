@@ -5,11 +5,13 @@
 //! scripts, frequently mixed inside one sentence.
 //!
 //! - [`detect`] — which language is this?
-//! - [`expand`] — what else might the user have meant? (arriving with the query expander)
+//! - [`expand`] — what else might the user have meant?
 
 pub mod detect;
+pub mod expand;
 pub mod lexicon;
 pub mod translit;
 
 pub use detect::{Detection, Detector, DetectorConfig};
+pub use expand::{Expander, ExpanderConfig, Expansion};
 pub use lexicon::{Lexicon, Score};
