@@ -43,9 +43,13 @@ Full runbook, including ports, troubleshooting and per-area workflows:
 
 Then open <http://localhost:8080> and search for `سونلغاز`, `wach rak`, or `facture`.
 
+The UI is served by `xustive-api` itself — there is no separate web server and no build step.
+`make web` opens it for you.
+
 | Command | Does |
 |:---|:---|
-| `make check` | everything CI runs: fmt, clippy, both lints, all tests |
+| `make web` | open the UI in a browser |
+| `make check` | everything CI runs: fmt, clippy, lints, all tests |
 | `make text Q='الجَزَائِر'` | show what the normaliser does to a string |
 | `make search Q='وهران'` | search from the command line |
 | `./scripts/smoke.sh` | end-to-end checks against a running API |

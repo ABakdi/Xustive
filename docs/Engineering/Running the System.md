@@ -72,7 +72,14 @@ existing `.env`.
 It does **not** download models. `xustive-ml` does not exist yet, so there is nothing to fetch;
 that step joins `setup` in [[Milestone 2 - Multimodal Input]].
 
-Then open <http://localhost:8080>.
+Then open <http://localhost:8080>, or run `make web`.
+
+> **There is no separate web server.** The UI is plain HTML, CSS and JavaScript in `web/public/`,
+> served by `xustive-api` itself. There is no `make run-web`, no dev server on port 3000 and no
+> build step — editing a file in `web/public/` and reloading the page is the whole workflow.
+>
+> That changes when the Tailwind and esbuild pipeline arrives with the component library in
+> M1-T13. Until then, less machinery is the point.
 
 `make up` took **12.7 s** on a warm build. The first run also has to compile the workspace, which
 takes a few minutes; everything after that is fast.
@@ -162,7 +169,8 @@ make help          # every target, with descriptions
 
 | Command | Does |
 |:---|:---|
-| `make run-api` | run the API in the foreground |
+| `make run-api` | run the API — **this also serves the web UI** |
+| `make web` | open the UI in a browser |
 | `make stats` | document counts per index |
 | `make search Q='وهران'` | search from the terminal |
 | `make text Q='الجَزَائِر'` | show what normalisation does to a string |
@@ -307,7 +315,7 @@ The whole stack is rarely needed.
 
 | Working on | Run |
 |:---|:---|
-| UI | `make dev-up`, `make run-api` — edit `web/public/`, then reload; there is no build step |
+| UI | `make dev-up`, `make run-api`, then edit `web/public/` and reload. No build step, no watcher — the files are served as they are on disk. |
 | Ranking or search | `make dev-up`, `make run-api`, `make search Q='…'` |
 | Normalisation or language | `cargo test -p xustive-text -p xustive-lang` — no containers needed |
 | Lexicons | edit `data/`, `cargo test -p xustive-lang`, then `make migrate` for synonyms |

@@ -33,7 +33,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let router = app(state);
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
-    tracing::info!(addr = %listener.local_addr()?, "xustive-api listening");
+    let addr = listener.local_addr()?;
+    tracing::info!(%addr, "xustive-api listening");
+
+    // The UI is served by this process from `static_dir`; there is no separate web server.
+    // Saying so here saves people looking for one that does not exist.
+    let host = if addr.ip().is_unspecified() {
+        format!("localhost:{}", addr.port())
+    } else {
+        addr.to_string()
+    };
+    eprintln!();
+    eprintln!("  Xustive is running.");
+    eprintln!();
+    eprintln!("    Web UI    http://{host}");
+    eprintln!("    API       http://{host}/api/v1/search?q=...");
+    eprintln!("    Health    http://{host}/readyz");
+    eprintln!();
+    eprintln!("  Ctrl-C to stop.");
+    eprintln!();
 
     axum::serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())

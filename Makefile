@@ -69,8 +69,24 @@ stats: ## Show index document counts
 	cargo run -q -p xustive-cli -- --config $(CONFIG) stats
 
 .PHONY: run-api
-run-api: ## Run the API server
+run-api: ## Run the API server — this also serves the web UI at http://localhost:8080
 	cargo run -p xustive-api -- --config $(CONFIG)
+
+.PHONY: web
+web: ## Open the UI in a browser (the API serves it; there is no separate web server)
+	@if curl -fsS --max-time 2 http://localhost:8080/healthz >/dev/null 2>&1; then \
+		echo "Opening http://localhost:8080"; \
+		(xdg-open http://localhost:8080 >/dev/null 2>&1 \
+			|| open http://localhost:8080 >/dev/null 2>&1 \
+			|| echo "Could not open a browser. Go to http://localhost:8080"); \
+	else \
+		echo "The API is not running."; \
+		echo; \
+		echo "  The UI has no separate server — xustive-api serves it from web/public."; \
+		echo "  Start it with:  make run-api"; \
+		echo "  Then:           make web   (or just open http://localhost:8080)"; \
+		exit 1; \
+	fi
 
 # The UI is hand-authored in web/public and served directly — there is no build step yet.
 # The Tailwind/esbuild pipeline arrives with the component library in M1-T13.

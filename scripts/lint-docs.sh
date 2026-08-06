@@ -32,9 +32,13 @@ INSTRUCTIONAL=(
 fail=0
 existing=$(grep -oE '^[a-z][a-z-]*:' Makefile | tr -d ':' | sort -u)
 
+# A line is acceptable if it marks the command as unbuilt, or explicitly says it does not
+# exist. Telling a reader "there is no `make run-web`" is the most useful thing a doc can say
+# about a command people keep reaching for, so it must not be flagged.
 is_marked() {
   case "$1" in
-    *❌*|*"NOT BUILT"*|*"not built"*|*"do not exist"*|*"does not exist"*|*"arrive"*) return 0 ;;
+    *❌*|*"NOT BUILT"*|*"not built"*|*"arrive"*) return 0 ;;
+    *"do not exist"*|*"does not exist"*|*"there is no"*|*"There is no"*|*"no \`make"*) return 0 ;;
     *) return 1 ;;
   esac
 }
