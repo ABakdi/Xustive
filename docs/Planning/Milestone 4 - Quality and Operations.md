@@ -1,0 +1,153 @@
+---
+tags:
+  - planning
+  - milestone
+milestone: 4
+status: not-started
+updated: 2026-08-06
+---
+
+# Milestone 4 - Quality and Operations
+
+> **Goal:** make it survivable. Scale to 10M documents, prove the [[Performance Budgets]] numbers on
+> real data, and build the operational apparatus that lets a small team run this without heroics.
+> **Exit gate:** load test passes at 10M documents; restore drill green; every alert has a runbook;
+> security review clear.
+> Parent: [[TODO]] · Previous: [[Milestone 3 - Ingestion at Scale]] · Next: [[Milestone 5 - Beta Launch]]
+
+---
+
+## Why This Milestone Exists
+
+Everything before this was built and measured at fixture scale. This milestone is where the numbers
+in [[Performance Budgets]] stop being targets and become either facts or corrections.
+
+The most likely outcome is that **something does not hold at 10M documents** — most plausibly single-
+node Meilisearch latency ([[Performance Budgets]] §10). Discovering that here, with time to react, is
+the entire point. Discovering it during beta is not.
+
+---
+
+## M4-T01 — [[Observability]]
+
+- [ ] M4-T01.1 Every metric in its §2 emitted, with bounded label cardinality
+- [ ] M4-T01.2 Structured logging conventions applied across all four binaries
+- [ ] M4-T01.3 Tracing spans and ingestion `trace_id` correlation end to end
+- [ ] M4-T01.4 Sampling: 100 % errors, 1 % successful searches, one full ingestion chain per hour
+- [ ] M4-T01.5 Six Grafana dashboards, provisioned from git
+- [ ] M4-T01.6 Every alert in its §6 configured with thresholds and severities
+- [ ] M4-T01.7 **`TelemetryLeak` alert wired and tested** with a deliberate synthetic leak
+- [ ] M4-T01.8 Log volume within the 2 GB/day budget at projected load
+
+## M4-T02 — [[Error Handling and Resilience]]
+
+- [ ] M4-T02.1 `ErrorClass`-driven retry layer applied everywhere (no string matching)
+- [ ] M4-T02.2 Circuit breakers with shared Redis state and exponential cooldown
+- [ ] M4-T02.3 Backpressure thresholds wired from queue depth to crawl dispatch
+- [ ] M4-T02.4 DLQ tooling: stats, peek, replay, retention
+- [ ] M4-T02.5 Degradation ladder verified by fault injection, step by step
+- [ ] M4-T02.6 Idempotency audit: every stage re-runnable, with a test per stage
+- [ ] M4-T02.7 Graceful shutdown: drain in-flight, ack, exit within the grace period
+- [ ] M4-T02.8 **Chaos exercises**: kill Redis, kill Meilisearch, kill `xustive-ml`, fill the disk —
+      assert the documented behaviour in each case
+
+## M4-T03 — Load testing
+
+- [ ] M4-T03.1 Load harness (`k6`/`oha`) with realistic query mix by language
+- [ ] M4-T03.2 500 rps search for 10 min → p95 ≤ 200 ms
+- [ ] M4-T03.3 2 000 rps suggest → p95 ≤ 40 ms
+- [ ] M4-T03.4 20 concurrent summaries → drop ≤ 2 %, **search latency unaffected**
+- [ ] M4-T03.5 **Contention case: 2 000 docs/s indexing while serving 500 rps**
+- [ ] M4-T03.6 Crawler at 100 pages/min/worker with politeness intact
+- [ ] M4-T03.7 Publish results against [[Performance Budgets]]; **correct the budgets where reality
+      disagrees**, with a [[Decision Log]] entry for each change
+- [ ] M4-T03.8 Decide: read replica for Meilisearch, yes or no?
+
+## M4-T04 — Backup and restore
+
+- [ ] M4-T04.1 Meilisearch snapshots every 6 h, shipped off-host
+- [ ] M4-T04.2 Qdrant daily collection snapshots
+- [ ] M4-T04.3 Redis AOF + hourly RDB copies
+- [ ] M4-T04.4 Registry export to git on every change
+- [ ] M4-T04.5 **Restore drill**: wipe a staging environment and restore from backups only
+- [ ] M4-T04.6 Measure actual RTO/RPO; correct [[Deployment Topology]] §7 if they differ
+- [ ] M4-T04.7 Resolve where off-host backups physically live, given data sovereignty
+- [ ] M4-T04.8 Index migration drill: build `documents_v2`, dual-write, alias flip, roll back
+
+## M4-T05 — Scale to 10M documents
+
+- [ ] M4-T05.1 Expand the registry and crawl budget toward 10M
+- [ ] M4-T05.2 Measure real index size on disk; validate the 180–260 GB estimate
+- [ ] M4-T05.3 Decide the `translit_body` question with real numbers ([[Data Model]] §9)
+- [ ] M4-T05.4 Tune `MEILI_MAX_INDEXING_THREADS` so indexing cannot starve search
+- [ ] M4-T05.5 Qdrant at 5M vectors: memory, recall, latency
+- [ ] M4-T05.6 Redis memory profile; act on the raw-blob storage decision if needed
+- [ ] M4-T05.7 **Re-run the full relevance evaluation on the real corpus** — M1's tuning was done on
+      fixtures and will need revisiting
+
+## M4-T06 — [[Sentiment Engine]] evaluation
+
+- [ ] M4-T06.1 Re-evaluate lexicon mode against real crawled content
+- [ ] M4-T06.2 Track `xustive_sentiment_coverage` for lexicon staleness as slang shifts
+- [ ] M4-T06.3 Resolve where labelled Algerian sentiment data comes from
+- [ ] M4-T06.4 If data exists: train and calibrate transformer mode; else document the decision
+- [ ] M4-T06.5 Fairness check: no language's macro-F1 below 0.60; stratified reporting
+- [ ] M4-T06.6 Consider comment-aggregate "discussion mood" as a distinct signal
+
+## M4-T07 — Spam and quality tuning
+
+- [ ] M4-T07.1 Re-tune quality and spam weights against real distributions
+- [ ] M4-T07.2 Watch the score histograms for drift signalling parser regressions
+- [ ] M4-T07.3 Expand the spam phrase list from observed content
+- [ ] M4-T07.4 Verify suppression (not deletion) behaviour end to end
+- [ ] M4-T07.5 Confirm precision ≥ 0.90 — false positives silently hide legitimate content
+
+## M4-T08 — Security review
+
+- [ ] M4-T08.1 Threat-model walkthrough against [[Security and Privacy]] §2, updated for what got built
+- [ ] M4-T08.2 External penetration test of the public surface
+- [ ] M4-T08.3 Re-run the SSRF suite against the live crawler
+- [ ] M4-T08.4 **Nightly log scan for query leakage** — must find zero
+- [ ] M4-T08.5 Verify egress segmentation on the real deployment
+- [ ] M4-T08.6 Secrets audit: rotation, scoping, no secrets in images or logs
+- [ ] M4-T08.7 Dependency and model-licence audit refresh
+- [ ] M4-T08.8 Prompt-injection red team against the live summariser
+
+## M4-T09 — Runbooks
+
+- [ ] M4-T09.1 One runbook section per alert in [[Observability]] §6
+- [ ] M4-T09.2 Incident procedure: severity levels, escalation, comms
+- [ ] M4-T09.3 Common operations: scale workers, drain a queue, replay a DLQ, force a recrawl,
+      disable a source, execute a takedown
+- [ ] M4-T09.4 Recovery procedures per row of [[Error Handling and Resilience]] §8
+- [ ] M4-T09.5 **Delete any alert that does not have a runbook** — an alert nobody can act on is noise
+
+---
+
+## Exit Gate
+
+| Check | Threshold |
+|:---|:---|
+| Scale | 10M documents indexed and searchable |
+| Latency | all [[Performance Budgets]] §2–3 numbers met at scale, or corrected with a recorded decision |
+| Contention | indexing at full rate does not push search p95 out of budget |
+| Resilience | every chaos exercise produces the documented behaviour |
+| Restore | full restore from backup in staging, within the stated RTO |
+| Security | pen test findings resolved or accepted; zero query leakage in the log scan |
+| Observability | every alert fires correctly in a test and has a runbook |
+| Relevance | evaluation re-run on the real corpus; nDCG@10 ≥ 0.60 still holds |
+
+## Risks
+
+| Risk | Mitigation |
+|:---|:---|
+| Single Meilisearch node misses the latency budget at 10M | this is an expected outcome; M4-T03.8 makes it a planned decision rather than a beta incident |
+| Real-corpus relevance is worse than fixture relevance | M4-T05.7 schedules the re-tune explicitly |
+| Redis memory becomes the binding constraint | monitored since M3; the object-storage option is pre-designed |
+| Alert fatigue from a large new alert set | M4-T09.5 forces deletion of unactionable alerts |
+| Operational work is deprioritised for features | it is the exit gate; there is no M5 without it |
+
+## Related
+
+[[TODO]] · [[Performance Budgets]] · [[Observability]] · [[Error Handling and Resilience]] ·
+[[Deployment Topology]] · [[Security and Privacy]] · [[Milestone 5 - Beta Launch]]
