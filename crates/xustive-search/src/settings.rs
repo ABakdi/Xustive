@@ -11,6 +11,20 @@ pub const DOCUMENTS: &str = "documents";
 pub const COMMENTS: &str = "comments";
 pub const SOURCES: &str = "sources";
 
+/// Generate the `synonyms` setting from the expansion lexicon.
+///
+/// The lexicon is the single source of truth: the same file feeds both this and the query-time
+/// expander, so the two can never drift apart into "the engine thinks these are equivalent but
+/// the expander does not".
+///
+/// Meilisearch synonyms are **directional** — declaring `oran → وهران` does not imply the
+/// reverse — so [`Expander::meili_synonyms`] emits every pair both ways. Getting that wrong is
+/// the subtle failure here: expansion appears to work, but only for people typing one script.
+pub fn synonyms() -> Value {
+    let map = xustive_lang::Expander::default().meili_synonyms();
+    serde_json::to_value(map).unwrap_or(Value::Null)
+}
+
 /// Settings for the `documents` index.
 ///
 /// The ordering of `searchableAttributes` is load-bearing: the `attribute` ranking rule uses it,
@@ -79,7 +93,9 @@ pub fn documents_settings() -> Value {
             "من", "في", "على", "الى", "إلى", "عن", "مع", "هذا", "هذه", "التي", "الذي",
             "le", "la", "les", "de", "des", "du", "et", "un", "une", "pour", "dans",
             "the", "and", "of", "to", "in", "for", "a", "is"
-        ]
+        ],
+        // Generated from data/expansion/*.tsv, the same files the query-time expander reads.
+        "synonyms": synonyms()
     })
 }
 

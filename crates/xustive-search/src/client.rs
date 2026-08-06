@@ -264,16 +264,39 @@ impl MeiliClient {
         self.send(self.http.post(url).json(query)).await
     }
 
-    /// Create an index if it does not exist. Idempotent: an existing index is not an error.
+    /// Whether an index exists.
+    pub async fn index_exists(&self, index: &str) -> Result<bool, SearchError> {
+        let url = self.url(&format!("/indexes/{index}"))?;
+        match self.send::<Value>(self.http.get(url)).await {
+            Ok(_) => Ok(true),
+            Err(SearchError::Backend { status: 404, .. }) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Create an index if it does not exist. Idempotent.
+    ///
+    /// Existence is checked first rather than creating and tolerating the error, because
+    /// Meilisearch reports "already exists" through a **failed task** rather than an immediate
+    /// HTTP error. Catching only the immediate form made a second `migrate` run abort, which is
+    /// exactly the case an idempotent migration has to survive.
     pub async fn ensure_index(&self, index: &str, primary_key: &str) -> Result<(), SearchError> {
+        if self.index_exists(index).await? {
+            return Ok(());
+        }
         let url = self.url("/indexes")?;
         let body = serde_json::json!({ "uid": index, "primaryKey": primary_key });
         match self.send::<TaskRef>(self.http.post(url).json(&body)).await {
-            Ok(t) => {
-                self.wait_task(t.task_uid).await?;
-                Ok(())
-            }
-            // `index_already_exists` is the desired end state, not a failure.
+            Ok(t) => match self.wait_task(t.task_uid).await {
+                Ok(_) => Ok(()),
+                // Lost a race with another migrate: the desired end state still holds.
+                Err(SearchError::TaskFailed { ref message, .. })
+                    if message.contains("already exists") =>
+                {
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            },
             Err(SearchError::Backend { ref code, .. }) if code == "index_already_exists" => Ok(()),
             Err(e) => Err(e),
         }
