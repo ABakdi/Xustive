@@ -1,0 +1,51 @@
+# Development override.
+#
+# The base compose file is the production topology: no published ports at all, and `core` is
+# `internal: true` so nothing on it can reach the internet. A CI check asserts the base file
+# stays that way.
+#
+# Two consequences for development, both handled here:
+#
+#  1. `internal: true` also prevents Docker from NAT-ing *into* the network, so published ports
+#     do not work on `core`. The `devhost` bridge below provides an ingress path. It grants the
+#     containers a route in from the host, not a route out to the internet, so the egress
+#     guarantee still holds.
+#  2. In production `xustive-api` runs in a container on `core`. In development it runs on the
+#     host, so it needs those ports published.
+#
+# Every published port is overridable, because a development machine usually runs more than one
+# stack. Redis defaults to 6390 rather than 6379 for exactly that reason. Override in `.env`:
+#
+#   XUSTIVE_REDIS_PORT=6395
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml up -d
+
+services:
+  meilisearch:
+    networks: [core, devhost]
+    ports:
+      - "127.0.0.1:${XUSTIVE_MEILI_PORT:-7700}:7700"
+
+  qdrant:
+    networks: [core, devhost]
+    ports:
+      - "127.0.0.1:${XUSTIVE_QDRANT_PORT:-6333}:6333"
+
+  redis:
+    networks: [core, devhost]
+    ports:
+      - "127.0.0.1:${XUSTIVE_REDIS_PORT:-6390}:6379"
+
+  prometheus:
+    networks: [core, obs, devhost]
+    ports:
+      - "127.0.0.1:${XUSTIVE_PROM_PORT:-9090}:9090"
+
+  grafana:
+    networks: [obs, devhost]
+    ports:
+      - "127.0.0.1:${XUSTIVE_GRAFANA_PORT:-3001}:3000"
+
+networks:
+  devhost:
+    driver: bridge

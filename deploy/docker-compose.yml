@@ -1,0 +1,112 @@
+# Development topology.
+#
+# Network segmentation is the load-bearing part: `core` is `internal: true`, so Meilisearch,
+# Qdrant and Redis have no route to or from the outside world. Only `xustive-crawler` (added in
+# M3) will sit on a network with egress.
+#
+# There is deliberately no `ports:` mapping on meilisearch/qdrant/redis in production; the dev
+# overrides below expose them on localhost only so `xustive-cli` and tests can reach them.
+
+name: xustive
+
+services:
+  meilisearch:
+    image: getmeili/meilisearch:v1.13
+    container_name: xustive-meilisearch
+    environment:
+      MEILI_ENV: development
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_MAX_INDEXING_MEMORY: 2Gb
+      # Capped so a bulk index cannot starve search of CPU.
+      MEILI_MAX_INDEXING_THREADS: 2
+      MEILI_EXPERIMENTAL_ENABLE_METRICS: "true"
+    volumes:
+      - meili_data:/meili_data
+    networks: [core]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:7700/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: xustive-qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks: [core]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: xustive-redis
+    # noeviction is not optional: under allkeys-lru Redis would silently drop queue entries
+    # and frontier state, losing crawl work invisibly.
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 1gb
+      --maxmemory-policy noeviction
+    volumes:
+      - redis_data:/data
+    networks: [core]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: xustive-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    networks: [core, obs]
+    extra_hosts:
+      # Lets Prometheus scrape xustive-api running on the host during development.
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: xustive-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks: [obs]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+volumes:
+  meili_data:
+  qdrant_data:
+  redis_data:
+  prom_data:
+  grafana_data:
+
+networks:
+  # No egress: nothing on this network can reach the internet, which is what makes
+  # "user queries never leave" enforceable rather than aspirational.
+  core:
+    internal: true
+  obs:
+    internal: true
