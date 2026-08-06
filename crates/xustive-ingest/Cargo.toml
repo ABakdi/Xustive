@@ -1,0 +1,28 @@
+[package]
+name = "xustive-ingest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Polite fetching, robots.txt compliance, and HTML to Document extraction."
+
+[dependencies]
+xustive-core = { path = "../xustive-core", features = ["resolve"] }
+xustive-text = { path = "../xustive-text" }
+xustive-lang = { path = "../xustive-lang" }
+
+reqwest = { workspace = true, features = ["stream"] }
+tokio = { workspace = true, features = ["time", "sync", "macros"] }
+url.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+scraper = "0.21"
+encoding_rs = "0.8"
+chardetng = "0.1"
+quick-xml = "0.37"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

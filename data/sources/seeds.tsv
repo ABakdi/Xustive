@@ -1,0 +1,41 @@
+# Crawl seeds.
+#
+# Format:  source_id <TAB> url <TAB> trust <TAB> note
+#
+# trust: A = established, edited, accountable
+#        B = credible but narrower or unedited
+#        C = user-generated or unverified
+#
+# Trust is about accountability, not agreement. A tier-A source can be wrong; the tier says
+# someone is answerable for it.
+#
+# Every entry here is a public Algerian site crawled under the open-web profile: robots.txt is
+# obeyed, we identify ourselves as XustiveBot, and there is one request per host at a time. If a
+# site disallows us, it is not crawled — that is enforced in code, not by convention.
+#
+# Entry points are sitemaps and feeds where the publisher offers them, because a list the site
+# maintains itself beats guessing URLs by following links.
+
+# --- national news agencies and dailies -------------------------------------------------
+aps-dz	https://www.aps.dz/sitemap.xml	A	Algérie Presse Service, state news agency
+aps-dz	https://www.aps.dz/	A	homepage, for links the sitemap lags on
+elkhabar	https://www.elkhabar.com/	A	El Khabar, major Arabic daily
+echorouk	https://www.echoroukonline.com/	A	Echorouk, major Arabic daily
+ennahar	https://www.ennaharonline.com/	B	Ennahar
+elwatan	https://elwatan-dz.com/	A	El Watan, French-language daily
+liberte	https://www.liberte-algerie.com/	B	Liberté
+lexpression	https://www.lexpressiondz.com/	B	L'Expression
+elmoudjahid	https://www.elmoudjahid.dz/	A	El Moudjahid, state daily
+horizons	https://www.horizons.dz/	B	Horizons
+tsa	https://www.tsa-algerie.com/	B	Tout Sur l'Algérie
+algerie360	https://www.algerie360.com/	B	Algérie 360
+observalgerie	https://www.observalgerie.com/	B	Observ'Algérie
+
+# --- government and administration ---------------------------------------------------------
+interieur-gov	https://www.interieur.gov.dz/	A	Ministry of the Interior
+mesrs-gov	https://www.mesrs.dz/	A	Higher education ministry
+education-gov	https://www.education.gov.dz/	A	National education ministry
+sante-gov	https://www.sante.gov.dz/	A	Health ministry
+travail-gov	https://www.mtess.gov.dz/	A	Labour and social security ministry
+premier-ministre	https://www.premier-ministre.gov.dz/	A	Prime Minister's office
+joradp	https://www.joradp.dz/	A	Official journal

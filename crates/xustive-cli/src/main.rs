@@ -4,6 +4,8 @@
 //! normaliser actually does to a string. That last one exists because "why does this query match
 //! nothing" is almost always a normalisation question.
 
+mod crawl;
+
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -38,6 +40,22 @@ enum Command {
         path: PathBuf,
         #[arg(long, default_value_t = 1000)]
         batch: usize,
+    },
+    /// Crawl real sites from a seed list and index what they publish.
+    Crawl {
+        /// Seed file: `source_id <TAB> url <TAB> trust`.
+        #[arg(long, default_value = "data/sources/seeds.tsv")]
+        seeds: PathBuf,
+        /// Only crawl this source id.
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long, default_value_t = 60)]
+        per_source: usize,
+        #[arg(long, default_value_t = 500)]
+        max: usize,
+        /// Fetch only listed entry points; do not follow homepage links.
+        #[arg(long)]
+        no_discover: bool,
     },
     /// Show index document counts.
     Stats,
@@ -79,6 +97,31 @@ async fn main() -> Result<()> {
     match args.command {
         Command::Migrate { check } => cmd_migrate(&client, check).await,
         Command::Seed { path, batch } => cmd_seed(&client, &config, &path, batch).await,
+        Command::Crawl {
+            seeds,
+            source,
+            per_source,
+            max,
+            no_discover,
+        } => {
+            let tsv = tokio::fs::read_to_string(&seeds)
+                .await
+                .with_context(|| format!("reading seeds {}", seeds.display()))?;
+            let mut list = crawl::parse_seeds(&tsv);
+            if let Some(want) = source {
+                list.retain(|s| s.source_id == want);
+                if list.is_empty() {
+                    anyhow::bail!("no seed with source id {want:?}");
+                }
+            }
+            let opts = crawl::CrawlOptions {
+                max_pages_per_source: per_source,
+                max_total: max,
+                discover_links: !no_discover,
+                ..Default::default()
+            };
+            crawl::run(&client, &config, &list, &opts).await.map(|_| ())
+        }
         Command::Stats => cmd_stats(&client, &config).await,
         Command::Search { query, limit } => cmd_search(&client, &config, &query, limit).await,
         Command::Text { .. } => unreachable!("handled above"),

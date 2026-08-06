@@ -55,6 +55,10 @@ migrate: ## Create indexes and apply settings (idempotent)
 migrate-check: ## Report drift between declared and live index settings
 	cargo run -q -p xustive-cli -- --config $(CONFIG) migrate --check
 
+.PHONY: crawl
+crawl: ## Crawl real Algerian sites and index them (respects robots.txt)
+	cargo run -q -p xustive-cli -- --config $(CONFIG) crawl $(ARGS)
+
 .PHONY: corpus
 corpus: ## Generate the sample corpus
 	python3 scripts/gen_corpus.py --count 10000 \
