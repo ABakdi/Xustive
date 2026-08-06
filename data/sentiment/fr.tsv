@@ -1,0 +1,89 @@
+# French sentiment lexicon.
+#
+# Format:  term <TAB> valence <TAB> gloss
+#
+# Terms are normalised on load, so accented and unaccented spellings both match.
+
+excellent	3.4	excellent
+formidable	3.2	great
+magnifique	3.0	magnificent
+superbe	2.9	superb
+parfait	3.0	perfect
+bon	2.0	good
+bonne	2.0	good (f)
+bien	1.8	well
+mieux	1.8	better
+reussi	2.4	successful
+reussite	2.6	success
+succes	2.6	success
+amelioration	2.2	improvement
+progres	2.0	progress
+avantage	1.8	advantage
+gratuit	1.6	free
+rapide	1.4	fast
+facile	1.6	easy
+simple	1.4	simple
+utile	1.8	useful
+efficace	2.0	effective
+satisfait	2.4	satisfied
+content	2.2	happy
+heureux	2.8	happy
+merci	2.0	thanks
+felicitations	2.6	congratulations
+soutien	1.6	support
+solution	1.4	solution
+espoir	2.0	hope
+opportunite	1.6	opportunity
+transparence	1.8	transparency
+securite	1.4	safety
+
+mauvais	-2.4	bad
+pire	-2.8	worse
+terrible	-3.0	terrible
+horrible	-3.2	horrible
+catastrophe	-3.4	catastrophe
+catastrophique	-3.3	catastrophic
+echec	-2.6	failure
+probleme	-1.8	problem
+problemes	-1.9	problems
+crise	-2.6	crisis
+penurie	-2.4	shortage
+retard	-1.8	delay
+coupure	-2.0	outage
+panne	-2.2	breakdown
+corruption	-3.2	corruption
+injustice	-3.0	injustice
+scandale	-2.8	scandal
+colere	-2.6	anger
+inquiet	-1.8	worried
+inquietude	-1.9	worry
+peur	-2.2	fear
+triste	-2.4	sad
+deces	-2.8	death
+accident	-2.4	accident
+blesse	-2.0	injured
+perte	-2.0	loss
+baisse	-1.4	decline
+hausse des prix	-2.2	price increase
+cher	-1.4	expensive
+chomage	-2.6	unemployment
+difficile	-1.6	difficult
+complique	-1.4	complicated
+lent	-1.6	slow
+refuse	-2.0	refused
+rejet	-2.0	rejection
+plainte	-1.8	complaint
+negligence	-2.4	negligence
+ferme	-1.2	closed
+interdit	-1.6	forbidden
+
+tres	0.0	intensifier
+vraiment	0.0	intensifier
+extremement	0.0	intensifier
+peu	0.0	diminisher
+assez	0.0	diminisher
+pas	0.0	negator
+non	0.0	negator
+jamais	0.0	negator
+aucun	0.0	negator
+sans	0.0	negator

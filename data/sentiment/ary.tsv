@@ -1,0 +1,51 @@
+# Algerian Darija sentiment, Latin script (Arabizi). The Arabic-script Darija terms live in
+# ar.tsv alongside MSA, since they share a lexicon at lookup time.
+#
+# NEEDS NATIVE-SPEAKER REVIEW — blocker B7. This is the file with the least prior art and the
+# most room to be wrong.
+
+mlih	2.4	good
+mli7	2.4	good
+mliha	2.4	good (f)
+zwin	2.4	nice
+zwina	2.4	nice (f)
+wa3er	2.2	impressive
+waar	2.0	impressive
+sahit	2.4	thanks / well done
+sa7it	2.4	thanks
+saha	2.0	cheers
+sa7a	2.0	cheers
+ya3ichek	2.2	thank you
+hayel	2.6	amazing
+bahi	2.0	fine
+nichane	1.6	straight / honest
+labas	1.6	all good
+mabrouk	2.4	congratulations
+hamdoullah	1.8	praise God
+
+khayeb	-2.4	bad
+khayb	-2.4	bad
+khayba	-2.4	bad (f)
+7ogra	-3.2	contempt / humiliation
+hogra	-3.2	contempt
+ta7gir	-3.0	humiliation
+maqhour	-2.6	aggrieved
+me9hour	-2.6	aggrieved
+za3fan	-2.2	angry
+zaafan	-2.2	angry
+mchakel	-1.9	problems
+mouchkil	-1.8	problem
+ghali	-1.6	expensive
+bati	-1.6	slow
+makach	-1.2	there isn't
+walou	-1.4	nothing
+machi mlih	-2.4	not good
+sda3	-2.0	hassle
+tafla	-1.2	mess
+
+bezaf	0.0	intensifier
+bzaf	0.0	intensifier
+chwiya	0.0	diminisher
+machi	0.0	negator
+manich	0.0	negator
+ma	0.0	negator

@@ -1,0 +1,135 @@
+# Arabic sentiment lexicon (MSA), with Darija terms marked where they differ.
+#
+# Format:  term <TAB> valence <TAB> gloss
+# valence: -4.0 .. +4.0, VADER-style. Magnitude is intensity, sign is polarity.
+#
+# NEEDS NATIVE-SPEAKER REVIEW — blocker B7, and the stakes here are higher than for detection.
+# A term list encodes judgements: score dialect or politically-charged vocabulary carelessly and
+# you systematically mislabel whole communities of speakers. Reviewers should look for terms that
+# are negative only in one register, and for anything scored on the basis of the topic rather
+# than the opinion.
+
+# --- strongly positive ------------------------------------------------------------------
+ممتاز	3.5	excellent
+رائع	3.4	wonderful
+عظيم	3.2	great
+مذهل	3.2	amazing
+جميل	2.6	beautiful
+جيد	2.2	good
+حسن	2.0	good
+ناجح	2.6	successful
+نجاح	2.7	success
+تحسن	2.2	improvement
+تطور	2.0	development
+إنجاز	2.6	achievement
+انجاز	2.6	achievement
+فرحة	2.8	joy
+سعيد	2.8	happy
+سعادة	2.9	happiness
+شكرا	2.2	thanks
+مبروك	2.6	congratulations
+تهانينا	2.6	congratulations
+بارك	2.0	blessed
+أحسنت	2.6	well done
+احسنت	2.6	well done
+مفيد	2.0	useful
+سهل	1.6	easy
+سريع	1.4	fast
+مجاني	1.6	free of charge
+دعم	1.6	support
+حل	1.4	solution
+أمل	2.0	hope
+امل	2.0	hope
+فرصة	1.6	opportunity
+تسهيل	1.8	facilitation
+إصلاح	1.4	reform
+شفافية	1.8	transparency
+عدالة	2.0	justice
+أمن	1.6	security
+استقرار	1.8	stability
+
+# --- strongly negative -------------------------------------------------------------------
+سيء	-2.6	bad
+سيئ	-2.6	bad
+فظيع	-3.2	awful
+كارثة	-3.4	catastrophe
+كارثي	-3.3	catastrophic
+فشل	-2.8	failure
+فاشل	-2.8	failed
+مشكلة	-1.8	problem
+مشاكل	-1.9	problems
+أزمة	-2.6	crisis
+ازمة	-2.6	crisis
+معاناة	-2.8	suffering
+ظلم	-3.0	injustice
+فساد	-3.2	corruption
+رشوة	-3.0	bribery
+سرقة	-3.0	theft
+احتجاج	-1.8	protest
+غضب	-2.6	anger
+غاضب	-2.6	angry
+حزن	-2.4	sadness
+خوف	-2.2	fear
+قلق	-1.8	worry
+تأخر	-1.8	delay
+تاخر	-1.8	delay
+انقطاع	-2.0	outage / cut
+نقص	-1.8	shortage
+ارتفاع الأسعار	-2.2	price rise
+غلاء	-2.4	high cost
+بطالة	-2.6	unemployment
+تلوث	-2.2	pollution
+حادث	-2.4	accident
+وفاة	-2.8	death
+إصابة	-2.0	injury
+اصابة	-2.0	injury
+خسارة	-2.2	loss
+تراجع	-1.8	decline
+صعب	-1.6	difficult
+صعوبة	-1.8	difficulty
+معقد	-1.4	complicated
+مرفوض	-2.2	rejected
+رفض	-1.8	refusal
+شكوى	-1.8	complaint
+تذمر	-2.0	grumbling
+إهمال	-2.4	negligence
+اهمال	-2.4	negligence
+بطيء	-1.6	slow
+مغلق	-1.2	closed
+ممنوع	-1.6	forbidden
+
+# --- Darija, positive ----------------------------------------------------------------------
+مليح	2.4	good
+مليحة	2.4	good (f)
+زوين	2.4	nice
+زوينة	2.4	nice (f)
+واعر	2.2	impressive
+صحيت	2.4	thanks / well done
+يعيشك	2.2	thank you
+هايل	2.6	amazing
+باهي	2.0	fine
+نيشان	1.6	straight / honest
+
+# --- Darija, negative ----------------------------------------------------------------------
+خايب	-2.4	bad
+خايبة	-2.4	bad (f)
+واخر	-1.8	late
+حقرة	-3.2	contempt / humiliation
+تحقير	-3.0	humiliation
+مقهور	-2.6	aggrieved
+زعفان	-2.2	angry
+مليش	-1.6	I don't have
+ماشي مليح	-2.4	not good
+ماكاش	-1.2	there isn't
+
+# --- intensifiers, diminishers, negators -----------------------------------------------------
+# Handled structurally by the scorer, listed here for the lexicon-coverage statistic.
+بزاف	0.0	intensifier
+جدا	0.0	intensifier
+كثيرا	0.0	intensifier
+شوية	0.0	diminisher
+قليلا	0.0	diminisher
+ماشي	0.0	negator
+ليس	0.0	negator
+غير	0.0	negator / only
+لا	0.0	negator
