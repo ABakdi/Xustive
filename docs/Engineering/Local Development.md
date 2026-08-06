@@ -9,8 +9,15 @@ updated: 2026-08-06
 
 # Local Development
 
+> [!warning] This is a specification, not a runbook
+> It describes the development environment for the **finished** system, including the crawler,
+> the ML service and the queue workers — none of which are built yet. Commands here such as
+> `make setup`, `make run-crawler`, `make eval` and `make fixture-site` do not exist.
+>
+> For what actually runs today, with verified commands, see **[[Running the System]]**.
+
 > Getting from a clean machine to a working Xustive in under 30 minutes.
-> Parent: [[Home]] · Related: [[Deployment Topology]], [[Testing Strategy]]
+> Parent: [[Home]] · Related: [[Running the System]], [[Deployment Topology]], [[Testing Strategy]]
 
 ---
 

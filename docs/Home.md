@@ -23,7 +23,8 @@ social media posts, serving results in **Arabic, Darija, French, and English**.
 | If you are… | Read this |
 |:---|:---|
 | New to the project | [[Xustive Search Engine – Technical Specification]] → [[System Architecture]] |
-| About to write code | [[TODO]] → [[Local Development]] → the component note you own |
+| Just want to run it | **[[Running the System]]** |
+| About to write code | [[TODO]] → [[Running the System]] → the component note you own |
 | Designing screens | [[UI Specification]] |
 | Reviewing decisions | [[Decision Log]] |
 | Confused by a term | [[Glossary]] |
@@ -92,7 +93,8 @@ social media posts, serving results in **Arabic, Darija, French, and English**.
 
 ## 🛠️ Engineering Practice
 
-- [[Local Development]] — repo layout, toolchain, `make` targets
+- **[[Running the System]]** — how to run what exists today, with verified commands
+- [[Local Development]] — the eventual dev environment, including components not yet built
 - [[Testing Strategy]] — unit → integration → relevance evaluation
 - [[Performance Budgets]] — the numbers every PR is measured against
 - [[Legal and Compliance]] — robots, ToS risk, Law 18-07, takedowns

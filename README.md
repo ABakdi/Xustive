@@ -13,6 +13,7 @@ French, and English**. Searches are not recorded, and nothing leaves the country
 | What are the components? | [`docs/Architecture/Component Map.md`](docs/Architecture/Component%20Map.md) |
 | What does the API return? | [`docs/Architecture/API Contract.md`](docs/Architecture/API%20Contract.md) |
 | Why was X chosen? | [`docs/Decisions/Decision Log.md`](docs/Decisions/Decision%20Log.md) |
+| How do I run it? | [`docs/Engineering/Running the System.md`](docs/Engineering/Running%20the%20System.md) |
 | What are we building next? | [`docs/Planning/TODO.md`](docs/Planning/TODO.md) |
 | What does this word mean? | [`docs/Glossary.md`](docs/Glossary.md) |
 
@@ -20,20 +21,24 @@ French, and English**. Searches are not recorded, and nothing leaves the country
 
 ## Status
 
-**Milestone 0 — Foundations.** Search works end to end over a sample corpus. No crawler yet; the
-index is populated from fixtures. See [`docs/Planning/TODO.md`](docs/Planning/TODO.md) for what
-each milestone delivers.
+**Milestone 1 — Text Search MVP, in progress.** Search works end to end over a generated sample
+corpus, with Arabic/Darija/Arabizi/French detection and cross-script query expansion. No crawler
+yet, so the index is populated from fixtures rather than the live web. Still to come in M1:
+ranking, sentiment, the AI summary, autocomplete, and the full UI.
+
+See [`docs/Planning/TODO.md`](docs/Planning/TODO.md) for what each milestone delivers.
 
 ## Quick start
 
 Needs Rust 1.85+, Docker, and Python 3 (for the corpus generator).
 
 ```sh
-make dev-up      # meilisearch, qdrant, redis, prometheus, grafana
-make corpus      # generate ~10k sample documents
-make seed        # create indexes, apply settings, index the corpus
+make up          # infrastructure, corpus, index settings, and seed data (~13s)
 make run-api     # http://localhost:8080
 ```
+
+Full runbook, including ports, troubleshooting and per-area workflows:
+[`docs/Engineering/Running the System.md`](docs/Engineering/Running%20the%20System.md).
 
 Then open <http://localhost:8080> and search for `سونلغاز`, `wach rak`, or `facture`.
 
@@ -53,9 +58,11 @@ Ports are overridable if they clash with something else you run: `XUSTIVE_REDIS_
 crates/
   xustive-text      ★ shared normalisation — called at BOTH query time and index time
   xustive-core        canonical types, error taxonomy, config, SafeUrl, dedup hashing
+  xustive-lang        language detection, Arabizi transliteration, query expansion
   xustive-search      Meilisearch client, index settings, filter builder
   xustive-api         HTTP surface, search handler, server-rendered results
   xustive-cli         migrate, seed, stats, text, search
+data/               language and expansion lexicons (TSV, reviewable by non-programmers)
 web/public/         hand-authored UI (no build step yet)
 deploy/             docker-compose: base is production-shaped, dev override adds host ports
 scripts/            corpus generator, lints, smoke suite
