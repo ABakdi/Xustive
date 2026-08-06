@@ -1,0 +1,27 @@
+[package]
+name = "xustive-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Canonical types, error taxonomy, config, and the SafeUrl SSRF guard."
+
+[dependencies]
+xustive-text = { path = "../xustive-text" }
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+ulid = { workspace = true, features = ["serde"] }
+blake3.workspace = true
+url.workspace = true
+tokio = { workspace = true, optional = true }
+
+[features]
+default = []
+# DNS resolution for SafeUrl requires an async runtime; keep it optional so pure-logic
+# consumers (parser, tests) do not pull in tokio.
+resolve = ["dep:tokio", "tokio/net"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "net"] }

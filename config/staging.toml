@@ -1,0 +1,27 @@
+# Staging configuration. Same topology as production, half the scale.
+#
+# Dev and prod differ only in replica counts and secrets. Any behavioural difference belongs in
+# a config value here, never in an `if env == "prod"` branch in code.
+
+[api]
+bind_addr = "0.0.0.0:8080"
+max_concurrent = 256
+body_limit_default = 8192
+timeout_search_ms = 1500
+timeout_suggest_ms = 150
+cors_origins = []
+static_dir = "web/public"
+
+[search]
+meili_url = "http://meilisearch:7700"
+meili_key = ""
+documents_index = "documents"
+comments_index = "comments"
+candidate_pool = 200
+default_hits_per_page = 20
+max_hits_per_page = 50
+timeout_ms = 800
+
+[telemetry]
+log_filter = "info"
+log_json = true
