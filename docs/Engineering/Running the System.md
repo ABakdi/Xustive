@@ -60,9 +60,17 @@ Disk: roughly 6 GB for the Rust build plus about 200 MB for the sample index.
 git clone https://github.com/ABakdi/Xustive.git
 cd Xustive
 
+make setup       # check prerequisites, install git hooks, create .env
 make up          # infrastructure, corpus, index settings, and seed data
 make run-api     # foreground; Ctrl-C to stop
 ```
+
+`make setup` is optional — `make up` works without it — but it tells you up front if something is
+missing rather than failing halfway through. It is safe to re-run and will not overwrite an
+existing `.env`.
+
+It does **not** download models. `xustive-ml` does not exist yet, so there is nothing to fetch;
+that step joins `setup` in [[Milestone 2 - Multimodal Input]].
 
 Then open <http://localhost:8080>.
 

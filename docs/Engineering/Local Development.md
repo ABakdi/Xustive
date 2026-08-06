@@ -73,31 +73,39 @@ System libraries for `xustive-ml`: `libtesseract-dev`, `libleptonica-dev`, `libc
 
 ```bash
 git clone … && cd xustive
-make setup          # install hooks, fetch models (~3.5 GB), create .env from example
-make dev-up         # meilisearch, qdrant, redis, prometheus, grafana
-make seed           # index 10k sample documents from tests/fixtures/corpus
-make run-api        # cargo run -p xustive-api
-make run-web        # esbuild watch + tailwind watch → http://localhost:3000
+make setup          # ✅ exists — prerequisites, hooks, .env (model fetch arrives with M2)
+make dev-up         # ✅ exists
+make seed           # ✅ exists
+make run-api        # ✅ exists
+make run-web        # ❌ NOT BUILT — the UI has no build step yet; edit web/public/ directly
 ```
 
-`make setup` is the one that takes time — model downloads are checksum-verified and cached in
-`./models`, which is bind-mounted into `xustive-ml` ([[Deployment Topology]] §5).
+> **To actually run the system today, follow [[Running the System]].** It is verified against the
+> current code. This section describes the eventual shape.
+
+In the finished system `make setup` also fetches model files, checksum-verified and cached in
+`./models`, which is bind-mounted into `xustive-ml` ([[Deployment Topology]] §5). Today there are
+no models to fetch, so it only checks prerequisites, installs the git hooks and creates `.env`.
 
 ### Make targets
 
-| Target | Does |
-|:---|:---|
-| `make dev-up` / `dev-down` | infrastructure containers |
-| `make run-api` / `run-ml` / `run-crawler` / `run-worker` | run one binary with `config/dev.toml` |
-| `make run-web` | UI dev server with watch |
-| `make seed` | index the sample corpus |
-| `make seed-crawl` | run the crawler against the local fixture site (no external network) |
-| `make test` / `test-unit` / `test-int` | test tiers ([[Testing Strategy]]) |
-| `make eval` | relevance harness → nDCG report |
-| `make lint` | clippy + fmt + telemetry lint + RTL CSS lint |
-| `make migrate` | apply index settings from git |
-| `make dlq` | inspect/replay dead letters |
-| `make check` | everything CI runs, locally |
+| Target | Does | Today |
+|:---|:---|:---|
+| `make setup` | prerequisites, hooks, `.env` (+ models, eventually) | ✅ |
+| `make up` | infrastructure, corpus and a seeded index in one step | ✅ |
+| `make dev-up` / `dev-down` | infrastructure containers | ✅ |
+| `make run-api` | run the API with `config/dev.toml` | ✅ |
+| `make seed` / `migrate` | index the sample corpus; apply index settings | ✅ |
+| `make test` / `lint` / `check` | test and lint tiers ([[Testing Strategy]]) | ✅ |
+| `make text` / `search` | normalisation and search from the terminal | ✅ |
+| `make run-ml` / `run-crawler` / `run-worker` | the other binaries | ❌ M2/M3 |
+| `make run-web` | UI dev server with watch | ❌ no build step yet |
+| `make seed-crawl` | crawl the local fixture site | ❌ M3 |
+| `make eval` | relevance harness → nDCG report | ❌ M1-T15 |
+| `make dlq` | inspect/replay dead letters | ❌ M3 |
+
+`make help` is always the authoritative list — it is generated from the Makefile, so it cannot
+drift from reality the way this table can.
 
 ---
 
@@ -124,15 +132,18 @@ in code ([[Deployment Topology]] §1).
 
 Crawling the real web from a laptop is slow, rude, and non-reproducible. So:
 
-- `tests/fixtures/site/` is a static fixture site served by `make fixture-site` on `localhost:8090`,
-  including a sitemap, an RSS feed, an SPA page, redirect chains, a 429 endpoint, a `robots.txt` with
-  `Crawl-delay`, and deliberately malformed pages.
+- `make fixture-site` ❌ *not built yet (M0-T10)* — will serve `tests/fixtures/site/` on
+  `localhost:8090`: a sitemap, an RSS feed, an SPA page, redirect chains, a 429 endpoint, a
+  `robots.txt` with `Crawl-delay`, and deliberately malformed pages.
 - `config/dev.toml` seeds the frontier from that host only.
 - Social connectors run in **replay mode** against recorded fixtures — there is no live-API path in
   dev or CI ([[Social Connector - Facebook]] §11).
 
-`make seed-crawl` exercises the entire ingestion pipeline end-to-end without a single external
-request.
+❌ *not built yet* — `make seed-crawl` will exercise the entire ingestion pipeline end-to-end
+without a single external request.
+
+Today the equivalent is `make up`, which seeds the index from a generated corpus rather than by
+crawling ([[Running the System]] §3).
 
 ---
 
@@ -172,9 +183,9 @@ Most work needs only part of the stack:
 | Working on | Run |
 |:---|:---|
 | UI | `dev-up`, `run-api`, `run-web` (summary disabled in config) |
-| Ranking | `dev-up`, `run-api`, `make eval` |
-| Parser | `run-worker` + `make fixture-site`; no api, no ml |
-| Crawler | `dev-up`, `run-crawler`, `make fixture-site` |
+| Ranking | `dev-up`, `run-api`, `make eval` ❌ *harness not built (M1-T15)* |
+| Parser | `run-worker` + `make fixture-site` ❌ *not built* |
+| Crawler | `dev-up`, `run-crawler`, `make fixture-site` ❌ *not built* |
 | Summarizer | `run-ml` + a saved response fixture — no crawling required |
 
 `xustive-ml` is the expensive one (~4 GB RAM, slow start). `[summarizer] enabled = false` in
@@ -185,12 +196,16 @@ Most work needs only part of the stack:
 ## 8. Debugging
 
 ```bash
+# ❌ these arrive with the crawler and the ranking work
 RUST_LOG=xustive_crawler=debug,xustive_worker=info make run-crawler
-make dlq stats                          # what's failing and why
-make dlq peek --stage parse --limit 5
-make dlq replay --stage parse --since 1h
+make dlq stats                          # what's failing and why  ❌ not built
+make dlq peek --stage parse --limit 5   # ❌ not built
 xustive-cli query --explain "سونلغاز"   # ranking breakdown per result
-xustive-cli text normalize "الجَزَائِر"  # what the tokenizer actually sees
+
+# ✅ available today
+RUST_LOG=xustive_search=debug make run-api
+make text Q='الجَزَائِر'                 # what normalisation actually does
+make search Q='وهران'
 ```
 
 `query --explain` prints each ranking signal's contribution per result

@@ -33,6 +33,7 @@ See [`docs/Planning/TODO.md`](docs/Planning/TODO.md) for what each milestone del
 Needs Rust 1.85+, Docker, and Python 3 (for the corpus generator).
 
 ```sh
+make setup       # check prerequisites, install hooks, create .env
 make up          # infrastructure, corpus, index settings, and seed data (~13s)
 make run-api     # http://localhost:8080
 ```
