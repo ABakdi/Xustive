@@ -125,11 +125,11 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 ## M1-T10 — [[Content Parser]]
 
-- [ ] M1-T10.1 Extraction cascade: JSON-LD → OG → readability → domain rules → fallback
-- [ ] M1-T10.2 Boilerplate removal and link-density heuristics
-- [ ] M1-T10.3 **Date extraction** including Arabic (أوت, جويلية) and French formats, relative forms,
+- [x] M1-T10.1 Extraction cascade: JSON-LD → OG → readability → domain rules → fallback
+- [x] M1-T10.2 Boilerplate removal and link-density heuristics
+- [x] M1-T10.3 **Date extraction** including Arabic (أوت, جويلية) and French formats, relative forms,
       DD/MM disambiguation, `unknown` precision handling
-- [ ] M1-T10.4 Derived fields: excerpt, `content_hash`, `simhash`, entities, canonical URL, media
+- [x] M1-T10.4 Derived fields: excerpt, `content_hash`, `simhash`, entities, canonical URL, media
 - [ ] M1-T10.5 Per-domain rules format + rules for the top 20 sources, each with a fixture test
 - [ ] M1-T10.6 Adversarial DOM suite (depth, node count, encodings, bombs)
 - [ ] M1-T10.7 200-page labelled corpus: ≥ 90 % title, ≥ 85 % date, ≥ 0.9 body F1

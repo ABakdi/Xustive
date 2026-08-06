@@ -101,6 +101,27 @@ Ready. Start the API with:  make run-api
 Then open:                  http://localhost:8080
 ```
 
+### Real content instead of the sample corpus
+
+`make up` seeds a generated corpus so search works immediately with no network. To index the
+actual Algerian web:
+
+```sh
+make crawl                                   # all seeds in data/sources/seeds.tsv
+make crawl ARGS="--source aps-dz --max 20"   # one source, small
+```
+
+It is slow on purpose. One request per host at a time with the site's declared `Crawl-delay`
+means roughly 150 documents takes several minutes, and that pacing is not a knob worth turning:
+sites that notice us block us, and a blocked source is a permanent hole in the index.
+
+`robots.txt` fails closed. A timeout, a 5xx, a 401 or a 403 all mean "do not crawl" — only a 404
+means there are no restrictions. Some sources will report zero documents for that reason, and
+that is the system working.
+
+Seeds live in `data/sources/seeds.tsv`, one line per entry point, with a trust tier that feeds
+ranking.
+
 ### Verify it worked
 
 ```sh
@@ -224,6 +245,7 @@ a green pipeline.
 
 | Command | Does |
 |:---|:---|
+| `make crawl` | **fetch and index real Algerian sites** (respects robots.txt) |
 | `make migrate` | create indexes, apply settings and synonyms — idempotent |
 | `make migrate-check` | report drift between declared and live settings |
 | `make corpus` | regenerate the sample corpus |
