@@ -11,6 +11,12 @@ help: ## Show this help
 
 # --- infrastructure -----------------------------------------------------------------
 
+.PHONY: up
+up: dev-up corpus seed ## Everything needed to serve search, then tells you what to run next
+	@echo
+	@echo "Ready. Start the API with:  make run-api"
+	@echo "Then open:                  http://localhost:8080"
+
 .PHONY: dev-up
 dev-up: ## Start meilisearch, qdrant, redis, prometheus, grafana
 	$(COMPOSE) up -d
@@ -62,13 +68,8 @@ stats: ## Show index document counts
 run-api: ## Run the API server
 	cargo run -p xustive-api -- --config $(CONFIG)
 
-.PHONY: web
-web: ## Build the UI once
-	cd web && npm install --silent && npm run build
-
-.PHONY: web-watch
-web-watch: ## Rebuild the UI on change
-	cd web && npm install --silent && npm run watch
+# The UI is hand-authored in web/public and served directly — there is no build step yet.
+# The Tailwind/esbuild pipeline arrives with the component library in M1-T13.
 
 # --- quality ------------------------------------------------------------------------
 
@@ -89,6 +90,8 @@ lint: ## Format check, clippy, and the telemetry privacy lint
 
 .PHONY: audit
 audit: ## Dependency advisories and licence check
+	@command -v cargo-deny >/dev/null || { \
+		echo "cargo-deny is not installed. Run: cargo install cargo-deny"; exit 1; }
 	cargo deny check advisories licenses bans sources
 
 .PHONY: egress-test

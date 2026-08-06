@@ -244,9 +244,23 @@ fn cmd_text(input: &str) -> Result<()> {
     let normalized = xustive_text::normalize(input);
     let folded = xustive_text::fold(input);
 
-    println!("input      {input:?}");
-    println!("normalized {normalized:?}");
-    println!("folded     {folded:?}");
+    // Printed unescaped: the point of this command is to show the text as the user sees it.
+    // What normalisation removed is reported separately, because those characters are invisible
+    // by definition and listing their codepoints is the only way to see them at all.
+    println!("input      {input}");
+    println!("normalized {normalized}");
+    if folded != normalized {
+        println!("folded     {folded}");
+    }
+
+    let changed = changed_codepoints(input, &normalized);
+    if !changed.is_empty() {
+        println!("changed");
+        for line in &changed {
+            println!("           {line}");
+        }
+    }
+
     println!("script     {:?}", script::detect(&normalized));
     println!(
         "tokens     {:?}",
@@ -263,6 +277,53 @@ fn cmd_text(input: &str) -> Result<()> {
         None => println!("simhash    (text too short to be meaningful)"),
     }
     Ok(())
+}
+
+/// Characters present in the input that did not survive normalisation unchanged.
+///
+/// Says *why* rather than just listing codepoints, and distinguishes removal from folding —
+/// an Arabic-Indic digit is not deleted, it becomes an ASCII one, and reporting that as
+/// "removed" would send someone looking for a bug that is not there.
+///
+/// A multiset difference rather than a set one, so dropping one of two identical marks shows up.
+fn changed_codepoints(input: &str, normalized: &str) -> Vec<String> {
+    use std::collections::HashMap;
+
+    let mut after: HashMap<char, usize> = HashMap::new();
+    for c in normalized.chars() {
+        *after.entry(c).or_default() += 1;
+    }
+
+    let mut names: Vec<String> = Vec::new();
+    let mut seen: Vec<char> = Vec::new();
+    for c in input.chars() {
+        match after.get_mut(&c) {
+            Some(n) if *n > 0 => *n -= 1,
+            _ => {
+                if !seen.contains(&c) {
+                    seen.push(c);
+                    names.push(format!("U+{:04X}  {}", c as u32, describe(c)));
+                }
+            }
+        }
+    }
+    names
+}
+
+fn describe(c: char) -> &'static str {
+    match c {
+        '\u{0660}'..='\u{0669}' => "Arabic-Indic digit, folded to ASCII",
+        '\u{06F0}'..='\u{06F9}' => "Extended Arabic-Indic digit, folded to ASCII",
+        '\u{0640}' => "tatweel, removed",
+        '\u{064B}'..='\u{0652}' => "harakat, removed",
+        '\u{0653}'..='\u{065F}' => "hamza/madda mark, removed",
+        '\u{0670}' => "superscript alef, removed",
+        '\u{200B}'..='\u{200F}' => "zero-width / bidi mark, removed",
+        '\u{FEFF}' => "byte order mark, removed",
+        c if c.is_whitespace() => "whitespace, collapsed",
+        c if c.is_control() => "control character, removed",
+        _ => "removed",
+    }
 }
 
 async fn cmd_search(
