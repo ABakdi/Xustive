@@ -15,6 +15,7 @@ use serde_json::Value;
 
 use xustive_core::{Classify, Config, SourceType, TrustTier};
 use xustive_ingest::{FetchConfig, FetchError, Fetcher, ParseError, Parser};
+use xustive_lang::Scorer;
 use xustive_search::MeiliClient;
 
 /// One line of `data/sources/seeds.tsv`.
@@ -86,6 +87,7 @@ pub async fn run(
 ) -> Result<Stats> {
     let fetcher = Fetcher::new(FetchConfig::default()).context("building the fetcher")?;
     let parser = Parser::default();
+    let sentiment = Scorer::default();
     let started = Instant::now();
 
     let mut stats = Stats::default();
@@ -154,6 +156,13 @@ pub async fn run(
 
             // Source trust is a property of the registry, not of the page.
             doc.quality_score = (doc.quality_score * 0.7) + (seed.trust.weight() * 0.3);
+
+            // Sentiment is scored from the title and the opening of the body, where it is
+            // usually established. Scoring the whole document is slower and more diluted.
+            doc.sentiment = sentiment.score(
+                &format!("{} {}", doc.title, head(&doc.body, 800)),
+                doc.language,
+            );
 
             println!(
                 "  · {:<58} {}",
@@ -310,6 +319,10 @@ async fn flush(client: &MeiliClient, config: &Config, batch: &mut Vec<Value>) ->
     client.wait_task(uid).await.context("indexing batch")?;
     batch.clear();
     Ok(())
+}
+
+fn head(s: &str, n: usize) -> String {
+    s.chars().take(n).collect()
 }
 
 fn truncate(s: &str, n: usize) -> String {

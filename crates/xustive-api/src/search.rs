@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use xustive_core::{DatePrecision, Lang, SentimentLabel, SourceType};
 use xustive_lang::Detection;
-use xustive_search::{filter::Filters, Query};
+use xustive_search::{filter::Filters, rank, Query};
 use xustive_text::script::{self, Script};
 
 use crate::error::ApiError;
@@ -89,6 +89,13 @@ pub struct ResultCard {
     pub thumbnail_url: Option<String>,
     pub matched_comments: Vec<Value>,
     pub score: f32,
+    /// Near-duplicates folded into this result, shown as "+N similar".
+    #[serde(skip_serializing_if = "is_zero")]
+    pub similar_count: usize,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 #[derive(Debug, Serialize)]
@@ -159,10 +166,13 @@ pub async fn handler(
     );
 
     // --- retrieve -------------------------------------------------------------------
+    // Pull a candidate pool rather than one page: re-ranking can only reorder what it is
+    // given, so paging at the engine would freeze the engine's ordering into the result.
     let offset = (page - 1) * hits_per_page;
+    let pool = cfg.candidate_pool.max(hits_per_page);
     let mut query = Query::new(&normalized)
-        .limit(hits_per_page)
-        .offset(offset)
+        .limit(pool)
+        .offset(0)
         .facets(&["source_type", "sentiment.label", "language"])
         .highlight(&["excerpt", "title"]);
     if let Some(expr) = filters.to_expression(SPAM_THRESHOLD) {
@@ -185,8 +195,35 @@ pub async fn handler(
         retrieval_started.elapsed().as_secs_f64(),
     );
 
+    // --- re-rank --------------------------------------------------------------------
+    let rerank_started = Instant::now();
+    let trust = state.trust_tiers.as_ref();
+    let ranked = rank::rerank(
+        &hits.hits,
+        &normalized,
+        xustive_core::now_unix(),
+        trust,
+        &state.ranking,
+    );
+    state.metrics.observe(
+        metrics::SEARCH_DURATION,
+        metrics::SEARCH_DURATION_HELP,
+        &[("stage", "rerank")],
+        rerank_started.elapsed().as_secs_f64(),
+    );
+
     // --- shape ----------------------------------------------------------------------
-    let results: Vec<ResultCard> = hits.hits.iter().map(to_card).collect();
+    let results: Vec<ResultCard> = ranked
+        .iter()
+        .skip(offset)
+        .take(hits_per_page)
+        .map(|r| {
+            let mut card = to_card(&r.hit);
+            card.score = r.score;
+            card.similar_count = r.collapsed.len();
+            card
+        })
+        .collect();
     let total_hits = hits.estimated_total_hits;
     let total_pages = total_hits.div_ceil(hits_per_page).min(100);
 
@@ -348,6 +385,7 @@ fn to_card(hit: &Value) -> ResultCard {
             .map(str::to_string),
         matched_comments: Vec::new(),
         score: 0.0,
+        similar_count: 0,
     }
 }
 

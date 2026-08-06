@@ -15,6 +15,7 @@ xustive-core = { path = "../xustive-core" }
 xustive-text = { path = "../xustive-text" }
 xustive-search = { path = "../xustive-search" }
 xustive-ingest = { path = "../xustive-ingest" }
+xustive-lang = { path = "../xustive-lang" }
 url.workspace = true
 
 clap.workspace = true

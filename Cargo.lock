@@ -2531,6 +2531,7 @@ dependencies = [
  "url",
  "xustive-core",
  "xustive-ingest",
+ "xustive-lang",
  "xustive-search",
  "xustive-text",
 ]
