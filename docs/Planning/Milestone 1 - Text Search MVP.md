@@ -83,22 +83,24 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 ## M1-T06 — [[Ranking and Relevance]]
 
-- [ ] M1-T06.1 Meilisearch ranking rules and typo-tolerance settings
-- [ ] M1-T06.2 Stage-2 scoring formula with hot-reloadable weights (`config/ranking.toml`)
-- [ ] M1-T06.3 Freshness τ by inferred query intent
-- [ ] M1-T06.4 Diversity: per-domain cap, per-author cap, source-type spread
-- [ ] M1-T06.5 SimHash collapse at result time
-- [ ] M1-T06.6 `xustive-cli query --explain` showing each signal's contribution
-- [ ] M1-T06.7 Weight tuning against the golden set
+- [x] M1-T06.1 Meilisearch ranking rules and typo-tolerance settings
+- [x] M1-T06.2 Stage-2 scoring formula with hot-reloadable weights (`config/ranking.toml`)
+- [x] M1-T06.3 Freshness τ by inferred query intent
+- [x] M1-T06.4 Diversity: per-domain cap, per-author cap, source-type spread
+- [x] M1-T06.5 SimHash collapse at result time
+- [~] M1-T06.6 Per-signal `Explain` struct is computed and returned; the `--explain` CLI
+      surface is not wired up yet
+- [ ] M1-T06.7 Weight tuning against the golden set — blocked on M1-T15.5
 
 ## M1-T07 — [[Sentiment Engine]] (lexicon mode)
 
-- [ ] M1-T07.1 VADER-style scorer with negation, intensifiers, diminishers, emoji, elongation
-- [ ] M1-T07.2 Lexicon files ×4 with loader and hot-reload
-- [ ] M1-T07.3 Confidence from lexicon coverage; force `neutral` below threshold
-- [ ] M1-T07.4 **Darija lexicon hand-built to ~2 000 terms** ← *needs native speakers, two reviewers*
-- [ ] M1-T07.5 Labelled set of 1 000 items; macro-F1 ≥ 0.70, no language below 0.60
-- [ ] M1-T07.6 Calibration check: confidence buckets match observed accuracy ±10 %
+- [x] M1-T07.1 VADER-style scorer with negation, intensifiers, diminishers, emoji, elongation
+- [x] M1-T07.2 Lexicon files ×4 with loader and hot-reload
+- [x] M1-T07.3 Confidence from lexicon coverage; force `neutral` below threshold
+- [~] M1-T07.4 Darija sentiment lexicon at ~50 terms (target 2 000) ← **blocked on native
+      speakers**, two reviewers required; B7
+- [ ] M1-T07.5 Labelled set of 1 000 items ← **blocked on annotators**; B7
+- [ ] M1-T07.6 Calibration check — blocked on M1-T07.5
 
 ## M1-T08 — [[Summarizer]]
 
