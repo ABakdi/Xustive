@@ -36,6 +36,10 @@ jobs:
       - name: Compose lint
         run: ./scripts/lint-compose.sh
 
+      # Instructions must not reference commands that do not exist.
+      - name: Docs lint
+        run: ./scripts/lint-docs.sh
+
   audit:
     name: dependency audit
     runs-on: ubuntu-latest
