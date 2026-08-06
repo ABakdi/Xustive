@@ -216,6 +216,9 @@ pub const SEARCH_RESULTS: &str = "xustive_search_results_total";
 pub const SEARCH_RESULTS_HELP: &str = "Searches by result-count bucket and language";
 pub const SEARCH_ZERO: &str = "xustive_search_zero_results_total";
 pub const SEARCH_ZERO_HELP: &str = "Searches returning no results, by language";
+pub const LANG_DETECTED: &str = "xustive_lang_detected_total";
+pub const LANG_DETECTED_HELP: &str =
+    "Detected query language and script. The share of `ary` is itself a product metric: if it is near zero, either detection is broken or the audience assumption is wrong.";
 pub const BUILD_INFO: &str = "xustive_build_info";
 pub const BUILD_INFO_HELP: &str = "Always 1; presence indicates the process is up";
 

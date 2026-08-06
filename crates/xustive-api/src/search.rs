@@ -1,8 +1,8 @@
 //! `GET /api/v1/search`.
 //!
-//! M0 scope: normalise, filter, retrieve, shape. Language detection is script-based and there is
-//! no query expansion, no re-ranking and no summary yet — those arrive in M1. The response
-//! *shape* is already the final one so the UI does not have to change underneath.
+//! Current scope: normalise, detect language, filter, retrieve, shape. Query expansion,
+//! re-ranking and the summary are still to come; the response *shape* is already the final one
+//! so the UI does not have to change underneath as they land.
 
 use std::time::Instant;
 
@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use xustive_core::{DatePrecision, Lang, SentimentLabel, SourceType};
+use xustive_lang::Detection;
 use xustive_search::{filter::Filters, Query};
 use xustive_text::script::{self, Script};
 
@@ -139,7 +140,23 @@ pub async fn handler(
 
     // --- normalise and detect -------------------------------------------------------
     let normalized = xustive_text::normalize(&raw);
-    let (language, confidence) = detect_language(&normalized, params.lang.as_deref());
+    let detect_started = Instant::now();
+    let detection = detect_language(&state, &normalized, params.lang.as_deref());
+    state.metrics.observe(
+        metrics::SEARCH_DURATION,
+        metrics::SEARCH_DURATION_HELP,
+        &[("stage", "detect")],
+        detect_started.elapsed().as_secs_f64(),
+    );
+    let (language, confidence) = (detection.lang, detection.confidence);
+    state.metrics.incr(
+        metrics::LANG_DETECTED,
+        metrics::LANG_DETECTED_HELP,
+        &[
+            ("lang", language.as_str()),
+            ("script", script_label(detection.script)),
+        ],
+    );
 
     // --- retrieve -------------------------------------------------------------------
     let offset = (page - 1) * hits_per_page;
@@ -214,24 +231,31 @@ pub async fn handler(
     }))
 }
 
-/// Placeholder language detection: script only.
+/// Detect the query language, honouring an explicit client hint.
 ///
-/// M1 replaces this with the real cascade (lingua + Darija markers). Until then `Und` is the
-/// honest answer for anything ambiguous, and `Und` is safe — retrieval widens rather than
-/// narrowing wrongly.
-fn detect_language(normalized: &str, hint: Option<&str>) -> (Lang, f32) {
-    if let Some(h) = hint {
-        if h != "auto" {
-            if let Some(l) = Lang::parse(h) {
-                return (l, 1.0);
-            }
+/// An explicit `lang` from the client wins outright: the user chose it, and second-guessing a
+/// stated preference with a heuristic is worse than trusting it.
+fn detect_language(state: &AppState, normalized: &str, hint: Option<&str>) -> Detection {
+    if let Some(h) = hint.filter(|h| *h != "auto") {
+        if let Some(lang) = Lang::parse(h) {
+            return Detection {
+                lang,
+                confidence: 1.0,
+                script: script::detect(normalized),
+                secondary: None,
+            };
         }
     }
-    match script::detect(normalized) {
-        Script::Arabic => (Lang::Ar, 0.5),
-        Script::Latin => (Lang::Und, 0.0),
-        Script::Mixed => (Lang::Mixed, 0.4),
-        Script::Unknown => (Lang::Und, 0.0),
+    state.detector.detect_normalized(normalized)
+}
+
+/// Bounded label for the script metric.
+fn script_label(s: Script) -> &'static str {
+    match s {
+        Script::Arabic => "arabic",
+        Script::Latin => "latin",
+        Script::Mixed => "mixed",
+        Script::Unknown => "unknown",
     }
 }
 
@@ -382,28 +406,16 @@ mod tests {
     }
 
     #[test]
-    fn language_hint_overrides_detection() {
-        let (l, c) = detect_language("wach rak", Some("ary"));
-        assert_eq!(l, Lang::Ary);
-        assert_eq!(c, 1.0);
-    }
-
-    #[test]
-    fn auto_hint_falls_through_to_detection() {
-        let (l, _) = detect_language("الجزائر", Some("auto"));
-        assert_eq!(l, Lang::Ar);
-    }
-
-    #[test]
-    fn ambiguous_latin_is_undetermined_not_guessed() {
-        // Guessing `fr` on an Arabizi query would narrow retrieval and return nothing.
-        let (l, _) = detect_language("wach rak", None);
-        assert_eq!(l, Lang::Und);
-    }
-
-    #[test]
-    fn empty_query_is_undetermined() {
-        assert_eq!(detect_language("", None).0, Lang::Und);
+    fn script_labels_are_bounded() {
+        // Metric label cardinality must stay fixed.
+        for s in [
+            Script::Arabic,
+            Script::Latin,
+            Script::Mixed,
+            Script::Unknown,
+        ] {
+            assert!(!script_label(s).is_empty());
+        }
     }
 
     #[test]

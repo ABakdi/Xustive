@@ -10,6 +10,7 @@ description = "HTTP surface: routing, validation, limits, error shaping, and the
 xustive-core = { path = "../xustive-core" }
 xustive-text = { path = "../xustive-text" }
 xustive-search = { path = "../xustive-search" }
+xustive-lang = { path = "../xustive-lang" }
 
 axum.workspace = true
 tower.workspace = true
