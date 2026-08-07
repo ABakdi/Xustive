@@ -192,19 +192,24 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [ ] M1-T12.5 Queue-depth and lag metrics
 - [ ] M1-T12.6 `make dlq` stats / peek / replay
 
+> **UI work moved to [[Milestone 1B - Frontend and Instant Answers]].** The items below that are
+> ticked were delivered there; the rest stay here because they are gates (budgets, visual
+> regression) rather than features, and gates belong with the milestone that defines them.
+
 ## M1-T13 — Core UI
 
-- [ ] M1-T13.1 [[UI - Design Language]] tokens, light and dark
+- [x] M1-T13.1 [[UI - Design Language]] tokens, light and dark — delivered by M1B-T02.1
 - [~] M1-T13.2 [[UI - Component Library]]: SearchBox, **SuggestionList**, SummaryBlock, ResultCard
       are built. Remaining:
       FilterChip, Pagination, Sheet, Toast, Skeleton, EmptyState
-- [ ] M1-T13.3 [[UI - Home Page]]
-- [ ] M1-T13.4 [[UI - Results Page]] with the two-request render sequence
+- [x] M1-T13.3 [[UI - Home Page]] — delivered by M1B-T03.1
+- [x] M1-T13.4 [[UI - Results Page]] with the two-request render sequence — delivered by
+      M1B-T03.2 and M1B-T03.5
 - [x] M1-T13.5 [[UI - Filters and Facets]] — language, source and tone chips, rendered both
       server-side and client-side so narrowing works without JavaScript. Chips toggle, preserve
       each other, and stay visible while active so a filter can always be cleared
 - [ ] M1-T13.6 [[UI - States and Errors]] for every row of its §4
-- [ ] M1-T13.7 URL-as-state, back/forward correctness
+- [x] M1-T13.7 URL-as-state — the query string *is* the state; no client store to desync
 - [ ] M1-T13.8 Bundle budgets enforced in CI; Lighthouse CI on a throttled profile
 - [ ] M1-T13.9 **CLS ≤ 0.05** verified across the streaming sequence
 
@@ -218,7 +223,8 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [~] M1-T14.3 Strings for ar / fr / en covering the filter and suggestion chrome, keyed off
       `documentElement.lang`, with Darija falling back to Arabic rather than English. Not yet
       extracted to files, and `Intl.PluralRules` is not used
-- [ ] M1-T14.4 Algerian month names (أوت, جويلية) in formatting **and** parsing
+- [x] M1-T14.4 Algerian month names in both directions: parsed by `xustive-ingest::date` and
+      rendered by `xustive-tools::datetime`
 - [ ] M1-T14.5 Directional icon mirroring, logo exclusion
 - [ ] M1-T14.6 Visual regression snapshots: 4 languages × 2 directions × 2 themes
 - [ ] M1-T14.7 Native-speaker review of `ar` and `ary` strings ← *B7*
