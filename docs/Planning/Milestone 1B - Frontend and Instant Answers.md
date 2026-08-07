@@ -96,7 +96,10 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 - [ ] M1B-T05.4 Translator on the existing local Qwen; streaming, cancellable, nothing leaves
       the machine
 - [ ] M1B-T05.5 Weather — now + 5 days, 58 wilayas, custom line icons
-- [ ] M1B-T05.6 Prayer times — computed locally, method shown on the card
+- [x] M1B-T05.6 Prayer times — computed from coordinates and date, no network, nothing that can
+      go stale. Three methods and both Asr rules; the method is on the card because Algerian
+      mosques do not all follow one authority and an unnamed reckoning makes an ordinary
+      disagreement look like a defect
 - [~] M1B-T05.7 Hijri ↔ Gregorian and days-between are built, computed locally so they cannot go
       stale. Uses the **tabular** calendar; Algeria announces Eid by sighting and can differ by a
       day, which the card discloses rather than hides. World clock is not built
@@ -122,7 +125,8 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 
 ## M1B-T07 — Tier 2 and 3 tools
 
-- [ ] M1B-T07.1 Wilaya reference (static, 58 entries)
+- [x] M1B-T07.1 Wilaya reference — all 58, compiled in, with seat coordinates that prayer times
+      and later weather use to turn a named place into a location without ever asking the browser
 - [ ] M1B-T07.2 Fuel prices
 - [ ] M1B-T07.3 Dictionary — ar / fr / en, Darija marked as incomplete ← *B7*
 - [ ] M1B-T07.4 Transliterator, surfacing [[Query Expander]]

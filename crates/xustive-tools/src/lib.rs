@@ -25,7 +25,10 @@
 
 pub mod calculator;
 pub mod datetime;
+pub mod prayer;
 pub mod units;
+pub mod wilaya;
+mod wilaya_data;
 
 use serde::Serialize;
 
@@ -76,6 +79,8 @@ pub fn registry() -> Vec<Box<dyn Tool>> {
         Box::new(calculator::Calculator),
         Box::new(units::UnitConverter),
         Box::new(datetime::DateTool),
+        Box::new(prayer::PrayerTool),
+        Box::new(wilaya::WilayaTool),
     ]
 }
 

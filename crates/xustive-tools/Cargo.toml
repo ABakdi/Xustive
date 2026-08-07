@@ -7,6 +7,7 @@ license.workspace = true
 description = "Instant answers: matching, arbitration, and the tools themselves."
 
 [dependencies]
+xustive-core = { path = "../xustive-core" }
 xustive-text = { path = "../xustive-text" }
 serde.workspace = true
 serde_json.workspace = true
