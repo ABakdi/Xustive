@@ -76,11 +76,87 @@ pub enum ParseError {
     TooLittleContent { chars: usize, min: usize },
     #[error("page is marked noindex")]
     NoIndex,
+    /// The markup is too complex to parse within a sane budget.
+    ///
+    /// Not a judgement about the content — a page this shape is either broken or hostile, and
+    /// either way one page must not stall the crawler. Measured: 50 000 nested `<div>`s took
+    /// **47 seconds** and 20 000 unclosed tags took 18, on a machine with nothing else to do.
+    #[error("markup too complex: {what} ({found}, limit {limit})")]
+    TooComplex {
+        what: &'static str,
+        found: usize,
+        limit: usize,
+    },
+}
+
+/// Cheap structural limits, checked before the DOM is built.
+///
+/// A single pass over the bytes, so the check itself cannot be the slow thing. Everything here is
+/// far above what a real article reaches — the largest page in the crawled corpus is a few
+/// thousand tags — and far below where parsing time becomes pathological.
+const MAX_HTML_BYTES: usize = 8 * 1024 * 1024;
+const MAX_TAGS: usize = 100_000;
+const MAX_DEPTH: usize = 512;
+
+/// Reject pathological markup before parsing it.
+///
+/// Counts opening tags and tracks nesting by scanning for `<` and `</`. Approximate on purpose:
+/// an exact answer requires the parse this is trying to avoid.
+fn check_complexity(html: &str) -> Result<(), ParseError> {
+    if html.len() > MAX_HTML_BYTES {
+        return Err(ParseError::TooComplex {
+            what: "bytes",
+            found: html.len(),
+            limit: MAX_HTML_BYTES,
+        });
+    }
+
+    let bytes = html.as_bytes();
+    let mut tags = 0usize;
+    let mut depth = 0i64;
+    let mut max_depth = 0i64;
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] != b'<' {
+            i += 1;
+            continue;
+        }
+        match bytes.get(i + 1) {
+            Some(b'/') => depth -= 1,
+            // `<!` is a comment or doctype, `<?` a processing instruction. Neither nests.
+            Some(b'!') | Some(b'?') => {}
+            Some(c) if c.is_ascii_alphabetic() => {
+                tags += 1;
+                depth += 1;
+                max_depth = max_depth.max(depth);
+                if tags > MAX_TAGS {
+                    return Err(ParseError::TooComplex {
+                        what: "tags",
+                        found: tags,
+                        limit: MAX_TAGS,
+                    });
+                }
+                if max_depth > MAX_DEPTH as i64 {
+                    return Err(ParseError::TooComplex {
+                        what: "nesting depth",
+                        found: max_depth as usize,
+                        limit: MAX_DEPTH,
+                    });
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    Ok(())
 }
 
 pub struct Parser {
     detector: Detector,
     config: ParseConfig,
+    /// Per-domain selectors, tried before generic extraction.
+    rules: crate::rules::Rules,
 }
 
 impl Default for Parser {
@@ -90,9 +166,20 @@ impl Default for Parser {
 }
 
 impl Parser {
+    /// Attach per-domain rules.
+    ///
+    /// Separate from `new` so a caller that does not care — most tests — is not forced to
+    /// think about them, and so loading from disk stays the caller's decision rather than a
+    /// hidden file read inside a constructor.
+    pub fn with_rules(mut self, rules: crate::rules::Rules) -> Self {
+        self.rules = rules;
+        self
+    }
+
     pub fn new(config: ParseConfig) -> Self {
         Self {
             detector: Detector::default(),
+            rules: crate::rules::Rules::default(),
             config,
         }
     }
@@ -105,6 +192,10 @@ impl Parser {
         source_id: &str,
         source_type: SourceType,
     ) -> Result<Parsed, ParseError> {
+        // Before the DOM is built, not after. The cost being guarded against is the parse
+        // itself, so checking afterwards would already have paid it.
+        check_complexity(html)?;
+
         let doc = Html::parse_document(html);
         let now = now_unix();
 
@@ -138,7 +229,21 @@ impl Parser {
 
         // Date. Anything we cannot parse becomes the crawl time with `Unknown` precision — never
         // a guess presented as fact, because ranking discounts what it knows is uncertain.
+        // A per-domain selector, tried first. aps.dz emits its date as a bare span with a
+        // utility class — no JSON-LD, no time element — so every generic source below finds
+        // nothing and 25 of 40 articles had no date at all.
+        let host = url
+            .split("://")
+            .nth(1)
+            .and_then(|rest| rest.split('/').next())
+            .unwrap_or_default();
+        let rule = self.rules.for_host(host);
+        let by_rule = rule
+            .and_then(|r| r.date.as_deref())
+            .and_then(|selector| text_of(&doc, selector));
+
         let published = first_non_empty([
+            by_rule,
             jsonld
                 .as_ref()
                 .and_then(|j| string_field(j, "datePublished")),
@@ -439,6 +544,29 @@ fn author_of(v: &Value) -> Option<String> {
 ///
 /// Navigation and related-links boxes are mostly anchor text, so weighting text against link
 /// density separates article bodies from chrome without knowing anything about the site.
+/// Whether an element is hidden by an inline style or attribute.
+///
+/// Deliberately narrow. `hidden`, `aria-hidden`, and an inline `display:none` or
+/// `visibility:hidden` are the forms a parser can actually observe; anything in a stylesheet is
+/// not, and a check that claims to catch those would be lying.
+fn is_hidden(el: &scraper::ElementRef) -> bool {
+    let value = el.value();
+    if value.attr("hidden").is_some() {
+        return true;
+    }
+    if value.attr("aria-hidden") == Some("true") {
+        return true;
+    }
+    value
+        .attr("style")
+        .map(|style| {
+            let s: String = style.chars().filter(|c| !c.is_whitespace()).collect();
+            let s = s.to_ascii_lowercase();
+            s.contains("display:none") || s.contains("visibility:hidden")
+        })
+        .unwrap_or(false)
+}
+
 fn densest_block(doc: &Html) -> Option<String> {
     let sel = Selector::parse("article, main, [role=main], .article-content, .post-content, .entry-content, #content, .content, div")
         .ok()?;
@@ -446,6 +574,17 @@ fn densest_block(doc: &Html) -> Option<String> {
 
     let mut best: Option<(f32, String)> = None;
     for el in doc.select(&sel) {
+        // Hidden containers are skipped. Keyword stuffing inside `display:none` is old-fashioned
+        // and still common, and because it is usually the *longest* run of text on the page it
+        // wins on density outright — a real article was losing to five thousand repetitions of
+        // one word.
+        //
+        // Only inline styles, which is all that is visible without a CSS engine. A stylesheet
+        // rule hiding an element is beyond what a parser can see, and pretending otherwise would
+        // be a check that only appears to work.
+        if is_hidden(&el) {
+            continue;
+        }
         let text = clean(&el.text().collect::<String>());
         let len = text.chars().count();
         if len < 200 {

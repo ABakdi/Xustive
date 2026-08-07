@@ -86,7 +86,10 @@ pub async fn run(
     opts: &CrawlOptions,
 ) -> Result<Stats> {
     let fetcher = Fetcher::new(FetchConfig::default()).context("building the fetcher")?;
-    let parser = Parser::default();
+    // Per-domain rules, loaded once for the whole crawl. Without them, publishers that emit no
+    // machine-readable metadata — which is most of the Algerian press — yield no date at all.
+    let rules = xustive_ingest::rules::Rules::load("data/parsers/domains.toml");
+    let parser = Parser::default().with_rules(rules);
     let sentiment = Scorer::default();
     let started = Instant::now();
 
@@ -143,6 +146,14 @@ pub async fn run(
             ) {
                 Ok(p) => p,
                 Err(ParseError::TooLittleContent { .. }) | Err(ParseError::NoIndex) => {
+                    stats.skipped_thin += 1;
+                    continue;
+                }
+                // Logged rather than counted with thin pages: a page this shape is broken or
+                // hostile, and a crawl that starts refusing many of them is telling us something
+                // a "skipped" tally would hide.
+                Err(e @ ParseError::TooComplex { .. }) => {
+                    tracing::warn!(url = %fetched.final_url, error = %e, "skipping pathological markup");
                     stats.skipped_thin += 1;
                     continue;
                 }

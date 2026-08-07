@@ -1,0 +1,94 @@
+# Per-domain extraction rules.
+#
+# Generic extraction reads JSON-LD, Open Graph, `<time>` and semantic class names. That covers
+# most publishers and misses the ones that emit none of it — which, in Algeria, is most of the
+# ones that matter. aps.dz renders its publication date as
+# `<span class="text-xs">الأربعاء 05 أوت 2026 13:37</span>`: a utility class, no machine-readable
+# markup anywhere on the page. No amount of generic cleverness finds that; a selector does.
+#
+# Rules are tried **before** generic extraction and never after. A publisher that ships correct
+# metadata does not need a rule, and one that does not is telling us its markup is unreliable.
+#
+# Every field is optional. A rule that only fixes dates leaves title and body to the generic path.
+# `date_format` is a hint, not a parser: the date module already handles Maghrebi months, day-first
+# numerics and relative expressions, and duplicating that here would be a second thing to keep
+# right.
+#
+# Each rule needs a fixture test. A selector written against a page nobody saved is a guess that
+# will rot the next time the publisher touches their template, and nobody will notice.
+
+[[domain]]
+host = "aps.dz"
+# Wire copy from the national agency. Vue-rendered, Tailwind classes, zero semantic markup.
+date = "span.text-xs"
+title = "h1"
+body = "article, .content-article"
+note = "date is a bare span with a utility class; no JSON-LD, no time element"
+
+[[domain]]
+host = "elkhabar.com"
+title = "h1.title, h1"
+body = ".article-content, article"
+date = ".date, time, .article-date"
+note = "titles carry a ' - section : الخبر' suffix, stripped downstream"
+
+[[domain]]
+host = "elmoudjahid.dz"
+title = "h1"
+body = ".field--name-body, article"
+date = ".submitted, time, .field--name-post-date"
+note = "Drupal; the date lives in a field wrapper rather than a time element"
+
+[[domain]]
+host = "liberte-algerie.com"
+title = "h1"
+body = ".article-body, article"
+date = "time, .date"
+
+[[domain]]
+host = "horizons.dz"
+title = "h1"
+body = "article, .entry-content"
+date = "time, .entry-date, .posted-on"
+note = "WordPress; generic extraction usually suffices, kept for the body selector"
+
+[[domain]]
+host = "ennaharonline.com"
+title = "h1"
+body = ".article-body, article"
+date = "time, .date"
+
+[[domain]]
+host = "echoroukonline.com"
+title = "h1"
+body = ".entry-content, article"
+date = "time, .date"
+
+[[domain]]
+host = "elwatan.dz"
+title = "h1"
+body = "article, .article-content"
+date = "time, .date"
+
+[[domain]]
+host = "algerie360.com"
+title = "h1"
+body = ".entry-content, article"
+date = "time, .entry-date"
+
+# Government portals. Mostly static pages with no article date at all — the rules exist to get
+# clean titles and bodies rather than to find a date that is not there.
+[[domain]]
+host = "education.gov.dz"
+title = "h1, .page-title"
+body = ".field--name-body, main"
+
+[[domain]]
+host = "mtess.gov.dz"
+title = "h1, .page-title"
+body = ".field--name-body, main"
+
+[[domain]]
+host = "mesrs.dz"
+title = "h1, .page-title"
+body = ".field--name-body, main"

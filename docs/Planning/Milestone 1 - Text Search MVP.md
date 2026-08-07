@@ -174,12 +174,16 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [x] M1-T10.3 **Date extraction** including Arabic (أوت, جويلية) and French formats, relative forms,
       DD/MM disambiguation, `unknown` precision handling
 - [x] M1-T10.4 Derived fields: excerpt, `content_hash`, `simhash`, entities, canonical URL, media
-- [ ] M1-T10.5 Per-domain rules format + rules for the top 20 sources, each with a fixture test.
-      **Now the blocker on date coverage**: a prose scanner lifted aps.dz from 0 to 13 dates in
-      40 pages, and the remaining 25 articles put their date somewhere generic extraction does
-      not reach. Per-domain selectors are the only honest way to close that
-- [ ] M1-T10.6 Adversarial DOM suite (depth, node count, encodings, bombs)
-- [ ] M1-T10.7 200-page labelled corpus: ≥ 90 % title, ≥ 85 % date, ≥ 0.9 body F1
+- [~] M1-T10.5 Per-domain rules in `data/parsers/domains.toml` — 12 sources, applied before
+      generic extraction, subdomains inheriting their parent. aps.dz dated documents went 13 → 27.
+      **Only aps.dz has a saved fixture**; the other date rules are unverified selectors and the
+      test prints which, so the gap is known rather than invisible
+- [x] M1-T10.6 Adversarial DOM suite — 13 cases. It found a real denial of service: 50 000
+      nested divs took **47 seconds** and 20 000 unclosed tags took 18. A pre-parse complexity
+      guard (bytes, tag count, nesting depth) takes the whole suite to 0.09 s
+- [ ] M1-T10.7 200-page labelled corpus: ≥ 90 % title, ≥ 85 % date, ≥ 0.9 body F1 ← *B7*.
+      Labelling 200 pages by hand is annotation work, not engineering; the fixture harness it
+      would run against exists
 
 ## M1-T11 — [[Indexer Worker]]
 

@@ -14,6 +14,7 @@ pub mod date;
 pub mod fetch;
 pub mod parse;
 pub mod robots;
+pub mod rules;
 pub mod sitemap;
 
 pub use fetch::{FetchConfig, FetchError, Fetched, Fetcher};
