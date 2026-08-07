@@ -42,8 +42,28 @@ for net in core obs; do
   fi
 done
 
+# Every service needs a resource limit. Without one, a runaway indexing job takes the whole
+# machine with it, and the symptom is a hung search rather than anything that names the cause.
+#
+# Checked with mem_limit/cpus rather than deploy.resources: `docker compose up` ignores
+# deploy.resources outside Swarm, so that spelling looks like a limit and enforces nothing.
+services=$(awk '/^services:/ { in_s = 1; next }
+                in_s && /^[a-z]/ { in_s = 0 }
+                in_s && /^  [a-z][a-z0-9_-]*:/ { gsub(/[ :]/, ""); print }' "$BASE")
+for svc in $services; do
+  if ! awk -v s="$svc" '
+        $0 ~ "^  " s ":$" { found = 1; next }
+        found && /^    mem_limit:/ { ok = 1 }
+        found && /^  [a-z]/ { exit !ok }
+        END { exit !ok }
+      ' "$BASE"; then
+    echo "✗ compose lint: service '$svc' has no mem_limit in $BASE" >&2
+    fail=1
+  fi
+done
+
 if [ "$fail" -eq 0 ]; then
-  echo "✓ compose lint: no published ports, internal networks intact"
+  echo "✓ compose lint: no published ports, internal networks intact, every service capped"
 fi
 
 exit "$fail"

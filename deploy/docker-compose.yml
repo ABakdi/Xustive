@@ -6,6 +6,16 @@
 #
 # There is deliberately no `ports:` mapping on meilisearch/qdrant/redis in production; the dev
 # overrides below expose them on localhost only so `xustive-cli` and tests can reach them.
+#
+# Resource limits follow [[Performance Budgets]] §7, scaled down for a development machine — the
+# production figures there assume a 10M-document index and would reserve more RAM than a laptop
+# has. What matters is that the limits exist at all: without them one runaway indexing job takes
+# the whole machine down, and the failure looks like a hung search rather than an out-of-memory
+# kill. The ratios between services are preserved.
+#
+# `mem_limit` and `cpus` are the Compose-v2 spellings that work without Swarm. `deploy.resources`
+# is silently ignored by `docker compose up`, which is a good way to believe you have limits when
+# you do not.
 
 name: xustive
 
@@ -13,6 +23,9 @@ services:
   meilisearch:
     image: getmeili/meilisearch:v1.13
     container_name: xustive-meilisearch
+    # Production ceiling is 32 GB / 8 vCPU; this is the development slice.
+    mem_limit: 4g
+    cpus: 4.0
     environment:
       MEILI_ENV: development
       MEILI_NO_ANALYTICS: "true"
@@ -34,6 +47,9 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.12.4
     container_name: xustive-qdrant
+    # Unused until M2, so it gets the smallest slice that still starts.
+    mem_limit: 2g
+    cpus: 2.0
     volumes:
       - qdrant_data:/qdrant/storage
     networks: [core]
@@ -47,6 +63,9 @@ services:
   redis:
     image: redis:7-alpine
     container_name: xustive-redis
+    # Just above the 1 GB maxmemory above, leaving room for AOF buffers and overhead.
+    mem_limit: 1500m
+    cpus: 1.0
     # noeviction is not optional: under allkeys-lru Redis would silently drop queue entries
     # and frontier state, losing crawl work invisibly.
     command: >
@@ -68,6 +87,9 @@ services:
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: xustive-prometheus
+    # Observability must never crowd out the thing it observes.
+    mem_limit: 1g
+    cpus: 1.0
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=15d
@@ -83,6 +105,9 @@ services:
   grafana:
     image: grafana/grafana:11.4.0
     container_name: xustive-grafana
+    # Observability must never crowd out the thing it observes.
+    mem_limit: 512m
+    cpus: 0.5
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
