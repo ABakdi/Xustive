@@ -1,0 +1,20 @@
+[package]
+name = "xustive-queue"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Redis Streams task queue: produce, consume-group, ack, reclaim, dead-letter."
+
+[dependencies]
+xustive-core = { path = "../xustive-core" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio = { workspace = true }
+redis = { version = "0.27", default-features = false, features = ["tokio-comp", "streams"] }
+
+[dev-dependencies]
+redis = { version = "0.27", default-features = false, features = ["tokio-comp", "streams"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

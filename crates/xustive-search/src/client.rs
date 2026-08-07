@@ -159,6 +159,19 @@ pub struct TaskStatus {
 }
 
 impl TaskStatus {
+    /// The engine's failure message, or a placeholder.
+    ///
+    /// Meilisearch names *what* went wrong but never *which document*, which is why the indexer
+    /// bisects a failed batch rather than trusting this to identify the culprit.
+    pub fn error_message(&self) -> String {
+        self.error
+            .as_ref()
+            .and_then(|e| e.get("message"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("task {} {}", self.uid, self.status))
+    }
+
     pub fn is_done(&self) -> bool {
         matches!(self.status.as_str(), "succeeded" | "failed" | "canceled")
     }

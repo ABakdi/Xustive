@@ -89,6 +89,14 @@ run-api: ## Run the API server — this also serves the web UI at http://localho
 run-api-fast: ## Run without the summariser — builds in seconds, no AI summaries
 	cargo run -p xustive-api --no-default-features -- --config $(CONFIG)
 
+.PHONY: worker
+worker: ## Drain the index queue into Meilisearch
+	cargo run --release -q -p xustive-cli -- --config $(CONFIG) worker
+
+.PHONY: dlq
+dlq: ## Dead letters: make dlq A=stats|peek|replay
+	cargo run --release -q -p xustive-cli -- --config $(CONFIG) dlq $(or $(A),stats)
+
 .PHONY: eval
 eval: ## Score the golden set and write a dated report
 	cargo run --release -q -p xustive-cli -- --config $(CONFIG) eval

@@ -6,6 +6,7 @@
 
 mod crawl;
 mod eval;
+mod worker;
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -77,6 +78,20 @@ enum Command {
         /// Print the report without writing it.
         #[arg(long)]
         dry_run: bool,
+    },
+    /// Drain the index queue into Meilisearch.
+    Worker {
+        /// Process what is queued and exit, rather than running continuously.
+        #[arg(long)]
+        once: bool,
+    },
+    /// Inspect or replay the dead-letter queue.
+    Dlq {
+        /// `stats`, `peek` or `replay`.
+        #[arg(default_value = "stats")]
+        action: String,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
     },
     /// Show index document counts.
     Stats,
@@ -158,6 +173,8 @@ async fn main() -> Result<()> {
             };
             eval::run(&client, &config, &opts).await
         }
+        Command::Worker { once } => worker::run(&config, &client, once).await,
+        Command::Dlq { action, limit } => worker::dlq(&config, &action, limit).await,
         Command::Keys { show } => cmd_keys(&client, show).await,
         Command::Stats => cmd_stats(&client, &config).await,
         Command::Search { query, limit } => cmd_search(&client, &config, &query, limit).await,

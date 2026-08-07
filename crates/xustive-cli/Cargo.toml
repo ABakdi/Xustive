@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 xustive-core = { path = "../xustive-core" }
 xustive-text = { path = "../xustive-text" }
+xustive-queue = { path = "../xustive-queue" }
 xustive-search = { path = "../xustive-search" }
 xustive-ingest = { path = "../xustive-ingest" }
 xustive-lang = { path = "../xustive-lang" }

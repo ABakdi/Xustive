@@ -176,21 +176,31 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 ## M1-T11 — [[Indexer Worker]]
 
-- [ ] M1-T11.1 Batching by size, bytes, and timeout
-- [ ] M1-T11.2 Submit → poll task → **ack last**
-- [ ] M1-T11.3 Split-on-failure isolation
-- [ ] M1-T11.4 Pre-submit validation table
-- [ ] M1-T11.5 Deletion path (vectors → comments → document → blocklist)
-- [ ] M1-T11.6 Crash-safety test: kill between submit and ack, assert no loss or duplication
+- [x] M1-T11.1 Batching by count, **bytes** and timeout — a batch of long articles hits the byte
+      ceiling long before the count, and the engine's limit is bytes
+- [x] M1-T11.2 Submit → poll task → **ack last**. Acknowledging on submit would be faster and
+      wrong: Meilisearch returns a task id before the write happens
+- [x] M1-T11.3 Split-on-failure isolation by bisection — one bad document in sixteen is isolated
+      in fewer than sixteen submissions and the other fifteen land
+- [x] M1-T11.4 Pre-submit validation: missing id, not an object, empty, oversized. Caught here
+      because a batch the engine rejects takes the good documents with it
+- [ ] M1-T11.5 Deletion path (vectors → comments → document → blocklist) — needs the vector
+      index, which is M2
+- [x] M1-T11.6 Crash safety: a worker that consumes without acknowledging leaves its job pending
+      and recoverable; redelivery overwrites rather than duplicating because writes are keyed by id
 
 ## M1-T12 — [[Task Queue]]
 
-- [ ] M1-T12.1 Streams abstraction: produce, consume-group, ack, DLQ
-- [ ] M1-T12.2 `XAUTOCLAIM` reclaim loop with a 5-minute idle window
-- [ ] M1-T12.3 Trim maintenance task
-- [ ] M1-T12.4 `noeviction` config + a test asserting nothing is evicted at `maxmemory`
-- [ ] M1-T12.5 Queue-depth and lag metrics
-- [ ] M1-T12.6 `make dlq` stats / peek / replay
+- [x] M1-T12.1 Streams abstraction: produce, consume-group, ack, DLQ
+- [x] M1-T12.2 `XAUTOCLAIM` reclaim with a 5-minute idle window, run before consuming so a
+      crashed worker's jobs do not wait behind a fresh backlog
+- [x] M1-T12.3 Approximate trimming on write **and** on each worker pass — a queue that stops
+      receiving work stops trimming itself
+- [~] M1-T12.4 `noeviction` is set in compose; the eviction test is not written
+- [~] M1-T12.5 `depth()`, `pending()` and `dead_count()` exist and are exposed by `make dlq`;
+      they are not yet Prometheus gauges
+- [x] M1-T12.6 `make dlq` stats / peek / replay. Replay is always deliberate — a queue that
+      retries its own poison on a timer will do it at 3am after someone fixed the bug
 
 > **UI work moved to [[Milestone 1B - Frontend and Instant Answers]].** The items below that are
 > ticked were delivered there; the rest stay here because they are gates (budgets, visual

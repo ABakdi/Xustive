@@ -113,6 +113,23 @@ impl Default for TelemetryConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+pub struct QueueConfig {
+    pub url: String,
+    /// Stream carrying documents waiting to be indexed.
+    pub index_stream: String,
+}
+
+impl Default for QueueConfig {
+    fn default() -> Self {
+        Self {
+            url: "redis://127.0.0.1:6390".into(),
+            index_stream: "q:index".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SuggestConfig {
     /// Hand-written high-value suggestions. Missing is fine — it improves on the corpus rather
     /// than being required by it.
@@ -174,6 +191,7 @@ pub struct Config {
     pub telemetry: TelemetryConfig,
     pub ml: MlConfig,
     pub suggest: SuggestConfig,
+    pub queue: QueueConfig,
 }
 
 impl Config {
@@ -216,6 +234,9 @@ impl Config {
         }
         if let Ok(v) = std::env::var("XUSTIVE_STATIC_DIR") {
             self.api.static_dir = v;
+        }
+        if let Ok(v) = std::env::var("REDIS_URL") {
+            self.queue.url = v;
         }
         if let Ok(v) = std::env::var("XUSTIVE_ADMIN_KEY") {
             self.api.admin_key = v;
