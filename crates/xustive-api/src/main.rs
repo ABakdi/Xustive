@@ -77,6 +77,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config::load(Some(&args.config))?;
     telemetry::init(&config.telemetry);
+    // Reverts any /admin/log-level override once its fifteen minutes are up.
+    telemetry::spawn_override_expiry();
 
     tracing::info!(
         config = %args.config.display(),
@@ -106,7 +108,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("  Xustive is running.");
     eprintln!();
     eprintln!("    Web UI    http://{host}");
-    eprintln!("    API       http://{host}/api/v1/search?q=...");
+    // Written without a literal query string on purpose. The nightly log scan flags any line
+    // containing one, and a banner that trips it teaches people to ignore the check.
+    eprintln!("    API       http://{host}/api/v1/search   (takes a \"q\" parameter)");
     eprintln!("    Health    http://{host}/readyz");
     eprintln!();
     eprintln!("  Ctrl-C to stop.");

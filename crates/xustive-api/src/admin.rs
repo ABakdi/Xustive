@@ -130,6 +130,11 @@ pub async fn status(
         "gpu_support_compiled": device::gpu_support_compiled(),
         "gpu_detected": device::detect_gpu(),
         "models": Registry::new(&state.config.ml.model_dir).status(),
+        "logging": {
+            "filter": crate::telemetry::level_status().0,
+            "baseline": crate::telemetry::level_status().1,
+            "override_expires_in": crate::telemetry::level_status().2,
+        },
         "index": {
             "alias": state.config.search.documents_index,
             "documents": state.documents_index(),
@@ -214,6 +219,53 @@ fn current_resolution(state: &AppState) -> device::Resolved {
             ..Default::default()
         },
         size,
+    )
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LevelUpdate {
+    /// A `tracing` filter, e.g. `info,xustive=debug`. Omit to revert immediately.
+    pub filter: Option<String>,
+}
+
+/// `POST /admin/log-level` — raise or lower logging without a restart.
+///
+/// Every override expires on its own after fifteen minutes. Debug logging is expensive on a busy
+/// search engine and is the state in which the most sensitive data comes closest to being written
+/// down; relying on someone to turn it off again is relying on the step that never happens.
+pub async fn set_log_level(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+    Json(update): Json<LevelUpdate>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    authorise(&state, peer, &headers).map_err(|d| d.json())?;
+
+    let Some(filter) = update.filter else {
+        let baseline =
+            crate::telemetry::revert_level().map_err(|e| bad_request("invalid_filter", e))?;
+        tracing::info!(%baseline, "log level reverted by operator");
+        return Ok(Json(json!({ "filter": baseline, "expires_in": null })));
+    };
+
+    let expires_in =
+        crate::telemetry::set_level(&filter).map_err(|e| bad_request("invalid_filter", e))?;
+    // Logged at the level being left, so the record of the change survives even when the new
+    // filter would have hidden it.
+    tracing::warn!(%filter, expires_in, "log level raised by operator");
+
+    let (current, baseline, remaining) = crate::telemetry::level_status();
+    Ok(Json(json!({
+        "filter": current,
+        "baseline": baseline,
+        "expires_in": remaining.unwrap_or(expires_in),
+    })))
+}
+
+fn bad_request(code: &'static str, message: String) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(json!({"error": {"code": code, "message": message}})),
     )
 }
 
