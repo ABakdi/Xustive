@@ -329,6 +329,34 @@ kill "$(ss -tlnp | grep -oP '8080.*pid=\K[0-9]+' | head -1)"
 
 ## 7. Troubleshooting
 
+### `make run-api` and then "site can't be reached"
+
+Almost always the build, not the server. `xustive-api` links llama.cpp for the summariser, and
+**llama.cpp is compiled from source** — several minutes on a first build or after a `cargo clean`.
+The port is not open until that finishes, so the browser correctly reports nothing there.
+
+`make run-api` now prints a notice before building. Wait for:
+
+```
+  Xustive is running.
+
+    Web UI    http://localhost:8080
+```
+
+To skip the summariser entirely and get a build in seconds:
+
+```bash
+make run-api-fast     # no AI summaries; everything else works
+```
+
+If the build is finished and the port is still closed, check that something else is not already
+holding it:
+
+```bash
+ss -ltnp | grep 8080
+```
+
+
 Every entry here is a problem actually hit while developing, not a hypothetical.
 
 | Symptom | Cause | Fix |

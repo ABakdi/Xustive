@@ -74,7 +74,18 @@ stats: ## Show index document counts
 
 .PHONY: run-api
 run-api: ## Run the API server — this also serves the web UI at http://localhost:8080
+	@# Build first, and say so. The summariser links llama.cpp, which is compiled from source
+	@# and takes several minutes the first time. Without this notice `cargo run` looks like it
+	@# has hung, and http://localhost:8080 refuses connections until it finishes — which is
+	@# exactly what it looks like when the server is broken.
+	@echo "  Building (the first build compiles llama.cpp and can take several minutes)…"
+	@cargo build -p xustive-api
+	@echo
 	cargo run -p xustive-api -- --config $(CONFIG)
+
+.PHONY: run-api-fast
+run-api-fast: ## Run without the summariser — builds in seconds, no AI summaries
+	cargo run -p xustive-api --no-default-features -- --config $(CONFIG)
 
 .PHONY: web
 web: ## Open the UI in a browser (the API serves it; there is no separate web server)
