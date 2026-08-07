@@ -28,6 +28,10 @@ services:
     cpus: 4.0
     environment:
       MEILI_ENV: development
+      # Empty by default so development needs no setup. Set MEILI_MASTER_KEY in .env to exercise
+      # the scoped-key path (`xustive-cli keys`) — without a master key Meilisearch has no key
+      # API at all, so search-only and index-only credentials cannot exist.
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
       MEILI_NO_ANALYTICS: "true"
       MEILI_MAX_INDEXING_MEMORY: 2Gb
       # Capped so a bulk index cannot starve search of CPU.

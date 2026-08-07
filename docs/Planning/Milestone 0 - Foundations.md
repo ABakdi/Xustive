@@ -42,7 +42,8 @@ either is painful, and getting normalisation wrong means Arabic search silently 
       services that need them (Caddy in M4, crawler in M3)
       ([[Deployment Topology]] §3)
 - [x] M0-T02.3 Named volumes and healthchecks for every service
-- [ ] M0-T02.4 Resource limits matching [[Performance Budgets]] §7
+- [x] M0-T02.4 Resource limits matching [[Performance Budgets]] §7, scaled to a development
+      machine, with a lint that fails on any uncapped service
 - [x] M0-T02.5 CI check: **no `ports:` mapping on meilisearch, qdrant, or redis**
       ([[Security and Privacy]] T5)
 - [x] M0-T02.6 `make dev-up` / `dev-down` verified on a clean machine
@@ -80,9 +81,13 @@ either is painful, and getting normalisation wrong means Arabic search silently 
 
 - [x] M0-T05.1 Index settings JSON in git per [[Search Index]] §4.2
 - [x] M0-T05.2 Idempotent migration job (`make migrate`) applying settings by alias
-- [ ] M0-T05.3 Alias scheme `documents` → `documents_v1` ([[Data Model]] §7) — indexes are named
-      directly for now; aliases are only needed once a reindex has to happen live (M4)
-- [ ] M0-T05.4 Scoped API keys: search-only and index-only ([[Security and Privacy]] §7)
+- [x] M0-T05.3 Alias scheme `documents` → `documents_v1` ([[Data Model]] §7). Meilisearch has no
+      alias primitive, so it is a naming convention resolved at startup: highest `_vN` wins,
+      except that a pre-alias index named exactly the alias always wins over any versioned one —
+      without that ordering, deploying this change points a live system at an empty index
+- [x] M0-T05.4 Scoped API keys: search-only and index-only ([[Security and Privacy]] §7),
+      provisioned idempotently by `xustive-cli keys`. Needs `MEILI_MASTER_KEY` set; development
+      runs without one, and the command says so rather than reporting a bare 401
 - [x] M0-T05.5 Test: live settings match git settings
 
 ## M0-T06 — Minimal `xustive-api`
@@ -122,10 +127,12 @@ either is painful, and getting normalisation wrong means Arabic search silently 
 
 ## M0-T10 — Offline fixture site
 
-- [ ] M0-T10.1 Static site at `tests/fixtures/site/` served by `make fixture-site`
-- [ ] M0-T10.2 Includes: sitemap, RSS, an SPA page, redirect chain, 429 endpoint, `robots.txt` with
-      `Crawl-delay`, malformed HTML, `windows-1256` page, a crawler trap
-- [ ] M0-T10.3 Documented in [[Local Development]] §5
+- [x] M0-T10.1 Static site at `tests/fixtures/site/` served by `make fixture-site`
+- [x] M0-T10.2 Includes: sitemap, RSS, an SPA page, redirect chain **and a cycle**, 429 endpoint,
+      a slow endpoint, `robots.txt` with `Crawl-delay` and `Disallow`, malformed HTML,
+      `windows-1256` page, Maghrebi dates, a prompt-injection page, and a crawler trap.
+      Exercised by 11 tests running the real `Fetcher` against it
+- [x] M0-T10.3 Documented in [[Local Development]] §5
 
 ---
 
