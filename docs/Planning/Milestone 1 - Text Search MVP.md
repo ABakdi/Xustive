@@ -29,20 +29,31 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 ## M1-T01 — `xustive-telemetry`
 
-- [ ] M1-T01.1 `tracing` subscriber, JSON output, per-target level control
-- [ ] M1-T01.2 Prometheus registry and the metric names in [[Observability]] §2
-- [ ] M1-T01.3 Span helpers that make it *hard* to attach a query string
-- [ ] M1-T01.4 `POST /admin/log-level` with 15-minute auto-revert
-- [ ] M1-T01.5 Nightly log-scan job against the query corpus ([[Security and Privacy]] §1)
+- [x] M1-T01.1 `tracing` subscriber, JSON output, per-target level control
+- [x] M1-T01.2 Prometheus registry and the metric names in [[Observability]] §2
+- [~] M1-T01.3 Span helpers that make it *hard* to attach a query string — the metrics registry
+      only accepts `&'static str` label names, `query_len_bucket` is the sanctioned substitute
+      for the query itself, and `lint-telemetry.sh` rejects query identifiers inside `tracing::`
+      macros. Dedicated span-constructor helpers are not built; the type-level and lint barriers
+      are what exist
+- [x] M1-T01.4 `POST /admin/log-level` with 15-minute auto-revert
+- [x] M1-T01.5 Log-scan job against the query corpus (`scripts/scan-logs.sh`), verified against
+      the real server at debug level replaying every probe query — clean. Not yet *scheduled*
+      nightly; that arrives with the deployment work
 
 ## M1-T02 — [[API Gateway]] middleware stack
 
-- [ ] M1-T02.1 The ten layers in [[API Gateway]] §3, **in order**
-- [ ] M1-T02.2 Per-route body limits and timeouts
-- [ ] M1-T02.3 Rate limiter with salted, rotating IP-hash keys ([[Security and Privacy]] P5)
-- [ ] M1-T02.4 Security headers, CSP snapshot test
-- [ ] M1-T02.5 Load shedding: expensive routes shed before cheap ones
-- [ ] M1-T02.6 Contract tests for every row of [[API Contract]] §8
+- [x] M1-T02.1 The ten layers in [[API Gateway]] §3, **in order**
+- [x] M1-T02.2 Per-route timeouts; body limits are global at the default. A single outer timeout
+      silently capped every route at the search budget and turned every summary into a 504,
+      which is why these are now per group
+- [x] M1-T02.3 Rate limiter with salted, rotating IP-hash keys ([[Security and Privacy]] P5)
+- [x] M1-T02.4 Security headers, CSP snapshot test — pinned exactly, not checked for presence
+- [x] M1-T02.5 Load shedding: global in-flight cap sheds with 503 rather than queueing. Per-route
+      shed *ordering* — expensive before cheap — is approximated by summaries having their own,
+      much tighter rate limit rather than by a priority-aware shedder
+- [x] M1-T02.6 Contract tests for every row of [[API Contract]] §8 that can be provoked without a
+      live backend (20 tests). Rows needing voice, image or a live index are not covered
 
 ## M1-T03 — [[Language Detector]]
 

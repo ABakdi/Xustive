@@ -248,6 +248,57 @@ async fn exceeding_the_limit_returns_429_with_retry_after() {
     assert_eq!(error_code(&body), Some("rate_limited"));
 }
 
+// --- request ids ------------------------------------------------------------------------
+
+#[tokio::test]
+async fn every_response_carries_a_request_id() {
+    let (_, headers, _) = get("/healthz").await;
+    let id = headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .expect("responses must be traceable to a log line");
+    assert!(!id.is_empty());
+}
+
+#[tokio::test]
+async fn request_ids_are_unique_per_request() {
+    let (_, a, _) = get("/healthz").await;
+    let (_, b, _) = get("/healthz").await;
+    assert_ne!(a["x-request-id"], b["x-request-id"]);
+}
+
+#[tokio::test]
+async fn an_error_response_is_traceable_too() {
+    // The case that matters: a user reporting a failure needs something to quote, and the
+    // failing requests are exactly the ones whose id is easiest to forget to attach.
+    let (status, headers, _) = get("/api/v1/search").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(headers.contains_key("x-request-id"));
+}
+
+#[tokio::test]
+async fn a_client_supplied_request_id_is_not_reflected() {
+    // Accepting one would let a caller poison log correlation, or set the header to a value of
+    // its choosing on a response the browser will read back.
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .header("x-request-id", "attacker-chosen")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_ne!(
+        response
+            .headers()
+            .get("x-request-id")
+            .and_then(|v| v.to_str().ok()),
+        Some("attacker-chosen")
+    );
+}
+
 // --- health -----------------------------------------------------------------------------
 
 #[tokio::test]

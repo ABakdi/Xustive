@@ -28,6 +28,9 @@ use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::request_id::{
+    MakeRequestId, PropagateRequestIdLayer, RequestId, SetRequestIdLayer,
+};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::timeout::TimeoutLayer;
 
@@ -94,6 +97,13 @@ pub fn app(state: AppState) -> Router {
         .nest("/api/v1", api.merge(summary))
         .merge(ops)
         .fallback_service(serve_static)
+        // Request ids, outermost after panic catching so even a shed or rejected request
+        // carries one. A ULID rather than a UUID: it sorts by time, so grepping a log for ids
+        // near an incident actually narrows the window.
+        //
+        // Applied around `observe` so the id exists before anything is recorded, and propagated
+        // to the response so a user reporting a problem can quote something we can find.
+        .layer(PropagateRequestIdLayer::x_request_id())
         .layer(middleware::from_fn_with_state(state.clone(), observe))
         .layer(middleware::from_fn(security_headers))
         .layer(CompressionLayer::new())
@@ -101,6 +111,12 @@ pub fn app(state: AppState) -> Router {
             state.config.api.body_limit_default,
         ))
         .layer(cors_layer(&state))
+        .layer(SetRequestIdLayer::x_request_id(UlidRequestId))
+        // Outside `SetRequestIdLayer`, so it runs first and that layer always sees an absent
+        // header. tower-http keeps a client-supplied id by default, which is right behind a
+        // trusted proxy and wrong on a public endpoint: it lets a caller choose a value we echo
+        // back in a response header and group log lines under an id of its choosing.
+        .layer(middleware::from_fn(strip_client_request_id))
         // Global in-flight cap. Sheds with 503 rather than queueing: under real overload a
         // queue converts a fast failure into a slow one and every waiting client times out
         // anyway, having occupied a connection for the whole wait.
@@ -182,6 +198,33 @@ async fn enforce(
         response.headers_mut().insert("x-ratelimit-remaining", v);
     }
     response
+}
+
+/// Discard any inbound `X-Request-Id`.
+///
+/// If a trusted reverse proxy is added later, this is the one place to teach about it — but the
+/// default has to be distrust, because the only caller today is the open internet.
+async fn strip_client_request_id(mut req: Request, next: Next) -> Response {
+    req.headers_mut().remove("x-request-id");
+    next.run(req).await
+}
+
+/// Generates the `X-Request-Id` for each request.
+///
+/// Reuses the same ULID generator as document ids so the format is uniform across the system —
+/// an operator correlating a log line with a document should not have to know which kind of id
+/// they are looking at.
+#[derive(Clone, Copy)]
+struct UlidRequestId;
+
+impl MakeRequestId for UlidRequestId {
+    fn make_request_id<B>(&mut self, _: &Request<B>) -> Option<RequestId> {
+        // `SetRequestIdLayer` only calls this when the header is absent, which
+        // `strip_client_request_id` guarantees it always is.
+        HeaderValue::from_str(&xustive_core::new_id())
+            .ok()
+            .map(RequestId::new)
+    }
 }
 
 fn cors_layer(state: &AppState) -> CorsLayer {
