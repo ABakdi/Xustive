@@ -383,3 +383,44 @@ main {
   }
   .skeleton { animation: none; background: var(--color-surface); }
 }
+
+/* --- summary ------------------------------------------------------------------------
+ *
+ * Set apart from the results without competing with them. The summary is generated text and
+ * may be wrong; the visual weight belongs to the sources, so this reads as a note above the
+ * list rather than as the answer. */
+
+#summary {
+  margin-block-end: var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  border-inline-start: 3px solid var(--color-accent);
+  background: var(--color-surface, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.summary-body {
+  font-size: var(--text-base);
+  line-height: 1.7;
+}
+
+.summary-note {
+  margin-block-start: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+a.citation {
+  font-size: 0.8em;
+  vertical-align: super;
+  text-decoration: none;
+  padding-inline: 2px;
+}
+
+a.citation:hover { text-decoration: underline; }
+
+/* The cited card, while it is the fragment target. Brief and low-contrast: this confirms the
+ * jump landed, it does not need to shout. */
+.result-card:target {
+  background: var(--color-accent-weak);
+  border-radius: var(--radius-sm);
+}

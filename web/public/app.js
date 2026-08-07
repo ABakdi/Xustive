@@ -77,7 +77,7 @@
         `${GLYPH[c.sentiment.label] || '●'} ${escapeHtml(c.sentiment.label)}</span>`
       : '';
 
-    return `<li class="result-card" dir="auto">
+    return `<li class="result-card" dir="auto" id="result-${escapeHtml(c.id)}">
       <div class="card-meta">
         <span class="badge platform ${escapeHtml(c.source_type)}">${escapeHtml(PLATFORM[c.source_type] || c.source_type)}</span>
         <span class="display-url">${escapeHtml(c.display_url)}</span>
@@ -122,8 +122,51 @@
 
     if (!data.results.length) return count + renderEmpty(q);
 
+    // An empty container, filled later if a summary arrives. Reserving no height is deliberate:
+    // a placeholder that collapses when nothing comes back moves the results under the reader's
+    // cursor, and most summaries do not arrive.
+    const slot = data.summary_token ? '<div id="summary" hidden></div>' : '';
     const list = `<ol class="result-list">${data.results.map(renderCard).join('')}</ol>`;
-    return count + list + renderPagination(q, p);
+    return count + slot + list + renderPagination(q, p);
+  }
+
+  // --- summary ----------------------------------------------------------------------
+
+  // Fetched after the results paint, never with them. Generation takes seconds on CPU, and no
+  // part of the page waits for it.
+  async function fetchSummary(token, signal) {
+    const slot = document.getElementById('summary');
+    if (!slot || !token) return;
+
+    let data;
+    try {
+      const res = await fetch('/api/v1/summary', {
+        method: 'POST',
+        signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      data = await res.json();
+    } catch (err) {
+      return; // Including aborts. No summary is a normal outcome, not an error to show.
+    }
+
+    if (!data || !data.summary) return;
+
+    // The model's text is untrusted output derived from untrusted crawled pages. It is escaped
+    // and inserted as text; only the citation markers we generate ourselves become markup.
+    const cites = new Map((data.citations || []).map((c) => [c.n, c.result_id]));
+    const html = escapeHtml(data.summary).replace(/\[(\d+)\]/g, (m, n) => {
+      const id = cites.get(Number(n));
+      return id
+        ? `<a class="citation" href="#result-${escapeHtml(id)}" aria-label="Source ${n}">[${n}]</a>`
+        : '';
+    });
+
+    slot.innerHTML = `<div class="summary-body" dir="auto">${html}</div>` +
+      '<p class="summary-note" dir="auto">Generated from the results below. Check the sources.</p>';
+    slot.hidden = false;
+    announce('Summary available');
   }
 
   function renderPagination(q, p) {
@@ -186,6 +229,8 @@
 
       main.innerHTML = renderResults(q, data);
       announce(`${nf.format(data.pagination.total_hits)} results`);
+      // Not awaited: the search is complete without it.
+      fetchSummary(data.summary_token, controller.signal);
       if (push) {
         const target = `/search?q=${encodeURIComponent(q)}` + (page > 1 ? `&page=${page}` : '');
         history.pushState({ q, page }, '', target);
@@ -202,6 +247,16 @@
   }
 
   // --- wiring -----------------------------------------------------------------------
+
+  // The results page is server-rendered, so on a fresh load there is a summary slot in the DOM
+  // that no client-side search created. Pick up its token and fetch the summary the same way.
+  function claimRenderedSummary() {
+    const slot = document.getElementById('summary');
+    const token = slot && slot.dataset.token;
+    if (!token) return;
+    delete slot.dataset.token;
+    fetchSummary(token);
+  }
 
   function enhanceForms() {
     document.querySelectorAll('form[role="search"]').forEach((form) => {
@@ -251,4 +306,5 @@
 
   enhanceForms();
   enhancePagination();
+  claimRenderedSummary();
 })();
