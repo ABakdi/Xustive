@@ -45,6 +45,8 @@ pub struct ApiConfig {
     pub cors_origins: Vec<String>,
     /// Directory of built UI assets served at `/`.
     pub static_dir: String,
+    /// Key required by `/admin`. Empty restricts the admin surface to loopback callers.
+    pub admin_key: String,
 }
 
 impl Default for ApiConfig {
@@ -57,6 +59,7 @@ impl Default for ApiConfig {
             timeout_suggest_ms: 150,
             cors_origins: Vec::new(),
             static_dir: "web/public".into(),
+            admin_key: String::new(),
         }
     }
 }
@@ -108,12 +111,38 @@ impl Default for TelemetryConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MlConfig {
+    /// Directory holding model files. Not baked into images: they are large and their licences
+    /// differ, so the operator manages them.
+    pub model_dir: String,
+    /// `auto`, `gpu` or `cpu`. Changeable at runtime from the admin page.
+    pub device: String,
+    /// Layers to offload to the GPU. `-1` decides from free memory, `0` is CPU-only.
+    pub gpu_layers: i64,
+    /// Model id for the summariser, or empty to take the first present one.
+    pub summariser_model: String,
+}
+
+impl Default for MlConfig {
+    fn default() -> Self {
+        Self {
+            model_dir: "models".into(),
+            device: "auto".into(),
+            gpu_layers: -1,
+            summariser_model: String::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub api: ApiConfig,
     pub search: SearchConfig,
     pub telemetry: TelemetryConfig,
+    pub ml: MlConfig,
 }
 
 impl Config {
@@ -157,6 +186,15 @@ impl Config {
         if let Ok(v) = std::env::var("XUSTIVE_STATIC_DIR") {
             self.api.static_dir = v;
         }
+        if let Ok(v) = std::env::var("XUSTIVE_ADMIN_KEY") {
+            self.api.admin_key = v;
+        }
+        if let Ok(v) = std::env::var("XUSTIVE_DEVICE") {
+            self.ml.device = v;
+        }
+        if let Ok(v) = std::env::var("XUSTIVE_MODEL_DIR") {
+            self.ml.model_dir = v;
+        }
         if let Ok(v) = std::env::var("RUST_LOG") {
             self.telemetry.log_filter = v;
         }
@@ -166,6 +204,12 @@ impl Config {
     }
 
     fn validate(&self) -> Result<(), ConfigError> {
+        if !matches!(self.ml.device.as_str(), "auto" | "gpu" | "cpu") {
+            return Err(ConfigError::Value {
+                key: "ml.device".into(),
+                msg: format!("{:?} is not one of auto, gpu, cpu", self.ml.device),
+            });
+        }
         if self.api.bind_addr.parse::<std::net::SocketAddr>().is_err() {
             return Err(ConfigError::Value {
                 key: "api.bind_addr".into(),
