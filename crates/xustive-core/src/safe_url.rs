@@ -65,6 +65,25 @@ impl SafeUrl {
     ///
     /// This does **not** resolve DNS — call [`SafeUrl::check_resolved`] with the addresses the
     /// resolver returned, immediately before connecting.
+    /// Whether loopback targets are permitted for the life of this process.
+    ///
+    /// Off, and it takes a deliberate call to turn on. It exists for exactly one purpose: the
+    /// offline fixture site in `tests/fixtures/site/`, which serves the redirect chains, rate
+    /// limits and crawler traps that cannot be tested against the live web. Without it the
+    /// fixture is unreachable and the hostile cases go untested — which is worse than the risk
+    /// of a switch that is off by default and never set in the server binaries.
+    ///
+    /// A process-wide flag rather than a parameter because the guard is called from a dozen
+    /// places, several of them deep inside redirect handling, and threading a boolean through
+    /// all of them invites exactly one of them to be missed.
+    pub fn allow_loopback_for_testing() {
+        ALLOW_LOOPBACK.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn loopback_allowed() -> bool {
+        ALLOW_LOOPBACK.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub fn parse(input: &str) -> Result<Self, UrlError> {
         let url = Url::parse(input).map_err(|e| UrlError::Malformed(e.to_string()))?;
         Self::from_url(url)
@@ -86,7 +105,10 @@ impl SafeUrl {
         let host = url.host().ok_or(UrlError::NoHost)?;
 
         if let Some(port) = url.port() {
-            if !ALLOWED_PORTS.contains(&port) {
+            // The port allowlist relaxes under the loopback escape hatch too. A fixture server
+            // cannot bind 80 without root, so enforcing the allowlist there would make the
+            // hatch useless while appearing to work.
+            if !ALLOWED_PORTS.contains(&port) && !Self::loopback_allowed() {
                 return Err(UrlError::Port(port));
             }
         }
@@ -96,13 +118,13 @@ impl SafeUrl {
         match host {
             Host::Ipv4(ip) => {
                 let ip = IpAddr::V4(ip);
-                if !is_public(ip) {
+                if !is_public(ip) && !(ip.is_loopback() && Self::loopback_allowed()) {
                     return Err(UrlError::PrivateAddress(ip));
                 }
             }
             Host::Ipv6(ip) => {
                 let ip = IpAddr::V6(ip);
-                if !is_public(ip) {
+                if !is_public(ip) && !(ip.is_loopback() && Self::loopback_allowed()) {
                     return Err(UrlError::PrivateAddress(ip));
                 }
             }
@@ -113,9 +135,10 @@ impl SafeUrl {
                 // `localhost` and friends may resolve to a public address in a hostile DNS
                 // setup, but there is no legitimate reason to fetch them.
                 let lower = d.to_ascii_lowercase();
-                if lower == "localhost"
+                if (lower == "localhost"
                     || lower.ends_with(".localhost")
-                    || lower.ends_with(".local")
+                    || lower.ends_with(".local"))
+                    && !Self::loopback_allowed()
                 {
                     return Err(UrlError::PrivateAddress(IpAddr::V4(Ipv4Addr::LOCALHOST)));
                 }
@@ -131,6 +154,9 @@ impl SafeUrl {
     /// round-robin attacks where one of several A records points inside the network.
     pub fn check_resolved(&self, addrs: &[IpAddr]) -> Result<(), UrlError> {
         for &ip in addrs {
+            if ip.is_loopback() && Self::loopback_allowed() {
+                continue;
+            }
             if !is_public(ip) {
                 return Err(UrlError::PrivateAddress(ip));
             }
@@ -179,6 +205,9 @@ impl fmt::Display for SafeUrl {
 /// Written out explicitly rather than relying on `std` helpers: several of the relevant
 /// predicates (`is_shared`, `is_benchmarking`) are still unstable, and being wrong here is a
 /// security bug rather than a correctness nit.
+/// Loopback escape hatch. See [`SafeUrl::allow_loopback_for_testing`].
+static ALLOW_LOOPBACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub fn is_public(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => is_public_v4(v4),
@@ -386,6 +415,20 @@ mod tests {
             err("http://[64:ff9b::7f00:1]/"),
             UrlError::PrivateAddress(_)
         ));
+    }
+
+    #[test]
+    fn the_loopback_hatch_is_off_unless_a_test_asks_for_it() {
+        // This assertion is the whole safety argument for the escape hatch. It is process-wide,
+        // so any test that enables it poisons every other test in the same binary — which is
+        // why the only caller is an integration test with its own process, and why nothing in
+        // the server binaries calls it at all.
+        assert!(
+            !SafeUrl::loopback_allowed(),
+            "something in this test binary enabled the loopback hatch; every SSRF test after \
+             it is now meaningless"
+        );
+        assert!(SafeUrl::parse("http://127.0.0.1/").is_err());
     }
 
     #[test]

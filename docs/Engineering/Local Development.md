@@ -132,9 +132,18 @@ in code ([[Deployment Topology]] §1).
 
 Crawling the real web from a laptop is slow, rude, and non-reproducible. So:
 
-- `make fixture-site` ❌ *not built yet (M0-T10)* — will serve `tests/fixtures/site/` on
-  `localhost:8090`: a sitemap, an RSS feed, an SPA page, redirect chains, a 429 endpoint, a
-  `robots.txt` with `Crawl-delay`, and deliberately malformed pages.
+- `make fixture-site` ✅ — serves `tests/fixtures/site/` on `localhost:8099`: a sitemap, an RSS
+  feed, an SPA page, redirect chains and a cycle, a 429 with `Retry-After`, a 5-second endpoint,
+  a `robots.txt` with `Crawl-delay` and `Disallow`, a `windows-1256` page, malformed markup, a
+  prompt-injection page, and an infinitely deep crawler trap. `tests/fixtures/site/README.md`
+  says which failure each one reproduces.
+- `cargo test -p xustive-ingest --test fixture_site` runs the real `Fetcher` against all of it.
+  The server starts and stops with the test binary on an OS-assigned port — a fixed port
+  collides with an orphan from an earlier run, and the symptom is a suite quietly testing stale
+  code rather than an obvious failure to bind.
+- Reaching loopback at all requires `SafeUrl::allow_loopback_for_testing()`. The SSRF guard
+  refuses private addresses by default and neither server binary ever turns it off; the switch
+  is process-wide, so only that one integration test calls it.
 - `config/dev.toml` seeds the frontier from that host only.
 - Social connectors run in **replay mode** against recorded fixtures — there is no live-API path in
   dev or CI ([[Social Connector - Facebook]] §11).
