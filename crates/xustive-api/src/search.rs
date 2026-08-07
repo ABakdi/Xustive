@@ -543,15 +543,64 @@ fn display_url(url: &str) -> String {
         .host_str()
         .unwrap_or_default()
         .trim_start_matches("www.");
-    let segments: Vec<&str> = parsed
+    // Percent-decoded. Algerian sites put the Arabic headline in the slug, so a raw path segment
+    // renders as forty characters of %D8%A7%D9%84 — which filled the widest line on every result
+    // card with something no reader can use.
+    let segments: Vec<String> = parsed
         .path_segments()
-        .map(|s| s.filter(|p| !p.is_empty()).take(2).collect())
+        .map(|s| {
+            s.filter(|p| !p.is_empty())
+                .take(2)
+                .map(percent_decode)
+                .collect()
+        })
         .unwrap_or_default();
+
     if segments.is_empty() {
-        host.to_string()
-    } else {
-        format!("{host} › {}", segments.join(" › "))
+        return host.to_string();
     }
+    // A decoded Arabic slug is still a whole headline. The breadcrumb is orientation, not
+    // content — the title directly beneath it already says what the page is.
+    let crumbs: Vec<String> = segments.iter().map(|s| truncate_chars(s, 28)).collect();
+    format!("{host} › {}", crumbs.join(" › "))
+}
+
+/// Decode `%XX` escapes, leaving anything malformed as it was.
+///
+/// Hand-rolled rather than adding a dependency: this decodes one path segment for display, and
+/// invalid input must survive rather than panic — a URL we cannot decode is still a URL we have
+/// to render.
+fn percent_decode(segment: &str) -> String {
+    let bytes = segment.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok();
+            if let Some(byte) = hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        // Hyphens and underscores are word separators in a slug, and reading them as such is
+        // the difference between a breadcrumb and a filename.
+        out.push(if bytes[i] == b'-' || bytes[i] == b'_' {
+            b' '
+        } else {
+            bytes[i]
+        });
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| segment.to_string())
+}
+
+fn truncate_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let cut: String = s.chars().take(max).collect();
+    format!("{}…", cut.trim_end())
 }
 
 /// Bucket a result count for metrics. Keeps label cardinality bounded.
@@ -569,6 +618,42 @@ fn count_bucket(n: usize) -> &'static str {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn an_arabic_slug_is_decoded_rather_than_shown_as_percent_escapes() {
+        // Algerian sites put the headline in the slug. Raw, it renders as forty characters of
+        // %D8%A7%D9%84 and fills the widest line on the card with something unreadable.
+        let out = display_url(
+            "https://www.elkhabar.com/nation/%D8%A7%D9%84%D8%AC%D8%B2%D8%A7%D8%A6%D8%B1-273644",
+        );
+        assert!(out.contains("الجزائر"), "got {out}");
+        assert!(!out.contains('%'), "got {out}");
+    }
+
+    #[test]
+    fn a_long_slug_is_truncated_to_a_breadcrumb() {
+        let long = "a".repeat(200);
+        let out = display_url(&format!("https://example.dz/news/{long}"));
+        assert!(
+            out.chars().count() < 80,
+            "got {} chars",
+            out.chars().count()
+        );
+        assert!(out.ends_with('…'));
+    }
+
+    #[test]
+    fn a_malformed_escape_survives_rather_than_panicking() {
+        // A URL we cannot decode is still a URL we have to render.
+        assert_eq!(percent_decode("%ZZ"), "%ZZ");
+        assert_eq!(percent_decode("%"), "%");
+        assert_eq!(percent_decode("a%"), "a%");
+    }
+
+    #[test]
+    fn slug_separators_read_as_words() {
+        assert_eq!(percent_decode("prix-du-gaz"), "prix du gaz");
+    }
 
     #[test]
     fn display_url_is_a_breadcrumb() {

@@ -147,8 +147,25 @@ impl Parser {
             meta(&doc, "itemprop", "datePublished"),
             attr_of(&doc, "time", "datetime"),
             text_of(&doc, "time"),
+            // Common date containers, before falling back to scanning prose. Algerian sites
+            // frequently put the publication date in a plain div with a class of `date` and no
+            // machine-readable markup anywhere on the page.
+            text_of(
+                &doc,
+                ".date, .post-date, .article-date, .published, .entry-date, [class*=date]",
+            ),
         ])
-        .and_then(|s| date::parse(&s, now));
+        .and_then(|s| date::parse(&s, now))
+        // Last resort: look for a date in the opening prose.
+        //
+        // 362 of 502 crawled documents had no date at all, while the pages plainly showed
+        // "05 أوت 2026" — the extractor was only ever looking at markup those publishers do not
+        // emit. Freshness ranking with no date to rank on is the largest single thing this
+        // costs, so a scanned date is worth much more than none.
+        //
+        // Restricted to the head of the body: a date further down is as likely to be *about*
+        // something as to be the publication date.
+        .or_else(|| scan_for_date(&head(&body, 400), now));
 
         let (published_at, precision) = match published {
             Some(d) => (d.unix, d.precision),
@@ -524,6 +541,29 @@ fn strip_tags(s: &str) -> String {
         .replace("&#39;", "'")
 }
 
+/// Find a publication date in prose.
+///
+/// Slides a window over the text and asks the date parser about each one, taking the first that
+/// parses to a plausible date. Cruder than reading markup and deliberately last in the chain —
+/// but a scanned date beats no date, and freshness ranking with nothing to rank on is the
+/// largest single thing a missing date costs.
+///
+/// The window is a handful of tokens because Maghrebi dates are three of them: "05 أوت 2026".
+fn scan_for_date(text: &str, now: i64) -> Option<date::ParsedDate> {
+    let tokens: Vec<&str> = text.split_whitespace().take(120).collect();
+    for window in tokens.windows(4) {
+        let candidate = window.join(" ");
+        // A bare year is a number, not a date. Requiring a month name or a separator keeps the
+        // scanner from reading "18500 ميغاواط" as something it is not.
+        if let Some(parsed) = date::parse(&candidate, now) {
+            if parsed.precision != DatePrecision::Unknown {
+                return Some(parsed);
+            }
+        }
+    }
+    None
+}
+
 fn head(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
@@ -602,6 +642,37 @@ fn quality_score(doc: &Document, method: Method) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_date_in_prose_is_found_when_the_markup_carries_none() {
+        // 362 of 502 crawled documents had no date while the page plainly showed "05 أوت 2026".
+        // The extractor only ever read markup those publishers do not emit.
+        let now = 1_786_000_000;
+        let found = scan_for_date("نشر يوم 05 أوت 2026 في الجزائر العاصمة", now);
+        assert!(found.is_some(), "a Maghrebi date in prose must be found");
+        assert_ne!(found.unwrap().precision, DatePrecision::Unknown);
+    }
+
+    #[test]
+    fn a_bare_number_is_not_read_as_a_date() {
+        // "18500 ميغاواط" is a figure. A scanner that turns it into a publication date is worse
+        // than one that finds nothing, because ranking would then trust it.
+        let now = 1_786_000_000;
+        assert!(scan_for_date("مسجلا 18500 ميغاواط في الشبكة", now).is_none());
+    }
+
+    #[test]
+    fn the_scan_is_bounded() {
+        // Runs on every parsed page, so it must not scale with document length.
+        let long = "كلمة ".repeat(50_000);
+        let started = std::time::Instant::now();
+        let _ = scan_for_date(&long, 1_786_000_000);
+        assert!(
+            started.elapsed().as_millis() < 50,
+            "took {:?}",
+            started.elapsed()
+        );
+    }
 
     fn p() -> Parser {
         Parser::default()

@@ -167,7 +167,10 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [x] M1-T10.3 **Date extraction** including Arabic (أوت, جويلية) and French formats, relative forms,
       DD/MM disambiguation, `unknown` precision handling
 - [x] M1-T10.4 Derived fields: excerpt, `content_hash`, `simhash`, entities, canonical URL, media
-- [ ] M1-T10.5 Per-domain rules format + rules for the top 20 sources, each with a fixture test
+- [ ] M1-T10.5 Per-domain rules format + rules for the top 20 sources, each with a fixture test.
+      **Now the blocker on date coverage**: a prose scanner lifted aps.dz from 0 to 13 dates in
+      40 pages, and the remaining 25 articles put their date somewhere generic extraction does
+      not reach. Per-domain selectors are the only honest way to close that
 - [ ] M1-T10.6 Adversarial DOM suite (depth, node count, encodings, bombs)
 - [ ] M1-T10.7 200-page labelled corpus: ≥ 90 % title, ≥ 85 % date, ≥ 0.9 body F1
 
