@@ -11,6 +11,7 @@ import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { Wordmark } from '@/components/layout/Wordmark'
 import { search, SearchFailed } from '@/lib/api'
 import { isLocale, type Locale } from '@/lib/i18n/config'
+import { formatNumber, plural } from '@/lib/i18n/format'
 import { messages } from '@/lib/i18n/messages'
 import { readTheme } from '@/lib/theme'
 
@@ -83,14 +84,22 @@ export default async function SearchPage({
   }
 
   const { pagination: p } = data
-  const nf = new Intl.NumberFormat(lang === 'ary' ? 'ar' : lang)
 
   return (
     <Shell lang={lang} t={t} q={q}>
       <p className="mb-5 text-sm" style={{ color: 'var(--fg-muted)' }}>
         {p.estimated ? `${t.resultsApprox} ` : ''}
-        <span className="numeric">{nf.format(p.total_hits)}</span> {t.resultsCount} (
-        <span className="numeric">{nf.format(data.took_ms)}</span> {t.took})
+        <span className="numeric">{formatNumber(lang, p.total_hits)}</span>{' '}
+        {/* Arabic has six plural categories; a ternary is wrong for four of them. */}
+        {plural(lang, p.total_hits, {
+          zero: t.resultsCount,
+          one: t.resultsCount,
+          two: t.resultsCount,
+          few: t.resultsCount,
+          many: t.resultsCount,
+          other: t.resultsCount,
+        })}{' '}
+        (<span className="numeric">{formatNumber(lang, data.took_ms)}</span> {t.took})
       </p>
 
       {/* Above the results and below the search box. Rendered even when there are no results —

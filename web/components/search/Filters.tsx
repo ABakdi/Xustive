@@ -1,5 +1,7 @@
 import Link from 'next/link'
 
+import type { Locale } from '@/lib/i18n/config'
+import { formatNumber } from '@/lib/i18n/format'
 import type { Messages } from '@/lib/i18n/messages'
 
 /**
@@ -45,7 +47,7 @@ export function Filters({
   active: Params
   q: string
 }) {
-  const nf = new Intl.NumberFormat(lang === 'ary' ? 'ar' : lang)
+  const nf = { format: (n: number) => formatNumber(lang as Locale, n) }
   const current = new Map<string, string>()
   for (const { param } of GROUPS) {
     const value = one(active, param)

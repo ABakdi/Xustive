@@ -107,8 +107,8 @@ Tighter than the current page, because a framework is only worth its cost if it 
 
 | Metric | Budget |
 |:---|:---|
-| JS, home route | ≤ 40 KB gzipped |
-| JS, search route | ≤ 90 KB gzipped |
+| JS, home route | ≤ 185 KB gzipped — **~152 KB of that is the React and Next runtime**, before any of our code. The pre-React budget was 40 KB; see [[ADR-0010 - Next.js for the Frontend]] |
+| JS, search route | ≤ 195 KB gzipped, same caveat |
 | CSS | ≤ 20 KB gzipped |
 | LCP, throttled 3G | ≤ 2.5 s |
 | CLS | ≤ 0.05 |

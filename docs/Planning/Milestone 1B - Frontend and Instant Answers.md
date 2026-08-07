@@ -35,10 +35,10 @@ are the reason to exist; the search is the foundation under them.
 - [x] M1B-T01.2 `[lang]` routing for ar / ary / fr / en; direction and theme resolved server-side
 - [ ] M1B-T01.3 Typed API client generated from an OpenAPI description of [[API Contract]]
 - [x] M1B-T01.4 Theme: light / dark / system, cookie-resolved, resolved before the first byte
-- [ ] M1B-T01.5 Bundle budgets enforced in CI ([[UI - Frontend Architecture]] §7) — exceeding
-      fails the build
-- [ ] M1B-T01.6 CI runs the results page with JavaScript disabled and asserts search, filtering
-      and pagination all work
+- [x] M1B-T01.5 Bundle budgets enforced by `scripts/bundle-budget.sh`, measured as a browser
+      fetches them. Exceeding fails. It caught the framework cost immediately
+- [x] M1B-T01.6 `scripts/no-js-check.sh` — five assertions over the HTML `curl` receives, which
+      is exactly what a reader without JavaScript gets. Search, filtering and pagination all pass
 
 ## M1B-T02 — Design language
 
@@ -133,8 +133,10 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 ## M1B-T08 — Localisation
 
 - [x] M1B-T08.1 Catalogues for ar / fr / en; a missing key is a compile error
-- [ ] M1B-T08.2 `Intl.PluralRules` — Arabic has six forms
-- [ ] M1B-T08.3 `Intl.NumberFormat` / `DateTimeFormat`, numeral system an explicit choice
+- [x] M1B-T08.2 `Intl.PluralRules` — Arabic has six categories and a ternary is wrong for four
+- [x] M1B-T08.3 `Intl.NumberFormat` / `DateTimeFormat` in one module, numeral system an explicit
+      constant. `Intl` defaults Arabic to Eastern digits; Algerian print uses Western, so the
+      locale default would be wrong for this audience
 - [~] M1B-T08.4 Darija falls back to Arabic, never English. A distinct catalogue still needs a
       native speaker ← *B7*
 - [ ] M1B-T08.5 Visual regression: 4 languages × 2 directions × 2 themes

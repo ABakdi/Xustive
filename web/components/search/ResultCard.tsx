@@ -1,4 +1,6 @@
 import type { ResultCard as Result } from '@/lib/api'
+import type { Locale } from '@/lib/i18n/config'
+import { formatDate } from '@/lib/i18n/format'
 import type { Messages } from '@/lib/i18n/messages'
 
 const GLYPH: Record<string, string> = { positive: '▲', neutral: '●', negative: '▼' }
@@ -23,13 +25,7 @@ export function ResultCard({
   locale: string
 }) {
   const dated = result.published_at_precision !== 'unknown' && result.published_at > 0
-  const date = dated
-    ? new Intl.DateTimeFormat(locale === 'ary' ? 'ar' : locale, {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      }).format(new Date(result.published_at * 1000))
-    : null
+  const date = dated ? formatDate(locale as Locale, result.published_at) : null
 
   const sourceLabel = (t as Record<string, string>)[result.source_type] ?? result.source_type
 

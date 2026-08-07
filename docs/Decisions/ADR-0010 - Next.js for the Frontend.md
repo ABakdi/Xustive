@@ -56,8 +56,25 @@ now three processes. Roughly 120 MB resident and one more thing that can fall ov
 Acceptable, and partly recovered because Next and the API are colocated while the browser round
 trip they replace was not.
 
-**A build step.** `make up` grows a `pnpm build`. The Rust-only workflow was a genuine pleasure
-and we are giving it up.
+**A build step.** `make up` grows a build. The Rust-only workflow was a genuine pleasure and we
+are giving it up.
+
+**~155 KB of JavaScript before any of our own code.** *Added after measurement; this was the
+largest cost and the ADR originally omitted it.* React plus the Next runtime is ~152 KB gzipped
+across three chunks, against roughly 8 KB for the vanilla implementation it replaced. Our own
+components are ~19 KB on top.
+
+This directly contradicts the argument made below about slow connections: the case for server
+rendering was that a large bundle parsing before any content appears is the difference between a
+usable engine and a blank screen — and this decision made the bundle large. Server rendering
+means content is *visible* before that JavaScript arrives, which is the mitigation and is real.
+But a reader on a slow connection still downloads it before anything becomes interactive.
+
+The budgets in [[UI - Frontend Architecture]] §7 were written pre-React and are unachievable.
+They now sit just above the measured floor so the gate catches regressions, which is the only
+thing it can honestly catch. **Whether 155 KB is acceptable for this audience is a live question,
+not a settled one** — the alternative that would answer it is Astro or SvelteKit, both rejected
+above on grounds that did not weigh this properly.
 
 **Two languages in the serving path.** A contributor now needs Rust and TypeScript to change a
 feature end to end.

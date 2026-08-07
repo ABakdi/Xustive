@@ -110,6 +110,11 @@ eval-check: ## Score the golden set and fail if nDCG@10 regressed
 golden: ## Regenerate the machine-judged golden set from the live index
 	./eval/build_golden.py --out eval/golden/v1.jsonl
 
+.PHONY: ui-gates
+ui-gates: ## Client asset budgets and the no-JavaScript path (needs web running on :3000)
+	./scripts/bundle-budget.sh
+	./scripts/no-js-check.sh
+
 .PHONY: scan-logs
 scan-logs: ## Scan a log file for leaked query text: make scan-logs LOG=/tmp/api.log
 	./scripts/scan-logs.sh $(LOG)

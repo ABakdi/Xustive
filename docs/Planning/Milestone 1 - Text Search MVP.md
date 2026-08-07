@@ -231,7 +231,10 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
       each other, and stay visible while active so a filter can always be cleared
 - [ ] M1-T13.6 [[UI - States and Errors]] for every row of its §4
 - [x] M1-T13.7 URL-as-state — the query string *is* the state; no client store to desync
-- [ ] M1-T13.8 Bundle budgets enforced in CI; Lighthouse CI on a throttled profile
+- [~] M1-T13.8 Bundle budgets enforced by `make ui-gates`, measuring what a browser actually
+      downloads. **The budgets had to be raised from 40/90 KB to 185/195** — React and Next are
+      ~152 KB gzipped before any of our code, which ADR-0010 failed to state. Lighthouse CI on a
+      throttled profile is not set up
 - [ ] M1-T13.9 **CLS ≤ 0.05** verified across the streaming sequence
 
 ## M1-T14 — [[UI - RTL and Localization]]
