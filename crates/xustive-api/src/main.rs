@@ -14,6 +14,63 @@ struct Args {
     config: PathBuf,
 }
 
+/// Load the summariser in the background.
+///
+/// Reading two gigabytes of weights takes seconds, and search does not depend on it. Doing this
+/// before binding the port would mean the process looked dead while it worked; doing it lazily on
+/// the first request would put those seconds in one unlucky user's latency. So it happens
+/// alongside, and until it finishes `/v1/summary` answers "no summary" — a state it already
+/// handles, because a busy model looks the same from outside.
+#[cfg(feature = "summariser")]
+fn spawn_model_load(state: &AppState) {
+    use std::sync::Arc;
+    use xustive_ml::engine::Engine;
+    use xustive_ml::registry::{Registry, Role};
+
+    if !state.config.ml.summaries_enabled {
+        tracing::info!("summaries are disabled; no model will be loaded");
+        return;
+    }
+
+    let registry = Registry::new(&state.config.ml.model_dir);
+    let preferred = (!state.config.ml.summariser_model.is_empty())
+        .then(|| state.config.ml.summariser_model.clone());
+    let Some(status) = registry.resolve(Role::Summariser, preferred.as_deref()) else {
+        tracing::warn!(
+            dir = %state.config.ml.model_dir,
+            "no summariser model found; summaries will be unavailable"
+        );
+        return;
+    };
+
+    let device = state.device_config();
+    let slots = state.config.ml.slots;
+    let engine_slot = Arc::clone(&state.engine);
+
+    // A blocking thread, not a task: loading pins a core for seconds and would otherwise stall
+    // the runtime's worker threads, which are also serving search.
+    tokio::task::spawn_blocking(move || match Engine::load(&status.path, &device, slots) {
+        Ok(engine) => {
+            tracing::info!(
+                model = %status.path,
+                device = engine.resolved().active.as_str(),
+                "summariser ready"
+            );
+            if let Ok(mut slot) = engine_slot.write() {
+                *slot = Some(Arc::new(engine));
+            }
+        }
+        // Not fatal. A search engine that will not start because a summariser model is missing
+        // has traded its whole purpose for one feature.
+        Err(e) => tracing::error!(error = %e, "summariser failed to load; summaries unavailable"),
+    });
+}
+
+#[cfg(not(feature = "summariser"))]
+fn spawn_model_load(_state: &AppState) {
+    tracing::info!("built without the summariser feature; summaries unavailable");
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
@@ -30,6 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let bind = config.api.bind_addr.clone();
     let state = AppState::new(config)?;
+    spawn_model_load(&state);
     let router = app(state);
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;

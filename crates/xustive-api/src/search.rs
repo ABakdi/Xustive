@@ -101,7 +101,9 @@ fn is_zero(n: &usize) -> bool {
 #[derive(Debug, Serialize)]
 pub struct SearchResponse {
     pub query: QueryInfo,
-    /// `None` until the summariser exists. The client hides the block when it is absent.
+    /// Handed to `POST /v1/summary`. `None` when there is nothing to summarise, summaries are
+    /// switched off, or the caller is past the first page. The client hides the block when it is
+    /// absent rather than showing an empty one.
     pub summary_token: Option<String>,
     pub pagination: Pagination,
     pub took_ms: u64,
@@ -224,6 +226,27 @@ pub async fn handler(
             card
         })
         .collect();
+    // Register the top documents for a summary the browser will ask for separately. Built from
+    // the re-ranked head rather than the page the user is on: a summary of page 7 is not what
+    // anyone means by "summarise these results".
+    let summary_token = if state.config.ml.summaries_enabled && !ranked.is_empty() && page == 1 {
+        let top: Vec<&Value> = ranked
+            .iter()
+            .take(xustive_ml::prompt::MAX_PASSAGES)
+            .map(|r| &r.hit)
+            .collect();
+        let passages = crate::summary::passages_from_hits(&top, xustive_ml::prompt::MAX_PASSAGES);
+        (!passages.is_empty()).then(|| {
+            state.pending.insert(
+                normalized.clone(),
+                xustive_ml::OutputLang::from_detected(language.as_str()),
+                passages,
+            )
+        })
+    } else {
+        None
+    };
+
     let total_hits = hits.estimated_total_hits;
     let total_pages = total_hits.div_ceil(hits_per_page).min(100);
 
@@ -254,7 +277,7 @@ pub async fn handler(
             expanded_terms: Vec::new(),
             corrected: None,
         },
-        summary_token: None,
+        summary_token,
         pagination: Pagination {
             page,
             hits_per_page,

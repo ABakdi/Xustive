@@ -92,6 +92,15 @@ fn render_results(raw: &str, r: &search::SearchResponse) -> String {
     if r.results.is_empty() {
         body.push_str(&render_empty(raw));
     } else {
+        // An empty slot carrying the token. The summary is fetched by script after the page
+        // paints — this page must render without JavaScript, and generation takes seconds, so
+        // the summary is the one part that is genuinely optional.
+        if let Some(token) = &r.summary_token {
+            body.push_str(&format!(
+                r#"<div id="summary" hidden data-token="{}"></div>"#,
+                escape_html(token)
+            ));
+        }
         body.push_str("<ol class=\"result-list\">");
         for card in &r.results {
             body.push_str(&render_card(card));
@@ -127,7 +136,7 @@ fn render_card(c: &search::ResultCard) -> String {
     };
 
     format!(
-        r#"<li class="result-card" dir="auto">
+        r#"<li class="result-card" dir="auto" id="result-{id}">
   <div class="card-meta">
     <span class="badge platform {platform}">{platform_label}</span>
     <span class="display-url">{display_url}</span>
@@ -137,6 +146,7 @@ fn render_card(c: &search::ResultCard) -> String {
   <h3><a href="{url}" rel="noopener nofollow">{title}</a></h3>
   <p class="excerpt">{excerpt}</p>
 </li>"#,
+        id = escape_html(&c.id),
         platform = escape_html(&c.source_type),
         platform_label = escape_html(&platform_label(&c.source_type)),
         display_url = escape_html(&c.display_url),

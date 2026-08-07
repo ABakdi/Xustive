@@ -12,6 +12,7 @@ use xustive_core::TrustTier;
 use xustive_search::{MeiliClient, SearchError, Weights};
 
 use crate::metrics::Metrics;
+use crate::summary::PendingStore;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -31,10 +32,45 @@ pub struct AppState {
     pub device_preference: Arc<AtomicU8>,
     /// GPU layers to offload. Negative means decide automatically.
     pub gpu_layers: Arc<AtomicI64>,
+    /// Searches whose summary has not been requested yet.
+    pub pending: Arc<PendingStore>,
+    /// The loaded summariser, once it is ready.
+    ///
+    /// Behind a lock and an `Option` because loading takes seconds and must not delay the first
+    /// search. Until it resolves, summaries are simply unavailable — which is a state the
+    /// endpoint already handles, since it is also what a busy or missing model looks like.
+    #[cfg(feature = "summariser")]
+    pub engine: Arc<std::sync::RwLock<Option<Arc<xustive_ml::engine::Engine>>>>,
     pub metrics: Metrics,
 }
 
 impl AppState {
+    /// The summariser, if it has finished loading.
+    #[cfg(feature = "summariser")]
+    pub fn summariser(&self) -> Option<Arc<xustive_ml::engine::Engine>> {
+        self.engine.read().ok().and_then(|e| e.clone())
+    }
+
+    /// Resolve the current device setting against the hardware present.
+    pub fn device_config(&self) -> xustive_ml::DeviceConfig {
+        use std::sync::atomic::Ordering;
+        let preference = match self.device_preference.load(Ordering::Relaxed) {
+            1 => xustive_ml::DevicePreference::Gpu,
+            2 => xustive_ml::DevicePreference::Cpu,
+            _ => xustive_ml::DevicePreference::Auto,
+        };
+        let layers = self.gpu_layers.load(Ordering::Relaxed);
+        xustive_ml::DeviceConfig {
+            preference,
+            gpu_layers: if layers < 0 {
+                None
+            } else {
+                Some(layers as u32)
+            },
+            ..Default::default()
+        }
+    }
+
     pub fn new(config: Config) -> Result<Self, SearchError> {
         let device = config.ml.device.clone();
         let gpu_layers = config.ml.gpu_layers;
@@ -53,6 +89,9 @@ impl AppState {
                 xustive_ml::DevicePreference::parse(&device).unwrap_or_default() as u8,
             )),
             gpu_layers: Arc::new(AtomicI64::new(gpu_layers)),
+            pending: Arc::new(PendingStore::default()),
+            #[cfg(feature = "summariser")]
+            engine: Arc::new(std::sync::RwLock::new(None)),
             metrics: Metrics::new(),
         })
     }

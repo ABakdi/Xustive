@@ -9,6 +9,7 @@ pub mod error;
 pub mod metrics;
 pub mod search;
 pub mod state;
+pub mod summary;
 pub mod telemetry;
 pub mod web;
 
@@ -34,8 +35,31 @@ use crate::state::AppState;
 /// Layer order is load-bearing. `CatchPanicLayer` is outermost so a panic anywhere inside becomes
 /// a 500 rather than killing the worker; compression is innermost so it wraps the final body.
 pub fn app(state: AppState) -> Router {
+    // Timeouts are applied per group rather than once around the whole app. A single outer layer
+    // is simpler, but it silently caps every route at the search budget — which turned every
+    // summary into a 504 the first time this was wired up, since generation legitimately takes
+    // tens of seconds on CPU.
+    let search_budget = TimeoutLayer::with_status_code(
+        StatusCode::GATEWAY_TIMEOUT,
+        Duration::from_millis(state.config.api.timeout_search_ms),
+    );
+
     let api = Router::new()
         .route("/search", get(search::handler))
+        .layer(search_budget)
+        .with_state(state.clone());
+
+    // Summaries get their own, far longer timeout. Generation on CPU runs to tens of seconds,
+    // and the global search budget applied to this endpoint turns every summary into a 504 —
+    // which is also what happened the first time it was wired in. The engine enforces its own
+    // deadline internally, so this only has to be looser than that one.
+    let summary = Router::new()
+        .route("/summary", axum::routing::post(summary::handler))
+        // Looser than the engine's own deadline, which is the one that actually bounds the work.
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            Duration::from_millis(state.config.ml.deadline_ms + 10_000),
+        ))
         .with_state(state.clone());
 
     let ops = Router::new()
@@ -48,6 +72,7 @@ pub fn app(state: AppState) -> Router {
         .route("/admin", get(admin::page))
         .route("/admin/status", get(admin::status))
         .route("/admin/device", axum::routing::post(admin::set_device))
+        .layer(search_budget)
         .with_state(state.clone());
 
     let static_dir = &state.config.api.static_dir;
@@ -55,17 +80,12 @@ pub fn app(state: AppState) -> Router {
         ServeDir::new(static_dir).fallback(ServeFile::new(format!("{static_dir}/index.html")));
 
     Router::new()
-        .nest("/api/v1", api)
+        .nest("/api/v1", api.merge(summary))
         .merge(ops)
         .fallback_service(serve_static)
         .layer(middleware::from_fn_with_state(state.clone(), observe))
         .layer(middleware::from_fn(security_headers))
         .layer(CompressionLayer::new())
-        // Contract says a blown budget is 504, not the layer's default 408.
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::GATEWAY_TIMEOUT,
-            Duration::from_millis(state.config.api.timeout_search_ms),
-        ))
         .layer(RequestBodyLimitLayer::new(
             state.config.api.body_limit_default,
         ))
