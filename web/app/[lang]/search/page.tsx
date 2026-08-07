@@ -59,7 +59,7 @@ export default async function SearchPage({
 
   const page = Math.max(1, Number(one(sp, 'page') ?? 1) || 1)
 
-  const query = new URLSearchParams({ q, page: String(page), hits_per_page: '20' })
+  const query = new URLSearchParams({ q, page: String(page), hits_per_page: '20', ui: lang })
   for (const key of FILTER_PARAMS) {
     const value = one(sp, key)
     if (value) query.set(key, value)

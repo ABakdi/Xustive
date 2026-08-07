@@ -44,6 +44,10 @@ pub struct SearchParams {
     pub to: Option<i64>,
     #[serde(default)]
     pub sort: Option<String>,
+    /// Interface language, for tool labels. Distinct from `lang`, which filters results —
+    /// someone reading a French interface searching in Darija is the normal case.
+    #[serde(default)]
+    pub ui: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -212,7 +216,10 @@ pub async fn handler(
     let raw = params.q.clone().unwrap_or_default();
     // Computed from the raw query before it is consumed by the response. Normalisation folds the
     // characters an expression is made of, so `45*1.19` has to be seen intact to parse.
-    let instant = xustive_tools::best(&raw);
+    // Rendered in the interface language the caller asked for, so an Arabic reader gets
+    // "2 قنطار → كيلوغرام" rather than the English unit names.
+    let ui_lang = params.ui.as_deref().unwrap_or("en");
+    let instant = xustive_tools::best_in(&raw, ui_lang);
     if raw.trim().is_empty() {
         return Err(ApiError::MissingQuery);
     }
@@ -700,6 +707,7 @@ mod tests {
     #[test]
     fn filters_parse_csv_lists() {
         let p = SearchParams {
+            ui: None,
             q: Some("x".into()),
             page: None,
             hits_per_page: None,
@@ -719,6 +727,7 @@ mod tests {
     #[test]
     fn unknown_facet_value_is_a_client_error() {
         let p = SearchParams {
+            ui: None,
             q: Some("x".into()),
             page: None,
             hits_per_page: None,

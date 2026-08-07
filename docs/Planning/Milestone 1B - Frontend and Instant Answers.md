@@ -97,7 +97,16 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
       the machine
 - [ ] M1B-T05.5 Weather — now + 5 days, 58 wilayas, custom line icons
 - [ ] M1B-T05.6 Prayer times — computed locally, method shown on the card
-- [ ] M1B-T05.7 Time, date arithmetic, Hijri ↔ Gregorian
+- [~] M1B-T05.7 Hijri ↔ Gregorian and days-between are built, computed locally so they cannot go
+      stale. Uses the **tabular** calendar; Algeria announces Eid by sighting and can differ by a
+      day, which the card discloses rather than hides. World clock is not built
+
+> **Where this milestone stands.** The framework, calculator, converter and date tools are built
+> and localised. Currency, weather, prayer times and translation are **not**, and each is blocked
+> on something real rather than on effort: currency and weather need [[Tool Data Plane]] plus the
+> unresolved parallel-rate sourcing question (§6 below), and translation needs the summariser's
+> model wired to a second call path. None of them is worth half-building — a currency card that
+> invents a rate is exactly the failure [[Instant Answers]] §2 exists to prevent.
 
 ## M1B-T06 — Tool data plane
 

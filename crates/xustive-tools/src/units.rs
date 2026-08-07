@@ -24,8 +24,14 @@ pub enum Dimension {
 }
 
 struct Unit {
-    /// Canonical name, shown in the answer.
+    /// Canonical English name. The stable identifier, used in `detail` and in tests.
     name: &'static str,
+    /// Display names per interface language: `(ar, fr)`.
+    ///
+    /// The card said "2 qintar → kilogram" to an Arabic reader before this existed. A converter
+    /// that answers an Arabic question in English has only done half the job — and qintar is
+    /// precisely the unit whose Arabic name the reader already knows.
+    names: (&'static str, &'static str),
     dimension: Dimension,
     /// How many base units one of these is. Base units: metre, kilogram, m², litre, km/h, byte.
     per_base: &'static str,
@@ -41,12 +47,14 @@ const UNITS: &[Unit] = &[
     // --- length -------------------------------------------------------------------------
     Unit {
         name: "metre",
+        names: ("متر", "mètre"),
         dimension: Dimension::Length,
         per_base: "1",
         aliases: &["m", "metre", "meter", "metres", "meters", "متر"],
     },
     Unit {
         name: "kilometre",
+        names: ("كيلومتر", "kilomètre"),
         dimension: Dimension::Length,
         per_base: "1000",
         aliases: &[
@@ -61,30 +69,35 @@ const UNITS: &[Unit] = &[
     },
     Unit {
         name: "centimetre",
+        names: ("سنتيمتر", "centimètre"),
         dimension: Dimension::Length,
         per_base: "0.01",
         aliases: &["cm", "centimetre", "centimeter", "سم", "سنتيمتر"],
     },
     Unit {
         name: "millimetre",
+        names: ("مليمتر", "millimètre"),
         dimension: Dimension::Length,
         per_base: "0.001",
         aliases: &["mm", "millimetre", "millimeter", "ملم"],
     },
     Unit {
         name: "mile",
+        names: ("ميل", "mile"),
         dimension: Dimension::Length,
         per_base: "1609.344",
         aliases: &["mi", "mile", "miles", "ميل", "أميال"],
     },
     Unit {
         name: "foot",
+        names: ("قدم", "pied"),
         dimension: Dimension::Length,
         per_base: "0.3048",
         aliases: &["ft", "foot", "feet", "pied", "pieds", "قدم"],
     },
     Unit {
         name: "inch",
+        names: ("بوصة", "pouce"),
         dimension: Dimension::Length,
         per_base: "0.0254",
         aliases: &["in", "inch", "inches", "pouce", "بوصة", "إنش"],
@@ -92,6 +105,7 @@ const UNITS: &[Unit] = &[
     // --- mass ---------------------------------------------------------------------------
     Unit {
         name: "kilogram",
+        names: ("كيلوغرام", "kilogramme"),
         dimension: Dimension::Mass,
         per_base: "1",
         aliases: &[
@@ -107,18 +121,21 @@ const UNITS: &[Unit] = &[
     },
     Unit {
         name: "gram",
+        names: ("غرام", "gramme"),
         dimension: Dimension::Mass,
         per_base: "0.001",
         aliases: &["g", "gram", "gramme", "grams", "grammes", "غرام", "جرام"],
     },
     Unit {
         name: "tonne",
+        names: ("طن", "tonne"),
         dimension: Dimension::Mass,
         per_base: "1000",
         aliases: &["t", "tonne", "tonnes", "ton", "طن", "أطنان"],
     },
     Unit {
         name: "pound",
+        names: ("رطل", "livre"),
         dimension: Dimension::Mass,
         per_base: "0.45359237",
         aliases: &["lb", "lbs", "pound", "pounds", "livre", "livres", "رطل"],
@@ -127,6 +144,7 @@ const UNITS: &[Unit] = &[
     // grain are quoted in it constantly and no international converter knows it exists.
     Unit {
         name: "qintar",
+        names: ("قنطار", "quintal"),
         dimension: Dimension::Mass,
         per_base: "100",
         aliases: &["qintar", "quintal", "quintaux", "qx", "قنطار", "قناطير"],
@@ -134,18 +152,21 @@ const UNITS: &[Unit] = &[
     // --- temperature (handled specially; offsets, not ratios) -----------------------------
     Unit {
         name: "celsius",
+        names: ("درجة مئوية", "°C"),
         dimension: Dimension::Temperature,
         per_base: "1",
         aliases: &["c", "°c", "celsius", "centigrade", "مئوية", "درجة"],
     },
     Unit {
         name: "fahrenheit",
+        names: ("فهرنهايت", "°F"),
         dimension: Dimension::Temperature,
         per_base: "1",
         aliases: &["f", "°f", "fahrenheit", "فهرنهايت"],
     },
     Unit {
         name: "kelvin",
+        names: ("كلفن", "kelvin"),
         dimension: Dimension::Temperature,
         per_base: "1",
         aliases: &["k", "kelvin", "كلفن"],
@@ -153,12 +174,14 @@ const UNITS: &[Unit] = &[
     // --- area ---------------------------------------------------------------------------
     Unit {
         name: "square metre",
+        names: ("متر مربع", "mètre carré"),
         dimension: Dimension::Area,
         per_base: "1",
         aliases: &["m2", "sqm", "متر مربع"],
     },
     Unit {
         name: "hectare",
+        names: ("هكتار", "hectare"),
         dimension: Dimension::Area,
         per_base: "10000",
         aliases: &["ha", "hectare", "hectares", "هكتار"],
@@ -166,12 +189,14 @@ const UNITS: &[Unit] = &[
     // The Algerian sa'a: a traditional land measure, 400 m². Still how rural land is described.
     Unit {
         name: "sa'a",
+        names: ("ساعة", "saa"),
         dimension: Dimension::Area,
         per_base: "400",
         aliases: &["saa", "sa3a", "ساعة", "صاع"],
     },
     Unit {
         name: "square kilometre",
+        names: ("كيلومتر مربع", "kilomètre carré"),
         dimension: Dimension::Area,
         per_base: "1000000",
         aliases: &["km2", "sqkm", "كلم مربع"],
@@ -179,18 +204,21 @@ const UNITS: &[Unit] = &[
     // --- volume -------------------------------------------------------------------------
     Unit {
         name: "litre",
+        names: ("لتر", "litre"),
         dimension: Dimension::Volume,
         per_base: "1",
         aliases: &["l", "litre", "liter", "litres", "liters", "لتر"],
     },
     Unit {
         name: "millilitre",
+        names: ("مليلتر", "millilitre"),
         dimension: Dimension::Volume,
         per_base: "0.001",
         aliases: &["ml", "millilitre", "milliliter", "مل"],
     },
     Unit {
         name: "cubic metre",
+        names: ("متر مكعب", "mètre cube"),
         dimension: Dimension::Volume,
         per_base: "1000",
         aliases: &["m3", "متر مكعب"],
@@ -198,18 +226,21 @@ const UNITS: &[Unit] = &[
     // --- speed --------------------------------------------------------------------------
     Unit {
         name: "kilometre per hour",
+        names: ("كلم/سا", "km/h"),
         dimension: Dimension::Speed,
         per_base: "1",
         aliases: &["kmh", "km/h", "kph", "كلم/س"],
     },
     Unit {
         name: "mile per hour",
+        names: ("ميل/سا", "mph"),
         dimension: Dimension::Speed,
         per_base: "1.609344",
         aliases: &["mph", "mi/h"],
     },
     Unit {
         name: "metre per second",
+        names: ("م/ث", "m/s"),
         dimension: Dimension::Speed,
         per_base: "3.6",
         aliases: &["ms", "m/s"],
@@ -217,29 +248,45 @@ const UNITS: &[Unit] = &[
     // --- data ---------------------------------------------------------------------------
     Unit {
         name: "byte",
+        names: ("بايت", "octet"),
         dimension: Dimension::Data,
         per_base: "1",
         aliases: &["b", "byte", "bytes"],
     },
     Unit {
         name: "kilobyte",
+        names: ("كيلوبايت", "kilo-octet"),
         dimension: Dimension::Data,
         per_base: "1024",
         aliases: &["kb", "kilobyte"],
     },
     Unit {
         name: "megabyte",
+        names: ("ميغابايت", "mégaoctet"),
         dimension: Dimension::Data,
         per_base: "1048576",
         aliases: &["mb", "megabyte", "mo"],
     },
     Unit {
         name: "gigabyte",
+        names: ("غيغابايت", "gigaoctet"),
         dimension: Dimension::Data,
         per_base: "1073741824",
         aliases: &["gb", "gigabyte", "go"],
     },
 ];
+
+impl Unit {
+    /// The name to display in a given interface language.
+    fn display(&self, lang: &str) -> &'static str {
+        match lang {
+            // Darija reads Arabic. Falling back to English would be a strictly worse guess.
+            "ar" | "ary" => self.names.0,
+            "fr" => self.names.1,
+            _ => self.name,
+        }
+    }
+}
 
 /// Words meaning "to", across the languages people mix.
 const TO: &[&str] = &["to", "in", "en", "into", "as", "الى", "إلى", "بال", "ب"];
@@ -256,6 +303,13 @@ impl Tool for UnitConverter {
     }
 
     fn answer(&self, query: &str) -> Option<Answer> {
+        self.answer_in(query, "en")
+    }
+}
+
+impl UnitConverter {
+    /// Convert, rendering unit names in `lang`.
+    pub fn answer_in(&self, query: &str, lang: &str) -> Option<Answer> {
         let folded = fold_digits(query).to_lowercase();
         let tokens: Vec<&str> = folded.split_whitespace().collect();
         if tokens.len() < 2 {
@@ -285,8 +339,13 @@ impl Tool for UnitConverter {
             // Structural and total: the whole string was consumed as a conversion. Higher than
             // the calculator's, which is what makes the converter win `5 km to miles`.
             confidence: 0.99,
-            interpretation: format!("{} {} → {}", trim(amount), from.name, to.name),
-            value: format!("{} {}", trim(result), to.name),
+            interpretation: format!(
+                "{} {} → {}",
+                trim(amount),
+                from.display(lang),
+                to.display(lang)
+            ),
+            value: format!("{} {}", trim(result), to.display(lang)),
             detail: Some(serde_json::json!({
                 "amount": amount.to_string(),
                 "from": from.name,

@@ -24,6 +24,7 @@
 //! no card.
 
 pub mod calculator;
+pub mod datetime;
 pub mod units;
 
 use serde::Serialize;
@@ -74,6 +75,7 @@ pub fn registry() -> Vec<Box<dyn Tool>> {
     vec![
         Box::new(calculator::Calculator),
         Box::new(units::UnitConverter),
+        Box::new(datetime::DateTool),
     ]
 }
 
@@ -83,6 +85,11 @@ pub fn registry() -> Vec<Box<dyn Tool>> {
 /// never panic, but a search engine that returns 500 because a unit converter tripped over a
 /// malformed number has its priorities inverted.
 pub fn best(raw: &str) -> Option<Answer> {
+    best_in(raw, "en")
+}
+
+/// As [`best`], but rendering unit names and labels in `lang`.
+pub fn best_in(raw: &str, lang: &str) -> Option<Answer> {
     let query = raw.trim();
     if query.is_empty() {
         return None;
@@ -95,18 +102,29 @@ pub fn best(raw: &str) -> Option<Answer> {
     if let Some(rest) = query.strip_prefix('!') {
         let (keyword, operand) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
         let tool = tools.iter().find(|t| t.keyword() == keyword)?;
-        return catch(|| tool.answer(operand.trim()));
+        return catch(|| localised(tool.as_ref(), operand.trim(), lang));
     }
 
     tools
         .iter()
-        .filter_map(|tool| catch(|| tool.answer(query)))
+        .filter_map(|tool| catch(|| localised(tool.as_ref(), query, lang)))
         .filter(|answer| answer.confidence >= MIN_CONFIDENCE)
         .max_by(|a, b| {
             a.confidence
                 .partial_cmp(&b.confidence)
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
+}
+
+/// Dispatch to a tool's localised entry point where it has one.
+///
+/// Only the converter renders language-dependent text today. A trait method taking a language
+/// would push that concern into every tool that does not need it.
+fn localised(tool: &dyn Tool, query: &str, lang: &str) -> Option<Answer> {
+    if tool.name() == "unit-converter" {
+        return units::UnitConverter.answer_in(query, lang);
+    }
+    tool.answer(query)
 }
 
 fn catch(f: impl FnOnce() -> Option<Answer>) -> Option<Answer> {
