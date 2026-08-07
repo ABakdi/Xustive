@@ -258,6 +258,151 @@
     fetchSummary(token);
   }
 
+  // --- suggestions ------------------------------------------------------------------
+  //
+  // An ARIA combobox, because a list of options that appears under an input and responds to
+  // arrow keys is a combobox whether or not it is labelled as one — and a screen reader that is
+  // not told about it reads the input as empty while sighted users see eight suggestions.
+  //
+  // Nothing about a prefix is stored client-side either. There is no local history, because the
+  // most private thing a search engine holds is what you started to type and then deleted.
+
+  const SUGGEST_DEBOUNCE_MS = 90;
+  const MIN_SUGGEST_CHARS = 2;
+
+  function attachSuggestions(form) {
+    const input = form.querySelector('input[name="q"]');
+    if (!input) return;
+
+    const list = document.createElement('ul');
+    list.className = 'suggestions';
+    list.id = 'suggestions-' + Math.random().toString(36).slice(2, 9);
+    list.setAttribute('role', 'listbox');
+    list.hidden = true;
+    form.appendChild(list);
+
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-expanded', 'false');
+    input.setAttribute('aria-controls', list.id);
+    input.setAttribute('aria-autocomplete', 'list');
+
+    let items = [];
+    let active = -1;
+    let timer = null;
+    let inFlightSuggest = null;
+    // What the user actually typed, kept so arrowing through options and back returns it.
+    let typed = '';
+
+    function close() {
+      list.hidden = true;
+      list.innerHTML = '';
+      items = [];
+      active = -1;
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+    }
+
+    function highlight(index) {
+      active = index;
+      [...list.children].forEach((li, i) => {
+        const on = i === index;
+        li.setAttribute('aria-selected', on ? 'true' : 'false');
+        li.classList.toggle('active', on);
+      });
+      if (index >= 0) {
+        input.value = items[index].text;
+        input.setAttribute('aria-activedescendant', list.children[index].id);
+      } else {
+        input.value = typed;
+        input.removeAttribute('aria-activedescendant');
+      }
+    }
+
+    function render(suggestions) {
+      items = suggestions;
+      if (!items.length) return close();
+
+      list.innerHTML = items
+        .map((s, i) =>
+          `<li id="${list.id}-${i}" role="option" aria-selected="false" dir="auto" ` +
+          `data-index="${i}">${escapeHtml(s.text)}</li>`)
+        .join('');
+      list.hidden = false;
+      active = -1;
+      input.setAttribute('aria-expanded', 'true');
+    }
+
+    async function fetchSuggestions(prefix) {
+      if (inFlightSuggest) inFlightSuggest.abort();
+      const controller = new AbortController();
+      inFlightSuggest = controller;
+      try {
+        const res = await fetch(
+          '/api/v1/suggest?q=' + encodeURIComponent(prefix) + '&limit=8',
+          { signal: controller.signal, headers: { Accept: 'application/json' } },
+        );
+        if (!res.ok) return close();
+        const data = await res.json();
+        // The prefix may have moved on while this was in flight.
+        if (input.value.trim() !== prefix) return;
+        render(data.suggestions || []);
+      } catch (err) {
+        // Including aborts. A suggestion box that shows an error is worse than one that shows
+        // nothing: the user is mid-keystroke and did not ask a question.
+        close();
+      } finally {
+        if (inFlightSuggest === controller) inFlightSuggest = null;
+      }
+    }
+
+    input.addEventListener('input', () => {
+      typed = input.value;
+      const prefix = typed.trim();
+      clearTimeout(timer);
+      if (prefix.length < MIN_SUGGEST_CHARS) return close();
+      // Debounced so a fast typist sends one request per pause rather than one per key. Short
+      // enough that the list still feels attached to the keyboard.
+      timer = setTimeout(() => fetchSuggestions(prefix), SUGGEST_DEBOUNCE_MS);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (list.hidden) return;
+      // Arrow semantics do not flip in RTL: down is still "further down the list". Only the
+      // horizontal axis mirrors, and this list has no horizontal axis.
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        highlight(active + 1 >= items.length ? -1 : active + 1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        highlight(active - 1 < -1 ? items.length - 1 : active - 1);
+      } else if (e.key === 'Enter') {
+        // Let the form submit; just commit the highlighted option first.
+        if (active >= 0) input.value = items[active].text;
+        close();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        input.value = typed;
+        close();
+      } else if (e.key === 'Tab') {
+        close();
+      }
+    });
+
+    list.addEventListener('mousedown', (e) => {
+      // mousedown, not click: blur fires first on click and would close the list before the
+      // selection registered.
+      const li = e.target.closest('li[data-index]');
+      if (!li) return;
+      e.preventDefault();
+      input.value = items[Number(li.dataset.index)].text;
+      close();
+      form.requestSubmit ? form.requestSubmit() : form.submit();
+    });
+
+    input.addEventListener('blur', () => setTimeout(close, 120));
+    form.addEventListener('submit', close);
+  }
+
   function enhanceForms() {
     document.querySelectorAll('form[role="search"]').forEach((form) => {
       form.addEventListener('submit', (e) => {
@@ -275,6 +420,7 @@
           if (!handled) form.submit();
         });
       });
+      attachSuggestions(form);
     });
   }
 

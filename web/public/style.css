@@ -424,3 +424,66 @@ a.citation:hover { text-decoration: underline; }
   background: var(--color-accent-weak);
   border-radius: var(--radius-sm);
 }
+
+/* --- suggestions --------------------------------------------------------------------
+ *
+ * Positioned against the form, which is `position: relative`, so the list tracks the input in
+ * both directions without any script computing coordinates. Logical properties throughout:
+ * `inset-inline` rather than left/right means the list aligns to the input's start edge in
+ * Arabic exactly as it does in French, with no direction-specific rule. */
+
+.search-box { position: relative; }
+
+.suggestions {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline: 0;
+  /* Above the sticky site header (10) and everything else on the page. A floating panel that
+   * loses the stacking order is not a panel, it is text drawn over other text — which is what
+   * the first version looked like, with the privacy note showing through the top row. */
+  z-index: 100;
+  margin-block-start: var(--space-1);
+  padding: var(--space-1) 0;
+  list-style: none;
+  /* An opaque surface, not the page background. The first version used --color-bg and the
+   * privacy note underneath read straight through the list — a floating panel has to occlude
+   * what it covers or it is just text on top of other text. */
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 45%);
+  max-block-size: 60vh;
+  overflow-y: auto;
+}
+
+.suggestions li {
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  font-size: var(--text-base);
+  /* Touch-target floor, same as every other tappable thing. A suggestion list with 32px rows is
+   * a list that gets the wrong row on a phone. */
+  min-block-size: 44px;
+  display: flex;
+  align-items: center;
+  text-align: start;
+}
+
+.suggestions li:hover,
+.suggestions li.active {
+  background: var(--color-accent-weak);
+}
+
+/* Keyboard and pointer selection look identical on purpose: a keyboard user should not have to
+ * learn a second visual language for the same state. */
+.suggestions li.active {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .suggestions { animation: suggest-in 90ms ease-out; }
+  @keyframes suggest-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: none; }
+  }
+}

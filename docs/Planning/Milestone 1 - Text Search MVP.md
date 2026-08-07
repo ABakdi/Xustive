@@ -192,7 +192,8 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 ## M1-T13 — Core UI
 
 - [ ] M1-T13.1 [[UI - Design System]] tokens, light and dark
-- [ ] M1-T13.2 [[UI - Component Library]]: SearchBox, SuggestionList, SummaryBlock, ResultCard,
+- [~] M1-T13.2 [[UI - Component Library]]: SearchBox, **SuggestionList**, SummaryBlock, ResultCard
+      are built. Remaining:
       FilterChip, Pagination, Sheet, Toast, Skeleton, EmptyState
 - [ ] M1-T13.3 [[UI - Home Page]]
 - [ ] M1-T13.4 [[UI - Results Page]] with the two-request render sequence
@@ -204,8 +205,11 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 ## M1-T14 — [[UI - RTL and Localization]]
 
-- [ ] M1-T14.1 Logical-property CSS throughout + a lint rejecting physical properties
-- [ ] M1-T14.2 `dir="auto"` on every content slot; `<bdi>` around URLs and numbers in RTL
+- [~] M1-T14.1 Logical-property CSS throughout — the suggestion panel uses `inset-inline` and
+      `inset-block-start`, so it aligns to the input's start edge in Arabic and French with no
+      direction-specific rule. The lint rejecting physical properties is not built
+- [~] M1-T14.2 `dir="auto"` on every content slot including suggestions and the summary;
+      `<bdi>` around URLs and numbers in RTL is not done
 - [ ] M1-T14.3 String files for ar / ary / fr / en with `Intl.PluralRules`
 - [ ] M1-T14.4 Algerian month names (أوت, جويلية) in formatting **and** parsing
 - [ ] M1-T14.5 Directional icon mirroring, logo exclusion
