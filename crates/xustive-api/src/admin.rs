@@ -131,7 +131,8 @@ pub async fn status(
         "gpu_detected": device::detect_gpu(),
         "models": Registry::new(&state.config.ml.model_dir).status(),
         "index": {
-            "documents": state.config.search.documents_index,
+            "alias": state.config.search.documents_index,
+            "documents": state.documents_index(),
             "meili_url": state.config.search.meili_url,
         },
         "ranking": &*state.ranking,

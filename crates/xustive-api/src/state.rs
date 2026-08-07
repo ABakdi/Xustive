@@ -41,10 +41,49 @@ pub struct AppState {
     /// endpoint already handles, since it is also what a busy or missing model looks like.
     #[cfg(feature = "summariser")]
     pub engine: Arc<std::sync::RwLock<Option<Arc<xustive_ml::engine::Engine>>>>,
+    /// The concrete index behind the `documents` alias, resolved once at startup.
+    ///
+    /// Resolved once rather than per request: it changes only when a reindex flips the alias,
+    /// which restarts the process anyway, and a lookup on the search path would add a round
+    /// trip to every query to answer a question whose answer never changes.
+    pub documents_index: Arc<std::sync::RwLock<String>>,
     pub metrics: Metrics,
 }
 
 impl AppState {
+    /// The index searches actually run against.
+    pub fn documents_index(&self) -> String {
+        self.documents_index
+            .read()
+            .map(|s| s.clone())
+            .unwrap_or_else(|_| self.config.search.documents_index.clone())
+    }
+
+    /// Resolve the `documents` alias to a concrete index.
+    ///
+    /// Called once at startup. A failure here is not fatal: the alias name is a valid index name
+    /// and is what pre-alias deployments use, so falling back keeps a system with an unreachable
+    /// Meilisearch starting up and reporting the real problem through `/readyz`.
+    pub async fn resolve_index(&self) {
+        match self
+            .search
+            .resolve(&self.config.search.documents_index)
+            .await
+        {
+            Ok(index) => {
+                if index != self.config.search.documents_index {
+                    tracing::info!(alias = %self.config.search.documents_index, %index, "alias resolved");
+                }
+                if let Ok(mut slot) = self.documents_index.write() {
+                    *slot = index;
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "could not resolve the documents alias; using it directly")
+            }
+        }
+    }
+
     /// The summariser, if it has finished loading.
     #[cfg(feature = "summariser")]
     pub fn summariser(&self) -> Option<Arc<xustive_ml::engine::Engine>> {
@@ -72,6 +111,10 @@ impl AppState {
     }
 
     pub fn new(config: Config) -> Result<Self, SearchError> {
+        // Falls back to the alias name itself, which is also what a pre-alias deployment uses.
+        // `resolve` is async and this is not, so the real lookup happens in `resolve_index`
+        // below, called from main once the runtime exists.
+        let documents_index = config.search.documents_index.clone();
         let device = config.ml.device.clone();
         let gpu_layers = config.ml.gpu_layers;
         let search = MeiliClient::new(
@@ -89,6 +132,7 @@ impl AppState {
                 xustive_ml::DevicePreference::parse(&device).unwrap_or_default() as u8,
             )),
             gpu_layers: Arc::new(AtomicI64::new(gpu_layers)),
+            documents_index: Arc::new(std::sync::RwLock::new(documents_index)),
             pending: Arc::new(PendingStore::default()),
             #[cfg(feature = "summariser")]
             engine: Arc::new(std::sync::RwLock::new(None)),

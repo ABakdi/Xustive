@@ -57,6 +57,13 @@ enum Command {
         #[arg(long)]
         no_discover: bool,
     },
+    /// Create the scoped Meilisearch keys the running services use. Idempotent.
+    Keys {
+        /// Print the key values. Off by default so a routine run cannot leave credentials in a
+        /// terminal scrollback or a CI log.
+        #[arg(long)]
+        show: bool,
+    },
     /// Show index document counts.
     Stats,
     /// Show what normalisation does to a string.
@@ -122,6 +129,7 @@ async fn main() -> Result<()> {
             };
             crawl::run(&client, &config, &list, &opts).await.map(|_| ())
         }
+        Command::Keys { show } => cmd_keys(&client, show).await,
         Command::Stats => cmd_stats(&client, &config).await,
         Command::Search { query, limit } => cmd_search(&client, &config, &query, limit).await,
         Command::Text { .. } => unreachable!("handled above"),
@@ -129,7 +137,25 @@ async fn main() -> Result<()> {
 }
 
 async fn cmd_migrate(client: &MeiliClient, check: bool) -> Result<()> {
-    for (index, primary_key, desired) in settings::all() {
+    for (alias, primary_key, desired) in settings::all() {
+        // Fresh installs get `documents_v1`; existing ones keep whatever they already have.
+        // Everything reads through `resolve`, so this is invisible to callers and is what makes
+        // a live reindex possible later — build vN+1 alongside, verify, flip.
+        //
+        // Never renames an existing plain index. Doing so would need a copy of every document,
+        // and a half-finished migration would leave a search engine that has forgotten
+        // everything, which does not look like a migration problem from the outside.
+        let resolved = client.resolve(alias).await?;
+        let index = if resolved != alias {
+            resolved
+        } else if client.index_exists(alias).await? {
+            println!("  {alias}: pre-alias index in place, left as it is");
+            alias.to_string()
+        } else {
+            format!("{alias}_v1")
+        };
+        let index = index.as_str();
+
         if check {
             let live = client
                 .get_settings(index)
@@ -156,6 +182,58 @@ async fn cmd_migrate(client: &MeiliClient, check: bool) -> Result<()> {
             .await
             .with_context(|| format!("applying settings to {index}"))?;
         println!("✓ {index}: created and configured");
+    }
+    Ok(())
+}
+
+/// Provision the scoped keys.
+///
+/// The master key can delete every index. `xustive-api` only searches and the worker only
+/// writes, so neither should hold it — and after this runs, the master key is needed by exactly
+/// one thing: this migration tool.
+async fn cmd_keys(client: &MeiliClient, show: bool) -> Result<()> {
+    // A Meilisearch started without MEILI_MASTER_KEY has no key API at all, and the 401 it
+    // returns says nothing about what to do. Development runs that way by default, so this is
+    // the common case rather than an edge one.
+    if let Err(e) = client.find_key("probe").await {
+        let msg = e.to_string();
+        if msg.contains("without a master key") {
+            anyhow::bail!(
+                "Meilisearch is running without a master key, so scoped keys cannot be \
+                 created.\n\n  Set MEILI_MASTER_KEY in .env, run `make dev-down && make \
+                 dev-up`, then re-run this.\n  Development defaults to no master key, which \
+                 is why this is not already set."
+            );
+        }
+        return Err(e).context("listing existing keys");
+    }
+
+    for spec in [&xustive_search::SEARCH_KEY, &xustive_search::INDEX_KEY] {
+        let existed = client.find_key(spec.name).await?.is_some();
+        let key = client
+            .ensure_key(spec)
+            .await
+            .with_context(|| format!("provisioning key {}", spec.name))?;
+
+        println!(
+            "{} {}  {}",
+            if existed { "=" } else { "✓" },
+            spec.name,
+            spec.description
+        );
+        println!("    actions: {}", key.actions.join(", "));
+        if show {
+            println!("    key:     {}", key.key);
+        }
+    }
+
+    if show {
+        println!();
+        println!("Put the search key in MEILI_KEY for xustive-api, and the index key in the");
+        println!("worker's environment. Keep the master key out of both.");
+    } else {
+        println!();
+        println!("Re-run with --show to print the key values.");
     }
     Ok(())
 }

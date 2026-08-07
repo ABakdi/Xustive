@@ -187,7 +187,7 @@ pub async fn handler(
     let retrieval_started = Instant::now();
     let hits = state
         .search
-        .search::<Value>(&cfg.documents_index, &query)
+        .search::<Value>(&state.documents_index(), &query)
         .await
         .map_err(ApiError::from)?;
     state.metrics.observe(
