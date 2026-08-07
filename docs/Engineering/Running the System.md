@@ -21,19 +21,26 @@ updated: 2026-08-06
 
 ## 1. What exists right now
 
-Search works end to end over a generated sample corpus. There is no crawler, so the index is
-populated from fixtures rather than the live web.
+Search works end to end over real content crawled from Algerian sites, and AI summaries are
+generated locally from the results.
 
 | Runs today | Not built yet |
 |:---|:---|
-| `xustive-api` — HTTP, search, server-rendered results | `xustive-crawler` — [[Milestone 3 - Ingestion at Scale]] |
-| `xustive-cli` — migrate, seed, stats, text, search | `xustive-worker` — parse, enrich, index |
-| Language detection, Arabizi ↔ Arabic expansion | `xustive-ml` — summariser, voice, image |
-| Meilisearch index + generated synonyms | Qdrant and Redis are running but unused |
-| The web UI, including the no-JavaScript path | Autocomplete, filters UI, AI summary |
+| `xustive-api` — HTTP, search, server-rendered results | `xustive-worker` — a standing parse/enrich/index service |
+| `xustive-cli` — migrate, seed, **crawl**, stats, text, search | Continuous scheduled crawling — [[Milestone 3 - Ingestion at Scale]] |
+| Language detection, Arabizi ↔ Arabic expansion, sentiment | Voice and image search — [[Milestone 4 - Multimodal]] |
+| Meilisearch index + generated synonyms | Qdrant is running but unused |
+| The web UI, including the no-JavaScript path | Autocomplete, filters UI |
+| **AI summaries** — local Qwen2.5 via llama.cpp ([[Summarizer]]) | Streaming summaries — see [[Summarizer]] §3 |
+| **`/admin`** — switch the summariser between GPU and CPU | Redis-backed queueing |
 
-Qdrant and Redis are started because later milestones need them and it is cheaper to have the
-topology settled now than to change it later. Nothing reads from them yet.
+Crawling is a command you run, not a service that runs itself: `xustive-cli crawl` fetches a
+seed list, and nothing schedules it yet. Qdrant is started because later milestones need it and
+the topology is cheaper to settle now than to change later.
+
+**Summaries are slow on CPU** — 16 to 27 seconds depending on the model, against a 2.5 s budget.
+They are fetched by a second request after the results render, so nothing waits for them, but the
+gap is real and measured; see [[Summarizer]] §8.
 
 ---
 
@@ -140,6 +147,49 @@ Try these queries in the browser — they exercise different parts of the langua
 | `wach rak khouya` | Arabizi detection in Latin script |
 | `ch7al` | digit-as-consonant Arabizi, expanded to `شحال` and `combien` |
 | `facture electricite` | French |
+
+---
+
+### AI summaries
+
+The summariser needs model weights, which are not in the repository — they are gigabytes and
+change independently of the code.
+
+```bash
+./scripts/fetch-models.sh          # the 2 GB default (Qwen2.5-3B-Instruct Q4_K_M)
+./scripts/fetch-models.sh all      # also the 1.1 GB 1.5B, which is faster on CPU
+```
+
+Restart `xustive-api` afterwards. It loads the model in the background at startup and logs
+`summariser ready`; until then, searches work normally and simply return no summary.
+
+Search a topic with several indexed articles and the summary appears above the results a few
+seconds later. Nothing on the page waits for it.
+
+To check what the summariser is doing, open **http://localhost:8080/admin**. It shows which
+device is in use, why, which models are present, and lets you switch between GPU and CPU.
+
+### Choosing GPU or CPU
+
+The device is a runtime setting, changed from `/admin` or with `XUSTIVE_DEVICE=cpu|gpu|auto`.
+It takes effect on the next model load, so restart after changing it.
+
+Using a GPU also requires a binary built with GPU support, which needs the CUDA toolkit:
+
+```bash
+cargo build --release -p xustive-api --features cuda
+```
+
+Without it, `/admin` reports *"this binary was built without GPU support"* even when it can see
+the card — that is the expected message, not a fault. A CPU-only build is fully functional; it is
+only slower.
+
+To measure what the hardware actually delivers:
+
+```bash
+cargo run --release -p xustive-ml --example bench           # CPU
+cargo run --release -p xustive-ml --example bench -- gpu    # GPU, on a cuda build
+```
 
 ---
 

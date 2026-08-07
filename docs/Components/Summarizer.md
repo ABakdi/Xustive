@@ -5,7 +5,7 @@ tags:
   - ml
 component-id: C08
 binary: xustive-ml
-status: specified
+status: implemented
 updated: 2026-08-06
 ---
 
@@ -30,18 +30,33 @@ passages do not support an answer, the correct output is *no summary*.
 
 ## 3. Interface
 
-Internal HTTP (`xustive-api` → `xustive-ml`), streamed:
+**As built** — an in-process call, exposed to the browser as a second request:
 
 ```
-POST /internal/summarize
-{ "query": "…", "language": "ary",
-  "passages": [ { "id": "01J…", "title": "…", "text": "…", "published_at": 1754438400,
-                  "source_type": "web", "domain": "elkhabar.com" } ],
-  "max_tokens": 120, "deadline_ms": 2500 }
-→ chunked: {"delta":"…"} … {"done":{"citations":[{"result_id":"01J…","n":1}],"tokens":84}}
+GET  /api/v1/search?q=…      → { …, "summary_token": "01KZ…" }
+POST /api/v1/summary
+{ "token": "01KZ…" }
+→ { "summary": "…[1]…", "citations": [{"n":1,"result_id":"01J…"}], "took_ms": 24621 }
+→ { "summary": null, "reason": "insufficient", "took_ms": 12 }
 ```
 
-Surfaced to the browser as SSE by [[API Gateway]] ([[API Contract]] §3).
+Two deviations from the original design, both deliberate.
+
+**Not a separate service.** `xustive-ml` is a library linked into `xustive-api`, not a process
+behind internal HTTP. A network hop between them would buy independent scaling we do not need at
+this size, and cost a second copy of every passage plus a failure mode where search is up and the
+summariser is unreachable.
+
+**Not streamed.** §4.5 requires validation *after* generation — the zero-citation rule cannot be
+evaluated until the model has finished. Streaming tokens as they arrive would put text on screen
+that validation then rejects, so the user would watch a hallucination assemble itself and
+disappear. Time to first token therefore stops being the metric that matters; total time is.
+Nothing on the page waits for it either way: the results render first and the summary appears
+later or not at all.
+
+The token binds a summary request to a search we performed. It is single-use, expires after two
+minutes, and lives only in process. An unknown token and an expired one are indistinguishable in
+the response.
 
 ## 4. Internal Design
 
@@ -152,13 +167,38 @@ Every failure here is **invisible to the user beyond a missing summary block** �
 
 ## 8. Performance
 
-| Metric | Budget |
-|:---|:---|
-| Time to first token | ≤ 800 ms p95 |
-| Full summary | ≤ 2 500 ms p95 ([[Performance Budgets]]) |
-| Throughput per replica | ≥ 2 concurrent, ~35 tok/s each (CPU) |
-| Resident memory | ≤ 4 GB per replica |
-| Drop rate under normal load | ≤ 2 % |
+| Metric | Budget | Measured (CPU) | Met |
+|:---|:---|:---|:---|
+| Time to first token | ≤ 800 ms p95 | 8.6 s (3B), 4.0 s (1.5B) | ❌ |
+| Full summary | ≤ 2 500 ms p95 | 27.1 s (3B), 16.5 s (1.5B) | ❌ |
+| Throughput per replica | ~35 tok/s (CPU) | 4.1 tok/s (3B), 8.6 tok/s (1.5B) | ❌ |
+| Resident memory | ≤ 4 GB per replica | ~2.4 GB (3B) | ✅ |
+
+Measured on the reference machine — Intel i7-9850H, 12 threads, CPU only, one slot, three Arabic
+passages — with `cargo run --release -p xustive-ml --example bench`.
+
+**The CPU budget in the original specification was wrong.** The ~35 tok/s figure was an estimate
+made before anything ran; a 3B Q4\_K\_M on this class of CPU delivers between four and nine.
+Nothing in the implementation recovers an order of magnitude, so the honest position is that
+**summaries do not meet their latency budget on CPU** and the budget above records the gap rather
+than hiding it.
+
+This is survivable only because of the architectural choice in §3: the summary is a second
+request, so a 27-second summary sits behind a 38 ms search rather than in front of it. A user who
+never waits for it loses nothing.
+
+Three ways to close the gap, in order of expected effect:
+
+1. **GPU offload.** The reference card is a Quadro T1000 with 4 GB, which fits the 3B model
+   whole. Requires a build with `--features cuda` and the CUDA toolkit present; the device layer
+   already resolves the layer count and falls back to CPU when it cannot ([[Deployment Topology]]).
+2. **The 1.5B model on CPU.** Roughly twice as fast for weaker Arabic. Set
+   `ml.summariser_model = "qwen2.5-1.5b-instruct-q4"`.
+3. **Shorter output.** `max_tokens` is 120; decode time is linear in it.
+
+Until one of these lands, `ml.deadline_ms` is set to 30 000 rather than 2 500 — a budget the
+system cannot meet is not a budget, and cutting every summary off at 2.5 s would mean shipping
+the feature switched off while pretending otherwise.
 
 ## 9. Observability
 
@@ -186,8 +226,12 @@ has no network egress, so the model cannot call out even if instructed to.
 
 ## 12. Open Questions
 
-- [ ] Is a 3B model good enough for Arabic synthesis, or does quality force a 7B (and thus a GPU)?
-      Decide with the faithfulness gate during [[Milestone 1 - Text Search MVP]].
+- [x] **Is a 3B model good enough for Arabic synthesis?** On quality, yes — on real crawled
+      Algerian pages it produces grounded, correctly cited MSA, refuses when the passages do not
+      answer, and did not obey an injected instruction in a hostile passage. On *speed*, no: see
+      §8. The open question has moved from quality to latency.
+- [ ] Does the faithfulness gate hold at scale? Three fixtures is not 100, and the gate in §11
+      still needs the judged set from [[Milestone 1 - Text Search MVP]].
 - [ ] Should Darija queries get a Darija summary if a suitable model appears?
 - [ ] Show citations as `[1]` markers linked to result cards, or as a subtle source list?
       (see [[UI - Results Page]])

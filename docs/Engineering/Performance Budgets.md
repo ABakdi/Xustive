@@ -57,8 +57,8 @@ measurement.
 | Endpoint | Budget | Note |
 |:---|:---|:---|
 | `/suggest` | **40 ms** p95, 80 ms p99 | fires per keystroke; the highest-QPS route |
-| `/search/summary` TTFT | **800 ms** | perceived summary responsiveness |
-| `/search/summary` complete | **2 500 ms** | never blocks results |
+| `/search/summary` TTFT | ~~800 ms~~ n/a | not streamed; see [[Summarizer]] §3 |
+| `/search/summary` complete | **2 500 ms** — *not met on CPU* | never blocks results |
 | `/search/voice` (5 s audio) | **1 500 ms** | includes decode + inference |
 | `/search/image` | **500 ms** | OCR or ANN path |
 | `/healthz` | 5 ms | |
@@ -109,7 +109,7 @@ Alert `IndexStale` fires when the median `crawled_at` age exceeds 24 h
 | Requests, first load | ≤ 6 | |
 | LCP | 2.0 s | Lighthouse CI |
 | INP | 200 ms | |
-| CLS | **0.05** | the summary block reserves height ([[UI - Results Page]] §2) |
+| CLS | **0.05** | the summary slot reserves *no* height and stays hidden until filled — most summaries never arrive, and a placeholder that collapses moves the results ([[UI - Results Page]] §2) |
 | DOM nodes, results page | ≤ 1 500 | |
 | Render 20 result cards | ≤ 16 ms | one frame |
 
@@ -139,7 +139,7 @@ lower.
 |:---|:---|:---|
 | Search availability | 99.5 % | 3 h 39 m |
 | Search p95 ≤ 200 ms | 99 % of 5-min windows | |
-| Summary delivered ≤ 2.5 s | 95 % of requests that ask | |
+| Summary delivered ≤ 2.5 s | 95 % of requests that ask | ❌ 0 % on CPU: measured 16.5 s (1.5B) to 27.1 s (3B). See [[Summarizer]] §8 — the estimate this budget was built on was an order of magnitude optimistic. GPU offload is the intended fix. |
 | Ingestion availability | 95 % | ingestion downtime does not affect search |
 
 Ingestion has a deliberately loose SLO: it is the fragile plane, and [[System Architecture]] §1 is
@@ -165,7 +165,9 @@ built so that its failures cost freshness, never availability.
 - [ ] Are these numbers achievable at 10M documents on one Meilisearch node, or does the search
       budget force a read replica? **Must be answered with a real load test during
       [[Milestone 4 - Quality and Operations]], not assumed.**
-- [ ] Is 2.5 s the right summary budget, or would users prefer a faster, shorter summary?
+- [ ] Is 2.5 s the right summary budget, or would users prefer a faster, shorter summary? Now
+      pressing rather than theoretical: on CPU the choice is between a shorter summary and no
+      summary, since `max_tokens` is the one knob with a linear effect on total time.
 - [ ] Should the client budget assume 3G in 2026, or has the realistic floor moved to 4G?
 
 ## Related

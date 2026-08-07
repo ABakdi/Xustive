@@ -76,7 +76,7 @@ Tick as tasks complete in the milestone notes.
 - [ ] M1-T05 [[Query Pipeline]] orchestration and re-rank
 - [ ] M1-T06 [[Ranking and Relevance]] implementation and tuning
 - [ ] M1-T07 [[Sentiment Engine]] lexicon mode
-- [ ] M1-T08 [[Summarizer]] with validation and streaming
+- [x] M1-T08 [[Summarizer]] with validation — grounded summaries from local Qwen2.5, runtime GPU/CPU switching. Streaming dropped deliberately; faithfulness evaluation still blocked on B7
 - [ ] M1-T09 [[Autocomplete Service]]
 - [ ] M1-T10 [[Content Parser]] HTML cascade
 - [ ] M1-T11 [[Indexer Worker]] batching
@@ -184,9 +184,9 @@ arrives.
 | B1 | **Account acquisition + pool sizing** for FB/IG; warm-up is 10+ days wall-clock | M3-T08/09 | — | **start in M1** |
 | B2 | **Residential/mobile proxy provider** — DZ coverage across ≥ 4 ASNs, exit-node consent | M3-T07, all platform collection | — | before M3-T07 |
 | B3 | Monthly bandwidth budget for residential pools | M3-T07 cost gate | — | M3 planning |
-| B4 | Is a 3B model good enough for Arabic summaries? | M1-T08 scope | — | during M1 |
+| ~~B4~~ | Is a 3B model good enough for Arabic summaries? | — | **Yes on quality, no on speed.** Resolved during M1; became a latency question, see [[Summarizer]] §8 | closed |
 | B5 | Who owns lexicon and registry curation? | quality of everything | — | M1 |
-| B6 | Hardware: is a GPU in the budget? | M2 latency, M1-T08 quality | — | M2 planning |
+| B6 | Hardware: is a GPU in the budget? | **Now blocking summary latency**, not just M2 | Code is ready: build with `--features cuda` and the device layer does the rest. Needs the CUDA toolkit installed on the host | urgent |
 | B7 | Native Darija speakers for UI strings and evaluation | M1-T14, M5-T06 | — | M1 |
 | B8 | Legal entity (for takedowns/submissions) + Law 18-07 position | M5-T01 | — | before M5 |
 | B9 | Who owns the collection maintenance tail? Signer re-extraction, path repair, pool refresh | M3 onward, **permanently** | — | M3 |

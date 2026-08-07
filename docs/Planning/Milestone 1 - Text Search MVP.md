@@ -104,15 +104,25 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 ## M1-T08 — [[Summarizer]]
 
-- [ ] M1-T08.1 `llama-cpp-rs` integration, model loading, checksum verification
-- [ ] M1-T08.2 Passage preparation: match-centred truncation, quality filtering, context cap
-- [ ] M1-T08.3 Prompt with untrusted-content framing ([[Security and Privacy]] §5)
-- [ ] M1-T08.4 Streaming over SSE with abort on client disconnect
-- [ ] M1-T08.5 Output validation: `INSUFFICIENT`, URL/email rejection, citation requirement, length
-- [ ] M1-T08.6 Bounded queue; shed rather than queue under load
-- [ ] M1-T08.7 **Injection fixture suite** in CI
-- [ ] M1-T08.8 **Faithfulness evaluation: 100 cases, ≥ 95 %, human-sampled**
-- [ ] M1-T08.9 Decide B4: is 3B enough, or do we need a GPU / extractive fallback?
+- [x] M1-T08.1 `llama-cpp-2` integration, model loading, GGUF magic check on download
+- [x] M1-T08.2 Passage preparation: match-centred truncation, quality filtering, context cap
+- [x] M1-T08.3 Prompt with untrusted-content framing ([[Security and Privacy]] §5)
+- [ ] ~~M1-T08.4 Streaming over SSE~~ — **dropped, deliberately.** §4.5 validates *after*
+      generation, so streamed tokens would show text that validation then rejects. Replaced by a
+      second request after the results render; see [[Summarizer]] §3. Client abort still frees
+      the slot, since a closed reply channel is checked before generation starts.
+- [x] M1-T08.5 Output validation: `INSUFFICIENT`, URL/email/phone rejection, citation
+      requirement, language check, length and sentence caps
+- [x] M1-T08.6 Bounded queue; shed rather than queue under load
+- [x] M1-T08.7 Injection fixture — one hostile-passage case runs against the real model. Not yet
+      a *suite*, and it is skipped when the weights are absent, so it does not gate CI
+- [ ] M1-T08.8 **Faithfulness evaluation: 100 cases, ≥ 95 %, human-sampled** — blocked on B7
+- [x] M1-T08.9 **Decide B4.** Quality: 3B is enough — grounded, correctly cited MSA on real
+      crawled pages, refuses when passages do not answer, resisted an injected instruction.
+      Latency: it is not — 27 s on CPU against a 2.5 s budget ([[Summarizer]] §8). The decision
+      moves to GPU offload rather than a different model
+- [x] M1-T08.10 Runtime device selection with `/admin` page, GPU with CPU fallback that never
+      fails to start ([[Deployment Topology]])
       ([[ADR-0005 - Local Quantised LLM for Summaries]])
 
 ## M1-T09 — [[Autocomplete Service]]
@@ -207,7 +217,7 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 | Risk | Mitigation |
 |:---|:---|
 | Lexicon work is unglamorous and gets deferred | it is on the critical path for the exit gate, and B5/B7 name it as a people problem |
-| 3B summaries are not good enough in Arabic | M1-T08.9 forces the decision inside this milestone, with a documented fallback |
+| ~~3B summaries are not good enough in Arabic~~ | **Resolved.** Quality is adequate; speed is not. The live risk is now latency, tracked in [[Summarizer]] §8 |
 | Ranking tuned to the fixture corpus, not reality | re-run the full evaluation after M3 when real content arrives |
 | Golden set judged by non-native speakers | explicitly blocked on B7; do not substitute |
 
