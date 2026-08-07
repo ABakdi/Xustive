@@ -56,8 +56,22 @@ Re-baselining is deliberate: copy the new report over `eval/reports/baseline.jso
 commit message why the drop was acceptable. A gate that can be silenced by rerunning it is not a
 gate.
 
-## Known finding
+## What the first run found
 
-The first run recorded a **38 % zero-result rate on Arabizi queries** against 0 % for Arabic,
-French and English, with nDCG@10 of 0.43 against 0.74–0.84. Transliteration is not bridging to
-Arabic documents for well over a third of Darija queries. See `eval/reports/` for the series.
+**19 of 20 Arabizi queries returned nothing.** `oukala alanba`, `alouzir alaoul`, `9aid al9ouat` —
+all zero results. The query expander existed and was fully tested; nothing called it. An
+Algeria-first search engine where Darija typed in Latin script finds no results is not doing the
+thing it exists for, and no amount of ranking work would have surfaced this.
+
+Wiring an expanded retrieval leg into the search path fixed it, measured on the same corpus:
+
+| | before | after |
+|:---|---:|---:|
+| zero-result rate | 10.2 % | **0.0 %** |
+| nDCG@10, Darija | 0.423 | **0.571** |
+| MRR@10 | 0.885 | **0.931** |
+
+An intermediate run appeared to show French regressing. It had not — a crawl was adding documents
+between runs, and judgements are frozen, so every new document counted as irrelevant. On a
+matched corpus French is unchanged at 0.755, and expansion fires on only 8 % of French queries
+anyway. This is why the runner now refuses to gate across a corpus change.

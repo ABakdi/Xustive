@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use std::collections::HashMap;
 use xustive_core::Config;
-use xustive_lang::Detector;
+use xustive_lang::{Detector, Expander, ExpanderConfig};
 
 use xustive_core::TrustTier;
 use xustive_search::{MeiliClient, SearchError, Weights};
@@ -22,6 +22,11 @@ pub struct AppState {
     /// Built once at startup: the lexicons are compiled in but the maps are not free to
     /// construct, and detection runs on every query.
     pub detector: Arc<Detector>,
+    /// Query expansion: Arabizi to Arabic, Darija to MSA, synonyms.
+    ///
+    /// Built once — the lexicons are compiled in but the maps are not free to construct, and
+    /// expansion runs on every query that needs a second retrieval leg.
+    pub expander: Arc<Expander>,
     /// Ranking weights. Loaded once; hot-reload arrives with the config work.
     pub ranking: Arc<Weights>,
     /// Source id to trust tier, from the seed registry.
@@ -129,6 +134,7 @@ impl AppState {
             config: Arc::new(config),
             search: Arc::new(search),
             detector: Arc::new(Detector::default()),
+            expander: Arc::new(Expander::new(ExpanderConfig::default())),
             ranking: Arc::new(Weights::default()),
             trust_tiers: Arc::new(load_trust_tiers()),
             device_preference: Arc::new(AtomicU8::new(

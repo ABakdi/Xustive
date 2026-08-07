@@ -45,6 +45,8 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
     let trust = HashMap::new();
     let weights = rank::Weights::default();
     let now = xustive_core::now_unix();
+    let detector = xustive_lang::Detector::default();
+    let expander = xustive_lang::Expander::default();
 
     println!(
         "Scoring {} queries against {index} ({})",
@@ -57,11 +59,43 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
         // The candidate pool, not one page. Recall@50 cannot be measured from ten results, and
         // re-ranking can only reorder what it is given.
         let normalized = xustive_text::normalize(&g.query);
-        let query = Query::new(&normalized).limit(config.search.candidate_pool.max(50));
-        let hits = client
+        let pool = config.search.candidate_pool.max(50);
+        let query = Query::new(&normalized).limit(pool);
+        let mut hits = client
             .search::<Value>(&index, &query)
             .await
             .with_context(|| format!("searching for {:?}", g.id))?;
+
+        // The same expanded leg the API runs. A harness that skips it measures a pipeline
+        // nobody uses — which is how the Arabizi failure looked like a ranking problem for a
+        // while rather than a missing retrieval step.
+        if hits.hits.len() < 5 {
+            let detected = detector.detect(&normalized);
+            let expansion = expander.expand(&normalized, detected.lang);
+            let terms: Vec<String> = expansion
+                .variants
+                .iter()
+                .map(|v| v.text.clone())
+                .take(12)
+                .collect();
+            if !terms.is_empty() {
+                let expanded = Query::new(terms.join(" ")).limit(pool);
+                if let Ok(extra) = client.search::<Value>(&index, &expanded).await {
+                    let mut seen: std::collections::HashSet<String> = hits
+                        .hits
+                        .iter()
+                        .filter_map(|h| h.get("id")?.as_str().map(str::to_string))
+                        .collect();
+                    for hit in extra.hits {
+                        if let Some(id) = hit.get("id").and_then(Value::as_str) {
+                            if seen.insert(id.to_string()) {
+                                hits.hits.push(hit);
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         let ranked = rank::rerank(&hits.hits, &normalized, now, &trust, &weights);
         let results: Vec<String> = ranked

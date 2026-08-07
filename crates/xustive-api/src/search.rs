@@ -111,6 +111,90 @@ pub struct SearchResponse {
     pub facets: Value,
 }
 
+/// Below this many primary hits, try the expanded leg.
+///
+/// Not zero. A query that returns three results is not obviously fine — for Arabizi it usually
+/// means a couple of incidental Latin-script matches while the Arabic documents that actually
+/// answer it were never reached.
+const EXPANSION_THRESHOLD: usize = 5;
+
+/// Retrieve again with expanded terms and merge into `hits`.
+///
+/// Returns the terms tried, for the response's `expanded_terms`. Failures are swallowed on
+/// purpose: this leg is an improvement on the primary result, never a precondition for it, and a
+/// search that already succeeded must not fail because an optional second attempt did.
+#[allow(clippy::too_many_arguments)]
+async fn expand_and_merge(
+    state: &AppState,
+    normalized: &str,
+    language: xustive_core::Lang,
+    index: &str,
+    hits: &mut xustive_search::Hits<Value>,
+    filters: &Filters,
+    sort: &[&str],
+) -> Vec<String> {
+    let expansion = state.expander.expand(normalized, language);
+    if expansion.is_empty() {
+        return Vec::new();
+    }
+
+    // One query containing every variant rather than one query per variant. Meilisearch treats
+    // the extra terms as optional, so this is a single round trip instead of N, and the
+    // re-ranker sorts out which of them actually mattered.
+    let terms: Vec<String> = expansion
+        .variants
+        .iter()
+        .map(|v| v.text.clone())
+        .take(MAX_EXPANDED_TERMS)
+        .collect();
+    if terms.is_empty() {
+        return Vec::new();
+    }
+
+    let mut expanded = Query::new(terms.join(" ")).limit(state.config.search.candidate_pool);
+    if let Some(expr) = filters.to_expression(SPAM_THRESHOLD) {
+        expanded = expanded.filter(expr);
+    }
+    if !sort.is_empty() {
+        expanded = expanded.sort(sort);
+    }
+
+    let Ok(extra) = state.search.search::<Value>(index, &expanded).await else {
+        return terms;
+    };
+
+    // Merge, keeping the primary leg's order first. A document found by both legs belongs where
+    // the primary put it: it matched the query as typed, which is stronger evidence than
+    // matching a transliteration of it.
+    let mut seen: std::collections::HashSet<String> = hits
+        .hits
+        .iter()
+        .filter_map(|h| h.get("id")?.as_str().map(str::to_string))
+        .collect();
+    for hit in extra.hits {
+        let Some(id) = hit.get("id").and_then(Value::as_str).map(str::to_string) else {
+            continue;
+        };
+        if seen.insert(id) {
+            hits.hits.push(hit);
+        }
+    }
+    hits.estimated_total_hits = hits.estimated_total_hits.max(extra.estimated_total_hits);
+
+    state.metrics.incr(
+        metrics::EXPANSION_USED,
+        metrics::EXPANSION_USED_HELP,
+        &[("lang", language.as_str())],
+    );
+    terms
+}
+
+/// Cap on variants sent to the engine.
+///
+/// Every extra term widens recall and dilutes precision. Beyond a handful the query stops being
+/// about what the user asked and starts being about what the lexicon happens to contain.
+const MAX_EXPANDED_TERMS: usize = 12;
+
 pub async fn handler(
     State(state): State<AppState>,
     AxumQuery(params): AxumQuery<SearchParams>,
@@ -185,11 +269,38 @@ pub async fn handler(
     }
 
     let retrieval_started = Instant::now();
-    let hits = state
+    let index = state.documents_index();
+    let mut hits = state
         .search
-        .search::<Value>(&state.documents_index(), &query)
+        .search::<Value>(&index, &query)
         .await
         .map_err(ApiError::from)?;
+
+    // --- expanded leg ---------------------------------------------------------------------
+    //
+    // A second retrieval, run only when the first found too little. The eval harness measured
+    // 19 of 20 Arabizi queries returning nothing at all — `ch7al`, `alouzir alaoul`, `3taf` —
+    // because the expander existed but nothing called it. An Algeria-first engine where Darija
+    // typed in Latin script finds zero results is not doing the thing it exists for.
+    //
+    // Conditional rather than always-on: expansion costs a round trip, and for a query that
+    // already retrieved well it adds only weaker matches that the re-ranker then has to push
+    // back down.
+    let expanded_terms = if hits.hits.len() < EXPANSION_THRESHOLD {
+        expand_and_merge(
+            &state,
+            &normalized,
+            language,
+            &index,
+            &mut hits,
+            &filters,
+            &sort,
+        )
+        .await
+    } else {
+        Vec::new()
+    };
+
     state.metrics.observe(
         metrics::SEARCH_DURATION,
         metrics::SEARCH_DURATION_HELP,
@@ -274,7 +385,7 @@ pub async fn handler(
             normalized,
             language: language.as_str(),
             language_confidence: confidence,
-            expanded_terms: Vec::new(),
+            expanded_terms,
             corrected: None,
         },
         summary_token,

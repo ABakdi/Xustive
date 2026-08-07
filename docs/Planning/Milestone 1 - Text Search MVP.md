@@ -86,8 +86,12 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 - [ ] M1-T05.1 Normalisation + operator parsing (`"…"`, `site:`, `-term`)
 - [ ] M1-T05.2 Deadline propagation as an absolute `Instant`
-- [ ] M1-T05.3 Multi-search request builder (primary / expanded / comments legs)
-- [ ] M1-T05.4 Merge, dedupe by id, comment grouping, parent fetch
+- [~] M1-T05.3 Multi-search request builder — primary and **expanded** legs are wired and
+      measured; the comments leg is not built. Expansion runs only when the primary returns
+      fewer than five hits, since a query that already retrieved well gains only weaker matches
+- [~] M1-T05.4 Merge and dedupe by id across legs, primary order preserved — a document found
+      by both matched the query *as typed*, which is stronger evidence than matching a
+      transliteration of it. Comment grouping and parent fetch are not built
 - [ ] M1-T05.5 Degradation ladder with per-call timeouts ([[Error Handling and Resilience]] §6)
 - [ ] M1-T05.6 Summary candidate selection and token handoff
 - [ ] M1-T05.7 Fault-injection tests: every optional dependency fails, request still succeeds

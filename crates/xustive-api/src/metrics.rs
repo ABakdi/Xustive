@@ -210,6 +210,10 @@ pub const HTTP_REQUESTS: &str = "xustive_http_requests_total";
 pub const HTTP_REQUESTS_HELP: &str = "Total HTTP requests by route and status";
 pub const HTTP_DURATION: &str = "xustive_http_duration_seconds";
 pub const HTTP_DURATION_HELP: &str = "HTTP request duration by route";
+pub const EXPANSION_USED: &str = "xustive_query_expansion_total";
+pub const EXPANSION_USED_HELP: &str =
+    "Queries that needed a second, expanded retrieval leg, by language";
+
 pub const RATE_LIMITED: &str = "xustive_rate_limited_total";
 pub const RATE_LIMITED_HELP: &str = "Requests refused by the rate limiter, by route";
 
