@@ -26,6 +26,8 @@ pub struct PageParams {
     #[serde(default)]
     pub page: Option<usize>,
     #[serde(default)]
+    pub lang: Option<String>,
+    #[serde(default)]
     pub source: Option<String>,
     #[serde(default)]
     pub sentiment: Option<String>,
@@ -47,7 +49,10 @@ pub async fn search_page(
         q: Some(raw.clone()),
         page: p.page,
         hits_per_page: Some(20),
-        lang: None,
+        // Threaded through, not dropped. It was hardcoded to `None` here, so clicking a
+        // language chip on the no-JavaScript path changed the URL and nothing else — the exact
+        // failure the filter code above warns about, on the path least able to recover from it.
+        lang: p.lang.clone(),
         source: p.source.clone(),
         sentiment: p.sentiment.clone(),
         from: None,
@@ -56,7 +61,7 @@ pub async fn search_page(
     };
 
     match search::handler(State(state), AxumQuery(params)).await {
-        Ok(axum::Json(r)) => Html(render_results(&raw, &r)).into_response(),
+        Ok(axum::Json(r)) => Html(render_results(&raw, &p, &r)).into_response(),
         Err(e) => {
             let status = e.status();
             (status, Html(render_error(&raw, &e.message()))).into_response()
@@ -64,7 +69,7 @@ pub async fn search_page(
     }
 }
 
-fn render_results(raw: &str, r: &search::SearchResponse) -> String {
+fn render_results(raw: &str, p: &PageParams, r: &search::SearchResponse) -> String {
     let mut body = String::with_capacity(16 * 1024);
 
     body.push_str(&format!(
@@ -92,6 +97,7 @@ fn render_results(raw: &str, r: &search::SearchResponse) -> String {
     if r.results.is_empty() {
         body.push_str(&render_empty(raw));
     } else {
+        body.push_str(&render_filters(raw, p, r));
         // An empty slot carrying the token. The summary is fetched by script after the page
         // paints — this page must render without JavaScript, and generation takes seconds, so
         // the summary is the one part that is genuinely optional.
@@ -111,6 +117,96 @@ fn render_results(raw: &str, r: &search::SearchResponse) -> String {
 
     body.push_str("</main>");
     page_shell(&format!("{raw} — Xustive"), &body)
+}
+
+/// Facet chips, as links.
+///
+/// Rendered server-side as well as client-side so narrowing works without JavaScript. A filter
+/// that needs script is a filter that disappears on the connection where narrowing results
+/// matters most — which in Algeria is a large share of them.
+///
+/// Labels are English here. The server does not yet know the reader's interface language; the
+/// script-driven version translates, and this is honest about being the fallback rather than
+/// guessing wrong in Arabic.
+fn render_filters(raw: &str, p: &PageParams, r: &search::SearchResponse) -> String {
+    // The filters currently applied, so each chip's link preserves the others rather than
+    // replacing them. Without this, narrowing by language then by tone silently drops the
+    // language.
+    let mut current: std::collections::BTreeMap<&str, String> = Default::default();
+    if let Some(v) = &p.lang {
+        current.insert("lang", v.clone());
+    }
+    if let Some(v) = &p.source {
+        current.insert("source", v.clone());
+    }
+    if let Some(v) = &p.sentiment {
+        current.insert("sentiment", v.clone());
+    }
+
+    const GROUPS: &[(&str, &str, &str)] = &[
+        ("language", "lang", "Language"),
+        ("source_type", "source", "Source"),
+        ("sentiment.label", "sentiment", "Tone"),
+    ];
+
+    let mut out = String::new();
+    for (facet, param, label) in GROUPS {
+        let Some(counts) = r.facets.get(*facet).and_then(|v| v.as_object()) else {
+            continue;
+        };
+        let mut values: Vec<(&String, u64)> = counts
+            .iter()
+            .filter_map(|(k, v)| Some((k, v.as_u64()?)))
+            .filter(|(_, n)| *n > 0)
+            .collect();
+        // A facet with one value narrows nothing — unless it is the one currently filtering, in
+        // which case that single value *is* the active filter and hiding it strands the user
+        // with no way back. Filtering by French collapsed the language counts to one entry and
+        // took the whole group away with it.
+        if values.len() < 2 && !current.contains_key(*param) {
+            continue;
+        }
+        values.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+
+        out.push_str(&format!(
+            r#"<div class="facet-group" role="group" aria-label="{}"><span class="facet-label">{}</span>"#,
+            escape_html(label),
+            escape_html(label)
+        ));
+        for (value, count) in values {
+            let active = current.get(*param).map(String::as_str) == Some(value.as_str());
+            // Clicking an active chip clears it. A filter that cannot be undone by clicking the
+            // thing you clicked is one people leave the page to escape.
+            let mut next: Vec<(&str, String)> = vec![("q", raw.to_string())];
+            for (k, v) in current.iter() {
+                if k != param {
+                    next.push((k, v.clone()));
+                }
+            }
+            if !active {
+                next.push((param, value.to_string()));
+            }
+            let href = next
+                .iter()
+                .map(|(k, v)| format!("{k}={}", urlencode(v)))
+                .collect::<Vec<_>>()
+                .join("&amp;");
+
+            out.push_str(&format!(
+                r#"<a class="chip{}" href="/search?{href}"{}>{} <span class="chip-count">{}</span></a>"#,
+                if active { " active" } else { "" },
+                if active { r#" aria-current="true""# } else { "" },
+                escape_html(value),
+                fmt_thousands(count as usize)
+            ));
+        }
+        out.push_str("</div>");
+    }
+
+    if out.is_empty() {
+        return String::new();
+    }
+    format!(r#"<div class="filters">{out}</div>"#)
 }
 
 fn render_card(c: &search::ResultCard) -> String {

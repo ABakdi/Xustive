@@ -197,7 +197,9 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
       FilterChip, Pagination, Sheet, Toast, Skeleton, EmptyState
 - [ ] M1-T13.3 [[UI - Home Page]]
 - [ ] M1-T13.4 [[UI - Results Page]] with the two-request render sequence
-- [ ] M1-T13.5 [[UI - Filters and Facets]]
+- [x] M1-T13.5 [[UI - Filters and Facets]] — language, source and tone chips, rendered both
+      server-side and client-side so narrowing works without JavaScript. Chips toggle, preserve
+      each other, and stay visible while active so a filter can always be cleared
 - [ ] M1-T13.6 [[UI - States and Errors]] for every row of its §4
 - [ ] M1-T13.7 URL-as-state, back/forward correctness
 - [ ] M1-T13.8 Bundle budgets enforced in CI; Lighthouse CI on a throttled profile
@@ -210,7 +212,9 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
       direction-specific rule. The lint rejecting physical properties is not built
 - [~] M1-T14.2 `dir="auto"` on every content slot including suggestions and the summary;
       `<bdi>` around URLs and numbers in RTL is not done
-- [ ] M1-T14.3 String files for ar / ary / fr / en with `Intl.PluralRules`
+- [~] M1-T14.3 Strings for ar / fr / en covering the filter and suggestion chrome, keyed off
+      `documentElement.lang`, with Darija falling back to Arabic rather than English. Not yet
+      extracted to files, and `Intl.PluralRules` is not used
 - [ ] M1-T14.4 Algerian month names (أوت, جويلية) in formatting **and** parsing
 - [ ] M1-T14.5 Directional icon mirroring, logo exclusion
 - [ ] M1-T14.6 Visual regression snapshots: 4 languages × 2 directions × 2 themes

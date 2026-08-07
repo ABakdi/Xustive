@@ -487,3 +487,72 @@ a.citation:hover { text-decoration: underline; }
     to { opacity: 1; transform: none; }
   }
 }
+
+/* --- filters ------------------------------------------------------------------------
+ *
+ * Links, not buttons, and styled to look like what they are: each one navigates to a narrower
+ * result set with a URL you can share or bookmark. Chips rather than a sidebar because the
+ * results page is read on a phone more often than not, and a sidebar on a phone is a drawer
+ * nobody opens. */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  margin-block-end: var(--space-5);
+  padding-block-end: var(--space-4);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.facet-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.facet-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-inline-end: var(--space-1);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  text-decoration: none;
+  /* Comfortably tappable. The whole point of chips over a sidebar is that they work on a phone,
+   * which they do not if they are 24px tall. */
+  min-block-size: 36px;
+  white-space: nowrap;
+}
+
+.chip:hover { border-color: var(--color-accent); }
+
+.chip.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+/* Never colour alone: the active chip also carries aria-current, and the count stays legible
+ * against the filled background. */
+.chip.active .chip-count { color: #fff; opacity: 0.85; }
+
+.chip-count {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chip.clear {
+  border-style: dashed;
+  color: var(--color-text-muted);
+}

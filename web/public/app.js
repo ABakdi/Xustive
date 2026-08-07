@@ -126,8 +126,9 @@
     // a placeholder that collapses when nothing comes back moves the results under the reader's
     // cursor, and most summaries do not arrive.
     const slot = data.summary_token ? '<div id="summary" hidden></div>' : '';
+    const filters = renderFilters(data.facets);
     const list = `<ol class="result-list">${data.results.map(renderCard).join('')}</ol>`;
-    return count + slot + list + renderPagination(q, p);
+    return count + filters + slot + list + renderPagination(q, p);
   }
 
   // --- summary ----------------------------------------------------------------------
@@ -215,7 +216,15 @@
 
     main.innerHTML = renderSkeleton();
 
-    const url = `/api/v1/search?q=${encodeURIComponent(q)}&page=${page}&hits_per_page=20`;
+    // Active filters ride along. Without this, typing a new query silently drops the narrowing
+    // the user just applied — and the chips would still render as active, which is worse than
+    // dropping them visibly.
+    const params = new URLSearchParams({ q, page, hits_per_page: 20 });
+    for (const g of FACET_GROUPS) {
+      const v = currentParams().get(g.param);
+      if (v) params.set(g.param, v);
+    }
+    const url = '/api/v1/search?' + params.toString();
     try {
       const res = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
       const data = await res.json();
@@ -256,6 +265,115 @@
     if (!token) return;
     delete slot.dataset.token;
     fetchSummary(token);
+  }
+
+  // --- strings ----------------------------------------------------------------------
+  //
+  // The UI language follows the page, not the query: a Darija speaker searching in French still
+  // wants the chrome in the language they chose. `document.documentElement.lang` is the single
+  // source of truth, set server-side.
+  //
+  // Kept in one object rather than fetched, because a filter label arriving after the filters
+  // is worse than one that was never translated.
+  const STRINGS = {
+    ar: {
+      filters: 'تصفية', all: 'الكل', language: 'اللغة', source: 'المصدر',
+      sentiment: 'الانطباع', clear: 'مسح التصفية', results: 'نتيجة',
+      positive: 'إيجابي', neutral: 'محايد', negative: 'سلبي',
+      web: 'موقع', facebook: 'فيسبوك', instagram: 'إنستغرام', tiktok: 'تيك توك',
+      lang_ar: 'العربية', lang_ary: 'الدارجة', lang_fr: 'الفرنسية',
+      lang_en: 'الإنجليزية', lang_mixed: 'مختلط',
+    },
+    fr: {
+      filters: 'Filtrer', all: 'Tout', language: 'Langue', source: 'Source',
+      sentiment: 'Ton', clear: 'Effacer les filtres', results: 'résultats',
+      positive: 'Positif', neutral: 'Neutre', negative: 'Négatif',
+      web: 'Web', facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok',
+      lang_ar: 'Arabe', lang_ary: 'Darija', lang_fr: 'Français',
+      lang_en: 'Anglais', lang_mixed: 'Mixte',
+    },
+    en: {
+      filters: 'Filter', all: 'All', language: 'Language', source: 'Source',
+      sentiment: 'Tone', clear: 'Clear filters', results: 'results',
+      positive: 'Positive', neutral: 'Neutral', negative: 'Negative',
+      web: 'Web', facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok',
+      lang_ar: 'Arabic', lang_ary: 'Darija', lang_fr: 'French',
+      lang_en: 'English', lang_mixed: 'Mixed',
+    },
+  };
+  // Darija falls back to Arabic rather than to English. Someone who set the interface to Darija
+  // reads Arabic; sending them to English would be a strictly worse guess.
+  const UI_LANG = (() => {
+    const declared = (document.documentElement.lang || 'ar').slice(0, 3);
+    if (STRINGS[declared]) return declared;
+    if (declared.startsWith('ar')) return 'ar';
+    return STRINGS[declared.slice(0, 2)] ? declared.slice(0, 2) : 'ar';
+  })();
+  const t = (key) => (STRINGS[UI_LANG] && STRINGS[UI_LANG][key]) || STRINGS.en[key] || key;
+
+  // --- filters ------------------------------------------------------------------------
+  //
+  // Facets have been in the search response since the beginning and nothing consumed them.
+  // Rendered as links rather than as script-driven controls so the whole thing works without
+  // JavaScript on the server-rendered page — a filter that needs script is a filter that
+  // disappears on the connection where narrowing results matters most.
+
+  const FACET_GROUPS = [
+    { key: 'language', param: 'lang', label: 'language', prefix: 'lang_' },
+    { key: 'source_type', param: 'source', label: 'source', prefix: '' },
+    { key: 'sentiment.label', param: 'sentiment', label: 'sentiment', prefix: '' },
+  ];
+
+  function currentParams() {
+    return new URLSearchParams(location.search);
+  }
+
+  function facetHref(param, value) {
+    const params = currentParams();
+    // Toggling: clicking an active facet clears it. A filter you cannot undo by clicking the
+    // thing you clicked is a filter people abandon the page to escape.
+    if (params.get(param) === value) params.delete(param);
+    else params.set(param, value);
+    params.delete('page'); // Narrowing invalidates the page number.
+    return '/search?' + params.toString();
+  }
+
+  function renderFilters(facets) {
+    if (!facets) return '';
+    const params = currentParams();
+    let groups = '';
+
+    for (const group of FACET_GROUPS) {
+      const counts = facets[group.key];
+      if (!counts) continue;
+      const values = Object.entries(counts)
+        .filter(([, n]) => n > 0)
+        .sort((a, b) => b[1] - a[1]);
+      const active = params.get(group.param);
+      // A facet with one value narrows nothing — unless it is the active filter, in which case
+      // hiding it leaves no way to clear what was applied.
+      if (values.length < 2 && !active) continue;
+      const chips = values
+        .map(([value, count]) => {
+          const on = active === value;
+          const label = t(group.prefix + value) || value;
+          return `<a class="chip${on ? ' active' : ''}" href="${escapeHtml(facetHref(group.param, value))}"` +
+            `${on ? ' aria-current="true"' : ''}>` +
+            `${escapeHtml(label)} <span class="chip-count">${nf.format(count)}</span></a>`;
+        })
+        .join('');
+
+      groups += `<div class="facet-group" role="group" aria-label="${escapeHtml(t(group.label))}">` +
+        `<span class="facet-label">${escapeHtml(t(group.label))}</span>${chips}</div>`;
+    }
+
+    if (!groups) return '';
+    const hasActive = FACET_GROUPS.some((g) => params.get(g.param));
+    const clear = hasActive
+      ? `<a class="chip clear" href="/search?q=${encodeURIComponent(params.get('q') || '')}">` +
+        `${escapeHtml(t('clear'))}</a>`
+      : '';
+    return `<div class="filters">${groups}${clear}</div>`;
   }
 
   // --- suggestions ------------------------------------------------------------------

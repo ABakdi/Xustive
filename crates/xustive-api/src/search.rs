@@ -454,6 +454,17 @@ fn parse_filters(p: &SearchParams) -> Result<Filters, ApiError> {
             f.sentiments.push(sl);
         }
     }
+    // An explicit `lang` both overrides detection and restricts results.
+    //
+    // It served only as a detection hint until the facet UI shipped, at which point clicking
+    // "French" changed how the query was interpreted and left the result set untouched — a
+    // control that appears to act and does not. Someone who says French wants French.
+    if let Some(s) = &p.lang {
+        for part in s.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            f.languages.push(part.to_ascii_lowercase());
+        }
+    }
+
     f.published_from = p.from;
     f.published_to = p.to;
     Ok(f)
