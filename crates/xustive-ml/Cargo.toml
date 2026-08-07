@@ -15,8 +15,20 @@ thiserror.workspace = true
 tracing.workspace = true
 blake3.workspace = true
 
+# Local inference. Optional but on by default: it compiles llama.cpp from source, which is a
+# few minutes the first time, and `--no-default-features` keeps that off the path of anyone
+# working on the parts of the system that do not need a model.
+llama-cpp-2 = { version = "0.1", optional = true }
+encoding_rs = { version = "0.8", optional = true }
+tokio = { workspace = true }
+
 [features]
-default = []
+default = ["llama"]
+# Local GGUF inference through llama.cpp.
+llama = ["dep:llama-cpp-2", "dep:encoding_rs"]
 # GPU support. Requires the CUDA toolkit at build time; the device layer falls back to CPU
 # at runtime when it is absent, so a CPU-only build is fully functional.
-cuda = []
+cuda = ["llama-cpp-2?/cuda"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
