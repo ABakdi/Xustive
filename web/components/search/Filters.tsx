@@ -73,7 +73,7 @@ export function Filters({
 
     return (
       <div key={group.param} role="group" aria-label={t[group.label as keyof Messages]} className="flex flex-wrap items-center gap-2">
-        <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+        <span className="text-xs" style={{ color: 'var(--fg-muted)' }}>
           {t[group.label as keyof Messages]}
         </span>
         {values.map(([value, count]) => {
@@ -99,7 +99,7 @@ export function Filters({
   return (
     <div
       className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-b pb-4"
-      style={{ borderColor: 'var(--rule)' }}
+      style={{ borderColor: 'var(--line)' }}
     >
       {groups}
       {current.size > 0 && (

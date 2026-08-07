@@ -10,7 +10,7 @@ const GLYPH: Record<string, string> = { positive: '▲', neutral: '●', negativ
  * most of the page. `dir="auto"` per card because a French interface showing an Arabic result is
  * the normal case, not an edge one.
  *
- * Never carries the qalam rule. That mark means the engine is asserting something; a result is
+ * Never carries the assert rule. That mark means the engine is asserting something; a result is
  * what somebody else published.
  */
 export function ResultCard({
@@ -45,11 +45,11 @@ export function ResultCard({
     >
       <div
         className="mb-1 flex flex-wrap items-center gap-2 text-xs"
-        style={{ color: 'var(--ink-muted)' }}
+        style={{ color: 'var(--fg-muted)' }}
       >
         <span
           className="rounded-[var(--radius-sm)] border px-2 py-0.5"
-          style={{ borderColor: 'var(--rule)' }}
+          style={{ borderColor: 'var(--line)' }}
         >
           {sourceLabel}
         </span>
@@ -82,7 +82,7 @@ export function ResultCard({
 
       <p
         className="mt-1 text-sm"
-        style={{ color: 'var(--ink-muted)', overflowWrap: 'anywhere' }}
+        style={{ color: 'var(--fg-muted)', overflowWrap: 'anywhere' }}
         dangerouslySetInnerHTML={{ __html: result.excerpt }}
       />
     </li>

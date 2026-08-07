@@ -1,3 +1,40 @@
+/* Base tokens for the admin page.
+ *
+ * Self-contained rather than importing the product's stylesheet. This page is an operator tool
+ * that has to work when the frontend is down — which is exactly when someone needs to change the
+ * compute device — so it depends on nothing outside this binary.
+ */
+:root {
+  --color-bg: #ffffff; --color-surface: #f6f8f9; --color-text: #0e1418;
+  --color-text-muted: #5b6a72; --color-border: #dde3e6; --color-accent: #167c4a;
+  --color-accent-weak: #e7f3ec; --amber-600: #8a6116;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px;
+  --text-xs: 12px; --text-sm: 14px; --text-base: 15px; --text-lg: 17px; --text-xl: 22px;
+  --radius-sm: 2px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #14181c; --color-surface: #1b2126; --color-text: #e9eef1;
+    --color-text-muted: #93a1a9; --color-border: #2b343a; --color-accent: #46b483;
+    --color-accent-weak: #17392a;
+    color-scheme: dark;
+  }
+}
+body {
+  margin: 0; background: var(--color-bg); color: var(--color-text);
+  font: var(--text-base)/1.6 system-ui, sans-serif;
+}
+.site-header {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-block-end: 1px solid var(--color-border);
+}
+.wordmark { font-weight: 600; letter-spacing: 0.12em; text-decoration: none; color: inherit; }
+.muted { color: var(--color-text-muted); font-size: var(--text-sm); }
+code { font-family: ui-monospace, monospace; font-size: 0.92em; }
+
 /* Admin surface.
  *
  * A separate file rather than an inline <style> block: the API sends a strict

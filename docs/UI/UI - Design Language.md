@@ -20,59 +20,62 @@ template says nothing about what it is.
 The primitives are still the right foundation — accessible, unstyled-by-default, source-copied so
 they can be rewritten rather than fought. What follows replaces the skin entirely.
 
-## 2. The idea: paper and ink, under a Saharan sky
+## 2. The idea: editorial, structural, square
 
-Two references, both Algerian, neither literal:
+A first attempt used warm manuscript paper and blue-hour indigo. It was rejected as insufficiently
+polished, and the criticism was right: warmth reads as nostalgia, and a product that indexes the
+live web should not look like it is about the past.
 
-**Maghrebi manuscript pages.** Warm off-white paper, dense black ink, and a single saturated
-accent used only for what matters — a chapter mark, a correction. Not decorative. The restraint
-is the point: a page of text with one red mark tells you where to look.
+What replaced it is **editorial**. Near-neutral surfaces with a faint cool cast, one accent, and
+geometry that is essentially square.
 
-**The blue hour over the Hauts Plateaux.** Deep indigo that is not black, with warm light at the
-horizon. This is the dark theme, and it is why dark mode here is not the light theme inverted.
+**Rounded corners are the tell.** A pill-shaped search field is the single most recognisable
+"generic web app" signal there is. The only radius in this system is **2 px**, and it exists so
+1 px borders do not fray at the corner — not to make anything look friendly. The search field is a
+rectangle. Chips are rectangles. Result cards have no border at all.
 
-What this rules out: glassmorphism, gradient meshes, neon accents, drop shadows on everything.
-A search engine is a reading surface. The design's job is to disappear.
+**Structure comes from hairlines and space**, never from shadows or fills. If two things need
+separating, a 1 px rule or 30 px of space does it.
+
+What this rules out: glassmorphism, gradient meshes, neon accents, drop shadows, pills, cards with
+elevation, and anything that animates for longer than 100 ms. A search engine is a reading
+surface. The design's job is to disappear.
 
 ## 3. Colour
 
-Perceptual (`oklch`) so that a hue shift does not change apparent brightness — which matters when
-the same accent sits on parchment and on indigo.
+Perceptual (`oklch`) so a hue shift does not change apparent brightness — which matters when the
+same accent has to hold against near-black text and against a dark ground.
 
 ```css
-/* Light — "manuscript" */
---paper:      oklch(98.4% 0.006  85);   /* warm off-white, not #fff */
---paper-sunk: oklch(96.2% 0.010  85);   /* cards, wells */
---ink:        oklch(21%   0.018  75);   /* warm near-black, never #000 */
---ink-muted:  oklch(48%   0.014  75);
---rule:       oklch(89%   0.010  85);   /* hairlines */
+/* Light — off-white with a faint cool cast. Flat white glares under long reading; warm cream
+   reads as nostalgia. This should look like a well-set page. */
+--bg:          oklch(99%   0.002 250);
+--bg-sunk:     oklch(96.5% 0.003 250);
+--fg:          oklch(17%   0.008 250);
+--fg-muted:    oklch(52%   0.008 250);
+--fg-faint:    oklch(68%   0.006 250);
+--line:        oklch(90.5% 0.004 250);
+--line-strong: oklch(80%   0.006 250);
 
-/* Dark — "blue hour" */
---night:      oklch(19%   0.028 255);   /* deep indigo, not grey */
---night-lift: oklch(24%   0.030 255);
---dusk:       oklch(94%   0.010  85);   /* text: warm, so it reads as lit not glowing */
---dusk-muted: oklch(68%   0.016 255);
---rule-night: oklch(32%   0.028 255);
+/* Dark — genuinely dark and desaturated, not mid-grey. Same cool cast, so the two themes are
+   one product rather than two. */
+--bg:          oklch(15.5% 0.006 250);
+--bg-sunk:     oklch(19%   0.007 250);
+--fg:          oklch(93%   0.004 250);
+--line:        oklch(26%   0.008 250);
 
-/* Accent — one, in both themes */
---accent:      oklch(56% 0.148 158);    /* deep Algerian green */
---accent-lift: oklch(64% 0.152 158);    /* dark-theme variant, lifted to hold contrast */
---accent-wash: oklch(94% 0.036 158);
-
-/* Semantics — never carried by colour alone */
---warn:   oklch(62% 0.130  70);
---danger: oklch(56% 0.170  27);
+/* One accent. Lifted and *desaturated* in dark: saturated colour on a dark ground vibrates. */
+--accent:      oklch(52% 0.135 162);   /* light */
+--accent:      oklch(72% 0.125 162);   /* dark  */
+--accent-wash: oklch(95.5% 0.03 162);
 ```
 
 **Rules.**
 
-1. **One accent.** Green marks the interactive and the current — links, focus, the active filter,
-   the tool-card rule. Nothing else is coloured.
-2. **No pure black or white.** `#000` on `#fff` is the highest-strain combination there is, and
-   these pages are read for minutes at a time.
-3. **Colour is never the only signal.** Every state also carries a glyph, a label, or a border
-   ([[UI - Accessibility]]).
-4. **Dark is not inverted light.** Different hue family, different accent lightness.
+1. **One accent**, for what is interactive or current. Nothing else is coloured.
+2. **No pure black or white.** The highest-strain pairing there is, on pages read for minutes.
+3. **Colour is never the only signal.** The active filter is filled *and* carries `aria-current`.
+4. **Dark is not inverted light.** Different lightness *and* different chroma for the accent.
 
 ## 4. Typography
 
@@ -82,10 +85,13 @@ Arabic fallback looks like a bug.
 
 | Role | Face | Why |
 |:---|:---|:---|
-| Arabic | **IBM Plex Sans Arabic** | Drawn alongside the Latin, so mixed lines share weight and rhythm. Open licence, full Arabic coverage, readable at 14 px. |
-| Latin | **IBM Plex Sans** | Same family. Mixed-script lines stop looking accidental. |
-| Numerals | **IBM Plex Sans**, `font-variant-numeric: tabular-nums` | Counts, prices and rates must align in columns. |
-| Code / tools | **IBM Plex Mono** | Calculator input, converters, dev tools. |
+| Arabic | **Cairo** | A modern UI face designed for screen text. Settles §11's open question in favour of the option Algerian readers see most often. |
+| Latin | **system-ui** stack | Until faces are self-hosted (M1B-T02.2). |
+| Numerals | `font-variant-numeric: tabular-nums` | Counts, prices and rates must align in columns. |
+
+**Never list a family that is not actually available.** Leading the stack with an uninstalled
+`Inter` was not harmless: the browser fell back per glyph and **broke Arabic shaping outright** —
+letters rendered unjoined and in reverse order. A font stack has to be honest about what exists.
 
 ```css
 --text-xs:   0.75rem;   --text-sm: 0.875rem;  --text-base: 1rem;

@@ -13,10 +13,10 @@ export function Wordmark({ lang, size = 'lg' }: { lang: string; size?: 'lg' | 's
       dir="ltr"
       className={
         size === 'lg'
-          ? 'text-[2rem] font-semibold tracking-[0.22em] no-underline'
-          : 'text-lg font-semibold tracking-[0.18em] no-underline'
+          ? 'text-[1.75rem] font-semibold tracking-[0.14em] no-underline'
+          : 'text-base font-semibold tracking-[0.12em] no-underline'
       }
-      style={{ color: 'var(--ink)' }}
+      style={{ color: 'var(--fg)' }}
     >
       XUSTIVE
     </Link>

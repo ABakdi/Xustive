@@ -22,7 +22,6 @@ use serde_json::json;
 use xustive_ml::{device, DeviceConfig, DevicePreference, Registry};
 
 use crate::state::AppState;
-use crate::web::escape_html;
 
 /// The peer address, when the server was started with connection info attached.
 ///
@@ -116,6 +115,28 @@ pub struct DeviceUpdate {
     pub preference: Option<String>,
     /// `null` means "decide automatically from available memory".
     pub gpu_layers: Option<i64>,
+}
+
+/// The admin page's stylesheet and script, embedded in the binary.
+///
+/// Served from dedicated routes rather than inlined so the CSP stays `default-src 'self'` with no
+/// hashes to keep in sync, and embedded rather than read from disk so this page cannot break by
+/// someone moving a directory — which is precisely what happened when the old UI was deleted.
+pub const ADMIN_CSS: &str = include_str!("../assets/admin.css");
+pub const ADMIN_JS: &str = include_str!("../assets/admin.js");
+
+pub async fn admin_css() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        ADMIN_CSS,
+    )
+}
+
+pub async fn admin_js() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        ADMIN_JS,
+    )
 }
 
 /// `GET /admin/status` — what the system is currently doing.
@@ -274,7 +295,7 @@ pub async fn page(State(state): State<AppState>, Peer(peer): Peer, headers: Head
     if let Err(d) = authorise(&state, peer, &headers) {
         return (
             StatusCode::FORBIDDEN,
-            Html(crate::web::admin_shell(
+            Html(admin_shell(
                 "Xustive admin",
                 &format!(
                     r#"<main id="results"><h1>Not available</h1><p>{}</p></main>"#,
@@ -385,9 +406,51 @@ pub async fn page(State(state): State<AppState>, Peer(peer): Peer, headers: Head
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        Html(crate::web::admin_shell("Xustive admin", &body)),
+        Html(admin_shell("Xustive admin", &body)),
     )
         .into_response()
+}
+
+// --- rendering helpers ---------------------------------------------------------------
+//
+// Moved here when the hand-written HTML renderer was deleted. The admin page is the one surface
+// still served by this process — an operator tool, not part of the product, and putting it behind
+// the frontend would mean device settings become unreachable exactly when the frontend is the
+// thing that is broken.
+
+pub fn admin_shell(title: &str, body: &str) -> String {
+    format!(
+        r#"<!doctype html>
+<html lang="en" dir="ltr" class="admin-page">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{title}</title>
+<link rel="stylesheet" href="/admin.css">
+<script src="/admin.js" defer></script>
+</head>
+<body>
+{body}
+</body>
+</html>"#,
+        title = escape_html(title),
+    )
+}
+
+pub fn escape_html(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 16);
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 #[cfg(test)]

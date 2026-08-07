@@ -3,146 +3,292 @@
 /*
  * Design tokens — see docs/UI/UI - Design Language.md
  *
- * Deliberately not shadcn's slate-grey default. Warm manuscript paper and blue-hour indigo, one
- * accent, hairlines instead of shadows. oklch so a hue shift does not change apparent brightness,
- * which matters when the same green sits on parchment and on indigo.
+ * Editorial and structural rather than soft. Near-neutral surfaces with a faint cool cast, one
+ * accent used only where something is interactive or current, hairline rules instead of shadows,
+ * and geometry that is essentially square.
+ *
+ * Rounded corners are a stylistic tic that reads as "app". This is a reading surface: the search
+ * field is a rectangle, chips are rectangles, cards have no border at all. The only radius in the
+ * system is 2px, and it exists to stop 1px borders looking ragged at their corners — not to make
+ * anything look friendly.
  */
 
 @theme {
-  --font-sans: 'IBM Plex Sans', 'IBM Plex Sans Arabic', system-ui, sans-serif;
-  --font-arabic: 'IBM Plex Sans Arabic', 'IBM Plex Sans', system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+/* Named families are only listed when they are actually available.
+   *
+   * Leading with a face that is not installed is not harmless: `Inter` fell back per-glyph and
+   * broke Arabic shaping outright — letters rendered unjoined and in reverse order. Until the
+   * faces are self-hosted (M1B-T02.2), the stack has to be honest about what exists.
+   *
+   * Cairo first for Arabic: it is a modern UI face designed for screen text, and it settles the
+   * open question in the design language in favour of the more familiar option for Algerian
+   * readers. */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+  --font-arabic: 'Cairo', 'Noto Sans Arabic', 'Noto Naskh Arabic', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'DejaVu Sans Mono', monospace;
 
   --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.0625rem;
   --text-xl: 1.375rem;
-  --text-2xl: 1.75rem;
-
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-pill: 999px;
+  --text-2xl: 1.875rem;
 }
 
 :root {
-  /* Light — "manuscript". No pure white: #000 on #fff is the highest-strain pairing there is,
-   * and these pages are read for minutes at a time. */
-  --paper: oklch(98.4% 0.006 85);
-  --paper-sunk: oklch(96.2% 0.01 85);
-  --ink: oklch(21% 0.018 75);
-  --ink-muted: oklch(48% 0.014 75);
-  --rule: oklch(89% 0.01 85);
+  /* Light. Off-white with a faint cool cast — flat white glares under long reading, and warm
+   * cream reads as nostalgia. This is meant to look like a well-set page, not like paper. */
+  --bg: oklch(99% 0.002 250);
+  --bg-sunk: oklch(96.5% 0.003 250);
+  --fg: oklch(17% 0.008 250);
+  --fg-muted: oklch(52% 0.008 250);
+  --fg-faint: oklch(68% 0.006 250);
+  --line: oklch(90.5% 0.004 250);
+  --line-strong: oklch(80% 0.006 250);
 
-  --accent: oklch(56% 0.148 158);
-  --accent-wash: oklch(94% 0.036 158);
-  --accent-ink: oklch(99% 0 0);
+  /* One accent, used only for what is interactive or current. Deep enough to hold its own
+   * against near-black text without competing with it. */
+  --accent: oklch(52% 0.135 162);
+  --accent-hover: oklch(45% 0.14 162);
+  --accent-wash: oklch(95.5% 0.03 162);
+  --accent-fg: oklch(99% 0 0);
 
-  --warn: oklch(62% 0.13 70);
-  --danger: oklch(56% 0.17 27);
+  --warn: oklch(58% 0.13 65);
+  --danger: oklch(53% 0.18 27);
 
-  --leading-body: 1.7;
+  /* Essentially square. 2px only, and only so 1px borders do not fray at the corner. */
+  --radius: 2px;
 
-  /* Any z-index not from this scale is a bug. The suggestion panel losing to the sticky header
-   * is what happens without one, and it happened. */
   --z-sticky: 10;
   --z-dropdown: 20;
   --z-sheet: 30;
   --z-modal: 40;
   --z-toast: 50;
 
-  /* Density, swapped by the toggle. */
-  --result-gap: 24px;
+  --result-gap: 30px;
+  --measure: 640px;
 
   color-scheme: light;
 }
 
 :root[data-theme='dark'] {
-  /* Dark is not inverted light — a different hue family entirely. Deep indigo rather than grey,
-   * and warm text so it reads as lit rather than glowing. */
-  --paper: oklch(19% 0.028 255);
-  --paper-sunk: oklch(24% 0.03 255);
-  --ink: oklch(94% 0.01 85);
-  --ink-muted: oklch(68% 0.016 255);
-  --rule: oklch(32% 0.028 255);
+  /* Dark is desaturated and genuinely dark, not a mid-grey. The same faint cool cast, so the two
+   * themes feel like one product rather than two. */
+  --bg: oklch(15.5% 0.006 250);
+  --bg-sunk: oklch(19% 0.007 250);
+  --fg: oklch(93% 0.004 250);
+  --fg-muted: oklch(66% 0.007 250);
+  --fg-faint: oklch(50% 0.007 250);
+  --line: oklch(26% 0.008 250);
+  --line-strong: oklch(36% 0.01 250);
 
-  /* Lifted to hold contrast against indigo. Same hue, different lightness. */
-  --accent: oklch(64% 0.152 158);
-  --accent-wash: oklch(28% 0.05 158);
-  --accent-ink: oklch(16% 0.02 158);
+  /* Lifted for contrast against a dark ground. Same hue, more lightness and less chroma —
+   * saturated colour on dark vibrates. */
+  --accent: oklch(72% 0.125 162);
+  --accent-hover: oklch(80% 0.12 162);
+  --accent-wash: oklch(26% 0.045 162);
+  --accent-fg: oklch(14% 0.01 162);
 
   color-scheme: dark;
 }
 
 :root[data-density='compact'] {
-  --result-gap: 14px;
+  --result-gap: 18px;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 html {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--bg);
+  color: var(--fg);
   font-family: var(--font-sans);
   -webkit-text-size-adjust: 100%;
-}
-
-/* Arabic carries more vertical detail than Latin. Typeset at Latin metrics it is cramped and
- * slow to read, so it gets more leading and a size step. Applied by script, not by page — a
- * French interface showing an Arabic result needs this on the result alone. */
-:lang(ar),
-:lang(ary) {
-  font-family: var(--font-arabic);
-  line-height: 1.75;
-  font-size: 1.03em;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
   margin: 0;
-  line-height: var(--leading-body);
+  font-size: var(--text-base);
+  line-height: 1.6;
   min-height: 100dvh;
+}
+
+/* Arabic carries more vertical detail than Latin; typeset at Latin metrics it is cramped and
+ * slow to read. Applied by script rather than by page, because a French interface showing an
+ * Arabic result needs it on the result alone. */
+:lang(ar),
+:lang(ary) {
+  font-family: var(--font-arabic);
+  line-height: 1.85;
+  font-size: 1.04em;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 550;
+  letter-spacing: -0.011em;
+  line-height: 1.3;
+  margin: 0;
 }
 
 a {
   color: inherit;
+  text-decoration: none;
 }
 
 /* Focus is never removed, only restyled. :focus-visible so mouse users see no rings and every
- * keyboard user always does. */
+ * keyboard user always does. Square, like everything else. */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
 }
 
 ::selection {
   background: var(--accent-wash);
+  color: var(--fg);
 }
 
-/* The qalam rule.
+/* The rule.
  *
- * The one signature element, and it carries meaning rather than decoration: a green edge means
+ * The one signature element, and it carries meaning rather than decoration: a 2px edge means
  * Xustive is asserting something, not listing what someone else published. The summary and tool
- * cards have it. Result cards never do.
+ * cards have it; result cards never do.
  *
  * border-inline-start, so it moves to the right edge in Arabic with no direction-specific rule. */
-.qalam {
+.assert {
   border-inline-start: 2px solid var(--accent);
-  padding-inline-start: 1rem;
+  padding-inline-start: 1.125rem;
 }
 
-/* Motion budget: 120ms, ease-out, opacity and 4px translate only. A result list that animates in
+/* --- controls -----------------------------------------------------------------------
+ *
+ * Rectangles. A pill-shaped search field is the single most recognisable "generic web app"
+ * signal there is, and this is a search engine, not a chat app. */
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  inline-size: 100%;
+  padding-inline: 0.875rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  transition: border-color 100ms ease-out;
+}
+
+.field:focus-within {
+  border-color: var(--accent);
+  /* A second inset line rather than a glow. Sharper, and it does not bleed into neighbours. */
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.field input {
+  min-inline-size: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: var(--fg);
+  font: inherit;
+  padding-block: 0.75rem;
+}
+
+.field input::placeholder {
+  color: var(--fg-faint);
+}
+
+/* Filters and pagination. Rectangular, hairline, quiet until they are current. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3125rem 0.625rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  white-space: nowrap;
+  min-block-size: 32px;
+  transition: border-color 100ms ease-out, color 100ms ease-out;
+}
+
+.chip:hover {
+  border-color: var(--line-strong);
+  color: var(--fg);
+}
+
+/* Current state is carried by fill *and* by aria-current — never by colour alone. */
+.chip[aria-current],
+.chip-active {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg);
+}
+
+.chip-clear {
+  border-style: dashed;
+}
+
+.chip-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+
+.chip[aria-current] .chip-count,
+.chip-active .chip-count {
+  color: var(--bg);
+  opacity: 0.7;
+}
+
+/* Icon-only controls in the header: theme, language. */
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-block-size: 32px;
+  padding-inline: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+  background: none;
+  cursor: pointer;
+  transition: border-color 100ms ease-out, color 100ms ease-out;
+}
+
+.ghost:hover {
+  border-color: var(--line);
+  color: var(--fg);
+}
+
+/* Matched terms. An underline rather than a highlight block: a page of green rectangles is
+ * harder to read than the text it is meant to help you scan. */
+em {
+  font-style: normal;
+  font-weight: 550;
+  color: inherit;
+  box-shadow: inset 0 -0.35em 0 var(--accent-wash);
+}
+
+/* Motion budget: 100ms, ease-out, opacity and 3px translate only. A result list that animates in
  * is a result list you cannot read for 300ms. */
 @media (prefers-reduced-motion: no-preference) {
   .rise {
-    animation: rise 120ms ease-out;
+    animation: rise 100ms ease-out;
   }
   @keyframes rise {
     from {
       opacity: 0;
-      transform: translateY(4px);
+      transform: translateY(3px);
     }
   }
 }
@@ -152,46 +298,4 @@ a {
 bdi,
 .numeric {
   font-variant-numeric: tabular-nums;
-}
-
-/* --- chips ---------------------------------------------------------------------------
- *
- * Filters and pagination. Chips rather than a sidebar because the results page is read on a
- * phone more often than not, and a sidebar on a phone is a drawer nobody opens. */
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.4rem 0.75rem;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-sm);
-  color: var(--ink);
-  text-decoration: none;
-  min-block-size: 36px;
-  white-space: nowrap;
-}
-
-.chip:hover {
-  border-color: var(--accent);
-}
-
-.chip-active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-}
-
-.chip-clear {
-  border-style: dashed;
-  color: var(--ink-muted);
-}
-
-/* Matched terms in titles and excerpts. The only markup the API is allowed to send. */
-em {
-  font-style: normal;
-  background: var(--accent-wash);
-  border-radius: 2px;
-  padding-inline: 2px;
 }

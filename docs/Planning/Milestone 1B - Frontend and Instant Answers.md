@@ -42,12 +42,17 @@ are the reason to exist; the search is the foundation under them.
 
 ## M1B-T02 — Design language
 
+> The first palette — warm manuscript paper and blue-hour indigo — was rejected as insufficiently
+> polished. Replaced by an editorial, near-neutral, essentially square language; see
+> [[UI - Design Language]] §2.
+
+
 - [x] M1B-T02.1 `oklch` token set, both themes ([[UI - Design Language]] §3)
 - [ ] M1B-T02.2 IBM Plex Sans + Sans Arabic, self-hosted, subset per script, preloaded per
       direction
 - [ ] M1B-T02.3 shadcn primitives copied in and **rewritten** — not themed
 - [x] M1B-T02.4 The qalam rule as a shared primitive, used only by summary and tool cards
-- [ ] M1B-T02.5 Density toggle, persisted per device
+- [~] M1B-T02.5 Density tokens exist and are cookie-driven; the toggle control is not built
 - [ ] M1B-T02.6 Contrast audit of both themes at AA ([[UI - Accessibility]])
 - [ ] M1B-T02.7 Native-speaker read on the Arabic face and numeral system ← *B7*
 
@@ -60,8 +65,10 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 - [x] M1B-T03.3 Filters as server-rendered links
 - [x] M1B-T03.4 Suggestions as an ARIA combobox
 - [x] M1B-T03.5 Summary, fetched after paint
-- [ ] M1B-T03.6 States and errors ([[UI - States and Errors]])
-- [ ] M1B-T03.7 **Delete `web.rs` and `web/public/`**
+- [~] M1B-T03.6 Error and zero-result states are built; offline and degraded are not
+- [x] M1B-T03.7 **Deleted `web.rs` and the legacy assets.** The API is JSON and operations only.
+      `/admin` stays on it with its CSS and JS embedded in the binary — an operator tool has to
+      work when the frontend is the thing that is down
 
 ## M1B-T04 — Tool framework
 
@@ -112,7 +119,8 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 - [x] M1B-T08.1 Catalogues for ar / fr / en; a missing key is a compile error
 - [ ] M1B-T08.2 `Intl.PluralRules` — Arabic has six forms
 - [ ] M1B-T08.3 `Intl.NumberFormat` / `DateTimeFormat`, numeral system an explicit choice
-- [ ] M1B-T08.4 Darija catalogue, falling back to Arabic ← *B7*
+- [~] M1B-T08.4 Darija falls back to Arabic, never English. A distinct catalogue still needs a
+      native speaker ← *B7*
 - [ ] M1B-T08.5 Visual regression: 4 languages × 2 directions × 2 themes
 - [ ] M1B-T08.6 `<bdi>` on numbers, expressions and URLs inside RTL text
 

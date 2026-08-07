@@ -13,7 +13,6 @@ pub mod state;
 pub mod suggest;
 pub mod summary;
 pub mod telemetry;
-pub mod web;
 
 use std::time::{Duration, Instant};
 
@@ -32,12 +31,19 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{
     MakeRequestId, PropagateRequestIdLayer, RequestId, SetRequestIdLayer,
 };
-use tower_http::services::{ServeDir, ServeFile};
 use tower_http::timeout::TimeoutLayer;
 
 use crate::state::AppState;
 
 /// Build the router with the full middleware stack.
+///
+/// **JSON and operations only.** HTML comes from the Next.js frontend
+/// ([[ADR-0010 - Next.js for the Frontend]]); the hand-written renderer that used to live here is
+/// deleted rather than kept alongside, because two renderers drifting apart is what made the
+/// language filter ship broken and is the whole reason for the rewrite.
+///
+/// `/healthz`, `/readyz` and `/metrics` stay on this port. A liveness probe must not be answered
+/// by a process that merely depends on this one.
 ///
 /// Layer order is load-bearing. `CatchPanicLayer` is outermost so a panic anywhere inside becomes
 /// a 500 rather than killing the worker; compression is innermost so it wraps the final body.
@@ -89,10 +95,10 @@ pub fn app(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/metrics", get(metrics_handler))
-        // Server-rendered results, so core search works without JavaScript.
-        .route("/search", get(web::search_page))
         // Operator surface. Read-mostly, and nothing here can stop the process starting.
         .route("/admin", get(admin::page))
+        .route("/admin.css", get(admin::admin_css))
+        .route("/admin.js", get(admin::admin_js))
         .route("/admin/status", get(admin::status))
         .route("/admin/device", axum::routing::post(admin::set_device))
         .route(
@@ -102,14 +108,9 @@ pub fn app(state: AppState) -> Router {
         .layer(search_budget)
         .with_state(state.clone());
 
-    let static_dir = &state.config.api.static_dir;
-    let serve_static =
-        ServeDir::new(static_dir).fallback(ServeFile::new(format!("{static_dir}/index.html")));
-
     Router::new()
         .nest("/api/v1", api.merge(summary).merge(suggest_routes))
         .merge(ops)
-        .fallback_service(serve_static)
         // Request ids, outermost after panic catching so even a shed or rejected request
         // carries one. A ULID rather than a UUID: it sorts by time, so grepping a log for ids
         // near an incident actually narrows the window.

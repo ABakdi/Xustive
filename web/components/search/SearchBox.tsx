@@ -104,15 +104,15 @@ export function SearchBox({
         submit(active >= 0 ? (items[active]?.text ?? value) : value)
       }}
     >
-      <div
-        className="flex items-center gap-3 rounded-[var(--radius-pill)] border px-5"
-        style={{
-          borderColor: 'var(--rule)',
-          background: 'var(--paper)',
-          minBlockSize: compact ? '44px' : '56px',
-        }}
-      >
-        <Search size={20} aria-hidden className="shrink-0" style={{ color: 'var(--ink-muted)' }} />
+      {/* A rectangle. A pill-shaped search field is the most recognisable "generic web app"
+          signal there is, and this is a search engine. */}
+      <div className="field" style={{ minBlockSize: compact ? '38px' : '48px' }}>
+        <Search
+          size={compact ? 16 : 18}
+          aria-hidden
+          className="shrink-0"
+          style={{ color: 'var(--fg-faint)' }}
+        />
         <input
           ref={inputRef}
           type="search"
@@ -130,8 +130,7 @@ export function SearchBox({
           aria-autocomplete="list"
           aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
           placeholder={t.searchPlaceholder}
-          className="min-w-0 flex-1 border-0 bg-transparent py-3 text-base outline-none"
-          style={{ color: 'var(--ink)' }}
+          style={{ paddingBlock: compact ? '0.5rem' : '0.75rem' }}
           onChange={(e) => {
             typedRef.current = e.target.value
             setValue(e.target.value)
@@ -164,8 +163,8 @@ export function SearchBox({
           <button
             type="button"
             aria-label="Clear"
-            className="shrink-0 rounded-full p-1"
-            style={{ color: 'var(--ink-muted)' }}
+            className="shrink-0 p-1"
+            style={{ color: 'var(--fg-faint)', borderRadius: 'var(--radius)' }}
             onClick={() => {
               typedRef.current = ''
               setValue('')
@@ -182,16 +181,16 @@ export function SearchBox({
         <ul
           id={listId}
           role="listbox"
-          className="rise absolute inset-inline-0 mt-1 overflow-y-auto rounded-[var(--radius-md)] border py-1"
+          className="rise absolute mt-1 overflow-y-auto border py-1"
           style={{
             insetInlineStart: 0,
             insetInlineEnd: 0,
             zIndex: 'var(--z-dropdown)' as unknown as number,
             // An opaque surface, not the page background. A floating panel has to occlude what it
             // covers or it is just text drawn over other text.
-            background: 'var(--paper-sunk)',
-            borderColor: 'var(--rule)',
-            boxShadow: '0 8px 28px rgb(0 0 0 / 28%)',
+            background: 'var(--bg-sunk)',
+            borderColor: 'var(--line-strong)',
+            borderRadius: 'var(--radius)',
             maxBlockSize: '60vh',
           }}
         >
@@ -204,7 +203,7 @@ export function SearchBox({
               dir="auto"
               className="flex cursor-pointer items-center px-4 text-start text-base"
               style={{
-                minBlockSize: '44px',
+                minBlockSize: '40px',
                 background: i === active ? 'var(--accent-wash)' : 'transparent',
               }}
               // mousedown, not click: blur fires first on click and would close the list before

@@ -15,7 +15,7 @@ import { summarise, type SummaryResponse } from '@/lib/api'
  * arrive — the model refuses, the queue is full, the machine is slow — and a placeholder that
  * collapses would move the results out from under the reader.
  *
- * Carries the qalam rule, because this is the engine asserting something rather than listing what
+ * Carries the assert rule, because this is the engine asserting something rather than listing what
  * someone else published.
  */
 export function Summary({ token, note }: { token: string; note: string }) {
@@ -34,7 +34,7 @@ export function Summary({ token, note }: { token: string; note: string }) {
 
   return (
     <section
-      className="qalam rise mb-6 py-1"
+      className="assert rise mb-6 py-1"
       aria-label="Summary"
       // Announced once when it arrives, so a screen-reader user is not left unaware that content
       // appeared above where they are reading.
@@ -43,7 +43,7 @@ export function Summary({ token, note }: { token: string; note: string }) {
       <p dir="auto" className="m-0 text-base" style={{ lineHeight: 1.75 }}>
         {renderCitations(data)}
       </p>
-      <p className="mt-2 text-xs" dir="auto" style={{ color: 'var(--ink-muted)' }}>
+      <p className="mt-2 text-xs" dir="auto" style={{ color: 'var(--fg-muted)' }}>
         {note}
       </p>
     </section>
