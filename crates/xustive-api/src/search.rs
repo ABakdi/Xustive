@@ -105,6 +105,13 @@ pub struct SearchResponse {
     /// switched off, or the caller is past the first page. The client hides the block when it is
     /// absent rather than showing an empty one.
     pub summary_token: Option<String>,
+    /// An instant answer, when the query *is* the question.
+    ///
+    /// Computed in microseconds from the raw query, so it rides along with the search rather than
+    /// arriving separately. `None` is the overwhelmingly common case and renders nothing —
+    /// an unwanted card pushing results down is worse than no card.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instant: Option<xustive_tools::Answer>,
     pub pagination: Pagination,
     pub took_ms: u64,
     pub results: Vec<ResultCard>,
@@ -203,6 +210,9 @@ pub async fn handler(
 
     // --- validate -------------------------------------------------------------------
     let raw = params.q.clone().unwrap_or_default();
+    // Computed from the raw query before it is consumed by the response. Normalisation folds the
+    // characters an expression is made of, so `45*1.19` has to be seen intact to parse.
+    let instant = xustive_tools::best(&raw);
     if raw.trim().is_empty() {
         return Err(ApiError::MissingQuery);
     }
@@ -389,6 +399,7 @@ pub async fn handler(
             corrected: None,
         },
         summary_token,
+        instant,
         pagination: Pagination {
             page,
             hits_per_page,

@@ -33,6 +33,17 @@ export interface ResultCard {
   similar_count?: number
 }
 
+export interface InstantAnswer {
+  tool: string
+  confidence: number
+  /** How the query was read, so a misreading is visible rather than silent. */
+  interpretation: string
+  value: string
+  detail?: unknown
+  /** When the underlying data was measured. Absent means timeless — arithmetic has no age. */
+  as_of?: number
+}
+
 export interface SearchResponse {
   query: {
     raw: string
@@ -42,6 +53,7 @@ export interface SearchResponse {
     expanded_terms: string[]
   }
   summary_token: string | null
+  instant?: InstantAnswer
   pagination: {
     page: number
     hits_per_page: number

@@ -72,19 +72,26 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 
 ## M1B-T04 — Tool framework
 
-- [ ] M1B-T04.1 Matcher trait: pure, total, ≤ 100 µs; a panicking matcher is caught and skipped
-- [ ] M1B-T04.2 Arbitration by confidence with fixed precedence; below 0.5 renders nothing
-- [ ] M1B-T04.3 `instant` in the search response ([[Instant Answers]] §3)
-- [ ] M1B-T04.4 Explicit invocation (`!calc`, `!tr`, …)
-- [ ] M1B-T04.5 Shared card frame ([[UI - Tool Cards]] §1) incl. interpretation line and copy
-- [ ] M1B-T04.6 **Matcher precision corpus**: ordinary queries that must match no tool. This is
-      the regression that users notice most — a search engine that interrupts normal searches
+- [x] M1B-T04.1 `Tool` trait: pure, total; a panicking matcher is caught and skipped
+- [x] M1B-T04.2 Arbitration by confidence; below 0.5 renders nothing. Confidence reflects how
+      much of the query a tool explains, which is what makes the converter beat the calculator on
+      `5 km to miles`
+- [x] M1B-T04.3 `instant` in the search response ([[Instant Answers]] §3)
+- [x] M1B-T04.4 Explicit invocation (`!calc`, `!convert`)
+- [x] M1B-T04.5 Shared card frame incl. interpretation line and copy. Server-rendered; only the
+      copy button hydrates
+- [x] M1B-T04.6 **Matcher precision corpus**: ten ordinary queries that must match no tool, plus
+      per-tool prose cases. Ten is a start, not a corpus
 - [ ] M1B-T04.7 Per-tool opt-out, persisted
 
 ## M1B-T05 — Tier 1 tools
 
-- [ ] M1B-T05.1 Calculator — **decimal, not binary float**; several hundred golden expressions
-- [ ] M1B-T05.2 Unit converter incl. qintar and sa'a
+- [~] M1B-T05.1 Calculator — decimal, not binary float; precedence, percentages, functions,
+      Arabic-Indic digits, depth and length guards. **~40 golden expressions, not several
+      hundred**
+- [~] M1B-T05.2 Unit converter incl. qintar and sa'a; 7 dimensions, ar/fr/en phrasings,
+      temperature by offset. **Unit names render in English in every locale** — the table has one
+      canonical name per unit and no translations
 - [ ] M1B-T05.3 Currency — official **and** parallel, side by side, each with `as_of`
 - [ ] M1B-T05.4 Translator on the existing local Qwen; streaming, cancellable, nothing leaves
       the machine

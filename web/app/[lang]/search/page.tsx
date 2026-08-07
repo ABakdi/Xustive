@@ -5,6 +5,7 @@ import { Pagination } from '@/components/search/Pagination'
 import { ResultCard } from '@/components/search/ResultCard'
 import { SearchBox } from '@/components/search/SearchBox'
 import { Summary } from '@/components/search/Summary'
+import { ToolCard } from '@/components/tools/ToolCard'
 import { LangSwitcher } from '@/components/layout/LangSwitcher'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { Wordmark } from '@/components/layout/Wordmark'
@@ -91,6 +92,10 @@ export default async function SearchPage({
         <span className="numeric">{nf.format(p.total_hits)}</span> {t.resultsCount} (
         <span className="numeric">{nf.format(data.took_ms)}</span> {t.took})
       </p>
+
+      {/* Above the results and below the search box. Rendered even when there are no results —
+          `2+2` has an answer whether or not the corpus mentions arithmetic. */}
+      {data.instant && <ToolCard answer={data.instant} t={t} locale={lang} />}
 
       {data.results.length === 0 ? (
         <div className="py-16 text-center">

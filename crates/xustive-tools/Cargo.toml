@@ -1,0 +1,15 @@
+[package]
+name = "xustive-tools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Instant answers: matching, arbitration, and the tools themselves."
+
+[dependencies]
+xustive-text = { path = "../xustive-text" }
+serde.workspace = true
+serde_json.workspace = true
+# Exact decimal arithmetic. A calculator that renders 0.1 + 0.2 as 0.30000000000000004 is a
+# calculator nobody trusts again, and binary floats do exactly that.
+rust_decimal = { version = "1", default-features = false, features = ["std", "maths"] }

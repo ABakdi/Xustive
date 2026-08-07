@@ -9,6 +9,7 @@ description = "HTTP surface: routing, validation, limits, error shaping, and the
 [dependencies]
 xustive-core = { path = "../xustive-core" }
 xustive-text = { path = "../xustive-text" }
+xustive-tools = { path = "../xustive-tools" }
 xustive-search = { path = "../xustive-search" }
 xustive-lang = { path = "../xustive-lang" }
 blake3.workspace = true

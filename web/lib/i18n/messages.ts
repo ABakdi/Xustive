@@ -45,6 +45,11 @@ const ar = {
   lang_mixed: 'مختلط',
   selfHosted: 'مستضاف في الجزائر',
   errorTitle: 'وقعت مشكلة',
+  copy: 'نسخ',
+  copied: 'تم النسخ',
+  asOf: 'محسوب في',
+  calculator: 'حاسبة',
+  'unit-converter': 'تحويل الوحدات',
 } as const
 
 /**
@@ -94,6 +99,11 @@ const fr: Messages = {
   lang_mixed: 'Mixte',
   selfHosted: 'hébergé en Algérie',
   errorTitle: 'Une erreur est survenue',
+  copy: 'Copier',
+  copied: 'Copié',
+  asOf: 'mesuré à',
+  calculator: 'Calculatrice',
+  'unit-converter': 'Convertisseur',
 }
 
 const en: Messages = {
@@ -134,6 +144,11 @@ const en: Messages = {
   lang_mixed: 'Mixed',
   selfHosted: 'self-hosted in Algeria',
   errorTitle: 'Something went wrong',
+  copy: 'Copy',
+  copied: 'Copied',
+  asOf: 'measured at',
+  calculator: 'Calculator',
+  'unit-converter': 'Unit converter',
 }
 
 /**
