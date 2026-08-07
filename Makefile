@@ -3,6 +3,8 @@
 # because in development xustive-api runs on the host rather than inside `core`.
 COMPOSE := docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml
 CONFIG  ?= config/dev.toml
+# Port for the offline crawler fixture site (tests/fixtures/site).
+FIXTURE_PORT ?= 8099
 
 .PHONY: help
 help: ## Show this help
@@ -86,6 +88,11 @@ run-api: ## Run the API server — this also serves the web UI at http://localho
 .PHONY: run-api-fast
 run-api-fast: ## Run without the summariser — builds in seconds, no AI summaries
 	cargo run -p xustive-api --no-default-features -- --config $(CONFIG)
+
+.PHONY: fixture-site
+fixture-site: ## Serve the offline crawler fixture site on :8099
+	@echo "  Fixture site on http://127.0.0.1:8099 — see tests/fixtures/site/README.md"
+	./tests/fixtures/site/serve.py --port $(FIXTURE_PORT)
 
 .PHONY: web
 web: ## Open the UI in a browser (the API serves it; there is no separate web server)

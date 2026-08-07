@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Mixes real articles with navigational URLs, which is what aps.dz actually publishes.
+     A crawler that trusts the sitemap to contain only articles indexes the front page five
+     times over. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>http://localhost:8099/</loc><changefreq>hourly</changefreq></url>
+  <url><loc>http://localhost:8099/category/nation</loc></url>
+  <url><loc>http://localhost:8099/articles/normal.html</loc><lastmod>2026-08-05</lastmod></url>
+  <url><loc>http://localhost:8099/articles/malformed.html</loc><lastmod>2026-08-04</lastmod></url>
+  <url><loc>http://localhost:8099/articles/windows-1256.html</loc><lastmod>2026-08-03</lastmod></url>
+  <url><loc>http://localhost:8099/articles/dates.html</loc><lastmod>2026-08-02</lastmod></url>
+  <url><loc>http://localhost:8099/articles/spa.html</loc></url>
+  <url><loc>http://localhost:8099/private/secret.html</loc></url>
+</urlset>

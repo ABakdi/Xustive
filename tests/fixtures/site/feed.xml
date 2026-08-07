@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>موقع الاختبار</title>
+    <link>http://localhost:8099/</link>
+    <description>Fixture feed</description>
+    <item>
+      <title>ارتفاع استهلاك الكهرباء في الجزائر</title>
+      <link>http://localhost:8099/articles/normal.html</link>
+      <pubDate>Wed, 05 Aug 2026 09:00:00 +0100</pubDate>
+    </item>
+    <item>
+      <title>صفحة بترميز قديم</title>
+      <link>http://localhost:8099/articles/windows-1256.html</link>
+      <pubDate>Mon, 03 Aug 2026 12:00:00 +0100</pubDate>
+    </item>
+  </channel>
+</rss>

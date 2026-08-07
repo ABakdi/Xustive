@@ -1,0 +1,13 @@
+# Fixture robots.txt. Deliberately includes directives that are commonly mishandled.
+
+User-agent: *
+Crawl-delay: 1
+Disallow: /private/
+Disallow: /trap/
+
+# A second group that must NOT apply to us — a parser that merges groups will wrongly
+# think everything is disallowed.
+User-agent: BadBot
+Disallow: /
+
+Sitemap: http://localhost:8099/sitemap.xml

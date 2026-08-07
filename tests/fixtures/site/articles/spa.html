@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8"><title>صفحة تفاعلية</title></head>
+<body>
+<!-- The body is empty until JavaScript runs. We do not execute JavaScript, so the correct
+     outcome is to extract nothing and skip the page — not to index the loading message as
+     though it were an article. -->
+<div id="app">جارٍ التحميل…</div>
+<script>
+  document.getElementById('app').textContent =
+    'هذا النص لا يظهر إلا بعد تشغيل الجافاسكريبت ويجب ألا يُفهرس.';
+</script>
+</body></html>
