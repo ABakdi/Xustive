@@ -1,0 +1,22 @@
+[package]
+name = "xustive-ml"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Local model inference: device selection, model registry, and summarisation."
+
+[dependencies]
+xustive-core = { path = "../xustive-core" }
+xustive-text = { path = "../xustive-text" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+blake3.workspace = true
+
+[features]
+default = []
+# GPU support. Requires the CUDA toolkit at build time; the device layer falls back to CPU
+# at runtime when it is absent, so a CPU-only build is fully functional.
+cuda = []

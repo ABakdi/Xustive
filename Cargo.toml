@@ -5,6 +5,7 @@ members = [
     "crates/xustive-core",
     "crates/xustive-lang",
     "crates/xustive-ingest",
+    "crates/xustive-ml",
     "crates/xustive-search",
     "crates/xustive-api",
     "crates/xustive-cli",
