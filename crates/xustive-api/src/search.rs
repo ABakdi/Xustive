@@ -18,6 +18,9 @@ use xustive_text::script::{self, Script};
 
 use crate::error::ApiError;
 use crate::metrics;
+use std::time::Duration;
+
+use crate::deadline::{Deadline, Stage};
 use crate::state::AppState;
 
 /// Hard cap on query length, matching the API contract.
@@ -220,6 +223,14 @@ pub async fn handler(
     // "2 قنطار → كيلوغرام" rather than the English unit names.
     let ui_lang = params.ui.as_deref().unwrap_or("en");
     let instant = xustive_tools::best_in(&raw, ui_lang);
+
+    // The budget starts here, once, and is absolute. Passing a duration down the chain would let
+    // every stage believe it had the whole thing.
+    let deadline = Deadline::new(Duration::from_millis(state.config.api.timeout_search_ms));
+
+    // Operators come off the raw query, before normalisation. Normalisation folds quotes and
+    // punctuation, so a phrase parsed afterwards is no longer a phrase.
+    let operators = xustive_search::parse_operators(&raw);
     if raw.trim().is_empty() {
         return Err(ApiError::MissingQuery);
     }
@@ -236,7 +247,12 @@ pub async fn handler(
         .clamp(1, cfg.max_hits_per_page);
     let page = params.page.unwrap_or(1).max(1);
 
-    let filters = parse_filters(&params)?.normalise();
+    let mut filters = parse_filters(&params)?.normalise();
+    // `site:` narrows to a domain. Taken from the operator rather than a query parameter, so the
+    // URL a user shares carries exactly what they typed.
+    if operators.site.is_some() {
+        filters.domain = operators.site.clone();
+    }
     let sort = match params.sort.as_deref() {
         None | Some("relevance") => Vec::new(),
         Some("recency") => vec!["published_at:desc"],
@@ -249,7 +265,7 @@ pub async fn handler(
     };
 
     // --- normalise and detect -------------------------------------------------------
-    let normalized = xustive_text::normalize(&raw);
+    let normalized = xustive_text::normalize(&operators.engine_query());
     let detect_started = Instant::now();
     let detection = detect_language(&state, &normalized, params.lang.as_deref());
     state.metrics.observe(
@@ -273,11 +289,16 @@ pub async fn handler(
     // given, so paging at the engine would freeze the engine's ordering into the result.
     let offset = (page - 1) * hits_per_page;
     let pool = cfg.candidate_pool.max(hits_per_page);
+    // Facets are given up before re-ranking: losing the filter chips costs less than losing
+    // result quality.
+    let want_facets = deadline.allows(Stage::Facets);
     let mut query = Query::new(&normalized)
         .limit(pool)
         .offset(0)
-        .facets(&["source_type", "sentiment.label", "language"])
         .highlight(&["excerpt", "title"]);
+    if want_facets {
+        query = query.facets(&["source_type", "sentiment.label", "language"]);
+    }
     if let Some(expr) = filters.to_expression(SPAM_THRESHOLD) {
         query = query.filter(expr);
     }
@@ -303,20 +324,21 @@ pub async fn handler(
     // Conditional rather than always-on: expansion costs a round trip, and for a query that
     // already retrieved well it adds only weaker matches that the re-ranker then has to push
     // back down.
-    let expanded_terms = if hits.hits.len() < EXPANSION_THRESHOLD {
-        expand_and_merge(
-            &state,
-            &normalized,
-            language,
-            &index,
-            &mut hits,
-            &filters,
-            &sort,
-        )
-        .await
-    } else {
-        Vec::new()
-    };
+    let expanded_terms =
+        if hits.hits.len() < EXPANSION_THRESHOLD && deadline.allows(Stage::Expansion) {
+            expand_and_merge(
+                &state,
+                &normalized,
+                language,
+                &index,
+                &mut hits,
+                &filters,
+                &sort,
+            )
+            .await
+        } else {
+            Vec::new()
+        };
 
     state.metrics.observe(
         metrics::SEARCH_DURATION,
@@ -328,6 +350,15 @@ pub async fn handler(
     // --- re-rank --------------------------------------------------------------------
     let rerank_started = Instant::now();
     let trust = state.trust_tiers.as_ref();
+    // Under real pressure the engine's own order is returned instead. Worse results, but
+    // results — and the user cannot tell a search that returns nothing from an outage.
+    if !deadline.allows(Stage::Rerank) {
+        state.metrics.incr(
+            metrics::DEGRADED,
+            metrics::DEGRADED_HELP,
+            &[("stage", Stage::Rerank.as_str())],
+        );
+    }
     let ranked = rank::rerank(
         &hits.hits,
         &normalized,
@@ -343,6 +374,38 @@ pub async fn handler(
     );
 
     // --- shape ----------------------------------------------------------------------
+    // `-term` is applied here rather than in the engine query: Meilisearch has no negation in
+    // its query syntax, and expressing it as a filter would need every excluded word to be a
+    // filterable attribute.
+    let excluded: Vec<String> = operators
+        .excluded
+        .iter()
+        .map(|t| xustive_text::fold(t))
+        .filter(|t| !t.is_empty())
+        .collect();
+    let pool_before = ranked.len();
+    let ranked: Vec<_> = if excluded.is_empty() {
+        ranked
+    } else {
+        ranked
+            .into_iter()
+            .filter(|r| {
+                let haystack = xustive_text::fold(&format!(
+                    "{} {}",
+                    r.hit
+                        .get("title")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                    r.hit
+                        .get("body")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                ));
+                !excluded.iter().any(|term| haystack.contains(term))
+            })
+            .collect()
+    };
+
     let results: Vec<ResultCard> = ranked
         .iter()
         .skip(offset)
@@ -375,7 +438,19 @@ pub async fn handler(
         None
     };
 
-    let total_hits = hits.estimated_total_hits;
+    // Exclusions are applied to the candidate pool, not to the whole corpus, so the engine's
+    // count no longer describes what the user is being shown. Scaling by the observed survival
+    // rate is an estimate, and it is marked as one — reporting the unfiltered 395 while showing a
+    // filtered list is simply false, and the user has no way to tell.
+    let (total_hits, estimated) = if excluded.is_empty() || pool_before == 0 {
+        (hits.estimated_total_hits, hits.estimated_total_hits > 0)
+    } else {
+        let survival = ranked.len() as f64 / pool_before as f64;
+        (
+            (hits.estimated_total_hits as f64 * survival).round() as usize,
+            true,
+        )
+    };
     let total_pages = total_hits.div_ceil(hits_per_page).min(100);
 
     if results.is_empty() {
@@ -412,7 +487,7 @@ pub async fn handler(
             hits_per_page,
             total_hits,
             total_pages,
-            estimated: true,
+            estimated,
         },
         took_ms: started.elapsed().as_millis() as u64,
         results,

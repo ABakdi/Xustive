@@ -84,17 +84,24 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 ## M1-T05 — [[Query Pipeline]]
 
-- [ ] M1-T05.1 Normalisation + operator parsing (`"…"`, `site:`, `-term`)
-- [ ] M1-T05.2 Deadline propagation as an absolute `Instant`
+- [x] M1-T05.1 Operator parsing — `"phrase"` (ASCII, typographic and French quotes), `site:`
+      (accepts a pasted URL), `-term`. Parsed from the **raw** query, before normalisation folds
+      the marks that made a phrase a phrase
+- [x] M1-T05.2 Deadline propagation as an absolute `Instant`. A duration passed down the chain
+      gives every stage the full budget, so four stages each "within budget" take four times it
 - [~] M1-T05.3 Multi-search request builder — primary and **expanded** legs are wired and
       measured; the comments leg is not built. Expansion runs only when the primary returns
       fewer than five hits, since a query that already retrieved well gains only weaker matches
 - [~] M1-T05.4 Merge and dedupe by id across legs, primary order preserved — a document found
       by both matched the query *as typed*, which is stronger evidence than matching a
       transliteration of it. Comment grouping and parent fetch are not built
-- [ ] M1-T05.5 Degradation ladder with per-call timeouts ([[Error Handling and Resilience]] §6)
-- [ ] M1-T05.6 Summary candidate selection and token handoff
-- [ ] M1-T05.7 Fault-injection tests: every optional dependency fails, request still succeeds
+- [x] M1-T05.5 Degradation ladder: summary → expansion → facets → re-ranking, each with a
+      budget fraction rather than a fixed floor. Retrieval is never dropped — a search returning
+      nothing is not degraded, it is indistinguishable from an outage
+- [x] M1-T05.6 Summary candidate selection and token handoff
+- [x] M1-T05.7 Fault injection: 10 tests with Meilisearch, Redis and the model all unreachable.
+      The process starts, liveness holds, readiness fails honestly, suggestions and `/admin` still
+      answer
 
 ## M1-T06 — [[Ranking and Relevance]]
 

@@ -3,6 +3,7 @@
 pub mod client;
 pub mod eval;
 pub mod filter;
+pub mod operators;
 pub mod rank;
 pub mod settings;
 
@@ -11,5 +12,6 @@ pub use client::{
 };
 pub use eval::{score, GoldenQuery, Observed, Provenance, Report};
 pub use filter::Filters;
+pub use operators::{parse as parse_operators, Parsed};
 pub use rank::{rerank, Intent, Ranked, Weights};
 pub use settings::{COMMENTS, DOCUMENTS, SOURCES};

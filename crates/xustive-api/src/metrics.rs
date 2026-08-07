@@ -210,6 +210,10 @@ pub const HTTP_REQUESTS: &str = "xustive_http_requests_total";
 pub const HTTP_REQUESTS_HELP: &str = "Total HTTP requests by route and status";
 pub const HTTP_DURATION: &str = "xustive_http_duration_seconds";
 pub const HTTP_DURATION_HELP: &str = "HTTP request duration by route";
+pub const DEGRADED: &str = "xustive_degraded_total";
+pub const DEGRADED_HELP: &str =
+    "Requests that skipped a stage to stay inside the deadline, by stage";
+
 pub const SUGGEST_TOTAL: &str = "xustive_suggest_total";
 pub const SUGGEST_TOTAL_HELP: &str =
     "Suggestion requests, labelled only by whether the result was empty. Never by prefix";

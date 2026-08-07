@@ -5,6 +5,7 @@
 //! with HTTP.
 
 pub mod admin;
+pub mod deadline;
 pub mod error;
 pub mod metrics;
 pub mod ratelimit;
