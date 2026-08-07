@@ -171,6 +171,58 @@ struct MeiliError {
     code: String,
 }
 
+/// A key we intend to exist.
+#[derive(Debug, Clone)]
+pub struct KeySpec {
+    pub name: &'static str,
+    pub description: &'static str,
+    /// Meilisearch action patterns, e.g. `search`, `documents.add`.
+    pub actions: &'static [&'static str],
+    /// Index patterns the key applies to. `*` is every index.
+    pub indexes: &'static [&'static str],
+}
+
+/// The two keys the running system needs.
+///
+/// Deliberately not one key with both action sets. The whole value here is that the process
+/// serving public traffic physically cannot write, so a bug or a leak in the API cannot corrupt
+/// or delete the corpus.
+pub const SEARCH_KEY: KeySpec = KeySpec {
+    name: "xustive-search",
+    description: "Read-only. Held by xustive-api.",
+    // `search` alone. Not `indexes.get`, not `stats.get` — the API never needs them, and every
+    // extra action is one more thing a leaked key can do.
+    actions: &["search"],
+    indexes: &["*"],
+};
+
+pub const INDEX_KEY: KeySpec = KeySpec {
+    name: "xustive-index",
+    description: "Write-only. Held by xustive-worker and the crawler.",
+    // No `indexes.delete`: a worker never needs to drop an index, and the one operation that
+    // loses every document should require the master key and a person.
+    actions: &[
+        "documents.add",
+        "documents.get",
+        "documents.delete",
+        "tasks.get",
+        "indexes.get",
+    ],
+    indexes: &["*"],
+};
+
+/// A key as Meilisearch reports it.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ScopedKey {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    /// The credential itself. Printed once at issue and never logged.
+    pub key: String,
+    pub uid: String,
+    pub actions: Vec<String>,
+    pub indexes: Vec<String>,
+}
+
 #[derive(Clone)]
 pub struct MeiliClient {
     http: reqwest::Client,
@@ -298,6 +350,124 @@ impl MeiliClient {
                 Err(e) => Err(e),
             },
             Err(SearchError::Backend { ref code, .. }) if code == "index_already_exists" => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    // --- aliases -----------------------------------------------------------------------
+    //
+    // Everything reads and writes through an alias, never a concrete index name. That costs
+    // nothing today and is the only thing that makes a live reindex possible later: build
+    // `documents_v2` alongside `documents_v1`, verify it, then flip the alias in one atomic
+    // swap. Rollback is the same operation in reverse.
+    //
+    // Retrofitting this after the fact means a migration with downtime, which for a search
+    // engine is the one kind of migration you cannot schedule quietly.
+
+    /// Meilisearch has no alias primitive, so the alias is a naming convention: `documents` is
+    /// whichever `documents_vN` has the highest N. Deriving it from the index list keeps the
+    /// mapping in one place rather than in a pointer document that can disagree with reality.
+    pub async fn versions_of(&self, alias: &str) -> Result<Vec<(u32, String)>, SearchError> {
+        // `/indexes` returns `results`, not the `hits` that search returns. Deserialising it
+        // into the search shape yields an empty list rather than an error, so every alias
+        // silently resolved to itself — which is a working system serving the wrong index.
+        #[derive(serde::Deserialize)]
+        struct IndexList {
+            results: Vec<Value>,
+        }
+
+        // The default page size is 20 and there is no reason to assume an installation has
+        // fewer indexes than that.
+        let url = self.url("/indexes?limit=1000")?;
+        let list: IndexList = self.send(self.http.get(url)).await?;
+        let prefix = format!("{alias}_v");
+        let mut out: Vec<(u32, String)> = list
+            .results
+            .iter()
+            .filter_map(|e| e.get("uid")?.as_str())
+            .filter_map(|uid| {
+                let n = uid.strip_prefix(&prefix)?.parse::<u32>().ok()?;
+                Some((n, uid.to_string()))
+            })
+            .collect();
+        out.sort_unstable();
+        Ok(out)
+    }
+
+    /// Resolve an alias to the concrete index that should be read and written.
+    ///
+    /// A **plain index named exactly the alias wins over any versioned one.** That ordering is
+    /// deliberate and is the only thing making this change safe to deploy: this project indexed
+    /// into `documents` directly before aliases existed, and preferring `documents_v1` would
+    /// point a running system at an empty index the moment a migration created one. An empty
+    /// index does not look like a failed migration — it looks like a search engine that has
+    /// forgotten everything.
+    pub async fn resolve(&self, alias: &str) -> Result<String, SearchError> {
+        if self.index_exists(alias).await? {
+            return Ok(alias.to_string());
+        }
+        Ok(self
+            .versions_of(alias)
+            .await?
+            .pop()
+            .map(|(_, uid)| uid)
+            .unwrap_or_else(|| alias.to_string()))
+    }
+
+    // --- scoped keys -------------------------------------------------------------------
+    //
+    // Meilisearch's master key can do anything, including deleting every index. `xustive-api`
+    // only ever searches and `xustive-worker` only ever writes, so neither needs it. Issuing
+    // narrow keys means a leaked API credential cannot destroy the corpus — and the master key
+    // then exists in exactly one place, the migration job.
+    //
+    // Provisioning is idempotent and keyed by `name`, so running it twice returns the same key
+    // rather than accumulating credentials nobody can account for.
+
+    /// Create or fetch a scoped key.
+    pub async fn ensure_key(&self, spec: &KeySpec) -> Result<ScopedKey, SearchError> {
+        if let Some(existing) = self.find_key(spec.name).await? {
+            return Ok(existing);
+        }
+        let url = self.url("/keys")?;
+        let body = serde_json::json!({
+            "name": spec.name,
+            "description": spec.description,
+            "actions": spec.actions,
+            "indexes": spec.indexes,
+            // No expiry. Rotation is a deliberate operator action (Security and Privacy §7), and
+            // a key that silently expires takes search down at an hour nobody chose.
+            "expiresAt": Value::Null,
+        });
+        self.send(self.http.post(url).json(&body)).await
+    }
+
+    pub async fn find_key(&self, name: &str) -> Result<Option<ScopedKey>, SearchError> {
+        #[derive(serde::Deserialize)]
+        struct KeyList {
+            results: Vec<ScopedKey>,
+        }
+        let url = self.url("/keys?limit=1000")?;
+        let list: KeyList = self.send(self.http.get(url)).await?;
+        Ok(list
+            .results
+            .into_iter()
+            .find(|k| k.name.as_deref() == Some(name)))
+    }
+
+    /// Drop an index and everything in it.
+    ///
+    /// Used by the alias tests and, later, by reindex cleanup once a flip has been verified.
+    /// Deliberately not wired to any command: there is no operator path to this that does not
+    /// go through a deliberate code change.
+    pub async fn delete_index(&self, index: &str) -> Result<(), SearchError> {
+        let url = self.url(&format!("/indexes/{index}"))?;
+        match self.send::<TaskRef>(self.http.delete(url)).await {
+            Ok(t) => {
+                self.wait_task(t.task_uid).await?;
+                Ok(())
+            }
+            Err(SearchError::Backend { status: 404, .. }) => Ok(()),
             Err(e) => Err(e),
         }
     }
