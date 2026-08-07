@@ -131,6 +131,18 @@ impl Engine {
             "loading summariser model"
         );
 
+        // Route llama.cpp's own logging into tracing before touching the backend.
+        //
+        // Left alone it writes about a thousand lines straight to stderr on every load — tensor
+        // repacking, graph reservations, buffer sizes — which buried this process's own startup
+        // banner well past the top of the scrollback and made a working server look like a
+        // hung one. Through tracing it obeys `RUST_LOG` like everything else, and
+        // `RUST_LOG=llama_cpp_2=debug` brings it back when a load genuinely misbehaves.
+        static LOGGING: std::sync::Once = std::sync::Once::new();
+        LOGGING.call_once(|| {
+            llama_cpp_2::send_logs_to_tracing(llama_cpp_2::LogOptions::default());
+        });
+
         let backend = LlamaBackend::init().map_err(|e| EngineError::Load(e.to_string()))?;
 
         let params = LlamaModelParams::default().with_n_gpu_layers(resolved.gpu_layers);

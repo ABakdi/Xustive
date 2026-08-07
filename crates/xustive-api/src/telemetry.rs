@@ -11,7 +11,21 @@ use xustive_core::config::TelemetryConfig;
 pub fn init(cfg: &TelemetryConfig) {
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-    let filter = EnvFilter::try_new(&cfg.log_filter).unwrap_or_else(|_| EnvFilter::new("info"));
+    // llama.cpp is quietened by default. It logs every tensor and graph reservation at INFO,
+    // which is two hundred lines on each model load — enough to bury this process's own startup
+    // output and make a working server look like a stuck one. An explicit `llama_cpp_2=` in the
+    // filter still wins, so `RUST_LOG=llama_cpp_2=info` brings it all back when a load misbehaves.
+    // The target is the crate *name* with hyphens, not the Rust module path — `llama-cpp-2`,
+    // not `llama_cpp_2`. Getting that wrong silently does nothing, which is exactly how the
+    // first attempt at this failed.
+    const QUIET_LLAMA: &str = "llama-cpp-2=warn";
+    let requested = &cfg.log_filter;
+    let filter = if requested.contains("llama") {
+        EnvFilter::try_new(requested.clone())
+    } else {
+        EnvFilter::try_new(format!("{requested},{QUIET_LLAMA}"))
+    }
+    .unwrap_or_else(|_| EnvFilter::new(format!("info,{QUIET_LLAMA}")));
 
     let registry = tracing_subscriber::registry().with(filter);
 
