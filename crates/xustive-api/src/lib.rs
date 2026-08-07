@@ -7,6 +7,7 @@
 pub mod admin;
 pub mod error;
 pub mod metrics;
+pub mod ratelimit;
 pub mod search;
 pub mod state;
 pub mod summary;
@@ -15,12 +16,14 @@ pub mod web;
 
 use std::time::{Duration, Instant};
 
+use axum::error_handling::HandleErrorLayer;
 use axum::extract::{MatchedPath, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
+use tower::ServiceBuilder;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
@@ -46,6 +49,7 @@ pub fn app(state: AppState) -> Router {
 
     let api = Router::new()
         .route("/search", get(search::handler))
+        .layer(middleware::from_fn_with_state(state.clone(), limit_search))
         .layer(search_budget)
         .with_state(state.clone());
 
@@ -55,6 +59,9 @@ pub fn app(state: AppState) -> Router {
     // deadline internally, so this only has to be looser than that one.
     let summary = Router::new()
         .route("/summary", axum::routing::post(summary::handler))
+        // Tighter than search: each one costs tens of seconds of CPU, so the limit that matters
+        // is not requests per minute but how many can be in flight from one place at all.
+        .layer(middleware::from_fn_with_state(state.clone(), limit_summary))
         // Looser than the engine's own deadline, which is the one that actually bounds the work.
         .layer(TimeoutLayer::with_status_code(
             StatusCode::GATEWAY_TIMEOUT,
@@ -72,6 +79,10 @@ pub fn app(state: AppState) -> Router {
         .route("/admin", get(admin::page))
         .route("/admin/status", get(admin::status))
         .route("/admin/device", axum::routing::post(admin::set_device))
+        .route(
+            "/admin/log-level",
+            axum::routing::post(admin::set_log_level),
+        )
         .layer(search_budget)
         .with_state(state.clone());
 
@@ -90,7 +101,87 @@ pub fn app(state: AppState) -> Router {
             state.config.api.body_limit_default,
         ))
         .layer(cors_layer(&state))
+        // Global in-flight cap. Sheds with 503 rather than queueing: under real overload a
+        // queue converts a fast failure into a slow one and every waiting client times out
+        // anyway, having occupied a connection for the whole wait.
+        //
+        // The three layers are one unit and the order inside matters. `ConcurrencyLimit` is
+        // innermost and does the counting; `LoadShed` turns "would have to wait" into an error
+        // instead of waiting; `HandleError` renders that error, because the router has no other
+        // way to. Drop `LoadShed` and requests hang instead of failing.
+        .layer(
+            ServiceBuilder::new()
+                .layer(HandleErrorLayer::new(|_: axum::BoxError| async {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        [(header::RETRY_AFTER, "1")],
+                        axum::Json(serde_json::json!({"error": {
+                            "code": "overloaded",
+                            "message": "too many requests in flight; try again shortly",
+                        }})),
+                    )
+                }))
+                .layer(tower::load_shed::LoadShedLayer::new())
+                .layer(tower::limit::ConcurrencyLimitLayer::new(
+                    state.config.api.max_concurrent,
+                )),
+        )
         .layer(CatchPanicLayer::new())
+}
+
+/// Rate limit `/search`.
+///
+/// A separate function per route rather than one parameterised layer: the limits differ, the
+/// route label has to be a `&'static str` for the bucket key, and a wrong label silently merges
+/// two routes' budgets.
+async fn limit_search(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    enforce(&state, "/search", ratelimit::SEARCH, req, next).await
+}
+
+async fn limit_summary(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    enforce(&state, "/summary", ratelimit::SUMMARY, req, next).await
+}
+
+async fn enforce(
+    state: &AppState,
+    route: &'static str,
+    limit: ratelimit::Limit,
+    req: Request,
+    next: Next,
+) -> Response {
+    let peer = req
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|c| c.0);
+    let decision = state
+        .limiter
+        .check(ratelimit::client_ip(peer), route, limit);
+
+    if !decision.allowed {
+        state.metrics.incr(
+            metrics::RATE_LIMITED,
+            metrics::RATE_LIMITED_HELP,
+            &[("route", route)],
+        );
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(header::RETRY_AFTER, decision.retry_after.to_string())],
+            axum::Json(serde_json::json!({"error": {
+                "code": "rate_limited",
+                "message": "too many requests",
+                "retry_after": decision.retry_after,
+            }})),
+        )
+            .into_response();
+    }
+
+    let mut response = next.run(req).await;
+    // Advertising the remaining budget lets a well-behaved client back off before it is refused,
+    // which is cheaper for both sides than a 429.
+    if let Ok(v) = decision.remaining.to_string().parse() {
+        response.headers_mut().insert("x-ratelimit-remaining", v);
+    }
+    response
 }
 
 fn cors_layer(state: &AppState) -> CorsLayer {

@@ -11,10 +11,11 @@ xustive-core = { path = "../xustive-core" }
 xustive-text = { path = "../xustive-text" }
 xustive-search = { path = "../xustive-search" }
 xustive-lang = { path = "../xustive-lang" }
+blake3.workspace = true
 xustive-ml = { path = "../xustive-ml", default-features = false }
 
 axum.workspace = true
-tower.workspace = true
+tower = { workspace = true, features = ["load-shed", "limit", "util", "buffer"] }
 tower-http.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
 http.workspace = true

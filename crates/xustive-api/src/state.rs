@@ -12,6 +12,7 @@ use xustive_core::TrustTier;
 use xustive_search::{MeiliClient, SearchError, Weights};
 
 use crate::metrics::Metrics;
+use crate::ratelimit::RateLimiter;
 use crate::summary::PendingStore;
 
 #[derive(Clone)]
@@ -47,6 +48,8 @@ pub struct AppState {
     /// which restarts the process anyway, and a lookup on the search path would add a round
     /// trip to every query to answer a question whose answer never changes.
     pub documents_index: Arc<std::sync::RwLock<String>>,
+    /// Per-route request budgets, keyed on a salted network hash rather than an address.
+    pub limiter: Arc<RateLimiter>,
     pub metrics: Metrics,
 }
 
@@ -133,6 +136,7 @@ impl AppState {
             )),
             gpu_layers: Arc::new(AtomicI64::new(gpu_layers)),
             documents_index: Arc::new(std::sync::RwLock::new(documents_index)),
+            limiter: Arc::new(RateLimiter::new()),
             pending: Arc::new(PendingStore::default()),
             #[cfg(feature = "summariser")]
             engine: Arc::new(std::sync::RwLock::new(None)),
