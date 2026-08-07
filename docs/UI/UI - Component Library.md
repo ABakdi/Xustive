@@ -10,7 +10,7 @@ updated: 2026-08-06
 # UI - Component Library
 
 > Every reusable UI component: markup contract, states, and behaviour. Tokens come from
-> [[UI - Design System]]. Screens that compose these live in [[UI - Home Page]],
+> [[UI - Design Language]]. Screens that compose these live in [[UI - Home Page]],
 > [[UI - Results Page]], [[UI - Filters and Facets]].
 
 ---
@@ -193,5 +193,5 @@ regression suite ([[Testing Strategy]]).
 
 ## Related
 
-[[UI - Design System]] · [[UI - Results Page]] · [[UI - Home Page]] · [[UI - Accessibility]] ·
+[[UI - Design Language]] · [[UI - Results Page]] · [[UI - Home Page]] · [[UI - Accessibility]] ·
 [[UI - RTL and Localization]] · [[UI - States and Errors]]

@@ -151,7 +151,7 @@ applies to [[Content Parser]] §4.3, which must *parse* both forms.
 
 ## 9. Fonts
 
-Per [[UI - Design System]] §3: `--font-arabic` applied via `:lang(ar)`, with `font-size: 1.08em` and
+Per [[UI - Design Language]] §3: `--font-arabic` applied via `:lang(ar)`, with `font-size: 1.08em` and
 `line-height: 1.75` because Arabic at nominally equal size reads smaller and needs more leading.
 
 Arabic must never be rendered in a font lacking proper shaping — broken letter joining is instantly
@@ -182,5 +182,5 @@ recognisable as amateur work and is a real risk with default Android fallbacks.
 
 ## Related
 
-[[UI - Design System]] · [[UI - Component Library]] · [[UI - Accessibility]] · [[Language Detector]] ·
+[[UI - Design Language]] · [[UI - Component Library]] · [[UI - Accessibility]] · [[Language Detector]] ·
 [[Query Expander]] · [[Content Parser]] · [[UI Specification]]

@@ -194,7 +194,7 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 ## M1-T13 — Core UI
 
-- [ ] M1-T13.1 [[UI - Design System]] tokens, light and dark
+- [ ] M1-T13.1 [[UI - Design Language]] tokens, light and dark
 - [~] M1-T13.2 [[UI - Component Library]]: SearchBox, **SuggestionList**, SummaryBlock, ResultCard
       are built. Remaining:
       FilterChip, Pagination, Sheet, Toast, Skeleton, EmptyState

@@ -22,7 +22,7 @@ updated: 2026-08-06
 | [[UI - Frontend Architecture]] | **framework, routing, rendering strategy, i18n, budgets** |
 | [[UI - Design Language]] | **the visual identity: palette, type, shape, the qalam rule** |
 | [[UI - Tool Cards]] | **instant-answer cards: one section per tool** |
-| [[UI - Design System]] | tokens: colour, type, spacing, elevation, motion (contrast reference) |
+| [[UI - Design Language]] | tokens: colour, type, spacing, elevation, motion (contrast reference) |
 | [[UI - Component Library]] | every reusable component, its states and markup |
 | [[UI - Home Page]] | the search entry point + autocomplete |
 | [[UI - Results Page]] | summary block, result cards, pagination |
@@ -57,7 +57,7 @@ updated: 2026-08-06
 
 | Concern | Choice | Rationale |
 |:---|:---|:---|
-| Framework | **Next.js 15, App Router, React Server Components** | results must be HTML in the first response; see [[ADR-0010 - Next.js for the Frontend]] |
+| Framework | **Next.js 16, App Router, React Server Components** | results must be HTML in the first response; see [[ADR-0010 - Next.js for the Frontend]] |
 | Language | TypeScript, strict | the API contract becomes a compile error rather than a runtime `undefined` |
 | Styling | Tailwind CSS v4 | small final CSS, tokens from [[UI - Design Language]] |
 | Components | **shadcn/ui, source-copied and rewritten** | accessible primitives we own outright, not a theme over someone else's product |
@@ -177,5 +177,5 @@ This costs a server-rendered template we need anyway for first paint.
 
 ## Related
 
-[[API Contract]] · [[Performance Budgets]] · [[Security and Privacy]] · [[UI - Design System]] ·
+[[API Contract]] · [[Performance Budgets]] · [[Security and Privacy]] · [[UI - Design Language]] ·
 [[UI - Results Page]] · [[TODO]]

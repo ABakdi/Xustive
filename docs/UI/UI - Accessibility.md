@@ -89,7 +89,7 @@ this reason.
 
 ## 4. Colour and Contrast
 
-- Every semantic token pair in [[UI - Design System]] §2 is contrast-tested in CI; the build fails on
+- Every semantic token pair in [[UI - Design Language]] §2 is contrast-tested in CI; the build fails on
   a regression. The tightest pair (`--color-text-muted` on `--color-surface`, 4.6:1) is the canary.
 - **Sentiment is never colour alone**: ▲/●/▼ icon + text label + colour (A4).
 - Platform badges carry text, not just a logo colour.
@@ -171,5 +171,5 @@ finds the problems that matter, and it is a milestone gate, not an optional extr
 
 ## Related
 
-[[UI - Design System]] · [[UI - Component Library]] · [[UI - RTL and Localization]] ·
+[[UI - Design Language]] · [[UI - Component Library]] · [[UI - RTL and Localization]] ·
 [[UI - States and Errors]] · [[UI - Results Page]] · [[Testing Strategy]]

@@ -1,0 +1,197 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens — see docs/UI/UI - Design Language.md
+ *
+ * Deliberately not shadcn's slate-grey default. Warm manuscript paper and blue-hour indigo, one
+ * accent, hairlines instead of shadows. oklch so a hue shift does not change apparent brightness,
+ * which matters when the same green sits on parchment and on indigo.
+ */
+
+@theme {
+  --font-sans: 'IBM Plex Sans', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+  --font-arabic: 'IBM Plex Sans Arabic', 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-pill: 999px;
+}
+
+:root {
+  /* Light — "manuscript". No pure white: #000 on #fff is the highest-strain pairing there is,
+   * and these pages are read for minutes at a time. */
+  --paper: oklch(98.4% 0.006 85);
+  --paper-sunk: oklch(96.2% 0.01 85);
+  --ink: oklch(21% 0.018 75);
+  --ink-muted: oklch(48% 0.014 75);
+  --rule: oklch(89% 0.01 85);
+
+  --accent: oklch(56% 0.148 158);
+  --accent-wash: oklch(94% 0.036 158);
+  --accent-ink: oklch(99% 0 0);
+
+  --warn: oklch(62% 0.13 70);
+  --danger: oklch(56% 0.17 27);
+
+  --leading-body: 1.7;
+
+  /* Any z-index not from this scale is a bug. The suggestion panel losing to the sticky header
+   * is what happens without one, and it happened. */
+  --z-sticky: 10;
+  --z-dropdown: 20;
+  --z-sheet: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+
+  /* Density, swapped by the toggle. */
+  --result-gap: 24px;
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  /* Dark is not inverted light — a different hue family entirely. Deep indigo rather than grey,
+   * and warm text so it reads as lit rather than glowing. */
+  --paper: oklch(19% 0.028 255);
+  --paper-sunk: oklch(24% 0.03 255);
+  --ink: oklch(94% 0.01 85);
+  --ink-muted: oklch(68% 0.016 255);
+  --rule: oklch(32% 0.028 255);
+
+  /* Lifted to hold contrast against indigo. Same hue, different lightness. */
+  --accent: oklch(64% 0.152 158);
+  --accent-wash: oklch(28% 0.05 158);
+  --accent-ink: oklch(16% 0.02 158);
+
+  color-scheme: dark;
+}
+
+:root[data-density='compact'] {
+  --result-gap: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Arabic carries more vertical detail than Latin. Typeset at Latin metrics it is cramped and
+ * slow to read, so it gets more leading and a size step. Applied by script, not by page — a
+ * French interface showing an Arabic result needs this on the result alone. */
+:lang(ar),
+:lang(ary) {
+  font-family: var(--font-arabic);
+  line-height: 1.75;
+  font-size: 1.03em;
+}
+
+body {
+  margin: 0;
+  line-height: var(--leading-body);
+  min-height: 100dvh;
+}
+
+a {
+  color: inherit;
+}
+
+/* Focus is never removed, only restyled. :focus-visible so mouse users see no rings and every
+ * keyboard user always does. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::selection {
+  background: var(--accent-wash);
+}
+
+/* The qalam rule.
+ *
+ * The one signature element, and it carries meaning rather than decoration: a green edge means
+ * Xustive is asserting something, not listing what someone else published. The summary and tool
+ * cards have it. Result cards never do.
+ *
+ * border-inline-start, so it moves to the right edge in Arabic with no direction-specific rule. */
+.qalam {
+  border-inline-start: 2px solid var(--accent);
+  padding-inline-start: 1rem;
+}
+
+/* Motion budget: 120ms, ease-out, opacity and 4px translate only. A result list that animates in
+ * is a result list you cannot read for 300ms. */
+@media (prefers-reduced-motion: no-preference) {
+  .rise {
+    animation: rise 120ms ease-out;
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+}
+
+/* Numbers, expressions and URLs inside RTL text. Without isolation, bidi reordering renders
+ * "45 × 1.19 = 53.55" as something unreadable. */
+bdi,
+.numeric {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- chips ---------------------------------------------------------------------------
+ *
+ * Filters and pagination. Chips rather than a sidebar because the results page is read on a
+ * phone more often than not, and a sidebar on a phone is a drawer nobody opens. */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  color: var(--ink);
+  text-decoration: none;
+  min-block-size: 36px;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+}
+
+.chip-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.chip-clear {
+  border-style: dashed;
+  color: var(--ink-muted);
+}
+
+/* Matched terms in titles and excerpts. The only markup the API is allowed to send. */
+em {
+  font-style: normal;
+  background: var(--accent-wash);
+  border-radius: 2px;
+  padding-inline: 2px;
+}

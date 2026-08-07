@@ -8,8 +8,8 @@ updated: 2026-08-07
 
 # UI — Design Language
 
-> Supersedes the token list in [[UI - Design System]], which stays as the accessibility and
-> contrast reference.
+> Replaces the former `UI - Design System` note, which is deleted rather than kept alongside —
+> two token lists is how the values drift. Contrast obligations live in [[UI - Accessibility]].
 
 ## 1. The problem with looking like everything else
 
@@ -124,7 +124,41 @@ is `border-inline-start`.
 It carries meaning, which is the only reason it earns its place: **a green edge means Xustive is
 telling you something, not showing you what someone else published.** Result cards never have it.
 
-## 7. Density
+## 7. Focus, layering, icons
+
+Carried over from the note this replaces, unchanged because they were right.
+
+```css
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+```
+
+Focus is **never removed, only restyled**. `:focus-visible` rather than `:focus`, so mouse users
+see no rings and every keyboard user always does. Hit targets ≥ 44 px.
+
+| Token | Value | Layer |
+|:---|:---|:---|
+| `--z-base` | 0 | content |
+| `--z-sticky` | 10 | sticky search bar |
+| `--z-dropdown` | 20 | autocomplete |
+| `--z-sheet` | 30 | mobile filter sheet |
+| `--z-modal` | 40 | dialogs |
+| `--z-toast` | 50 | transient messages |
+
+**Any `z-index` not from this table is a bug.** The suggestion panel losing to the sticky header
+is what happens without a scale, and it happened.
+
+Icons: `lucide-react`, 24 × 24, 1.5 px stroke, `currentColor`. Decorative by default
+(`aria-hidden`); an icon that is a control's only content gets an `aria-label`
+([[UI - Accessibility]] §3). Weather icons are drawn to the same stroke weight
+([[UI - Tool Cards]] §3).
+
+---
+
+## 8. Density
 
 Two modes, remembered per device.
 
@@ -135,7 +169,7 @@ Two modes, remembered per device.
 
 Comfortable by default because the first-run impression should be readable, not dense.
 
-## 8. Themes
+## 9. Themes
 
 Three settings — light, dark, **system** (default). Resolved server-side from a cookie so there
 is no flash of the wrong theme, which is the single most common failure of a dark-mode
@@ -148,14 +182,14 @@ implementation and looks like a bug every time.
 
 The toggle cycles system → light → dark and announces the resulting state to assistive tech.
 
-## 9. What this is not
+## 10. What this is not
 
 - Not a dashboard. No cards-in-a-grid, no stat tiles.
 - Not brutalist. Warmth and hairlines, not raw borders and system fonts.
 - Not "AI-styled". No purple gradients, no sparkle icons, no glow. The summary is marked by the
   same green rule as a unit conversion, because both are the engine speaking.
 
-## 10. Open questions
+## 11. Open questions
 
 - [ ] Should a Maghrebi geometric motif appear at all — in the empty state, the 404, the footer?
       Risk: decoration that dates fast and reads as costume. Leaning towards **one** use, in the
@@ -167,5 +201,5 @@ The toggle cycles system → light → dark and announces the resulting state to
 
 ## Related
 
-[[UI - Design System]] · [[UI - Accessibility]] · [[UI - RTL and Localization]] ·
+[[UI - Accessibility]] · [[UI - RTL and Localization]] ·
 [[UI - Component Library]] · [[Instant Answers]] · [[ADR-0010 - Next.js for the Frontend]]

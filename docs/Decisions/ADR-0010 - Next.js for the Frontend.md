@@ -25,7 +25,7 @@ also at its ceiling:
 
 ## Decision
 
-**Next.js 15, App Router, TypeScript, React Server Components.** The Rust API becomes purely
+**Next.js 16, App Router, TypeScript, React Server Components.** The Rust API becomes purely
 JSON; all HTML comes from Next.
 
 Component library is **shadcn/ui**, which is source-copied rather than depended on, so the visual

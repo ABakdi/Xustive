@@ -29,10 +29,12 @@ are the reason to exist; the search is the foundation under them.
 
 ## M1B-T01 — Frontend foundation
 
-- [ ] M1B-T01.1 Next.js 15 + TypeScript + Tailwind v4, `pnpm`, in `web/`
-- [ ] M1B-T01.2 `[lang]` routing for ar / ary / fr / en; direction and theme resolved server-side
+- [x] M1B-T01.1 Next.js 16.3 + React 19.2 + TypeScript + Tailwind v4 in `web/`. **npm, not
+      pnpm** — enabling corepack needs root on this machine and the package manager is not worth
+      a privileged install
+- [x] M1B-T01.2 `[lang]` routing for ar / ary / fr / en; direction and theme resolved server-side
 - [ ] M1B-T01.3 Typed API client generated from an OpenAPI description of [[API Contract]]
-- [ ] M1B-T01.4 Theme: light / dark / system, cookie-resolved, **no flash of the wrong theme**
+- [x] M1B-T01.4 Theme: light / dark / system, cookie-resolved, resolved before the first byte
 - [ ] M1B-T01.5 Bundle budgets enforced in CI ([[UI - Frontend Architecture]] §7) — exceeding
       fails the build
 - [ ] M1B-T01.6 CI runs the results page with JavaScript disabled and asserts search, filtering
@@ -40,11 +42,11 @@ are the reason to exist; the search is the foundation under them.
 
 ## M1B-T02 — Design language
 
-- [ ] M1B-T02.1 `oklch` token set, both themes ([[UI - Design Language]] §3)
+- [x] M1B-T02.1 `oklch` token set, both themes ([[UI - Design Language]] §3)
 - [ ] M1B-T02.2 IBM Plex Sans + Sans Arabic, self-hosted, subset per script, preloaded per
       direction
 - [ ] M1B-T02.3 shadcn primitives copied in and **rewritten** — not themed
-- [ ] M1B-T02.4 The qalam rule as a shared primitive, used only by summary and tool cards
+- [x] M1B-T02.4 The qalam rule as a shared primitive, used only by summary and tool cards
 - [ ] M1B-T02.5 Density toggle, persisted per device
 - [ ] M1B-T02.6 Contrast audit of both themes at AA ([[UI - Accessibility]])
 - [ ] M1B-T02.7 Native-speaker read on the Arabic face and numeral system ← *B7*
@@ -53,11 +55,11 @@ are the reason to exist; the search is the foundation under them.
 
 Ported, then the Rust renderer **deleted**. Two renderers is the problem being solved.
 
-- [ ] M1B-T03.1 Home
-- [ ] M1B-T03.2 Results — Server Component, HTML in the first response
-- [ ] M1B-T03.3 Filters as server-rendered links, client-enhanced
-- [ ] M1B-T03.4 Suggestions as an ARIA combobox
-- [ ] M1B-T03.5 Summary, fetched after paint
+- [x] M1B-T03.1 Home
+- [x] M1B-T03.2 Results — Server Component, HTML in the first response
+- [x] M1B-T03.3 Filters as server-rendered links
+- [x] M1B-T03.4 Suggestions as an ARIA combobox
+- [x] M1B-T03.5 Summary, fetched after paint
 - [ ] M1B-T03.6 States and errors ([[UI - States and Errors]])
 - [ ] M1B-T03.7 **Delete `web.rs` and `web/public/`**
 
@@ -107,7 +109,7 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 
 ## M1B-T08 — Localisation
 
-- [ ] M1B-T08.1 Catalogues for ar / fr / en; **a missing key is a build error**
+- [x] M1B-T08.1 Catalogues for ar / fr / en; a missing key is a compile error
 - [ ] M1B-T08.2 `Intl.PluralRules` — Arabic has six forms
 - [ ] M1B-T08.3 `Intl.NumberFormat` / `DateTimeFormat`, numeral system an explicit choice
 - [ ] M1B-T08.4 Darija catalogue, falling back to Arabic ← *B7*
