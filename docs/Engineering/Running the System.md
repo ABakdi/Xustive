@@ -28,7 +28,7 @@ generated locally from the results.
 |:---|:---|
 | `xustive-api` — HTTP, search, server-rendered results | `xustive-worker` — a standing parse/enrich/index service |
 | `xustive-cli` — migrate, seed, **crawl**, stats, text, search | Continuous scheduled crawling — [[Milestone 3 - Ingestion at Scale]] |
-| Language detection, Arabizi ↔ Arabic expansion, sentiment | Voice and image search — [[Milestone 4 - Multimodal]] |
+| Language detection, Arabizi ↔ Arabic expansion, sentiment | Voice and image search — [[Milestone 2 - Multimodal Input]] |
 | Meilisearch index + generated synonyms | Qdrant is running but unused |
 | The web UI, including the no-JavaScript path | Autocomplete, filters UI |
 | **AI summaries** — local Qwen2.5 via llama.cpp ([[Summarizer]]) | Streaming summaries — see [[Summarizer]] §3 |

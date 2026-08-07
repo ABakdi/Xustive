@@ -85,7 +85,12 @@ social media posts, serving results in **Arabic, Darija, French, and English**.
 
 ## 🎨 User Interface
 
-- [[UI Specification]] — the UI hub note
+- [[UI Specification]]
+- [[UI - Frontend Architecture]] — Next.js, rendering, i18n
+- [[UI - Design Language]] — the visual identity
+- [[UI - Tool Cards]] — instant-answer rendering
+- [[Instant Answers]] — calculator, currency, weather, translate, prayer times
+- [[Tool Data Plane]] — how live data reaches a no-egress serving plane — the UI hub note
 - [[UI - Design System]] · [[UI - Component Library]]
 - [[UI - Home Page]] · [[UI - Results Page]]
 - [[UI - Voice Search]] · [[UI - Image Search]] · [[UI - Filters and Facets]]

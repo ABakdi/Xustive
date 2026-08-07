@@ -26,6 +26,8 @@ updated: 2026-08-06
 | C05 | [[Autocomplete Service]] | `xustive-api` | C06 | C01 |
 | C06 | [[Search Index]] | `meilisearch` | — | C02, C05, C19 |
 | C07 | [[Vector Index]] | `qdrant` | — | C02, C11, C19 |
+| C28 | [[Instant Answers]] | `xustive-api` | tool routing and instant answers |
+| C29 | [[Tool Data Plane]] | `xustive-toold` | scheduled fetch of external tool data |
 | C08 | [[Summarizer]] | `xustive-ml` | model files | C02 |
 | C09 | [[Speech to Text]] | `xustive-ml` | model files | C01 |
 | C10 | [[Image Pipeline]] | `xustive-ml` | C07, tesseract, CLIP | C01, C17 |

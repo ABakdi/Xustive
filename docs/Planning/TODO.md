@@ -35,6 +35,7 @@ Task id format: `M<milestone>-T<task>` → `M1-T04`. Subtasks are `M1-T04.3`.
 |:--|:---|:---|:---|
 | **M0** | [[Milestone 0 - Foundations]] | repo, infra, index, a search box that works | 10k docs searchable end-to-end |
 | **M1** | [[Milestone 1 - Text Search MVP]] | the full text search product | nDCG@10 ≥ 0.60 on the golden set; p95 ≤ 200 ms |
+| **M1B** | [[Milestone 1B - Frontend and Instant Answers]] | Next.js UI + instant-answer tools | Rust renderer deleted; no-JS path passes; zero false tool activations |
 | **M2** | [[Milestone 2 - Multimodal Input]] | voice and image | WER/OCR targets met; image search ≤ 500 ms |
 | **M3** | [[Milestone 3 - Ingestion at Scale]] | real crawling + direct social collection | 1M documents; identity lifespan ≥ 60 d; cloaking detected |
 | **M4** | [[Milestone 4 - Quality and Operations]] | make it survivable | load test passes at 10M docs; restore drill green |
@@ -84,6 +85,19 @@ Tick as tasks complete in the milestone notes.
 - [ ] M1-T13 Full UI: [[UI - Results Page]], [[UI - Home Page]], [[UI - Filters and Facets]]
 - [ ] M1-T14 [[UI - RTL and Localization]] and four UI languages
 - [ ] M1-T15 Relevance evaluation harness + golden set v1
+
+### M1B — Frontend and Instant Answers
+
+Breakdown in [[Milestone 1B - Frontend and Instant Answers]].
+
+- [ ] M1B-T01 Frontend foundation — Next.js, `[lang]` routing, typed client, budgets in CI
+- [ ] M1B-T02 Design language — oklch tokens, IBM Plex, shadcn primitives rewritten
+- [ ] M1B-T03 Port the existing UI, then **delete the Rust renderer**
+- [ ] M1B-T04 Tool framework — matching, arbitration, the shared card
+- [ ] M1B-T05 Tier 1 tools — calculator, units, currency, translate, weather, prayer, time
+- [ ] M1B-T06 `xustive-toold` — scheduled fetch into a cache the no-egress serving plane reads
+- [ ] M1B-T07 Tier 2 and 3 tools
+- [ ] M1B-T08 Localisation — catalogues, plurals, numerals, visual regression
 
 ### M2 — Multimodal Input
 - [ ] M2-T01 `xustive-ml` service scaffold and model management

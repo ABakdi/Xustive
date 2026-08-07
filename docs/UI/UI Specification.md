@@ -19,7 +19,10 @@ updated: 2026-08-06
 
 | Note | Covers |
 |:---|:---|
-| [[UI - Design System]] | tokens: colour, type, spacing, elevation, motion |
+| [[UI - Frontend Architecture]] | **framework, routing, rendering strategy, i18n, budgets** |
+| [[UI - Design Language]] | **the visual identity: palette, type, shape, the qalam rule** |
+| [[UI - Tool Cards]] | **instant-answer cards: one section per tool** |
+| [[UI - Design System]] | tokens: colour, type, spacing, elevation, motion (contrast reference) |
 | [[UI - Component Library]] | every reusable component, its states and markup |
 | [[UI - Home Page]] | the search entry point + autocomplete |
 | [[UI - Results Page]] | summary block, result cards, pagination |
@@ -54,17 +57,24 @@ updated: 2026-08-06
 
 | Concern | Choice | Rationale |
 |:---|:---|:---|
-| Markup | Server-rendered HTML shell + client rendering for results | first paint without waiting on JS |
-| Styling | Tailwind CSS, built and purged | small final CSS, consistent tokens |
-| Scripting | Vanilla ES2022 modules, no framework | the whole app is a search box and a list; a framework is 40 KB of nothing |
+| Framework | **Next.js 15, App Router, React Server Components** | results must be HTML in the first response; see [[ADR-0010 - Next.js for the Frontend]] |
+| Language | TypeScript, strict | the API contract becomes a compile error rather than a runtime `undefined` |
+| Styling | Tailwind CSS v4 | small final CSS, tokens from [[UI - Design Language]] |
+| Components | **shadcn/ui, source-copied and rewritten** | accessible primitives we own outright, not a theme over someone else's product |
 | State | URL query string is the state | shareable, back-button-correct, no store to desync |
-| Streaming | `EventSource` for the summary | matches [[API Contract]] §3 |
-| Icons | Inline SVG sprite | no icon font, no extra request |
-| Fonts | System font stack + optional self-hosted Arabic face | zero third-party font requests ([[Security and Privacy]] P7) |
-| Build | `esbuild` + `tailwindcss` CLI | fast, no bundler config archaeology |
+| Summary | client fetch after paint | 20+ s on CPU; nothing may wait on it ([[Summarizer]] §3) |
+| Icons | `lucide-react`, tree-shaken | no icon font, no extra request |
+| Fonts | Self-hosted IBM Plex Sans + Sans Arabic, subset per script | zero third-party font requests ([[Security and Privacy]] P7) |
+| Build | `next build` via `pnpm` | one toolchain rather than three |
 
-**No third-party runtime dependencies ship to the browser.** This is enforced by the CSP
-(`default-src 'self'`) and by a CI check on the built asset manifest.
+**Nothing is loaded from a third-party origin at runtime.** Enforced by the CSP
+(`default-src 'self'`) and by a CI check on the built asset manifest. React ships from our own
+origin like everything else — the rule is about *origins*, not about having no dependencies.
+
+The earlier no-framework position is superseded by [[ADR-0010 - Next.js for the Frontend]]. It
+held while the UI was a search box and a list; it stopped holding when every component had to be
+written twice, once in Rust and once in JavaScript, and the language filter shipped broken
+because the two drifted.
 
 ---
 
