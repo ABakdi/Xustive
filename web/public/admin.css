@@ -1,0 +1,92 @@
+/* Admin surface.
+ *
+ * A separate file rather than an inline <style> block: the API sends a strict
+ * Content-Security-Policy with `style-src 'self'`, so inline styles are dropped. Loosening the
+ * policy for the sake of one page would be the wrong trade.
+ *
+ * Deliberately plainer than the search UI. This is an operator tool, always LTR and in English. */
+
+.admin-page main {
+  max-inline-size: 900px;
+  margin-inline: auto;
+  padding-inline: var(--space-6);
+  text-align: start;
+}
+
+.admin-page h1,
+.admin-page h2 {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  margin-block: var(--space-8) var(--space-3);
+}
+
+.admin-page .lede { margin-block-end: var(--space-6); }
+
+table.admin {
+  border-collapse: collapse;
+  inline-size: 100%;
+  margin-block-end: var(--space-6);
+  font-size: var(--text-sm);
+}
+
+table.admin th,
+table.admin td {
+  text-align: start;
+  padding: var(--space-2) var(--space-3);
+  border-block-end: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+table.admin th {
+  color: var(--color-text-muted);
+  font-weight: 500;
+  inline-size: 220px;
+}
+
+form.admin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-inline-size: 480px;
+  margin-block-end: var(--space-8);
+}
+
+form.admin label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+form.admin select,
+form.admin input {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  /* Touch-target floor, same as the search UI. */
+  min-block-size: 44px;
+}
+
+form.admin .hint {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+form.admin button {
+  align-self: start;
+  padding: var(--space-3) var(--space-6);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  min-block-size: 44px;
+}
+
+.state-ok { color: var(--color-accent); }
+.state-warn { color: var(--amber-600); }
+.state-missing { color: var(--color-text-muted); }

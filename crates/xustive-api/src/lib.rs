@@ -4,6 +4,7 @@
 //! headers, error shaping) live in the middleware stack so no downstream component ever deals
 //! with HTTP.
 
+pub mod admin;
 pub mod error;
 pub mod metrics;
 pub mod search;
@@ -43,6 +44,10 @@ pub fn app(state: AppState) -> Router {
         .route("/metrics", get(metrics_handler))
         // Server-rendered results, so core search works without JavaScript.
         .route("/search", get(web::search_page))
+        // Operator surface. Read-mostly, and nothing here can stop the process starting.
+        .route("/admin", get(admin::page))
+        .route("/admin/status", get(admin::status))
+        .route("/admin/device", axum::routing::post(admin::set_device))
         .with_state(state.clone());
 
     let static_dir = &state.config.api.static_dir;

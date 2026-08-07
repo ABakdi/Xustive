@@ -252,6 +252,34 @@ fn page_shell(title: &str, body: &str) -> String {
     )
 }
 
+/// Page shell for the admin surface.
+///
+/// LTR and English, unlike the public pages: this is an operator tool, not part of the product.
+///
+/// Styles and behaviour live in `/admin.css` and `/admin.js` rather than inline, because the API
+/// sends `style-src 'self'; script-src 'self'` and inline blocks are silently dropped. Relaxing
+/// the policy for one page is not worth it.
+pub fn admin_shell(title: &str, body: &str) -> String {
+    format!(
+        r#"<!doctype html>
+<html lang="en" dir="ltr" class="admin-page">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{title}</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/admin.css">
+<script src="/admin.js" defer></script>
+</head>
+<body>
+{body}
+</body>
+</html>"#,
+        title = escape_html(title),
+    )
+}
+
 // --- escaping ---------------------------------------------------------------------------
 
 /// Escape every HTML-significant character.
