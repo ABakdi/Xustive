@@ -89,6 +89,19 @@ run-api: ## Run the API server — this also serves the web UI at http://localho
 run-api-fast: ## Run without the summariser — builds in seconds, no AI summaries
 	cargo run -p xustive-api --no-default-features -- --config $(CONFIG)
 
+.PHONY: eval
+eval: ## Score the golden set and write a dated report
+	cargo run --release -q -p xustive-cli -- --config $(CONFIG) eval
+
+.PHONY: eval-check
+eval-check: ## Score the golden set and fail if nDCG@10 regressed
+	cargo run --release -q -p xustive-cli -- --config $(CONFIG) eval \
+		--baseline eval/reports/baseline.json --dry-run
+
+.PHONY: golden
+golden: ## Regenerate the machine-judged golden set from the live index
+	./eval/build_golden.py --out eval/golden/v1.jsonl
+
 .PHONY: scan-logs
 scan-logs: ## Scan a log file for leaked query text: make scan-logs LOG=/tmp/api.log
 	./scripts/scan-logs.sh $(LOG)

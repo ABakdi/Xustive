@@ -200,12 +200,21 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 ## M1-T15 — Evaluation harness
 
-- [ ] M1-T15.1 `make eval` runs the golden set against a frozen index snapshot
-- [ ] M1-T15.2 nDCG@10, MRR@10, recall@50, zero-result rate, freshness distribution
-- [ ] M1-T15.3 Reports to `eval/reports/{date}.json`, plotted over time
-- [ ] M1-T15.4 CI gate: ranking or lexicon changes cannot drop nDCG@10 by > 1 %
-- [ ] M1-T15.5 **Golden set v1: 200 queries** — 40 % ar, 25 % ary, 20 % fr, 10 % en, 5 % mixed, judged
-      by Algerian-native judges ← *B7*
+- [~] M1-T15.1 `make eval` runs the golden set. **Not against a frozen snapshot** — snapshotting
+      Meilisearch is not wired up. Instead the golden set records the corpus size its judgements
+      were made against and the runner refuses to gate when the live index has drifted, because
+      documents added after judging count as irrelevant and look exactly like a ranking
+      regression. Detecting the drift is the honest approximation; freezing is still owed
+- [x] M1-T15.2 nDCG@10, MRR@10, recall@50, zero-result rate, freshness distribution, plus a
+      per-language breakdown the spec did not ask for and which turned out to be the finding
+- [x] M1-T15.3 Reports to `eval/reports/{date}.json`. Not yet *plotted*; the series exists
+- [x] M1-T15.4 CI gate: `make eval-check` fails when nDCG@10 drops more than 1 % relative to
+      `eval/reports/baseline.json`. Verified in both directions
+- [~] M1-T15.5 Golden set v1: **187 queries**, not 200 — every query needs at least one document
+      graded 2 or better, and the corpus cannot answer more. Mix is 43 % ar / 27 % ary / 21 % fr /
+      4 % en / 5 % mixed; English is short because only a handful of English documents are
+      indexed. **Machine-judged**, marked as such per query, and reports print what share of the
+      score rests on generated labels. Native-speaker judging still owed ← *B7*
 
 ---
 
