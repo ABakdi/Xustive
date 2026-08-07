@@ -191,6 +191,36 @@ otherwise vector similarity results are returned. See [[Image Pipeline]] and [[U
 | `PATCH` | `/admin/sources/{id}` | `X-Api-Key` | enable/disable, change policy |
 | `POST` | `/admin/recrawl` | `X-Api-Key` | force a source into the frontier |
 | `POST` | `/admin/takedown` | `X-Api-Key` | remove a document + block its URL ([[Legal and Compliance]]) |
+| `GET` | `/admin` | `X-Admin-Key` | operator page: compute device, model inventory |
+| `GET` | `/admin/status` | `X-Admin-Key` | device resolution, GPU detection, model inventory, ranking weights |
+| `POST` | `/admin/device` | `X-Admin-Key` | change device preference and GPU layer count |
+
+### Admin authentication
+
+The admin surface has its own key, separate from the `X-Api-Key` used by source-registry
+endpoints, because it changes how the process runs rather than what it holds.
+
+Two modes, and the default is the restrictive one:
+
+- **`XUSTIVE_ADMIN_KEY` set** — callers must present it in `X-Admin-Key`. Compared in constant
+  time. This is how any deployment reachable from a network must run.
+- **unset** — only loopback callers are admitted, and everyone else gets `403 admin_local_only`.
+  A peer address the server cannot determine counts as remote. This keeps a local `make web`
+  usable in a browser without setup, without silently exposing device settings on a box whose
+  default bind address is `0.0.0.0`.
+
+### `POST /admin/device`
+
+```jsonc
+{ "preference": "auto" | "gpu" | "cpu",   // optional
+  "gpu_layers": 0 | 24 | null }           // optional; null = decide from free memory
+```
+
+Changes take effect on the **next model load**, not immediately: tearing down a model mid-request
+would fail whatever generation is in flight and buys nothing. The response echoes the resolved
+state, which is not always what was asked for — a GPU request on a CPU-only build still lands on
+CPU, with `fell_back: true` and a `reason` string saying why. See [[Summarizer]] and
+[[Deployment Topology]].
 
 ---
 
@@ -203,10 +233,11 @@ otherwise vector similarity results are returned. See [[Image Pipeline]] and [[U
 
 | HTTP | `code` | When |
 |:---|:---|:---|
-| 400 | `invalid_query`, `query_too_long`, `invalid_filter`, `unsupported_media_type` | validation |
+| 400 | `invalid_query`, `query_too_long`, `invalid_filter`, `unsupported_media_type`, `invalid_device`, `invalid_gpu_layers` | validation |
 | 413 | `payload_too_large` | upload over limit |
 | 415 | `unsupported_media_type` | bad codec/format |
 | 422 | `no_speech_detected`, `image_unreadable` | media understood but unusable |
+| 403 | `admin_key_required`, `admin_local_only` | admin surface, wrong or missing credentials |
 | 429 | `rate_limited` | + `Retry-After` header ([[API Gateway]]) |
 | 499 | — | client disconnect (logged, not returned) |
 | 500 | `internal_error` | unexpected; never leaks internals |
