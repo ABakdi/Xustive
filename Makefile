@@ -89,6 +89,10 @@ run-api: ## Run the API server — this also serves the web UI at http://localho
 run-api-fast: ## Run without the summariser — builds in seconds, no AI summaries
 	cargo run -p xustive-api --no-default-features -- --config $(CONFIG)
 
+.PHONY: scan-logs
+scan-logs: ## Scan a log file for leaked query text: make scan-logs LOG=/tmp/api.log
+	./scripts/scan-logs.sh $(LOG)
+
 .PHONY: fixture-site
 fixture-site: ## Serve the offline crawler fixture site on :8099
 	@echo "  Fixture site on http://127.0.0.1:8099 — see tests/fixtures/site/README.md"

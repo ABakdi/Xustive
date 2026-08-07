@@ -1,0 +1,13 @@
+# Queries replayed against logs by scripts/scan-logs.sh.
+#
+# Distinctive on purpose. The scanner asks "did this exact string reach a log line", so a query
+# that also occurs in ordinary output would produce a false positive and get the check ignored.
+# Real user queries must never be added here — this file is a probe, not a record.
+سعر صرف الأورو في السوق الموازية اليوم
+نتائج البكالوريا 2026 حسب الولاية
+شحال سعر الحديد فالجزائر ديما
+prix du gaz butane à Alger cette semaine
+horaires trains Oran Alger reservation
+electricity consumption Sonelgaz record July
+ch7al ta3 sarf euro lyoum fi dzayer
+مواعيد القطارات وهران الجزائر العاصمة
