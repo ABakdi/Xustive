@@ -61,6 +61,8 @@ pub struct Query {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub sort: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attributes_to_search_on: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attributes_to_highlight: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub highlight_pre_tag: Option<String>,
@@ -103,6 +105,17 @@ impl Query {
 
     pub fn facets(mut self, f: &[&str]) -> Self {
         self.facets = f.iter().map(|s| s.to_string()).collect();
+        self
+    }
+
+    /// Restrict matching to these fields.
+    ///
+    /// Autocomplete needs this: searching the whole document for a two-character prefix returns
+    /// whatever body text happens to contain it, which reads as noise in a suggestion list —
+    /// "سونلغاز" offering an article about a 1922 congress because the word appears in
+    /// paragraph nine.
+    pub fn search_on(mut self, attrs: &[&str]) -> Self {
+        self.attributes_to_search_on = attrs.iter().map(|a| (*a).to_string()).collect();
         self
     }
 

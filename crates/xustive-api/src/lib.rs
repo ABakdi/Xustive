@@ -10,6 +10,7 @@ pub mod metrics;
 pub mod ratelimit;
 pub mod search;
 pub mod state;
+pub mod suggest;
 pub mod summary;
 pub mod telemetry;
 pub mod web;
@@ -56,6 +57,18 @@ pub fn app(state: AppState) -> Router {
         .layer(search_budget)
         .with_state(state.clone());
 
+    // Suggestions fire per keystroke, so they get a much tighter budget and a much higher rate
+    // limit. Sharing the search budget would let a slow index hold a suggestion box open for a
+    // second and a half, which a user reads as a broken input rather than a slow one.
+    let suggest_routes = Router::new()
+        .route("/suggest", get(suggest::handler))
+        .layer(middleware::from_fn_with_state(state.clone(), limit_suggest))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            Duration::from_millis(state.config.api.timeout_suggest_ms),
+        ))
+        .with_state(state.clone());
+
     // Summaries get their own, far longer timeout. Generation on CPU runs to tens of seconds,
     // and the global search budget applied to this endpoint turns every summary into a 504 —
     // which is also what happened the first time it was wired in. The engine enforces its own
@@ -94,7 +107,7 @@ pub fn app(state: AppState) -> Router {
         ServeDir::new(static_dir).fallback(ServeFile::new(format!("{static_dir}/index.html")));
 
     Router::new()
-        .nest("/api/v1", api.merge(summary))
+        .nest("/api/v1", api.merge(summary).merge(suggest_routes))
         .merge(ops)
         .fallback_service(serve_static)
         // Request ids, outermost after panic catching so even a shed or rejected request
@@ -156,6 +169,10 @@ async fn limit_search(State(state): State<AppState>, req: Request, next: Next) -
 
 async fn limit_summary(State(state): State<AppState>, req: Request, next: Next) -> Response {
     enforce(&state, "/summary", ratelimit::SUMMARY, req, next).await
+}
+
+async fn limit_suggest(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    enforce(&state, "/suggest", ratelimit::SUGGEST, req, next).await
 }
 
 async fn enforce(

@@ -1,0 +1,65 @@
+# Hand-written high-value suggestions.
+#
+# term <TAB> lang <TAB> weight
+#
+# These exist because the other three sources are all derived from what we happen to have
+# crawled, and the things Algerians most often need — an administrative procedure, a wilaya, a
+# public service — are frequently not what a news site writes headlines about. A corpus-derived
+# suggester is confidently useless for "how do I renew a passport".
+#
+# Weights are relative within the curated source; the source weight is applied on top.
+# Keep this file short. Every entry is a claim that we know better than the corpus, and a long
+# list of stale claims is worse than none.
+
+# --- wilayas: the most common disambiguator in any Algerian query ------------------------
+الجزائر العاصمة	ar	1.0
+وهران	ar	1.0
+قسنطينة	ar	1.0
+عنابة	ar	0.9
+سطيف	ar	0.9
+باتنة	ar	0.9
+بجاية	ar	0.9
+تيزي وزو	ar	0.9
+بسكرة	ar	0.8
+ورقلة	ar	0.8
+تلمسان	ar	0.8
+غرداية	ar	0.8
+Alger	fr	1.0
+Oran	fr	1.0
+Constantine	fr	1.0
+Annaba	fr	0.9
+Tizi Ouzou	fr	0.9
+
+# --- administrative procedures -----------------------------------------------------------
+تجديد جواز السفر	ar	1.0
+استخراج شهادة الميلاد	ar	1.0
+بطاقة التعريف البيومترية	ar	1.0
+رخصة السياقة	ar	0.9
+شهادة الإقامة	ar	0.9
+التسجيل في الجامعة	ar	0.9
+منحة البطالة	ar	1.0
+التصريح بالضرائب	ar	0.8
+renouvellement passeport	fr	1.0
+carte d'identité biométrique	fr	1.0
+permis de conduire	fr	0.9
+allocation chômage	fr	1.0
+inscription universitaire	fr	0.9
+extrait de naissance	fr	0.9
+
+# --- public services and utilities -------------------------------------------------------
+سونلغاز فاتورة	ar	1.0
+الجزائرية للمياه	ar	0.9
+بريد الجزائر	ar	0.9
+اتصالات الجزائر	ar	0.8
+مواعيد القطارات	ar	0.9
+Sonelgaz facture	fr	1.0
+Algérie Poste	fr	0.9
+Air Algérie réservation	fr	0.9
+
+# --- recurring information needs ---------------------------------------------------------
+نتائج البكالوريا	ar	1.0
+نتائج شهادة التعليم المتوسط	ar	0.9
+سعر صرف الأورو	ar	1.0
+الدخول المدرسي	ar	0.9
+résultats baccalauréat	fr	1.0
+taux de change euro	fr	1.0

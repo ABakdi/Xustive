@@ -90,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bind = config.api.bind_addr.clone();
     let state = AppState::new(config)?;
     state.resolve_index().await;
+    state.refresh_suggestions().await;
     spawn_model_load(&state);
     let router = app(state);
 

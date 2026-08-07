@@ -55,10 +55,67 @@ pub struct AppState {
     pub documents_index: Arc<std::sync::RwLock<String>>,
     /// Per-route request budgets, keyed on a salted network hash rather than an address.
     pub limiter: Arc<RateLimiter>,
+    /// Prefix index for autocomplete. Built once at startup from the curated list; corpus
+    /// terms are added by [`Self::refresh_suggestions`] once the index is reachable.
+    pub suggest: Arc<std::sync::RwLock<Arc<crate::suggest::PrefixIndex>>>,
     pub metrics: Metrics,
 }
 
 impl AppState {
+    /// The current suggestion index.
+    ///
+    /// Cloned out under a brief read lock rather than held: a rebuild swaps the whole thing, and
+    /// a request that grabbed the old one finishes against a consistent snapshot instead of
+    /// blocking or seeing a half-built index.
+    pub fn suggestions(&self) -> Arc<crate::suggest::PrefixIndex> {
+        self.suggest
+            .read()
+            .map(|s| Arc::clone(&s))
+            .unwrap_or_else(|p| Arc::clone(&p.into_inner()))
+    }
+
+    /// Rebuild the suggestion index from the corpus and swap it in.
+    ///
+    /// Called at startup and could be called on a timer. The swap is atomic from a reader's
+    /// point of view, so this never makes suggestions unavailable — the worst case is that they
+    /// stay slightly stale, which nobody notices.
+    pub async fn refresh_suggestions(&self) {
+        let curated = crate::suggest::load_curated(&self.config.suggest.curated_path);
+        let corpus = self.corpus_terms().await;
+        let built = crate::suggest::PrefixIndex::build(&curated, &corpus);
+        tracing::info!(
+            terms = built.len(),
+            curated = curated.len(),
+            "suggestion index built"
+        );
+        if let Ok(mut slot) = self.suggest.write() {
+            *slot = Arc::new(built);
+        }
+    }
+
+    /// Titles from the index, as suggestion candidates.
+    ///
+    /// A failure here is not an error: the curated list still works, and an autocomplete that
+    /// offers slightly less is better than a startup that fails over an optional feature.
+    async fn corpus_terms(&self) -> Vec<String> {
+        use serde_json::Value;
+        let index = self.documents_index();
+        let query = xustive_search::Query::new("").limit(5_000);
+        match self.search.search::<Value>(&index, &query).await {
+            Ok(hits) => hits
+                .hits
+                .iter()
+                .filter_map(|h| h.get("title")?.as_str())
+                .map(crate::suggest::title_term)
+                .filter(|t| !t.is_empty())
+                .collect(),
+            Err(e) => {
+                tracing::warn!(error = %e, "could not read corpus terms for suggestions");
+                Vec::new()
+            }
+        }
+    }
+
     /// The index searches actually run against.
     pub fn documents_index(&self) -> String {
         self.documents_index
@@ -123,6 +180,7 @@ impl AppState {
         // `resolve` is async and this is not, so the real lookup happens in `resolve_index`
         // below, called from main once the runtime exists.
         let documents_index = config.search.documents_index.clone();
+        let curated = crate::suggest::load_curated(&config.suggest.curated_path);
         let device = config.ml.device.clone();
         let gpu_layers = config.ml.gpu_layers;
         let search = MeiliClient::new(
@@ -142,6 +200,9 @@ impl AppState {
             )),
             gpu_layers: Arc::new(AtomicI64::new(gpu_layers)),
             documents_index: Arc::new(std::sync::RwLock::new(documents_index)),
+            suggest: Arc::new(std::sync::RwLock::new(Arc::new(
+                crate::suggest::PrefixIndex::build(&curated, &[]),
+            ))),
             limiter: Arc::new(RateLimiter::new()),
             pending: Arc::new(PendingStore::default()),
             #[cfg(feature = "summariser")]

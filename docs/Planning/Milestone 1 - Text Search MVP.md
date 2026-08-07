@@ -142,13 +142,23 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 
 ## M1-T09 — [[Autocomplete Service]]
 
-- [ ] M1-T09.1 Entity FST built nightly, swapped atomically
-- [ ] M1-T09.2 Title-prefix leg against Meilisearch
-- [ ] M1-T09.3 Transliteration suggestions via [[Query Expander]]
-- [ ] M1-T09.4 Curated list (`data/suggest/curated.tsv`)
-- [ ] M1-T09.5 Merge, dedupe, prefix-subsumption
-- [ ] M1-T09.6 p95 ≤ 40 ms at 2 000 rps
-- [ ] M1-T09.7 Degradation: works with Meilisearch down
+- [~] M1-T09.1 A sorted-vector prefix index, not an FST, swapped atomically behind an `RwLock`.
+      An FST wins decisively at the ~200k strings that design assumed; at the 436 we have, a
+      sorted vector answers in the same microseconds with no build step. Rebuilt at startup, not
+      nightly — the scheduler arrives with the deployment work
+- [x] M1-T09.2 Title-prefix leg against Meilisearch, restricted to `title` and filtered to
+      results that actually contain the prefix. Typo tolerance is right for search and wrong
+      here: it offered "فيديو" for "وهر"
+- [x] M1-T09.3 Transliteration suggestions via [[Query Expander]], gated on the prefix *looking*
+      Arabizi. Applied to every Latin prefix it helped Darija typists and harmed French ones —
+      "Ora" is Oran, and transliterating it returned unrelated Arabic
+- [x] M1-T09.4 Curated list (`data/suggest/curated.tsv`) — 45 entries: wilayas, administrative
+      procedures, utilities. These are what people need and what a news corpus never contains
+- [x] M1-T09.5 Merge, dedupe on the folded form, prefix-subsumption, stable ordering
+- [~] M1-T09.6 Measured 0–16 ms per request against the 40 ms p95 budget, but **not under load**
+      — no 2 000 rps test has been run
+- [x] M1-T09.7 Degradation: three of four sources are in-memory, and the title leg has its own
+      60 ms timeout and is skipped silently. Suggestions survive Meilisearch being down
 
 ## M1-T10 — [[Content Parser]]
 

@@ -113,6 +113,26 @@ impl Default for TelemetryConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+pub struct SuggestConfig {
+    /// Hand-written high-value suggestions. Missing is fine — it improves on the corpus rather
+    /// than being required by it.
+    pub curated_path: String,
+    pub limit: usize,
+    pub min_prefix_len: usize,
+}
+
+impl Default for SuggestConfig {
+    fn default() -> Self {
+        Self {
+            curated_path: "data/suggest/curated.tsv".into(),
+            limit: 8,
+            min_prefix_len: 2,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MlConfig {
     /// Directory holding model files. Not baked into images: they are large and their licences
     /// differ, so the operator manages them.
@@ -153,6 +173,7 @@ pub struct Config {
     pub search: SearchConfig,
     pub telemetry: TelemetryConfig,
     pub ml: MlConfig,
+    pub suggest: SuggestConfig,
 }
 
 impl Config {
