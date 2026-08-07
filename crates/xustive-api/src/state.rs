@@ -1,5 +1,6 @@
 //! Shared application state.
 
+use std::sync::atomic::{AtomicI64, AtomicU8};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,11 +24,20 @@ pub struct AppState {
     pub ranking: Arc<Weights>,
     /// Source id to trust tier, from the seed registry.
     pub trust_tiers: Arc<HashMap<String, TrustTier>>,
+    /// Device preference, encoded as `DevicePreference as u8`.
+    ///
+    /// An atomic rather than a lock: it is read on every model load and written rarely from the
+    /// admin page, and the read path should not be able to block on a writer.
+    pub device_preference: Arc<AtomicU8>,
+    /// GPU layers to offload. Negative means decide automatically.
+    pub gpu_layers: Arc<AtomicI64>,
     pub metrics: Metrics,
 }
 
 impl AppState {
     pub fn new(config: Config) -> Result<Self, SearchError> {
+        let device = config.ml.device.clone();
+        let gpu_layers = config.ml.gpu_layers;
         let search = MeiliClient::new(
             &config.search.meili_url,
             &config.search.meili_key,
@@ -39,6 +49,10 @@ impl AppState {
             detector: Arc::new(Detector::default()),
             ranking: Arc::new(Weights::default()),
             trust_tiers: Arc::new(load_trust_tiers()),
+            device_preference: Arc::new(AtomicU8::new(
+                xustive_ml::DevicePreference::parse(&device).unwrap_or_default() as u8,
+            )),
+            gpu_layers: Arc::new(AtomicI64::new(gpu_layers)),
             metrics: Metrics::new(),
         })
     }
