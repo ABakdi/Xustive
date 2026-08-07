@@ -123,6 +123,13 @@ pub struct MlConfig {
     pub gpu_layers: i64,
     /// Model id for the summariser, or empty to take the first present one.
     pub summariser_model: String,
+    /// Concurrent generation slots. Memory-bound, not compute-bound.
+    pub slots: usize,
+    /// Wall-clock budget for one summary. Past this, the partial text is validated and either
+    /// shown or dropped — the results page never waits on it.
+    pub deadline_ms: u64,
+    /// Kill switch. With this off, `/v1/summary` always answers "no summary" and no model loads.
+    pub summaries_enabled: bool,
 }
 
 impl Default for MlConfig {
@@ -132,6 +139,9 @@ impl Default for MlConfig {
             device: "auto".into(),
             gpu_layers: -1,
             summariser_model: String::new(),
+            slots: 2,
+            deadline_ms: 30_000,
+            summaries_enabled: true,
         }
     }
 }

@@ -210,6 +210,12 @@ pub const HTTP_REQUESTS: &str = "xustive_http_requests_total";
 pub const HTTP_REQUESTS_HELP: &str = "Total HTTP requests by route and status";
 pub const HTTP_DURATION: &str = "xustive_http_duration_seconds";
 pub const HTTP_DURATION_HELP: &str = "HTTP request duration by route";
+pub const SUMMARY_DURATION: &str = "xustive_summary_duration_seconds";
+pub const SUMMARY_DURATION_HELP: &str = "Time to produce a summary, end to end";
+pub const SUMMARY_WITHHELD: &str = "xustive_summary_withheld_total";
+pub const SUMMARY_WITHHELD_HELP: &str =
+    "Summaries not shown, by reason. Refusals are normal; generation failures are not";
+
 pub const SEARCH_DURATION: &str = "xustive_search_duration_seconds";
 pub const SEARCH_DURATION_HELP: &str = "Search pipeline duration by stage";
 pub const SEARCH_RESULTS: &str = "xustive_search_results_total";

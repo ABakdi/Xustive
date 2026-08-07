@@ -11,7 +11,7 @@ xustive-core = { path = "../xustive-core" }
 xustive-text = { path = "../xustive-text" }
 xustive-search = { path = "../xustive-search" }
 xustive-lang = { path = "../xustive-lang" }
-xustive-ml = { path = "../xustive-ml" }
+xustive-ml = { path = "../xustive-ml", default-features = false }
 
 axum.workspace = true
 tower.workspace = true
@@ -31,3 +31,11 @@ url.workspace = true
 [dev-dependencies]
 tower = { workspace = true, features = ["util"] }
 http-body-util = "0.1"
+
+[features]
+default = ["summariser"]
+# Local summarisation. Compiles llama.cpp from source, which takes a few minutes the first time,
+# so it can be turned off for fast iteration on the rest of the API.
+summariser = ["xustive-ml/llama"]
+# GPU offload for the summariser. Requires the CUDA toolkit at build time.
+cuda = ["summariser", "xustive-ml/cuda"]
