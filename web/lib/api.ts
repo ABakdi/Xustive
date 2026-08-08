@@ -148,3 +148,24 @@ export async function tools(): Promise<{ id: string; keyword: string }[]> {
   const body = (await res.json()) as { tools?: { id: string; keyword: string }[] }
   return body.tools ?? []
 }
+
+export type TranslateLanguage = {
+  code: string
+  name_ar: string
+  name_fr: string
+  name_en: string
+  /** True when output in this language should be marked approximate. Only Darija, today. */
+  approximate: boolean
+}
+
+/** The translator's language list, fetched so the client does not carry its own copy. */
+export async function translateLanguages(): Promise<TranslateLanguage[]> {
+  const res = await fetch(`${BASE}/api/v1/languages`, {
+    headers: { Accept: 'application/json' },
+    next: { revalidate: 3600 },
+  })
+  // An empty list is handled by the caller, which renders no card rather than an empty picker.
+  if (!res.ok) return []
+  const body = (await res.json()) as { languages?: TranslateLanguage[] }
+  return body.languages ?? []
+}

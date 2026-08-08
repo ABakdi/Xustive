@@ -6,7 +6,9 @@ import { ResultCard } from '@/components/search/ResultCard'
 import { SearchBox } from '@/components/search/SearchBox'
 import { Summary } from '@/components/search/Summary'
 import { ToolCard } from '@/components/tools/ToolCard'
+import { TranslateCard } from '@/components/tools/TranslateCard'
 import { readDisabledTools } from '@/lib/tools'
+import { translateLanguages } from '@/lib/api'
 import { LangSwitcher } from '@/components/layout/LangSwitcher'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { Wordmark } from '@/components/layout/Wordmark'
@@ -90,6 +92,10 @@ export default async function SearchPage({
   // fingerprint to the one component that receives no preference data — a perverse outcome for a
   // privacy control. See lib/tools.ts.
   const disabledTools = await readDisabledTools()
+  // Only fetched when a translation was actually asked for. The list is cached for an hour, but
+  // an unconditional call would still put a request on every result page for a card that is
+  // almost never shown.
+  const languages = data.instant?.tool === 'translate' ? await translateLanguages() : []
 
   return (
     <Shell lang={lang} t={t} q={q}>
@@ -116,9 +122,23 @@ export default async function SearchPage({
 
       {/* Above the results and below the search box. Rendered even when there are no results —
           `2+2` has an answer whether or not the corpus mentions arithmetic. */}
-      {data.instant && !disabledTools.has(data.instant.tool) && (
-        <ToolCard answer={data.instant} t={t} locale={lang} />
-      )}
+      {data.instant &&
+        !disabledTools.has(data.instant.tool) &&
+        // Translation is the one tool with its own card. It streams and must be cancellable,
+        // which a server-rendered card cannot do — and the language pickers change the request
+        // rather than navigating. Every other tool shares the one generic frame.
+        (data.instant.tool === 'translate' ? (
+          languages.length > 0 && (
+            <TranslateCard
+              detail={(data.instant.detail ?? {}) as never}
+              t={t}
+              uiLang={lang}
+              languages={languages}
+            />
+          )
+        ) : (
+          <ToolCard answer={data.instant} t={t} locale={lang} />
+        ))}
 
       {data.results.length === 0 ? (
         <div className="py-16 text-center">
