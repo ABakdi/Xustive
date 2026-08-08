@@ -26,7 +26,9 @@
 pub mod calculator;
 pub mod datetime;
 pub mod prayer;
+pub mod transliterate;
 pub mod units;
+pub mod utilities;
 pub mod weather;
 pub mod wilaya;
 mod wilaya_data;
@@ -82,6 +84,8 @@ pub fn registry() -> Vec<Box<dyn Tool>> {
         Box::new(datetime::DateTool),
         Box::new(prayer::PrayerTool),
         Box::new(wilaya::WilayaTool),
+        Box::new(utilities::Utilities),
+        Box::new(transliterate::Transliterator),
     ]
 }
 
