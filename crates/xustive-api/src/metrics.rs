@@ -28,10 +28,17 @@ struct HistogramFamily {
 }
 
 #[derive(Default)]
+struct GaugeFamily {
+    help: &'static str,
+    series: BTreeMap<String, (Labels, AtomicU64)>,
+}
+
+#[derive(Default)]
 struct Inner {
     counters: BTreeMap<&'static str, CounterFamily>,
     histograms: BTreeMap<&'static str, HistogramFamily>,
     gauges: BTreeMap<&'static str, (&'static str, AtomicU64)>,
+    labelled_gauges: BTreeMap<&'static str, GaugeFamily>,
 }
 
 /// Process-wide metric registry.
@@ -118,6 +125,35 @@ impl Metrics {
             .store(value, Ordering::Relaxed);
     }
 
+    /// Set one series of a labelled gauge.
+    ///
+    /// Separate from `set_gauge` because a single number cannot answer the question this exists
+    /// for. `data_age_seconds` without a `dataset` label says something somewhere is stale, which
+    /// is not enough to page anyone: weather going quiet and exchange rates going quiet need
+    /// different responses.
+    pub fn set_labelled_gauge(
+        &self,
+        name: &'static str,
+        help: &'static str,
+        labels: &[(&'static str, &str)],
+        value: u64,
+    ) {
+        let key = label_key(labels);
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let fam = inner
+            .labelled_gauges
+            .entry(name)
+            .or_insert_with(|| GaugeFamily {
+                help,
+                series: BTreeMap::new(),
+            });
+        fam.series
+            .entry(key)
+            .or_insert_with(|| (owned(labels), AtomicU64::new(0)))
+            .1
+            .store(value, Ordering::Relaxed);
+    }
+
     /// Render the Prometheus text exposition format.
     pub fn render(&self) -> String {
         let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
@@ -164,6 +200,19 @@ impl Metrics {
             let _ = writeln!(out, "# HELP {name} {help}");
             let _ = writeln!(out, "# TYPE {name} gauge");
             let _ = writeln!(out, "{name} {}", value.load(Ordering::Relaxed));
+        }
+
+        for (name, fam) in &inner.labelled_gauges {
+            let _ = writeln!(out, "# HELP {name} {}", fam.help);
+            let _ = writeln!(out, "# TYPE {name} gauge");
+            for (labels, value) in fam.series.values() {
+                let _ = writeln!(
+                    out,
+                    "{name}{} {}",
+                    render_labels(labels, None),
+                    value.load(Ordering::Relaxed)
+                );
+            }
         }
 
         out
