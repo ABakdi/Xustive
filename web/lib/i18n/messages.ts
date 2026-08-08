@@ -57,6 +57,8 @@ const ar = {
   utility: 'أداة',
   transliterate: 'كتابة بالحروف العربية',
   alternatives: 'قراءة أخرى',
+  fuel: 'أسعار الوقود',
+  administered: 'سعر مقنّن، ليس تسعيرة لحظية',
 } as const
 
 /**
@@ -118,6 +120,8 @@ const fr: Messages = {
   utility: 'Outil',
   transliterate: 'Translittération',
   alternatives: 'Autre lecture',
+  fuel: 'Prix des carburants',
+  administered: 'Prix administré, pas une cotation en direct',
 }
 
 const en: Messages = {
@@ -170,6 +174,8 @@ const en: Messages = {
   utility: 'Utility',
   transliterate: 'Transliteration',
   alternatives: 'Another reading',
+  fuel: 'Fuel prices',
+  administered: 'Administered price, not a live quote',
 }
 
 /**

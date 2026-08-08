@@ -25,8 +25,16 @@ export function ToolCard({
 }) {
   // `detail` is whatever the tool chose to attach, so it is validated rather than trusted: a
   // non-array here would throw during render and take the whole result page with it.
-  const raw = (answer.detail as { alternatives?: unknown } | undefined)?.alternatives
+  const detail = answer.detail as
+    | { alternatives?: unknown; administered?: unknown }
+    | undefined
+  const raw = detail?.alternatives
   const alternatives = Array.isArray(raw) ? raw.filter((a): a is string => typeof a === 'string') : []
+
+  // Set by tools whose value is fixed by an authority rather than measured — fuel prices, which
+  // the ARH changes with no announcement. Without this the number reads as a live quote, and the
+  // gap between "this is the official price" and "this is today's price" is the whole difference.
+  const administered = detail?.administered === true
 
   const stale = answer.as_of
     ? new Intl.DateTimeFormat(locale === 'ary' ? 'ar' : locale, {
@@ -75,6 +83,15 @@ export function ToolCard({
       {stale && (
         <p className="mt-1.5 text-xs" style={{ color: 'var(--fg-faint)' }}>
           {t.asOf} {stale}
+        </p>
+      )}
+
+      {/* Mutually exclusive with the timestamp above by construction: an administered price has no
+          `as_of`, because it was never measured. Saying so is the point — a reader who assumes the
+          number was checked today would have no way to discover otherwise. */}
+      {administered && (
+        <p className="mt-1.5 text-xs" style={{ color: 'var(--fg-faint)' }}>
+          {t.administered}
         </p>
       )}
     </section>
