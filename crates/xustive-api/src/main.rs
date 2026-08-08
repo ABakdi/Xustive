@@ -92,6 +92,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     state.resolve_index().await;
     state.refresh_suggestions().await;
     spawn_model_load(&state);
+    // Publishes how old the cached tool data is, on a timer rather than on request. A fetcher
+    // that stops silently leaves the last values in place and every card keeps rendering, so
+    // traffic-driven sampling would report a healthy number for a dead fetcher.
+    xustive_api::dataage::spawn(state.clone());
     let router = app(state);
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
