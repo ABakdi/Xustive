@@ -97,6 +97,47 @@ else
   bad "the home page cannot submit without JavaScript"
 fi
 
+# The settings page and the per-tool opt-out must work without JavaScript too.
+#
+# Both are Server Actions posting from real forms, which is the only reason they can. A click
+# handler would have been easier to write and would have made the one control for switching a
+# tool off the single part of the page that needed script to use.
+settings=$(curl -fsS --max-time 5 "$BASE/$LANG_SEG/settings" || true)
+if [ -z "$settings" ]; then
+  echo "  settings page did not render" >&2
+  fail=1
+else
+  # A real form with a submit button per tool, and an action to post to.
+  if ! printf '%s' "$settings" | grep -q '<form'; then
+    echo "  settings has no <form> — the toggles cannot work without JavaScript" >&2
+    fail=1
+  fi
+  if ! printf '%s' "$settings" | grep -q 'type="submit"'; then
+    echo "  settings has no submit button — the toggles are script-only" >&2
+    fail=1
+  fi
+  if [ "$fail" -eq 0 ]; then
+    toggles=$(printf '%s' "$settings" | grep -o 'type="submit"' | wc -l)
+    echo "  ✓ settings toggles are real form submits ($toggles)"
+  fi
+fi
+
+# And the dismiss control on a tool card.
+card=$(curl -fsS --max-time 5 --get "$BASE/$LANG_SEG/search" --data-urlencode "q=roman 2026" || true)
+if printf '%s' "$card" | grep -q 'MMXXVI'; then
+  if printf '%s' "$card" | grep -q '<form'; then
+    echo "  ✓ the tool card renders and its dismiss control is a real form"
+  else
+    echo "  tool card has no <form> — dismissing a tool needs JavaScript" >&2
+    fail=1
+  fi
+else
+  # Not a silent pass. If the card stops rendering entirely this check would otherwise report
+  # nothing at all, which reads identically to success.
+  echo "  ! tool card did not render — dismiss control not exercised" >&2
+  fail=1
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo >&2
   echo "  The no-JavaScript path is a commitment in UI - Frontend Architecture §3, and it is" >&2
