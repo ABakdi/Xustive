@@ -6,6 +6,7 @@ import { ResultCard } from '@/components/search/ResultCard'
 import { SearchBox } from '@/components/search/SearchBox'
 import { Summary } from '@/components/search/Summary'
 import { ToolCard } from '@/components/tools/ToolCard'
+import { readDisabledTools } from '@/lib/tools'
 import { LangSwitcher } from '@/components/layout/LangSwitcher'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { Wordmark } from '@/components/layout/Wordmark'
@@ -84,6 +85,11 @@ export default async function SearchPage({
   }
 
   const { pagination: p } = data
+  // Read here rather than sent to the API. The set of tools someone has switched off is small,
+  // stable and unusual enough to identify them across requests, so sending it would hand a
+  // fingerprint to the one component that receives no preference data — a perverse outcome for a
+  // privacy control. See lib/tools.ts.
+  const disabledTools = await readDisabledTools()
 
   return (
     <Shell lang={lang} t={t} q={q}>
@@ -110,7 +116,9 @@ export default async function SearchPage({
 
       {/* Above the results and below the search box. Rendered even when there are no results —
           `2+2` has an answer whether or not the corpus mentions arithmetic. */}
-      {data.instant && <ToolCard answer={data.instant} t={t} locale={lang} />}
+      {data.instant && !disabledTools.has(data.instant.tool) && (
+        <ToolCard answer={data.instant} t={t} locale={lang} />
+      )}
 
       {data.results.length === 0 ? (
         <div className="py-16 text-center">

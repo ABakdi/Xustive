@@ -2,6 +2,7 @@ import type { InstantAnswer } from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
 
 import { CopyButton } from './CopyButton'
+import { DismissTool } from './DismissTool'
 
 /**
  * The instant-answer card.
@@ -46,7 +47,10 @@ export function ToolCard({
     : null
 
   return (
-    <section className="assert mb-7" aria-label={t[answer.tool as keyof Messages] ?? answer.tool}>
+    <section
+      className="assert group mb-7"
+      aria-label={t[answer.tool as keyof Messages] ?? answer.tool}
+    >
       {/* How the query was read. Not decoration: `20 dollar` taken as USD when the user meant
           Canadian is a wrong answer, and showing the interpretation makes that visible in half a
           second. Isolated because an expression inside RTL text is reordered into nonsense. */}
@@ -62,6 +66,7 @@ export function ToolCard({
           <bdi>{answer.value}</bdi>
         </p>
         <CopyButton value={answer.value} label={t.copy} copied={t.copied} />
+        <DismissTool tool={answer.tool} label={t.hideTool} />
       </div>
 
       {/* Other readings, when the tool says its answer is a guess among several.
