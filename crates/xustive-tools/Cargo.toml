@@ -9,8 +9,12 @@ description = "Instant answers: matching, arbitration, and the tools themselves.
 [dependencies]
 xustive-core = { path = "../xustive-core" }
 xustive-text = { path = "../xustive-text" }
+# For the transliterator card. The conversion already exists to serve retrieval; the tool surfaces
+# it rather than reimplementing a second, divergent mapping.
+xustive-lang = { path = "../xustive-lang" }
 serde.workspace = true
 serde_json.workspace = true
 # Exact decimal arithmetic. A calculator that renders 0.1 + 0.2 as 0.30000000000000004 is a
 # calculator nobody trusts again, and binary floats do exactly that.
 rust_decimal = { version = "1", default-features = false, features = ["std", "maths"] }
+sha2 = { version = "0.10", default-features = false, features = ["std"] }
