@@ -12,9 +12,12 @@ pub mod device;
 pub mod engine;
 pub mod prompt;
 pub mod registry;
+pub mod translate;
 pub mod validate;
 
 pub use device::{ActiveDevice, DeviceConfig, DevicePreference, Resolved};
+pub use engine::Chunk;
 pub use prompt::{OutputLang, Passage, Prompt};
 pub use registry::{ModelSpec, ModelStatus, Registry};
+pub use translate::Language;
 pub use validate::{Rejection, Summary};
