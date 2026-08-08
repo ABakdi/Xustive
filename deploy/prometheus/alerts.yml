@@ -1,0 +1,66 @@
+groups:
+  - name: tool-data
+    rules:
+      # The failure this file exists for.
+      #
+      # `toold` dying leaves the last values in Redis. Every card keeps rendering, nothing returns
+      # an error, and the only symptom is that the ages climb. Without this rule the first person
+      # to notice would be a user reading yesterday's temperature.
+      #
+      # Warning fires before the serving plane starts withholding cards, so there is a window to
+      # fix it while the feature still works.
+      - alert: ToolDataAgeing
+        expr: xustive_data_age_seconds > 5400
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.dataset }} data is {{ $value | humanizeDuration }} old"
+          description: >-
+            The fetcher has not written a fresh value in over 90 minutes. Cards are still shown —
+            the serving plane withholds at 3 hours — so this is the window to fix it before users
+            see the feature disappear. Check that xustive-toold is running and can reach the
+            publisher.
+
+      # Past the staleness limit the serving plane withholds the card entirely, so by this point
+      # the feature is already gone for users.
+      - alert: ToolDataStale
+        expr: xustive_data_age_seconds > 10800
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.dataset }} data is past the staleness limit"
+          description: >-
+            The serving plane is now withholding these cards rather than showing an old value.
+            Users see the tool as missing. Search itself is unaffected.
+
+      # A separate rule, because the gauge is deliberately not published when a dataset has no
+      # entries at all. There is no honest number for the age of data that does not exist, and a
+      # zero would silence ToolDataStale at exactly the moment the cache was wiped — so absence
+      # has to be alerted on directly rather than inferred from the value.
+      - alert: ToolDataMissing
+        expr: absent(xustive_data_age_seconds{dataset="weather"})
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No weather data is cached at all"
+          description: >-
+            Either Redis was flushed, or xustive-toold has never completed a pass. Distinct from
+            ToolDataStale, which means the data exists but is old.
+
+      # Partial failure. The oldest-entry gauge catches a fetcher that stopped completely, but a
+      # publisher that started refusing a subset of wilayas would keep the age healthy while
+      # quietly shrinking coverage.
+      - alert: ToolDataCoverageDropped
+        expr: xustive_data_entries{dataset="weather"} < 55
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Only {{ $value }} of 58 wilayas have cached weather"
+          description: >-
+            Some wilayas are failing to fetch or are being rejected by validation while others
+            succeed. Check the toold logs for rejection reasons — a run of `out_of_bounds` points
+            at the publisher, a run of `moved_too_far` at a real event we are refusing.
