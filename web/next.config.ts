@@ -12,6 +12,11 @@ const API = process.env.XUSTIVE_API_URL ?? 'http://127.0.0.1:8080'
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Next 16 writes AGENTS.md and CLAUDE.md into the project on every dev start. This repo already
+  // documents itself under docs/, and files a tool regenerates behind your back are files nobody
+  // owns — they land untracked, get committed by accident, and then drift from the docs that are
+  // actually maintained.
+  agentRules: false,
   // Fewer bytes and one less thing that can differ between dev and prod.
   compress: true,
 
