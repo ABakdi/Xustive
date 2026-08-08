@@ -25,6 +25,7 @@
 
 pub mod calculator;
 pub mod datetime;
+pub mod fuel;
 pub mod prayer;
 pub mod transliterate;
 pub mod units;
@@ -98,6 +99,7 @@ pub fn registry() -> Vec<Box<dyn Tool>> {
         Box::new(units::UnitConverter),
         Box::new(datetime::DateTool),
         Box::new(prayer::PrayerTool),
+        Box::new(fuel::FuelTool),
         Box::new(wilaya::WilayaTool),
         Box::new(utilities::Utilities),
         Box::new(transliterate::Transliterator),
