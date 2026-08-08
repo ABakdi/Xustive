@@ -138,6 +138,33 @@ else
   fail=1
 fi
 
+# The shared UI primitives must stay server components.
+#
+# This is the property that makes them worth having rather than installing shadcn/ui: its
+# primitives are Radix components, Radix components are client components, and adopting them would
+# push `'use client'` into the result page. A results list that ships as markup is the single most
+# valuable thing about this frontend, and it is one careless import away from not being true.
+# Anchored to the start of a line, because the directive is only a directive there. A loose match
+# flagged Button.tsx, whose doc comment explains why Radix's client components are not used —
+# prose about 'use client' is not 'use client'.
+if grep -rlE "^['\"]use client['\"]" web/components/ui 2>/dev/null | grep -q .; then
+  echo "  a UI primitive declares 'use client' — that pulls a runtime onto every page using it" >&2
+  fail=1
+elif grep -rlE "@radix-ui|from 'cva'|class-variance-authority" web/components/ui 2>/dev/null | grep -q .; then
+  echo "  a UI primitive imports Radix or cva — see components/ui/Button.tsx for why not" >&2
+  fail=1
+else
+  primitives=$(find web/components/ui -name '*.tsx' 2>/dev/null | wc -l)
+  # Not a silent pass. Finding no primitives at all would otherwise report success, which reads
+  # identically to having checked them.
+  if [ "$primitives" -eq 0 ]; then
+    echo "  ! no UI primitives found — is the path right?" >&2
+    fail=1
+  else
+    echo "  ✓ all $primitives UI primitives are server components"
+  fi
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo >&2
   echo "  The no-JavaScript path is a commitment in UI - Frontend Architecture §3, and it is" >&2
