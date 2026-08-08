@@ -54,7 +54,12 @@ are the reason to exist; the search is the foundation under them.
       which a range request revealed only by returning an HTML error page and silently producing
       no Arabic at all. `fetch-fonts.sh` now fails if a family is missing or two faces collide on
       one filename, both of which it did on the way here
-- [ ] M1B-T02.3 shadcn primitives copied in and **rewritten** — not themed
+- [x] M1B-T02.3 shadcn primitives copied in and **rewritten** — not themed. Button, Select and
+      Toggle, taking shadcn's structure (variants, `focus-visible`, state never on colour alone)
+      and none of its code. The reason is not styling: shadcn's primitives are Radix components,
+      Radix components are client components, and adopting them would push `'use client'` into the
+      result page. Zero dependencies, zero client components, and `no-js-check.sh` now fails if a
+      primitive ever declares one. Bundle unchanged at 175/176 KB
 - [x] M1B-T02.4 The qalam rule as a shared primitive, used only by summary and tool cards
 - [~] M1B-T02.5 Density tokens exist and are cookie-driven; the toggle control is not built
 - [ ] M1B-T02.6 Contrast audit of both themes at AA ([[UI - Accessibility]])
