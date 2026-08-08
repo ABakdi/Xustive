@@ -27,6 +27,7 @@ pub mod calculator;
 pub mod datetime;
 pub mod fuel;
 pub mod prayer;
+pub mod translator;
 pub mod transliterate;
 pub mod units;
 pub mod utilities;
@@ -102,6 +103,10 @@ pub fn registry() -> Vec<Box<dyn Tool>> {
         Box::new(fuel::FuelTool),
         Box::new(wilaya::WilayaTool),
         Box::new(utilities::Utilities),
+        // `translator::Translator` is deliberately NOT registered. The detector, the endpoint and
+        // the card all work; the model's output into Arabic does not. See the module docs for the
+        // measurements. Registering it would put a card carrying `أين closest الصيدلية؟` above
+        // results in the engine's primary language.
         Box::new(transliterate::Transliterator),
     ]
 }
