@@ -164,6 +164,7 @@ lint: ## Format check, clippy, and the privacy/topology/docs lints
 	./scripts/lint-telemetry.sh
 	./scripts/lint-compose.sh
 	./scripts/lint-docs.sh
+	./scripts/check-alerts.sh
 
 .PHONY: audit
 audit: ## Dependency advisories and licence check

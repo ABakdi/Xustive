@@ -1,0 +1,128 @@
+# Unit tests for alerts.yml, run by `promtool test rules`.
+#
+# A rule file that parses is not a rule file that fires. These assert the thing that actually
+# matters: that a stalled fetcher produces a page, and that a healthy one does not.
+#
+# Run: make check-alerts
+
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Healthy: data refreshed within the last half hour. Nothing should fire.
+  - interval: 1m
+    input_series:
+      - series: 'xustive_data_age_seconds{dataset="weather"}'
+        values: "600+60x60" # 10 minutes old, ageing normally
+      - series: 'xustive_data_entries{dataset="weather"}'
+        values: "58x60"
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: ToolDataAgeing
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: ToolDataStale
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: ToolDataMissing
+        exp_alerts: []
+
+  # A fetcher that stopped. The age climbs past 90 minutes and the warning fires — before the
+  # serving plane starts withholding cards, which is the whole point of having two thresholds.
+  - interval: 1m
+    input_series:
+      - series: 'xustive_data_age_seconds{dataset="weather"}'
+        values: "5000+60x40" # crosses 5400 at ~7m, then keeps climbing
+    alert_rule_test:
+      # Not yet: the rule requires 10 minutes above the threshold, so a brief blip is not a page.
+      - eval_time: 10m
+        alertname: ToolDataAgeing
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: ToolDataAgeing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              dataset: weather
+              alertname: ToolDataAgeing
+            exp_annotations:
+              summary: "weather data is 1h 48m 20s old"
+              description: >-
+                The fetcher has not written a fresh value in over 90 minutes. Cards are still shown
+                — the serving plane withholds at 3 hours — so this is the window to fix it before
+                users see the feature disappear. Check that xustive-toold is running and can reach
+                the publisher.
+      # Still only a warning: the critical threshold is the 3-hour staleness limit.
+      - eval_time: 25m
+        alertname: ToolDataStale
+        exp_alerts: []
+
+  # Past the staleness limit. The serving plane is now withholding cards, so this is critical.
+  - interval: 1m
+    input_series:
+      - series: 'xustive_data_age_seconds{dataset="weather"}'
+        values: "10900+60x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ToolDataStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              dataset: weather
+              alertname: ToolDataStale
+            exp_annotations:
+              summary: "weather data is past the staleness limit"
+              description: >-
+                The serving plane is now withholding these cards rather than showing an old value.
+                Users see the tool as missing. Search itself is unaffected.
+
+  # A flushed cache. The gauge is deliberately not published, so every threshold rule goes quiet —
+  # this is exactly the case a value-based rule cannot catch, and why absent() exists.
+  - interval: 1m
+    input_series:
+      - series: "up" # something must exist for the evaluation to run at all
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ToolDataStale
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: ToolDataMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              dataset: weather
+              alertname: ToolDataMissing
+            exp_annotations:
+              summary: "No weather data is cached at all"
+              description: >-
+                Either Redis was flushed, or xustive-toold has never completed a pass. Distinct
+                from ToolDataStale, which means the data exists but is old.
+
+  # Partial failure: the data is fresh, but a third of the wilayas stopped arriving. The age gauge
+  # stays healthy throughout, which is why coverage is tracked separately.
+  - interval: 1m
+    input_series:
+      - series: 'xustive_data_age_seconds{dataset="weather"}'
+        values: "600x40"
+      - series: 'xustive_data_entries{dataset="weather"}'
+        values: "40x40"
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: ToolDataAgeing
+        exp_alerts: []
+      - eval_time: 35m
+        alertname: ToolDataCoverageDropped
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              dataset: weather
+              alertname: ToolDataCoverageDropped
+            exp_annotations:
+              summary: "Only 40 of 58 wilayas have cached weather"
+              description: >-
+                Some wilayas are failing to fetch or are being rejected by validation while others
+                succeed. Check the toold logs for rejection reasons — a run of `out_of_bounds`
+                points at the publisher, a run of `moved_too_far` at a real event we are refusing.
