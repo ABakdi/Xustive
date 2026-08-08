@@ -71,6 +71,21 @@ pub trait Tool: Send + Sync {
     /// Try to answer. `None` means this tool does not apply — which is the common case and must
     /// be cheap.
     fn answer(&self, query: &str) -> Option<Answer>;
+
+    /// Answer with the reader's language in hand.
+    ///
+    /// Most tools produce output that is the same in every language — a hash, a Roman numeral, a
+    /// hex colour — so the default ignores `lang` entirely and defers to [`Tool::answer`]. Tools
+    /// that name things override it: a fuel price answered as "Essence sans plomb" to someone who
+    /// asked in Arabic is answering a different person's question.
+    ///
+    /// This is a trait method rather than a match on `name()` in the dispatcher because that
+    /// match was already two cases from becoming the place every new tool has to be registered
+    /// twice.
+    fn answer_in(&self, query: &str, lang: &str) -> Option<Answer> {
+        let _ = lang;
+        self.answer(query)
+    }
 }
 
 /// The tools, in precedence order.
@@ -131,10 +146,7 @@ pub fn best_in(raw: &str, lang: &str) -> Option<Answer> {
 /// Only the converter renders language-dependent text today. A trait method taking a language
 /// would push that concern into every tool that does not need it.
 fn localised(tool: &dyn Tool, query: &str, lang: &str) -> Option<Answer> {
-    if tool.name() == "unit-converter" {
-        return units::UnitConverter.answer_in(query, lang);
-    }
-    tool.answer(query)
+    tool.answer_in(query, lang)
 }
 
 fn catch(f: impl FnOnce() -> Option<Answer>) -> Option<Answer> {

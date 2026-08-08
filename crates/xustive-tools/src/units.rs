@@ -305,11 +305,9 @@ impl Tool for UnitConverter {
     fn answer(&self, query: &str) -> Option<Answer> {
         self.answer_in(query, "en")
     }
-}
 
-impl UnitConverter {
     /// Convert, rendering unit names in `lang`.
-    pub fn answer_in(&self, query: &str, lang: &str) -> Option<Answer> {
+    fn answer_in(&self, query: &str, lang: &str) -> Option<Answer> {
         let folded = fold_digits(query).to_lowercase();
         let tokens: Vec<&str> = folded.split_whitespace().collect();
         if tokens.len() < 2 {
