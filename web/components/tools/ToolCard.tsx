@@ -23,6 +23,11 @@ export function ToolCard({
   t: Messages
   locale: string
 }) {
+  // `detail` is whatever the tool chose to attach, so it is validated rather than trusted: a
+  // non-array here would throw during render and take the whole result page with it.
+  const raw = (answer.detail as { alternatives?: unknown } | undefined)?.alternatives
+  const alternatives = Array.isArray(raw) ? raw.filter((a): a is string => typeof a === 'string') : []
+
   const stale = answer.as_of
     ? new Intl.DateTimeFormat(locale === 'ary' ? 'ar' : locale, {
         hour: '2-digit',
@@ -50,6 +55,19 @@ export function ToolCard({
         </p>
         <CopyButton value={answer.value} label={t.copy} copied={t.copied} />
       </div>
+
+      {/* Other readings, when the tool says its answer is a guess among several.
+
+          Shown inline rather than behind a control. The transliterator is the case that motivates
+          this: Arabizi is genuinely ambiguous, the runner-up is often the one the user meant, and
+          presenting a single reading as settled would be worse than admitting the choice. A tool
+          that emits no alternatives renders nothing here. */}
+      {alternatives.length > 0 && (
+        <p className="mt-1.5 text-sm" style={{ color: 'var(--fg-muted)' }}>
+          <span className="text-xs">{t.alternatives}: </span>
+          <bdi>{alternatives.join(' · ')}</bdi>
+        </p>
+      )}
 
       {/* Only present when the value has a time dimension. Arithmetic has none; an exchange rate
           always does, and a rate shown without its age is the failure this whole component is

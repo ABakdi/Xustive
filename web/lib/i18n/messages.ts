@@ -51,6 +51,12 @@ const ar = {
   asOf: 'محسوب في',
   calculator: 'حاسبة',
   'unit-converter': 'تحويل الوحدات',
+  prayer: 'أوقات الصلاة',
+  wilaya: 'الولاية',
+  weather: 'الطقس',
+  utility: 'أداة',
+  transliterate: 'كتابة بالحروف العربية',
+  alternatives: 'قراءة أخرى',
 } as const
 
 /**
@@ -106,6 +112,12 @@ const fr: Messages = {
   asOf: 'mesuré à',
   calculator: 'Calculatrice',
   'unit-converter': 'Convertisseur',
+  prayer: 'Heures de prière',
+  wilaya: 'Wilaya',
+  weather: 'Météo',
+  utility: 'Outil',
+  transliterate: 'Translittération',
+  alternatives: 'Autre lecture',
 }
 
 const en: Messages = {
@@ -152,6 +164,12 @@ const en: Messages = {
   asOf: 'measured at',
   calculator: 'Calculator',
   'unit-converter': 'Unit converter',
+  prayer: 'Prayer times',
+  wilaya: 'Wilaya',
+  weather: 'Weather',
+  utility: 'Utility',
+  transliterate: 'Transliteration',
+  alternatives: 'Another reading',
 }
 
 /**
