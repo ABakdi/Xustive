@@ -1,0 +1,382 @@
+//! Weather for the 58 wilayas.
+//!
+//! From Open-Meteo: CC-BY licensed, no API key, and — the reason it was chosen over the
+//! alternatives — no per-user call. We fetch 58 places every thirty minutes on a fixed schedule,
+//! which is 116 requests an hour and reveals nothing: the pattern is identical whether one person
+//! searched for weather or a million did.
+//!
+//! A provider requiring a key per request would have made every weather search a disclosure to
+//! them of what somebody looked up and roughly when.
+
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use xustive_tools::wilaya::{Wilaya, WILAYAS};
+
+use crate::validate::{self, Rejected};
+use crate::{Cached, Dataset, FetchError};
+
+pub struct Weather;
+
+impl Dataset for Weather {
+    fn key_prefix(&self) -> &'static str {
+        "tool:weather:v1"
+    }
+
+    fn cadence(&self) -> Duration {
+        Duration::from_secs(30 * 60)
+    }
+
+    fn staleness_limit(&self) -> Duration {
+        Duration::from_secs(3 * 3600)
+    }
+}
+
+/// One wilaya's forecast, as the card needs it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Forecast {
+    pub wilaya: u8,
+    pub temperature_c: f64,
+    pub feels_like_c: f64,
+    /// WMO weather code. Mapped to an icon and a label by the client rather than here, so the
+    /// wording stays with the translations.
+    pub code: u8,
+    pub wind_kmh: f64,
+    pub humidity: f64,
+    pub days: Vec<Day>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Day {
+    /// `YYYY-MM-DD`.
+    pub date: String,
+    pub high_c: f64,
+    pub low_c: f64,
+    pub code: u8,
+}
+
+pub fn key(prefix: &str, wilaya: u8) -> String {
+    format!("{prefix}:{wilaya}")
+}
+
+/// Bounds for Algeria.
+///
+/// Wide enough for a Saharan summer and a Djurdjura winter, narrow enough that a sensor fault or
+/// a Fahrenheit/Celsius confusion is caught. The record extremes are roughly -14 °C and 51 °C.
+const MIN_C: f64 = -25.0;
+const MAX_C: f64 = 58.0;
+
+/// The Open-Meteo response, as much of it as we use.
+#[derive(Debug, Deserialize)]
+struct ApiResponse {
+    current: Current,
+    daily: Daily,
+}
+
+#[derive(Debug, Deserialize)]
+struct Current {
+    time: String,
+    temperature_2m: f64,
+    apparent_temperature: f64,
+    relative_humidity_2m: f64,
+    weather_code: u8,
+    wind_speed_10m: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct Daily {
+    time: Vec<String>,
+    temperature_2m_max: Vec<f64>,
+    temperature_2m_min: Vec<f64>,
+    weather_code: Vec<u8>,
+}
+
+/// Fetch one wilaya.
+pub async fn fetch(
+    client: &reqwest::Client,
+    wilaya: &Wilaya,
+    now: i64,
+    previous: Option<&Forecast>,
+) -> Result<Cached<Forecast>, FetchError> {
+    let url = format!(
+        "https://api.open-meteo.com/v1/forecast?latitude={:.4}&longitude={:.4}\
+         &current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m\
+         &daily=weather_code,temperature_2m_max,temperature_2m_min\
+         &timezone=Africa%2FAlgiers&forecast_days=5",
+        wilaya.latitude, wilaya.longitude
+    );
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| FetchError::Http(e.to_string()))?;
+    if !response.status().is_success() {
+        return Err(FetchError::Http(format!("status {}", response.status())));
+    }
+    let body: ApiResponse = response
+        .json()
+        .await
+        .map_err(|e| FetchError::Parse(e.to_string()))?;
+
+    build(body, wilaya, now, previous)
+}
+
+/// Turn a response into a validated cache entry.
+///
+/// Separated from the request so every check below is testable without a network — which matters,
+/// because these are the checks that only ever run against data we did not write.
+fn build(
+    body: ApiResponse,
+    wilaya: &Wilaya,
+    now: i64,
+    previous: Option<&Forecast>,
+) -> Result<Cached<Forecast>, FetchError> {
+    let reject = |r: Rejected| FetchError::Rejected(r.to_string());
+
+    // The publisher's own observation time, not ours.
+    let observed_at = parse_local_time(&body.current.time).ok_or_else(|| {
+        reject(Rejected::Missing {
+            field: "current.time".into(),
+        })
+    })?;
+    validate::timestamp(observed_at, now, Duration::from_secs(6 * 3600)).map_err(reject)?;
+
+    validate::bounded("temperature", body.current.temperature_2m, MIN_C, MAX_C).map_err(reject)?;
+    validate::bounded(
+        "apparent_temperature",
+        body.current.apparent_temperature,
+        MIN_C,
+        MAX_C,
+    )
+    .map_err(reject)?;
+    validate::bounded("humidity", body.current.relative_humidity_2m, 0.0, 100.0).map_err(reject)?;
+    validate::bounded("wind", body.current.wind_speed_10m, 0.0, 250.0).map_err(reject)?;
+
+    // Absolute, not fractional: near 0 °C a fractional guard divides by almost nothing and
+    // rejects every ordinary reading. Twenty-five degrees in half an hour is a sensor fault
+    // anywhere on earth.
+    if let Some(previous) = previous {
+        let jump = (body.current.temperature_2m - previous.temperature_c).abs();
+        if jump > 25.0 {
+            return Err(reject(Rejected::Moved {
+                field: "temperature".into(),
+                from: previous.temperature_c,
+                to: body.current.temperature_2m,
+            }));
+        }
+    }
+
+    let days: Vec<Day> = body
+        .daily
+        .time
+        .iter()
+        .zip(body.daily.temperature_2m_max.iter())
+        .zip(body.daily.temperature_2m_min.iter())
+        .zip(body.daily.weather_code.iter())
+        .map(|(((date, high), low), code)| Day {
+            date: date.clone(),
+            high_c: *high,
+            low_c: *low,
+            code: *code,
+        })
+        .collect();
+
+    if days.is_empty() {
+        return Err(reject(Rejected::Missing {
+            field: "daily".into(),
+        }));
+    }
+    for day in &days {
+        validate::bounded("daily high", day.high_c, MIN_C, MAX_C).map_err(reject)?;
+        validate::bounded("daily low", day.low_c, MIN_C, MAX_C).map_err(reject)?;
+        // A low above its high means the two series are misaligned, which would render as a
+        // forecast that is merely odd rather than obviously broken.
+        if day.low_c > day.high_c {
+            return Err(reject(Rejected::OutOfBounds {
+                field: format!("{} low above high", day.date),
+                value: day.low_c,
+            }));
+        }
+    }
+
+    Ok(Cached {
+        fetched_at: now,
+        observed_at,
+        source: "open-meteo".into(),
+        licence: "CC-BY-4.0".into(),
+        payload: Forecast {
+            wilaya: wilaya.code,
+            temperature_c: body.current.temperature_2m,
+            feels_like_c: body.current.apparent_temperature,
+            code: body.current.weather_code,
+            wind_kmh: body.current.wind_speed_10m,
+            humidity: body.current.relative_humidity_2m,
+            days,
+        },
+    })
+}
+
+/// Parse Open-Meteo's local timestamp, `YYYY-MM-DDTHH:MM`.
+///
+/// The response is in Africa/Algiers because we asked for it, and Algeria is UTC+1 year-round
+/// with no daylight saving — so one fixed offset is correct rather than a simplification.
+fn parse_local_time(text: &str) -> Option<i64> {
+    let (date, time) = text.split_once('T')?;
+    let mut parts = date.split('-');
+    let year: i64 = parts.next()?.parse().ok()?;
+    let month: u32 = parts.next()?.parse().ok()?;
+    let day: u32 = parts.next()?.parse().ok()?;
+
+    let mut hm = time.split(':');
+    let hour: i64 = hm.next()?.parse().ok()?;
+    let minute: i64 = hm.next()?.parse().ok()?;
+
+    let days = xustive_tools::datetime::days_from_civil(year, month, day);
+    Some(days * 86_400 + hour * 3_600 + minute * 60 - 3_600)
+}
+
+/// Every wilaya, for the scheduler to walk.
+pub fn targets() -> &'static [Wilaya] {
+    WILAYAS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn algiers() -> &'static Wilaya {
+        xustive_tools::wilaya::by_code(16).unwrap()
+    }
+
+    fn response(temp: f64, time: &str) -> ApiResponse {
+        ApiResponse {
+            current: Current {
+                time: time.into(),
+                temperature_2m: temp,
+                apparent_temperature: temp + 1.0,
+                relative_humidity_2m: 55.0,
+                weather_code: 1,
+                wind_speed_10m: 12.0,
+            },
+            daily: Daily {
+                time: vec!["2026-08-07".into(), "2026-08-08".into()],
+                temperature_2m_max: vec![34.0, 35.0],
+                temperature_2m_min: vec![22.0, 23.0],
+                weather_code: vec![0, 1],
+            },
+        }
+    }
+
+    /// 7 August 2026, 12:00 Algiers time.
+    fn now() -> i64 {
+        parse_local_time("2026-08-07T12:00").unwrap()
+    }
+
+    #[test]
+    fn a_plausible_response_is_accepted_with_the_publishers_time() {
+        let cached = build(response(31.0, "2026-08-07T11:30"), algiers(), now(), None).unwrap();
+        assert_eq!(cached.payload.temperature_c, 31.0);
+        assert_eq!(cached.payload.wilaya, 16);
+        assert_eq!(cached.source, "open-meteo");
+        // Observed half an hour before we asked, and the age reflects that rather than the fetch.
+        assert_eq!(cached.fetched_at, now());
+        assert_eq!(cached.age(now()).as_secs(), 1_800);
+    }
+
+    #[test]
+    fn an_impossible_temperature_is_refused() {
+        // A sensor fault, or Fahrenheit arriving where Celsius was expected. Either way it must
+        // never reach a card, because the card cannot tell.
+        assert!(build(response(300.0, "2026-08-07T11:30"), algiers(), now(), None).is_err());
+        assert!(build(response(-80.0, "2026-08-07T11:30"), algiers(), now(), None).is_err());
+    }
+
+    #[test]
+    fn a_sudden_jump_is_held_against_the_previous_reading() {
+        let first = build(response(31.0, "2026-08-07T11:00"), algiers(), now(), None).unwrap();
+        // Thirty degrees colder half an hour later is a fault anywhere on earth.
+        let second = build(
+            response(1.0, "2026-08-07T11:30"),
+            algiers(),
+            now(),
+            Some(&first.payload),
+        );
+        assert!(second.is_err(), "a 30° swing should be held");
+
+        // An ordinary change passes.
+        let normal = build(
+            response(28.0, "2026-08-07T11:30"),
+            algiers(),
+            now(),
+            Some(&first.payload),
+        );
+        assert!(normal.is_ok());
+    }
+
+    #[test]
+    fn the_movement_guard_works_near_freezing() {
+        // A fractional guard divides by almost nothing at 0 °C and rejects every ordinary
+        // reading, which is why this one is absolute.
+        let first = build(response(0.5, "2026-08-07T11:00"), algiers(), now(), None).unwrap();
+        let second = build(
+            response(2.5, "2026-08-07T11:30"),
+            algiers(),
+            now(),
+            Some(&first.payload),
+        );
+        assert!(second.is_ok(), "two degrees near zero is ordinary weather");
+    }
+
+    #[test]
+    fn a_future_observation_is_refused() {
+        // Trusting it would make the entry look permanently fresh and silence every staleness
+        // check that follows.
+        assert!(build(response(31.0, "2026-08-08T12:00"), algiers(), now(), None).is_err());
+    }
+
+    #[test]
+    fn misaligned_daily_series_are_caught() {
+        // A low above its high means the arrays are out of step, which renders as a forecast
+        // that looks merely odd rather than obviously broken.
+        let mut body = response(31.0, "2026-08-07T11:30");
+        body.daily.temperature_2m_min = vec![40.0, 41.0];
+        assert!(build(body, algiers(), now(), None).is_err());
+    }
+
+    #[test]
+    fn an_empty_forecast_is_refused() {
+        let mut body = response(31.0, "2026-08-07T11:30");
+        body.daily.time.clear();
+        body.daily.temperature_2m_max.clear();
+        body.daily.temperature_2m_min.clear();
+        body.daily.weather_code.clear();
+        assert!(build(body, algiers(), now(), None).is_err());
+    }
+
+    #[test]
+    fn local_time_parsing_accounts_for_the_algerian_offset() {
+        // Algeria is UTC+1 all year with no daylight saving, so one fixed offset is correct
+        // rather than a simplification.
+        let noon_local = parse_local_time("2026-08-07T12:00").unwrap();
+        let eleven_utc = xustive_tools::datetime::days_from_civil(2026, 8, 7) * 86_400 + 11 * 3600;
+        assert_eq!(noon_local, eleven_utc);
+        assert!(parse_local_time("nonsense").is_none());
+        assert!(parse_local_time("2026-08-07").is_none());
+    }
+
+    #[test]
+    fn every_wilaya_is_a_target() {
+        assert_eq!(targets().len(), 58);
+    }
+
+    #[test]
+    fn the_cadence_is_a_fixed_schedule_not_a_per_request_cost() {
+        // 58 places every 30 minutes is 116 requests an hour — trivial for the publisher, and
+        // identical whether one person searched or a million did. That is what makes a weather
+        // search reveal nothing.
+        let per_hour = 3600 / Weather.cadence().as_secs() * targets().len() as u64;
+        assert_eq!(per_hour, 116);
+        assert!(Weather.staleness_limit() > Weather.cadence() * 2);
+    }
+}

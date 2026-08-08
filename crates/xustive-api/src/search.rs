@@ -222,7 +222,15 @@ pub async fn handler(
     // Rendered in the interface language the caller asked for, so an Arabic reader gets
     // "2 قنطار → كيلوغرام" rather than the English unit names.
     let ui_lang = params.ui.as_deref().unwrap_or("en");
-    let instant = xustive_tools::best_in(&raw, ui_lang);
+    // Pure matchers first — they answer in microseconds and cover most tools.
+    //
+    // Weather is separate because its data lives in a cache, and a matcher that reached for
+    // Redis would put a round trip on every search that is not about weather. Only consulted
+    // when nothing pure matched.
+    let instant = match xustive_tools::best_in(&raw, ui_lang) {
+        Some(answer) => Some(answer),
+        None => crate::weather::answer(&state, &raw, ui_lang).await,
+    };
 
     // The budget starts here, once, and is absolute. Passing a duration down the chain would let
     // every stage believe it had the whole thing.

@@ -58,6 +58,9 @@ pub struct AppState {
     /// Prefix index for autocomplete. Built once at startup from the curated list; corpus
     /// terms are added by [`Self::refresh_suggestions`] once the index is reachable.
     pub suggest: Arc<std::sync::RwLock<Arc<crate::suggest::PrefixIndex>>>,
+    /// Cache the tool data plane fills. `None` when Redis is unreachable, which is not fatal:
+    /// tools that need it render nothing and everything else is unaffected.
+    pub tool_cache: Option<xustive_toold::store::Store>,
     pub metrics: Metrics,
 }
 
@@ -180,6 +183,7 @@ impl AppState {
         // `resolve` is async and this is not, so the real lookup happens in `resolve_index`
         // below, called from main once the runtime exists.
         let documents_index = config.search.documents_index.clone();
+        let queue_url = config.queue.url.clone();
         let curated = crate::suggest::load_curated(&config.suggest.curated_path);
         let device = config.ml.device.clone();
         let gpu_layers = config.ml.gpu_layers;
@@ -203,6 +207,9 @@ impl AppState {
             suggest: Arc::new(std::sync::RwLock::new(Arc::new(
                 crate::suggest::PrefixIndex::build(&curated, &[]),
             ))),
+            // Connecting lazily and tolerating failure. The serving plane must start whether or
+            // not the fetcher has ever run — a cold system has no cached weather by definition.
+            tool_cache: xustive_toold::store::Store::connect(&queue_url).ok(),
             limiter: Arc::new(RateLimiter::new()),
             pending: Arc::new(PendingStore::default()),
             #[cfg(feature = "summariser")]

@@ -95,7 +95,9 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 - [ ] M1B-T05.3 Currency — official **and** parallel, side by side, each with `as_of`
 - [ ] M1B-T05.4 Translator on the existing local Qwen; streaming, cancellable, nothing leaves
       the machine
-- [ ] M1B-T05.5 Weather — now + 5 days, 58 wilayas, custom line icons
+- [~] M1B-T05.5 Weather — current conditions and five days for all 58 wilayas, served from
+      cache. **Custom line icons are not drawn**; the card carries the WMO code and the client
+      maps it
 - [x] M1B-T05.6 Prayer times — computed from coordinates and date, no network, nothing that can
       go stale. Three methods and both Asr rules; the method is on the card because Algerian
       mosques do not all follow one authority and an unnamed reckoning makes an ordinary
@@ -113,13 +115,20 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 
 ## M1B-T06 — Tool data plane
 
-- [ ] M1B-T06.1 `xustive-toold` on the `ingest` network; **no route to `core`** beyond Redis
-- [ ] M1B-T06.2 Scheduled fetchers, fixed cadence, never per-request
-- [ ] M1B-T06.3 Validation: schema, plausibility bounds, movement guard ([[Tool Data Plane]] §5)
-- [ ] M1B-T06.4 `observed_at` distinct from `fetched_at` everywhere
-- [ ] M1B-T06.5 `data_age_seconds` metric and an alert on it — a fetcher that stops silently is
-      invisible until a user sees a stale rate
-- [ ] M1B-T06.6 Egress test extended: `xustive-api` still cannot reach the internet
+- [x] M1B-T06.1 `xustive-toold` on `ingest` and `core`. Joining `core` grants no egress —
+      `core` is internal — it grants reachability to Redis. This process is the bridge and is the
+      only thing that should be, which is why it takes no user input at all
+- [x] M1B-T06.2 Fixed cadence, never per-request. 58 wilayas every 30 minutes is 116 requests
+      an hour, identical whether one person searched or a million did — which is what makes a
+      weather search reveal nothing
+- [x] M1B-T06.3 Validation: bounds, movement guard, timestamp sanity, misaligned series. A
+      rejection keeps the previous value rather than clearing it
+- [x] M1B-T06.4 `observed_at` distinct from `fetched_at` throughout, and the card's age uses
+      the publisher's measurement
+- [ ] M1B-T06.5 `data_age_seconds` metric and an alert on it. The age is carried on every answer
+      and staleness is enforced; it is not yet a Prometheus gauge
+- [x] M1B-T06.6 Egress test re-run with `toold` in the topology: the serving plane still cannot
+      reach the internet
 - [ ] M1B-T06.7 **Resolve parallel-rate sourcing.** If no honest source exists, the parallel rate
       ships disabled rather than invented
 

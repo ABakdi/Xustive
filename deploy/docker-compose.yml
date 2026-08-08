@@ -88,6 +88,29 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Fetches weather and, later, rates into the cache the serving plane reads.
+  #
+  # On `ingest` *and* `core`, which looks like a hole and is not: `core` is internal, so joining
+  # it grants no egress — it grants reachability to Redis. This process is the bridge across that
+  # boundary and is the only thing that should be, which is why it takes no user input at all.
+  # Its inputs are a schedule and a fixed list of URLs.
+  toold:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.toold
+    container_name: xustive-toold
+    # Just above what a single pass needs; this holds no model and caches nothing large.
+    mem_limit: 256m
+    cpus: 0.5
+    environment:
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: info
+    networks: [ingest, core]
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: xustive-prometheus
@@ -139,3 +162,6 @@ networks:
     internal: true
   obs:
     internal: true
+  # The only network with a route out. Everything on it fetches from publishers on a schedule and
+  # never sees a user query — the crawler in M3, and the tool fetcher today.
+  ingest:

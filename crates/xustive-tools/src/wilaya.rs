@@ -51,20 +51,44 @@ pub fn find(query: &str) -> Option<&'static Wilaya> {
     }
 
     let mut best: Option<(usize, &'static Wilaya)> = None;
-    for wilaya in WILAYAS {
-        for name in [wilaya.name_ar, wilaya.name_fr] {
-            let folded = fold_for_match(name);
-            // Two characters is not a name; matching on it would make every query containing
-            // those letters a wilaya lookup.
-            if folded.chars().count() < 3 || !haystack.contains(&folded) {
-                continue;
-            }
-            if best.is_none_or(|(len, _)| folded.chars().count() > len) {
-                best = Some((folded.chars().count(), wilaya));
-            }
+    for (folded, length, wilaya) in folded_names() {
+        if !haystack.contains(folded.as_str()) {
+            continue;
+        }
+        if best.is_none_or(|(len, _)| *length > len) {
+            best = Some((*length, wilaya));
         }
     }
     best.map(|(_, w)| w)
+}
+
+/// Every wilaya name, folded once.
+///
+/// Folding all 116 names on each call cost ~720 µs, which is seven times the budget a matcher is
+/// held to — and `find` runs on every query that mentions weather or prayer times. Building the
+/// table once takes it to a set of substring checks over pre-folded strings.
+///
+/// Names shorter than three characters are dropped here rather than skipped per call: two
+/// characters is not a name, and matching on one would make every query containing those letters
+/// a wilaya lookup.
+fn folded_names() -> &'static [(String, usize, &'static Wilaya)] {
+    static NAMES: std::sync::OnceLock<Vec<(String, usize, &'static Wilaya)>> =
+        std::sync::OnceLock::new();
+    NAMES.get_or_init(|| {
+        let mut out = Vec::with_capacity(WILAYAS.len() * 2);
+        for wilaya in WILAYAS {
+            for name in [wilaya.name_ar, wilaya.name_fr] {
+                let folded = fold_for_match(name);
+                let length = folded.chars().count();
+                if length >= 3 {
+                    out.push((folded, length, wilaya));
+                }
+            }
+        }
+        // Longest first, so the first match is already the best one for the common case.
+        out.sort_by_key(|(_, length, _)| std::cmp::Reverse(*length));
+        out
+    })
 }
 
 /// Fold a place name for matching, in both scripts.

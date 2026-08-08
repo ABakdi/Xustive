@@ -27,6 +27,7 @@ pub mod calculator;
 pub mod datetime;
 pub mod prayer;
 pub mod units;
+pub mod weather;
 pub mod wilaya;
 mod wilaya_data;
 

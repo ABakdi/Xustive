@@ -1,0 +1,24 @@
+[package]
+name = "xustive-toold"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Scheduled fetch of external tool data into a cache the serving plane reads."
+
+[dependencies]
+xustive-core = { path = "../xustive-core" }
+xustive-tools = { path = "../xustive-tools" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "signal"] }
+reqwest.workspace = true
+redis = { version = "0.27", default-features = false, features = ["tokio-comp"] }
+clap.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

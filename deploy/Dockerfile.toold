@@ -1,0 +1,20 @@
+# The tool data fetcher.
+#
+# Deliberately a separate image from the serving plane. They run on different networks with
+# different trust, and one image joining both would make that separation a runtime detail rather
+# than a build-time fact.
+FROM rust:1-slim AS build
+WORKDIR /src
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY . .
+RUN cargo build --release -p xustive-toold
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --no-create-home xustive
+COPY --from=build /src/target/release/xustive-toold /usr/local/bin/xustive-toold
+# Unprivileged: this is the one process in the topology that talks to the open internet.
+USER xustive
+ENTRYPOINT ["/usr/local/bin/xustive-toold"]

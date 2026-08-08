@@ -14,6 +14,7 @@ pub mod state;
 pub mod suggest;
 pub mod summary;
 pub mod telemetry;
+pub mod weather;
 
 use std::time::{Duration, Instant};
 

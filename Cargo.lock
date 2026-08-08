@@ -3080,6 +3080,7 @@ dependencies = [
  "xustive-ml",
  "xustive-search",
  "xustive-text",
+ "xustive-toold",
  "xustive-tools",
 ]
 
@@ -3202,6 +3203,24 @@ version = "0.1.0"
 dependencies = [
  "proptest",
  "unicode-normalization",
+]
+
+[[package]]
+name = "xustive-toold"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "redis",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "xustive-core",
+ "xustive-tools",
 ]
 
 [[package]]

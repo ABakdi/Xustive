@@ -89,6 +89,10 @@ run-api: ## Run the API server — this also serves the web UI at http://localho
 run-api-fast: ## Run without the summariser — builds in seconds, no AI summaries
 	cargo run -p xustive-api --no-default-features -- --config $(CONFIG)
 
+.PHONY: toold
+toold: ## Fetch weather and other external tool data into the cache
+	cargo run --release -q -p xustive-toold -- --once
+
 .PHONY: worker
 worker: ## Drain the index queue into Meilisearch
 	cargo run --release -q -p xustive-cli -- --config $(CONFIG) worker
