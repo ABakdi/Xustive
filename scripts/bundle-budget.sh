@@ -29,6 +29,12 @@ BASE="${BASE:-http://localhost:3000}"
 JS_HOME_KB="${JS_HOME_KB:-185}"
 JS_SEARCH_KB="${JS_SEARCH_KB:-195}"
 CSS_KB="${CSS_KB:-20}"
+# Fonts, per direction — what one reader actually fetches, not the total on disk.
+#
+# An RTL page needs the two Arabic faces; an LTR page needs the Latin variable file. woff2 is
+# already compressed, so these are measured as served rather than gzipped again.
+FONT_RTL_KB="${FONT_RTL_KB:-95}"
+FONT_LTR_KB="${FONT_LTR_KB:-50}"
 
 fail=0
 
@@ -82,10 +88,41 @@ check() {
   fi
 }
 
+# A development server serves unminified chunks plus hot-reload machinery, which measures four to
+# five times the production bundle. Without this check the script reports a wild failure that
+# looks exactly like a regression, and whoever runs it goes looking for a bloated import.
+# Detected by the hot-reload client itself, which a production build never serves. Matching on
+# HTML strings was tried first and does not work: Next 16 uses Turbopack in both modes, so the
+# obvious markers appear either way.
+if curl -fsS --max-time 10 "$BASE/ar" | grep -q 'hmr-client\|_browser_dev_'; then
+  echo "✗ bundle budget: $BASE is a development server." >&2
+  echo "  Dev chunks are unminified and carry hot-reload code, so the numbers mean nothing." >&2
+  echo "  Measure a production build:  cd web && npm run build && npm start" >&2
+  exit 1
+fi
+
 echo "Client asset budgets, gzipped, as a browser would fetch them:"
 check "home JS"      "$(measure "$BASE/ar" js)"          "$JS_HOME_KB"
 check "search JS"    "$(measure "$BASE/ar/search?q=test" js)" "$JS_SEARCH_KB"
 check "CSS"          "$(measure "$BASE/ar" css)"         "$CSS_KB"
+
+# Fonts are counted separately because they are the one asset a reader fetches once and then has
+# for every subsequent page. A budget that lumped them in with per-page JS would either punish the
+# first visit or excuse an unbounded font stack.
+font_bytes() {
+  local total=0 size
+  for f in "$@"; do
+    size=$(curl -fsS -o /dev/null -w '%{size_download}' "$BASE/fonts/$f" 2>/dev/null || echo 0)
+    total=$((total + size))
+  done
+  echo "$total"
+}
+check "fonts (RTL page)" \
+  "$(font_bytes ibm-plex-sans-arabic-400-arabic.woff2 ibm-plex-sans-arabic-600-arabic.woff2)" \
+  "$FONT_RTL_KB"
+check "fonts (LTR page)" \
+  "$(font_bytes ibm-plex-sans-var-latin.woff2)" \
+  "$FONT_LTR_KB"
 
 if [ "$fail" -ne 0 ]; then
   echo >&2
