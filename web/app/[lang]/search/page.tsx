@@ -89,7 +89,7 @@ export default async function SearchPage({
     <Shell lang={lang} t={t} q={q}>
       <p className="mb-5 text-sm" style={{ color: 'var(--fg-muted)' }}>
         {p.estimated ? `${t.resultsApprox} ` : ''}
-        <span className="numeric">{formatNumber(lang, p.total_hits)}</span>{' '}
+        <bdi className="numeric">{formatNumber(lang, p.total_hits)}</bdi>{' '}
         {/* Arabic has six plural categories; a ternary is wrong for four of them. */}
         {plural(lang, p.total_hits, {
           zero: t.resultsCount,
@@ -99,7 +99,13 @@ export default async function SearchPage({
           many: t.resultsCount,
           other: t.resultsCount,
         })}{' '}
-        (<span className="numeric">{formatNumber(lang, data.took_ms)}</span> {t.took})
+        {/* The parentheses are the problem, not the number. Brackets are neutral characters that
+            take direction from their surroundings, so in an Arabic line an unisolated `(12 ms)`
+            renders with the brackets swapped — `(ms 12` — which reads as a typo rather than as a
+            bidi artefact. Isolating the whole group keeps the pair together. */}
+        <bdi>
+          (<span className="numeric">{formatNumber(lang, data.took_ms)}</span> {t.took})
+        </bdi>
       </p>
 
       {/* Above the results and below the search box. Rendered even when there are no results —

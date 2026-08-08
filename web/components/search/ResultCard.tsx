@@ -51,8 +51,15 @@ export function ResultCard({
         </span>
         {/* Isolated: a URL inside an RTL line is reordered into nonsense without this. */}
         <bdi className="max-w-full truncate">{result.display_url}</bdi>
+        {/* Isolated for the same reason as the URL above. A formatted date is digits joined by
+            neutral separators, and neutrals take their direction from what surrounds them — so
+            `08/08/2026` sitting between an Arabic source label and an Arabic sentiment word is
+            reordered into `2026/08/08`. The card is `dir="auto"`, which resolves the card as a
+            whole; it does not isolate the runs inside it. */}
         {date ? (
-          <time dateTime={String(result.published_at)}>{date}</time>
+          <bdi>
+            <time dateTime={String(result.published_at)}>{date}</time>
+          </bdi>
         ) : (
           <span>{t.dateUnknown}</span>
         )}
