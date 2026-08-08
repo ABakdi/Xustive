@@ -15,6 +15,7 @@ pub mod state;
 pub mod suggest;
 pub mod summary;
 pub mod telemetry;
+pub mod tools;
 pub mod weather;
 
 use std::time::{Duration, Instant};
@@ -71,6 +72,7 @@ pub fn app(state: AppState) -> Router {
     // second and a half, which a user reads as a broken input rather than a slow one.
     let suggest_routes = Router::new()
         .route("/suggest", get(suggest::handler))
+        .route("/tools", get(tools::handler))
         .layer(middleware::from_fn_with_state(state.clone(), limit_suggest))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::GATEWAY_TIMEOUT,
