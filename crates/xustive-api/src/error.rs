@@ -29,6 +29,14 @@ pub enum ApiError {
     UpstreamTimeout,
     #[error("internal error")]
     Internal,
+    /// The translator could not accept this input. Carries a static code so the client can say
+    /// which of the reasons applies without the server echoing the text back — the text is the
+    /// most sensitive field this service handles and must not appear in an error body.
+    #[error("cannot translate")]
+    Untranslatable { code: &'static str },
+    /// The local model is not available: not loaded, every slot busy, or shut down.
+    #[error("the model is unavailable")]
+    ModelUnavailable { code: &'static str },
 }
 
 impl ApiError {
@@ -41,7 +49,16 @@ impl ApiError {
             Self::SearchUnavailable => "search_unavailable",
             Self::UpstreamTimeout => "upstream_timeout",
             Self::Internal => "internal_error",
+            Self::Untranslatable { code } | Self::ModelUnavailable { code } => code,
         }
+    }
+
+    pub fn untranslatable(code: &'static str) -> Self {
+        Self::Untranslatable { code }
+    }
+
+    pub fn model_unavailable(code: &'static str) -> Self {
+        Self::ModelUnavailable { code }
     }
 
     pub fn status(&self) -> StatusCode {
@@ -49,8 +66,11 @@ impl ApiError {
             Self::MissingQuery | Self::QueryTooLong { .. } | Self::InvalidParam { .. } => {
                 StatusCode::BAD_REQUEST
             }
-            Self::SearchUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+            Self::SearchUnavailable | Self::ModelUnavailable { .. } => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
             Self::UpstreamTimeout => StatusCode::GATEWAY_TIMEOUT,
+            Self::Untranslatable { .. } => StatusCode::BAD_REQUEST,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -68,6 +88,10 @@ impl ApiError {
             Self::SearchUnavailable => "Search is temporarily unavailable.".into(),
             Self::UpstreamTimeout => "That search took too long.".into(),
             Self::Internal => "Something went wrong on our side.".into(),
+            // Deliberately does not restate the input. The client sent the text and knows what it
+            // was; repeating it in an error body would put it somewhere it does not need to be.
+            Self::Untranslatable { .. } => "That text cannot be translated as given.".into(),
+            Self::ModelUnavailable { .. } => "Translation is temporarily unavailable.".into(),
         }
     }
 }

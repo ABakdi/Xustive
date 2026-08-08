@@ -62,6 +62,10 @@ impl Limit {
 pub const SEARCH: Limit = Limit::new(60, 60);
 pub const SUGGEST: Limit = Limit::new(300, 60);
 pub const SUMMARY: Limit = Limit::new(20, 60);
+/// Tighter than summary. A translation can hold a model slot for a full minute, and there are
+/// only as many slots as the card has memory for — so the limit that matters is how many one
+/// place can have in flight, not how many it can ask for.
+pub const TRANSLATE: Limit = Limit::new(10, 60);
 pub const MEDIA: Limit = Limit::new(10, 60);
 pub const SOURCES: Limit = Limit::new(5, 3600);
 
