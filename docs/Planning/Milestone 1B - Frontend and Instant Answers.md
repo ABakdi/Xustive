@@ -140,7 +140,13 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 
 - [x] M1B-T07.1 Wilaya reference — all 58, compiled in, with seat coordinates that prayer times
       and later weather use to turn a named place into a location without ever asking the browser
-- [ ] M1B-T07.2 Fuel prices
+- [x] M1B-T07.2 Fuel prices — compiled in rather than fetched. These are **administered** prices
+      set by the ARH, uniform nationally, unchanged since 2020 until 1 January 2026; neither the
+      ARH nor Naftal publishes a feed, so there is nothing to poll. The card shows the authority
+      and effective date and carries no `as_of`, since an administered price is not measured. The
+      January 2026 change was applied at midnight with no announcement, so the table will
+      eventually be wrong silently — a test fails once its review date passes, turning that into a
+      broken build rather than a wrong answer
 - [ ] M1B-T07.3 Dictionary — ar / fr / en, Darija marked as incomplete ← *B7*
 - [x] M1B-T07.4 Transliterator, surfacing [[Query Expander]] — offered on an explicit request only,
       never applied silently: Arabizi is ambiguous, so the card shows a second reading alongside

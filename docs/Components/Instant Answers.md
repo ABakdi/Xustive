@@ -135,6 +135,23 @@ query that would otherwise leave for another site.
 
 Every one is pure, offline and deterministic. No clock, no network, nothing to go stale.
 
+### Administered values
+
+Fuel prices are set by an authority, not measured. That makes them a different kind of value from
+a temperature or an exchange rate, and the difference is visible on the card: an administered price
+carries **no `as_of`**, because nothing was observed at any particular moment. It carries an
+**effective date** and the name of the body that set it.
+
+The distinction matters because the failure mode is inverted. A stale temperature is detectable —
+its age climbs and the serving plane withholds it. A stale administered price looks exactly like a
+correct one, forever, because there is no measurement to age. The ARH changed fuel prices at
+midnight on 1 January 2026 with no announcement from itself or Naftal; a table compiled before that
+would have kept answering confidently.
+
+Where no feed exists, the defence is therefore a **review date that fails the build** rather than a
+staleness limit that withholds the card. A broken build is cheap. A search engine quoting a price
+that changed eight months ago is not.
+
 **Deferred**, and why — these are wanted, not rejected:
 
 | Deferred | What it needs |
