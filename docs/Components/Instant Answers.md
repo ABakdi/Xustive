@@ -128,17 +128,30 @@ about them.
 No network, no data plane, a few dozen lines each. They cost almost nothing and each one is a
 query that would otherwise leave for another site.
 
-`QR code` · `colour converter` (hex/rgb/hsl/oklch) · `word & character count` ·
-`case conversion` · `Base64 encode/decode` · `URL encode/decode` · `JSON formatter` ·
-`hash` (sha256/md5) · `random number & dice` · `coin flip` · `timer & stopwatch` ·
-`VAT calculator` (Algerian TVA 19 % / 9 %) · `tip split` · `loan repayment` · `BMI` ·
-`percentage change` · `Roman numerals` · `what is my IP`
+**Built.** `Base64 encode/decode` · `URL encode/decode` · `VAT calculator` (Algerian TVA
+19 % / 9 %) · `percentage change` · `Roman numerals` · `colour converter` (hex→rgb) ·
+`case conversion` · `word & character count` · `hash` (SHA-256) · `JSON formatter` ·
+`tip split` · `loan repayment` · `BMI`
+
+Every one is pure, offline and deterministic. No clock, no network, nothing to go stale.
+
+**Deferred**, and why — these are wanted, not rejected:
+
+| Deferred | What it needs |
+|:---|:---|
+| QR code | An encoder and an SVG renderer. More than a few dozen lines, so it is its own task. |
+| Timer & stopwatch | Not a matcher at all — it is a client component with no server side. |
+| `what is my IP` | The only tool here needing request context. The `Tool` trait is a pure function of the query, and widening it for one tool is the wrong trade. |
+| hsl / oklch conversion | Straightforward; hex→rgb covers the common case and the rest can follow. |
 
 **Deliberately excluded**, with reasons:
 
 | Not building | Why |
 |:---|:---|
-| Password generator | Generating a secret in a *search box* trains exactly the wrong instinct. |
+| Password generator | Generating a secret in a *search box* trains exactly the wrong instinct, and the box is the field most likely to end up in a history. |
+| Random numbers, dice, coin flips | They make the answer unreproducible. A card showing a different number on every reload reads as a bug; one showing the same number is not random. Neither is worth having. |
+| MD5 and SHA-1 | Someone reaching a search box for a hash is as likely to be hashing something that matters as verifying a download. Offering a broken function under a neutral label invites the first case. SHA-256 only. |
+| A BMI *category* | The number is arithmetic. A band attached to it ("normal", "obese") reads as a judgement, which is the medical-calculator line below. |
 | Stock tickers | We cannot be authoritative and being late is worse than being absent. |
 | Medical / dosage calculators | Wrong output causes physical harm. Not a search-box feature. |
 | Live flight tracking | Needs a paid feed we cannot verify; a wrong gate number is worse than none. |

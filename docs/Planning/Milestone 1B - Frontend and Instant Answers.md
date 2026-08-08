@@ -138,10 +138,17 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
       and later weather use to turn a named place into a location without ever asking the browser
 - [ ] M1B-T07.2 Fuel prices
 - [ ] M1B-T07.3 Dictionary — ar / fr / en, Darija marked as incomplete ← *B7*
-- [ ] M1B-T07.4 Transliterator, surfacing [[Query Expander]]
+- [x] M1B-T07.4 Transliterator, surfacing [[Query Expander]] — offered on an explicit request only,
+      never applied silently: Arabizi is ambiguous, so the card shows a second reading alongside
+      the first rather than presenting one guess as settled
 - [ ] M1B-T07.5 Sports fixtures and results
 - [ ] M1B-T07.6 Exam results — links to official portals only, never mirrored
-- [ ] M1B-T07.7 Utility tools ([[Instant Answers]] §5.3)
+- [~] M1B-T07.7 Utility tools ([[Instant Answers]] §5.3) — 13 built: Base64, URL encoding, TVA at
+      19 %/9 %, percentage change, Roman numerals, hex→RGB, case conversion, word and character
+      counts, SHA-256, JSON formatter, tip split, loan repayment, BMI. All pure, offline and
+      deterministic. **Still open:** QR code (needs an encoder and an SVG renderer), timer and
+      stopwatch (a client component, not a matcher), hsl/oklch conversion. Random numbers, dice and
+      coin flips are now *excluded* rather than pending — see [[Instant Answers]] §5.3
 
 ## M1B-T08 — Localisation
 
