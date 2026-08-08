@@ -14,17 +14,20 @@
  */
 
 @theme {
-/* Named families are only listed when they are actually available.
+/* IBM Plex Sans and IBM Plex Sans Arabic, self-hosted — see app/fonts.css.
    *
-   * Leading with a face that is not installed is not harmless: `Inter` fell back per-glyph and
-   * broke Arabic shaping outright — letters rendered unjoined and in reverse order. Until the
-   * faces are self-hosted (M1B-T02.2), the stack has to be honest about what exists.
+   * Self-hosting is forced, not chosen: the CSP is `default-src 'self'`, so a font from a CDN is
+   * blocked outright, and loosening it would tell a third party the IP of everyone loading a
+   * results page.
    *
-   * Cairo first for Arabic: it is a modern UI face designed for screen text, and it settles the
-   * open question in the design language in favour of the more familiar option for Algerian
-   * readers. */
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
-  --font-arabic: 'Cairo', 'Noto Sans Arabic', 'Noto Naskh Arabic', system-ui, sans-serif;
+   * A named face still needs a real fallback behind it. Leading with a face that is not there is
+   * not harmless — `Inter` once fell back per-glyph and broke Arabic shaping outright, letters
+   * unjoined and in reverse order. Now the face is guaranteed to load, but the chain stays honest
+   * for the seconds before it does and for the reader who blocks web fonts.
+   *
+   * The two Plex families are designed together, so Latin inside an Arabic line matches. */
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+  --font-arabic: 'IBM Plex Sans Arabic', 'Cairo', 'Noto Sans Arabic', 'Noto Naskh Arabic', system-ui, sans-serif;
   --font-mono: ui-monospace, 'DejaVu Sans Mono', monospace;
 
   --text-xs: 0.75rem;
