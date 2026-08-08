@@ -82,7 +82,12 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
       copy button hydrates
 - [x] M1B-T04.6 **Matcher precision corpus**: ten ordinary queries that must match no tool, plus
       per-tool prose cases. Ten is a start, not a corpus
-- [ ] M1B-T04.7 Per-tool opt-out, persisted
+- [x] M1B-T04.7 Per-tool opt-out, persisted — dismissable from the card and reversible from a
+      settings page, both real forms posting Server Actions so they work without JavaScript. The
+      preference is a cookie the **Next layer** applies; it is deliberately never sent to the API,
+      because the set of tools someone has switched off is stable and unusual enough to identify
+      them, and a privacy control that makes you more identifiable is the wrong shape. `/tools`
+      serves the inventory so the settings page cannot drift from what the engine runs
 
 ## M1B-T05 — Tier 1 tools
 
@@ -170,7 +175,10 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 - [~] M1B-T08.4 Darija falls back to Arabic, never English. A distinct catalogue still needs a
       native speaker ← *B7*
 - [ ] M1B-T08.5 Visual regression: 4 languages × 2 directions × 2 themes
-- [ ] M1B-T08.6 `<bdi>` on numbers, expressions and URLs inside RTL text
+- [x] M1B-T08.6 `<bdi>` on numbers, expressions and URLs inside RTL text — verified in a browser
+      against the Arabic locale, and enforced by `scripts/lint-bidi.sh`. Brackets were the real
+      hazard: they are neutral on both sides, so an unisolated `(104 ms)` renders with the pair
+      swapped and reads as a typo rather than a rendering bug
 
 ---
 
