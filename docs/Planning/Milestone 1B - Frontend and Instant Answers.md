@@ -98,7 +98,16 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
       temperature by offset. **Unit names render in English in every locale** — the table has one
       canonical name per unit and no translations
 - [ ] M1B-T05.3 Currency — official **and** parallel, side by side, each with `as_of`
-- [ ] M1B-T05.4 Translator on the existing local Qwen; streaming, cancellable, nothing leaves
+- [~] M1B-T05.4 Translator on the existing local Qwen; streaming, cancellable, nothing leaves —
+      **built but not enabled.** The engine now streams token by token and a dropped connection
+      stops the model worker on its next token (verified: the slot is freed and counted). The
+      endpoint, the detector, the language plumbing and the streaming card all work. What does not
+      is the model's output *into* Arabic: `أين closest الصيدلية؟`, `أين تقع الم下车؟` — a semantic
+      equivalent from another language substituted mid-sentence. Arabic as a **source** is correct.
+      Sampling, the repetition penalty, an Arabic-language instruction, a worked example and the
+      prompt delimiter were each ruled out by measurement; the summariser produces fluent Arabic
+      through the same engine, because its context is full of Arabic passages and a translation
+      prompt cannot supply that. **Blocked on a better model for this task**, not on more code
       the machine
 - [~] M1B-T05.5 Weather — current conditions and five days for all 58 wilayas, served from
       cache. **Custom line icons are not drawn**; the card carries the WMO code and the client
