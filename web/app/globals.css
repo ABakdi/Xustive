@@ -239,6 +239,24 @@ a {
   border-style: dashed;
 }
 
+/* No border, no fill. For a control that must be reachable but must not draw the eye — the
+   dismiss button on a tool card, where a bordered button on every card would make every answer
+   look provisional. Still a real button: it keeps the focus ring and a hit area. */
+.btn-quiet {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  padding: 0.25rem;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  transition: color 100ms ease-out;
+}
+
+.btn-quiet:hover {
+  color: var(--fg-muted);
+}
+
 .chip-count {
   font-variant-numeric: tabular-nums;
   color: var(--fg-faint);
