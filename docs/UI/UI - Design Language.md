@@ -85,13 +85,22 @@ Arabic fallback looks like a bug.
 
 | Role | Face | Why |
 |:---|:---|:---|
-| Arabic | **Cairo** | A modern UI face designed for screen text. Settles §11's open question in favour of the option Algerian readers see most often. |
-| Latin | **system-ui** stack | Until faces are self-hosted (M1B-T02.2). |
+| Arabic | **IBM Plex Sans Arabic**, self-hosted | Drawn alongside the Latin family, so a URL or a Latin name inside an Arabic line matches rather than clashing — which is the common case on every result page. Cairo stays as the first fallback. |
+| Latin | **IBM Plex Sans**, self-hosted, variable | One variable file covers 400–600. Requesting three static weights instead cost 468 KB against 172 KB. |
 | Numerals | `font-variant-numeric: tabular-nums` | Counts, prices and rates must align in columns. |
 
 **Never list a family that is not actually available.** Leading the stack with an uninstalled
 `Inter` was not harmless: the browser fell back per glyph and **broke Arabic shaping outright** —
 letters rendered unjoined and in reverse order. A font stack has to be honest about what exists.
+
+Self-hosting is forced rather than chosen: the CSP is `default-src 'self'`, so a font from a CDN is
+blocked, and relaxing it would hand a third party the IP of everyone who loads a results page. The
+files are fetched by `scripts/fetch-fonts.sh` and **committed** — a build that needs the network to
+succeed is a build that fails when the network does.
+
+Split per script with `unicode-range` and preloaded per direction: an RTL page fetches 86 KB of
+Arabic, an LTR page 44 KB of Latin, and neither fetches the other unless the page actually contains
+that script.
 
 ```css
 --text-xs:   0.75rem;   --text-sm: 0.875rem;  --text-base: 1rem;
@@ -200,7 +209,11 @@ The toggle cycles system → light → dark and announces the resulting state to
 - [ ] Should a Maghrebi geometric motif appear at all — in the empty state, the 404, the footer?
       Risk: decoration that dates fast and reads as costume. Leaning towards **one** use, in the
       zero-results illustration only.
-- [ ] Is IBM Plex Sans Arabic the right face, or is Cairo more familiar to Algerian readers?
+- [x] Is IBM Plex Sans Arabic the right face, or is Cairo more familiar to Algerian readers?
+      **Plex Arabic**, with Cairo as the first fallback. Familiarity was the argument for Cairo,
+      but every result page mixes scripts — a French headline above an Arabic snippet, a Latin
+      domain in an Arabic breadcrumb — and the two Plex families are drawn together, so the mixed
+      case looks intentional instead of accidental. Verified rendering in a browser.
       Needs a native-speaker read ← *B7*
 - [ ] Tabular numerals in Arabic contexts: Eastern Arabic numerals (٤٥) or Western (45)? Algerian
       usage is mixed and leans Western in print. Needs a decision, not a guess ← *B7*

@@ -48,8 +48,12 @@ are the reason to exist; the search is the foundation under them.
 
 
 - [x] M1B-T02.1 `oklch` token set, both themes ([[UI - Design Language]] §3)
-- [ ] M1B-T02.2 IBM Plex Sans + Sans Arabic, self-hosted, subset per script, preloaded per
-      direction
+- [x] M1B-T02.2 IBM Plex Sans + Sans Arabic, self-hosted, subset per script, preloaded per
+      direction — 4 faces, 172 KB committed; 86 KB fetched on an RTL page, 44 KB on an LTR one.
+      Latin is one variable file for 400–600; the Arabic family is not variable on Google Fonts,
+      which a range request revealed only by returning an HTML error page and silently producing
+      no Arabic at all. `fetch-fonts.sh` now fails if a family is missing or two faces collide on
+      one filename, both of which it did on the way here
 - [ ] M1B-T02.3 shadcn primitives copied in and **rewritten** — not themed
 - [x] M1B-T02.4 The qalam rule as a shared primitive, used only by summary and tool cards
 - [~] M1B-T02.5 Density tokens exist and are cookie-driven; the toggle control is not built
