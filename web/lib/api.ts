@@ -129,3 +129,22 @@ export async function summarise(token: string, signal?: AbortSignal): Promise<Su
   if (!res.ok) return { summary: null, took_ms: 0 }
   return res.json() as Promise<SummaryResponse>
 }
+
+/**
+ * The tool inventory.
+ *
+ * Fetched rather than hardcoded, so the settings page cannot drift from what the engine actually
+ * runs — a tool missing from a hardcoded list looks exactly like a tool that is switched off.
+ *
+ * Cached: the list is static content that depends on nothing about the request, so re-fetching it
+ * per page view would be pure waste.
+ */
+export async function tools(): Promise<{ id: string; keyword: string }[]> {
+  const res = await fetch(`${BASE}/api/v1/tools`, {
+    headers: { Accept: 'application/json' },
+    next: { revalidate: 3600 },
+  })
+  if (!res.ok) return []
+  const body = (await res.json()) as { tools?: { id: string; keyword: string }[] }
+  return body.tools ?? []
+}

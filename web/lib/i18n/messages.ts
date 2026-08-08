@@ -51,7 +51,7 @@ const ar = {
   asOf: 'محسوب في',
   calculator: 'حاسبة',
   'unit-converter': 'تحويل الوحدات',
-  prayer: 'أوقات الصلاة',
+  'prayer-times': 'أوقات الصلاة',
   wilaya: 'الولاية',
   weather: 'الطقس',
   utility: 'أداة',
@@ -59,6 +59,14 @@ const ar = {
   alternatives: 'قراءة أخرى',
   fuel: 'أسعار الوقود',
   administered: 'سعر مقنّن، ليس تسعيرة لحظية',
+  hideTool: 'إخفاء هذه الأداة',
+  settings: 'الإعدادات',
+  toolsHeading: 'أدوات الإجابة الفورية',
+  toolsNote: 'الأدوات المطفأة لا تظهر فوق النتائج. الإعداد محفوظ في هذا المتصفح فقط.',
+  on: 'مفعّلة',
+  off: 'مطفأة',
+  enable: 'تفعيل',
+  disable: 'إطفاء',
 } as const
 
 /**
@@ -114,7 +122,7 @@ const fr: Messages = {
   asOf: 'mesuré à',
   calculator: 'Calculatrice',
   'unit-converter': 'Convertisseur',
-  prayer: 'Heures de prière',
+  'prayer-times': 'Heures de prière',
   wilaya: 'Wilaya',
   weather: 'Météo',
   utility: 'Outil',
@@ -122,6 +130,14 @@ const fr: Messages = {
   alternatives: 'Autre lecture',
   fuel: 'Prix des carburants',
   administered: 'Prix administré, pas une cotation en direct',
+  hideTool: 'Masquer cet outil',
+  settings: 'Paramètres',
+  toolsHeading: 'Outils de réponse instantanée',
+  toolsNote: 'Un outil désactivé n’apparaît plus au-dessus des résultats. Le réglage reste dans ce navigateur.',
+  on: 'Activé',
+  off: 'Désactivé',
+  enable: 'Activer',
+  disable: 'Désactiver',
 }
 
 const en: Messages = {
@@ -168,7 +184,7 @@ const en: Messages = {
   asOf: 'measured at',
   calculator: 'Calculator',
   'unit-converter': 'Unit converter',
-  prayer: 'Prayer times',
+  'prayer-times': 'Prayer times',
   wilaya: 'Wilaya',
   weather: 'Weather',
   utility: 'Utility',
@@ -176,6 +192,14 @@ const en: Messages = {
   alternatives: 'Another reading',
   fuel: 'Fuel prices',
   administered: 'Administered price, not a live quote',
+  hideTool: 'Hide this tool',
+  settings: 'Settings',
+  toolsHeading: 'Instant answer tools',
+  toolsNote: 'A disabled tool no longer appears above results. The setting stays in this browser.',
+  on: 'On',
+  off: 'Off',
+  enable: 'Enable',
+  disable: 'Disable',
 }
 
 /**
