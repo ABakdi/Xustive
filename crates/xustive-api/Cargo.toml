@@ -30,6 +30,8 @@ thiserror.workspace = true
 ulid.workspace = true
 clap.workspace = true
 url.workspace = true
+async-stream = "0.3.6"
+futures-util = "0.3.33"
 
 [dev-dependencies]
 tower = { workspace = true, features = ["util"] }

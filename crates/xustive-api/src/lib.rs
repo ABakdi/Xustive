@@ -16,6 +16,7 @@ pub mod suggest;
 pub mod summary;
 pub mod telemetry;
 pub mod tools;
+pub mod translate;
 pub mod weather;
 
 use std::time::{Duration, Instant};
@@ -67,12 +68,26 @@ pub fn app(state: AppState) -> Router {
         .layer(search_budget)
         .with_state(state.clone());
 
+    // Translation streams, so it gets **no response timeout at all**. A timeout layer bounds the
+    // whole response including the body, and a streamed body is not finished until the model is —
+    // wrapping this the way `/summary` is wrapped would cut every translation off mid-sentence at
+    // a fixed number of seconds. The engine's own deadline is what bounds the work here, and it is
+    // the right place for it: it stops generating rather than severing a connection.
+    let translate = Router::new()
+        .route("/translate", axum::routing::post(translate::handler))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            limit_translate,
+        ))
+        .with_state(state.clone());
+
     // Suggestions fire per keystroke, so they get a much tighter budget and a much higher rate
     // limit. Sharing the search budget would let a slow index hold a suggestion box open for a
     // second and a half, which a user reads as a broken input rather than a slow one.
     let suggest_routes = Router::new()
         .route("/suggest", get(suggest::handler))
         .route("/tools", get(tools::handler))
+        .route("/languages", get(translate::languages))
         .layer(middleware::from_fn_with_state(state.clone(), limit_suggest))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::GATEWAY_TIMEOUT,
@@ -114,7 +129,10 @@ pub fn app(state: AppState) -> Router {
         .with_state(state.clone());
 
     Router::new()
-        .nest("/api/v1", api.merge(summary).merge(suggest_routes))
+        .nest(
+            "/api/v1",
+            api.merge(summary).merge(translate).merge(suggest_routes),
+        )
         .merge(ops)
         // Request ids, outermost after panic catching so even a shed or rejected request
         // carries one. A ULID rather than a UUID: it sorts by time, so grepping a log for ids
@@ -175,6 +193,10 @@ async fn limit_search(State(state): State<AppState>, req: Request, next: Next) -
 
 async fn limit_summary(State(state): State<AppState>, req: Request, next: Next) -> Response {
     enforce(&state, "/summary", ratelimit::SUMMARY, req, next).await
+}
+
+async fn limit_translate(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    enforce(&state, "/translate", ratelimit::TRANSLATE, req, next).await
 }
 
 async fn limit_suggest(State(state): State<AppState>, req: Request, next: Next) -> Response {
