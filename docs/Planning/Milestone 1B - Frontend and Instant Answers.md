@@ -125,8 +125,12 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
       rejection keeps the previous value rather than clearing it
 - [x] M1B-T06.4 `observed_at` distinct from `fetched_at` throughout, and the card's age uses
       the publisher's measurement
-- [ ] M1B-T06.5 `data_age_seconds` metric and an alert on it. The age is carried on every answer
-      and staleness is enforced; it is not yet a Prometheus gauge
+- [x] M1B-T06.5 `xustive_data_age_seconds{dataset}` gauge, sampled on a timer rather than on
+      request — a fetcher that stops silently leaves the last values in place, so traffic-driven
+      sampling would report a healthy number for a dead fetcher. Reports the **oldest** entry, not
+      the mean: one stuck wilaya out of 58 would move an average by two per cent and fire nothing.
+      Four alerts, unit-tested with `promtool test rules` so a threshold typo is caught here rather
+      than during the incident
 - [x] M1B-T06.6 Egress test re-run with `toold` in the topology: the serving plane still cannot
       reach the internet
 - [ ] M1B-T06.7 **Resolve parallel-rate sourcing.** If no honest source exists, the parallel rate

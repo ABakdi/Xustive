@@ -184,8 +184,24 @@ Ingestion chains are correlated by `trace_id` on the [[Task Queue]] envelope, so
 | `SummaryDropHigh` | drop rate > 20 % for 15 min | ticket | scale `xustive-ml` |
 | `DiskPressure` | volume > 85 % | page | expand or prune raw blobs |
 | `TelemetryLeak` | log line matches query-shaped field | **page** | privacy incident, see [[Security and Privacy]] |
+| `ToolDataAgeing` | `xustive_data_age_seconds` > 90 min for 10 min | ticket | [[Tool Data Plane]] — fetcher stalled, cards still shown |
+| `ToolDataStale` | `xustive_data_age_seconds` > 3 h for 5 min | **page** | past the staleness limit; cards now withheld |
+| `ToolDataMissing` | `absent(xustive_data_age_seconds)` for 15 min | **page** | cache flushed or fetcher never completed a pass |
+| `ToolDataCoverageDropped` | `xustive_data_entries{dataset="weather"}` < 55 for 30 min | ticket | partial fetch failure the age gauge cannot see |
 
 Every alert must link to a runbook section. An alert without a runbook gets deleted, not ignored.
+
+### 6.1 Alert rules are unit-tested
+
+A rule file that parses is not a rule file that fires. `deploy/prometheus/alerts_test.yml` replays
+synthetic series through the real rules and asserts which alerts appear, so a threshold typo, a
+`for:` that never elapses, or a label that fails to propagate is caught by `make check-alerts`
+rather than during the incident the alert was written for.
+
+The tool-data rules exercise five scenarios: healthy, a stalled fetcher, data past the staleness
+limit, a flushed cache, and a partial fetch failure. The last two are the reason there is more than
+one rule — a flushed cache publishes **no series at all**, so every threshold rule goes silent
+exactly when it matters, and a partial failure keeps the age healthy while coverage shrinks.
 
 ---
 
