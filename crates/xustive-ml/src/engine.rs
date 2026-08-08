@@ -56,6 +56,10 @@ pub enum EngineError {
     Generation(String),
     #[error("the summariser is shut down")]
     Shutdown,
+    /// The consumer went away mid-generation. Not a failure — the expected end of any request
+    /// whose reader navigated off, and the reason a disconnect frees a slot instead of burning it.
+    #[error("generation was cancelled")]
+    Cancelled,
 }
 
 /// Sampling parameters.
@@ -81,11 +85,45 @@ impl Default for Sampling {
     }
 }
 
+/// A piece of a streamed generation.
+#[derive(Debug)]
+pub enum Chunk {
+    /// Text as the model produces it. Arrives in whatever fragments the tokeniser emits, which
+    /// are not word- or even character-aligned — a multi-byte character can span two tokens, so a
+    /// consumer must concatenate rather than treat each chunk as a unit.
+    Token(String),
+    /// Generation finished. `text` is the whole output, so a consumer that missed chunks (or
+    /// never wanted them) still gets a complete result.
+    Done(Generated),
+    Failed(EngineError),
+}
+
+/// Where a job's output goes.
+enum Sink {
+    /// One reply at the end. What the summariser wants: it validates the whole text against the
+    /// passages before showing any of it, so streaming would only let it display something it
+    /// might then have to retract.
+    Once(tokio::sync::oneshot::Sender<Result<Generated, EngineError>>),
+    /// Token by token. What translation wants — there is nothing to withhold pending validation,
+    /// and on CPU the difference between first text at 400 ms and a paragraph at 12 s is the
+    /// difference between a usable feature and one nobody waits for.
+    Stream(tokio::sync::mpsc::UnboundedSender<Chunk>),
+}
+
+impl Sink {
+    fn is_closed(&self) -> bool {
+        match self {
+            Self::Once(tx) => tx.is_closed(),
+            Self::Stream(tx) => tx.is_closed(),
+        }
+    }
+}
+
 struct Job {
     prompt: Prompt,
     sampling: Sampling,
     deadline: Instant,
-    reply: tokio::sync::oneshot::Sender<Result<Generated, EngineError>>,
+    reply: Sink,
 }
 
 /// Raw model output plus the timings the budget is measured against.
@@ -205,7 +243,7 @@ impl Engine {
             prompt,
             sampling,
             deadline: Instant::now() + budget,
-            reply,
+            reply: Sink::Once(reply),
         };
 
         match self.queue.try_send(job) {
@@ -220,6 +258,36 @@ impl Engine {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err(EngineError::Shutdown),
             Err(_) => Err(EngineError::Timeout),
+        }
+    }
+
+    /// Generate, delivering text as it is produced.
+    ///
+    /// Returns immediately with a receiver; the model has not necessarily started. **Dropping the
+    /// receiver cancels the job** — the worker notices on its next token and stops, which is what
+    /// makes a client disconnect free a slot rather than burn it.
+    ///
+    /// Unbounded because the queue is bounded by `max_tokens` and each item is a few bytes, and
+    /// because a bounded channel would let a slow reader block a model worker thread — which
+    /// would stall every other job waiting for that slot, not just the slow one.
+    pub fn generate_stream(
+        &self,
+        prompt: Prompt,
+        sampling: Sampling,
+        budget: Duration,
+    ) -> Result<tokio::sync::mpsc::UnboundedReceiver<Chunk>, EngineError> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let job = Job {
+            prompt,
+            sampling,
+            deadline: Instant::now() + budget,
+            reply: Sink::Stream(tx),
+        };
+
+        match self.queue.try_send(job) {
+            Ok(()) => Ok(rx),
+            Err(TrySendError::Full(_)) => Err(EngineError::Busy),
+            Err(TrySendError::Disconnected(_)) => Err(EngineError::Shutdown),
         }
     }
 }
@@ -290,7 +358,17 @@ fn worker(
         }
 
         let result = generate_one(&mut ctx, model, template, &job);
-        let _ = job.reply.send(result);
+        match job.reply {
+            Sink::Once(tx) => {
+                let _ = tx.send(result);
+            }
+            Sink::Stream(tx) => {
+                let _ = tx.send(match result {
+                    Ok(generated) => Chunk::Done(generated),
+                    Err(e) => Chunk::Failed(e),
+                });
+            }
+        }
     }
     tracing::debug!(slot, "summariser slot stopped");
 }
@@ -361,6 +439,20 @@ fn generate_one(
         out.push_str(&piece);
         produced += 1;
         first_token_at.get_or_insert_with(Instant::now);
+
+        if let Sink::Stream(tx) = &job.reply {
+            // A send that fails means the receiver is gone — the client disconnected or cancelled.
+            // Stopping here is the cancellation path: it frees the slot immediately instead of
+            // spending seconds of CPU producing text nobody will read. On a 4 GB card with two
+            // slots, one abandoned generation is half the capacity.
+            if tx.send(Chunk::Token(piece)).is_err() {
+                tracing::debug!(
+                    tokens = produced,
+                    "consumer went away; stopping generation and freeing the slot"
+                );
+                return Err(EngineError::Cancelled);
+            }
+        }
 
         // Checked after appending so a deadline hit still returns the text generated so far,
         // which the validator may well accept.
