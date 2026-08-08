@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { LinkButton } from '@/components/ui/Button'
 
 import type { Locale } from '@/lib/i18n/config'
 import { formatNumber } from '@/lib/i18n/format'
@@ -82,14 +82,14 @@ export function Filters({
           const on = selected === value
           const label = t[`${group.prefix}${value}` as keyof Messages] ?? value
           return (
-            <Link
+            <LinkButton
               key={value}
               href={href(group.param, on ? null : value)}
-              className={on ? 'chip chip-active' : 'chip'}
+              variant={on ? 'emphasis' : 'default'}
               {...(on ? { 'aria-current': 'true' as const } : {})}
             >
               {label} <span className="numeric text-xs opacity-70">{nf.format(count)}</span>
-            </Link>
+            </LinkButton>
           )
         })}
       </div>
@@ -105,9 +105,9 @@ export function Filters({
     >
       {groups}
       {current.size > 0 && (
-        <Link href={`/${lang}/search?q=${encodeURIComponent(q)}`} className="chip chip-clear">
+        <LinkButton href={`/${lang}/search?q=${encodeURIComponent(q)}`} className="chip-clear">
           {t.clearFilters}
-        </Link>
+        </LinkButton>
       )}
     </div>
   )

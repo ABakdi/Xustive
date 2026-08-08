@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { LinkButton } from '@/components/ui/Button'
 
 import type { SearchResponse } from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
@@ -41,27 +41,21 @@ export function Pagination({
 
   return (
     <nav className="mt-10 flex flex-wrap items-center gap-2" aria-label={t.page}>
-      {pagination.page > 1 && (
-        <Link href={href(pagination.page - 1)} className="chip">
-          {t.previous}
-        </Link>
-      )}
+      {pagination.page > 1 && <LinkButton href={href(pagination.page - 1)}>{t.previous}</LinkButton>}
       {pages.map((n) =>
+        // The current page is a `<span>`, not a link. A link to the page you are already on is a
+        // navigation that does nothing, and a screen reader announces it as a destination.
         n === pagination.page ? (
           <span key={n} className="chip chip-active numeric" aria-current="page">
             {n}
           </span>
         ) : (
-          <Link key={n} href={href(n)} className="chip numeric">
+          <LinkButton key={n} href={href(n)} className="numeric">
             {n}
-          </Link>
+          </LinkButton>
         ),
       )}
-      {pagination.page < total && (
-        <Link href={href(pagination.page + 1)} className="chip">
-          {t.next}
-        </Link>
-      )}
+      {pagination.page < total && <LinkButton href={href(pagination.page + 1)}>{t.next}</LinkButton>}
     </nav>
   )
 }

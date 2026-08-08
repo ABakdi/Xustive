@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { Button } from '@/components/ui/Button'
+import { Select } from '@/components/ui/Select'
 import type { TranslateLanguage as Language } from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
 
@@ -130,42 +132,35 @@ export function TranslateCard({
       </p>
 
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-        <label className="flex items-center gap-1.5">
-          <span style={{ color: 'var(--fg-faint)' }}>{t.translateFrom}</span>
-          <select
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="chip cursor-pointer"
-          >
-            <option value="">{t.translateAuto}</option>
-            {languages.map((l) => (
-              <option key={l.code} value={l.code}>
-                {name(l)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex items-center gap-1.5">
-          <span style={{ color: 'var(--fg-faint)' }}>{t.translateTo}</span>
-          <select value={to} onChange={(e) => setTo(e.target.value)} className="chip cursor-pointer">
-            {languages.map((l) => (
-              <option key={l.code} value={l.code}>
-                {name(l)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select
+          label={t.translateFrom}
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+        >
+          <option value="">{t.translateAuto}</option>
+          {languages.map((l) => (
+            <option key={l.code} value={l.code}>
+              {name(l)}
+            </option>
+          ))}
+        </Select>
+        <Select label={t.translateTo} value={to} onChange={(e) => setTo(e.target.value)}>
+          {languages.map((l) => (
+            <option key={l.code} value={l.code}>
+              {name(l)}
+            </option>
+          ))}
+        </Select>
         {state === 'running' && (
-          <button
+          <Button
             type="button"
             onClick={() => {
               abort.current?.abort()
               setState('done')
             }}
-            className="chip cursor-pointer"
           >
             {t.stop}
-          </button>
+          </Button>
         )}
       </div>
 

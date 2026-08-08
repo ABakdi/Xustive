@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/Button'
 import { setToolEnabled } from '@/lib/prefs'
 
 /**
@@ -20,16 +21,16 @@ export function DismissTool({ tool, label }: { tool: string; label: string }) {
 
   return (
     <form action={dismiss} className="contents">
-      <button
+      {/* Quiet, and only legible on hover or focus. It is a control for the rare case where a
+          tool is unwanted, and drawing the eye to it on every card would make every answer look
+          provisional. Never hidden from a keyboard: `focus-visible` brings it back. */}
+      <Button
         type="submit"
-        // Quiet by default and only legible on hover or focus. It is a control for the rare case
-        // where a tool is unwanted, and drawing the eye to it on every card would make every
-        // answer look provisional.
-        className="cursor-pointer border-0 bg-transparent p-0 text-xs opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
-        style={{ color: 'var(--fg-faint)' }}
+        variant="quiet"
+        className="opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
       >
         {label}
-      </button>
+      </Button>
     </form>
   )
 }

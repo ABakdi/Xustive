@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { LangSwitcher } from '@/components/layout/LangSwitcher'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { Wordmark } from '@/components/layout/Wordmark'
+import { Toggle } from '@/components/ui/Toggle'
 import { tools } from '@/lib/api'
 import { isLocale } from '@/lib/i18n/config'
 import { messages, type Messages } from '@/lib/i18n/messages'
@@ -65,6 +66,7 @@ export default async function Settings({ params }: { params: Promise<{ lang: str
           <ul className="m-0 list-none p-0">
             {inventory.map((tool) => {
               const enabled = !disabled.has(tool.id)
+              const name = (t as Record<string, string>)[tool.id] ?? tool.id
               async function toggle() {
                 'use server'
                 await setToolEnabled(tool.id, !enabled)
@@ -75,28 +77,22 @@ export default async function Settings({ params }: { params: Promise<{ lang: str
                   className="flex items-center justify-between gap-4 border-b py-2.5"
                   style={{ borderColor: 'var(--line)' }}
                 >
-                  <span className="text-sm">
+                  <span className="text-sm" id={`tool-${tool.id}`}>
                     {/* Falls back to the identifier when a tool has no translated name yet — a
                         row labelled with its id is legible; a blank row is not. */}
-                    {(t as Record<string, string>)[tool.id] ?? tool.id}
+                    {name}
                     <span className="ms-2 text-xs" style={{ color: 'var(--fg-faint)' }}>
                       <bdi>!{tool.keyword}</bdi>
                     </span>
                   </span>
                   <form action={toggle}>
-                    <button
-                      type="submit"
-                      className="chip cursor-pointer"
-                      // The button says what it does, and the state is announced separately.
-                      // A control labelled only "On" is ambiguous about whether that is the
-                      // current state or the result of pressing it.
-                      aria-label={`${enabled ? t.disable : t.enable}: ${
-                        (t as Record<string, string>)[tool.id] ?? tool.id
-                      }`}
-                      style={{ color: enabled ? 'var(--accent)' : 'var(--fg-faint)' }}
-                    >
-                      {enabled ? t.on : t.off}
-                    </button>
+                    <Toggle
+                      on={enabled}
+                      onLabel={t.on}
+                      offLabel={t.off}
+                      describedBy={`tool-${tool.id}`}
+                      accessibleLabel={`${enabled ? t.disable : t.enable}: ${name}`}
+                    />
                   </form>
                 </li>
               )
