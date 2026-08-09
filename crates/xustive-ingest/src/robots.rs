@@ -78,8 +78,15 @@ impl Robots {
     /// A group addressed to `xustivebot` wins over `*` entirely — that is the standard's
     /// precedence rule, and a site that names us has been specific on purpose.
     pub fn parse(text: &str) -> Self {
+        // Truncated on a character boundary, not a byte offset. Slicing a `&str` mid-character
+        // panics, and this file comes from a server we do not control — an Arabic robots.txt long
+        // enough to hit the cap crashed the parser, and a site could do that deliberately.
         let text = if text.len() > MAX_ROBOTS_BYTES {
-            &text[..MAX_ROBOTS_BYTES]
+            let mut end = MAX_ROBOTS_BYTES;
+            while end > 0 && !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            &text[..end]
         } else {
             text
         };
