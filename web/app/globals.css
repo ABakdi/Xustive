@@ -3,14 +3,15 @@
 /*
  * Design tokens — see docs/UI/UI - Design Language.md
  *
- * Editorial and structural rather than soft. Near-neutral surfaces with a faint cool cast, one
- * accent used only where something is interactive or current, hairline rules instead of shadows,
- * and geometry that is essentially square.
+ * Soft and roomy. Near-neutral surfaces with a faint cool cast, one accent used only where
+ * something is interactive or current, and separation carried by **light rather than lines**.
  *
- * Rounded corners are a stylistic tic that reads as "app". This is a reading surface: the search
- * field is a rectangle, chips are rectangles, cards have no border at all. The only radius in the
- * system is 2px, and it exists to stop 1px borders looking ragged at their corners — not to make
- * anything look friendly.
+ * This replaces an earlier system built on hairline rules and 2px corners. That version was
+ * coherent and it read as a printed table — correct for a document, wrong for something you act
+ * on. Rounding, elevation and space are what separate the two, and of the three the space matters
+ * most: the corners are what you notice, the padding is what makes it feel calm.
+ *
+ * One accent, still. A second colour is how a tool starts looking like a dashboard.
  */
 
 @theme {
@@ -56,11 +57,39 @@
   --accent-wash: oklch(95.5% 0.03 162);
   --accent-fg: oklch(99% 0 0);
 
+  /* Cards sit on the page rather than being cut from it. */
+  --surface: oklch(100% 0 0);
+  --surface-hover: oklch(98.5% 0.002 250);
+
   --warn: oklch(58% 0.13 65);
   --danger: oklch(53% 0.18 27);
 
-  /* Essentially square. 2px only, and only so 1px borders do not fray at the corner. */
-  --radius: 2px;
+  /* Rounded, deliberately.
+   *
+   * This reverses an earlier rule that kept everything at 2px. The brief changed to a Gmail-like
+   * feel, and rounding is most of what separates that from a document: a 16px corner reads as a
+   * surface you can act on, a 2px corner reads as a printed table.
+   *
+   * Three steps, used consistently — a scale with more values than that produces pages where
+   * nothing quite lines up. */
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  /* Elevation instead of borders.
+   *
+   * Gmail's surfaces are separated by light rather than by lines, which is what makes it feel
+   * roomy rather than ruled. Two levels only: resting, and lifted on hover. Both are soft and
+   * low-contrast — a hard shadow reads as 2010. */
+  --shadow: 0 1px 2px oklch(0% 0 0 / 0.05), 0 1px 3px oklch(0% 0 0 / 0.04);
+  --shadow-lift: 0 2px 4px oklch(0% 0 0 / 0.06), 0 4px 12px oklch(0% 0 0 / 0.07);
+  --shadow-pop: 0 4px 8px oklch(0% 0 0 / 0.07), 0 12px 28px oklch(0% 0 0 / 0.1);
+
+  /* Room to breathe. The single biggest difference between this and the previous look is not the
+   * corners, it is the space around things. */
+  --pad-card: 1.15rem 1.35rem;
+  --gap: 0.75rem;
 
   --z-sticky: 10;
   --z-dropdown: 20;
@@ -68,8 +97,8 @@
   --z-modal: 40;
   --z-toast: 50;
 
-  --result-gap: 30px;
-  --measure: 640px;
+  --result-gap: 12px;
+  --measure: 680px;
 
   color-scheme: light;
 }
@@ -92,11 +121,20 @@
   --accent-wash: oklch(26% 0.045 162);
   --accent-fg: oklch(14% 0.01 162);
 
+  /* A surface that sits *above* the page, which on dark means lighter rather than darker. Shadow
+   * alone is nearly invisible on a dark ground, so elevation is carried by lightness with a very
+   * soft shadow behind it. */
+  --surface: oklch(19.5% 0.007 250);
+  --surface-hover: oklch(23% 0.008 250);
+  --shadow: 0 1px 2px oklch(0% 0 0 / 0.4);
+  --shadow-lift: 0 2px 6px oklch(0% 0 0 / 0.45);
+  --shadow-pop: 0 8px 24px oklch(0% 0 0 / 0.5);
+
   color-scheme: dark;
 }
 
 :root[data-density='compact'] {
-  --result-gap: 18px;
+  --result-gap: 6px;
 }
 
 *,
@@ -159,37 +197,52 @@ a {
 
 /* The rule.
  *
- * The one signature element, and it carries meaning rather than decoration: a 2px edge means
+ * The one signature element, and it carries meaning rather than decoration: an accent edge means
  * Xustive is asserting something, not listing what someone else published. The summary and tool
  * cards have it; result cards never do.
  *
- * border-inline-start, so it moves to the right edge in Arabic with no direction-specific rule. */
+ * Now a tinted, elevated surface rather than a bare rule — on a page of soft cards a lone hairline
+ * looked like a leftover. border-inline-start, so it moves to the right edge in Arabic with no
+ * direction-specific rule. */
 .assert {
-  border-inline-start: 2px solid var(--accent);
-  padding-inline-start: 1.125rem;
+  border-inline-start: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: var(--pad-card);
+  padding-inline-start: 1.25rem;
 }
 
 /* --- controls -----------------------------------------------------------------------
  *
- * Rectangles. A pill-shaped search field is the single most recognisable "generic web app"
- * signal there is, and this is a search engine, not a chat app. */
+ * A pill search field, lifted off the page. This is the element the whole look hangs on — it is
+ * the first thing on the home page and the thing at the top of every results page, so if it reads
+ * as a plain input the rest cannot rescue it. */
 
 .field {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   inline-size: 100%;
-  padding-inline: 0.875rem;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--bg);
-  transition: border-color 100ms ease-out;
+  padding-inline: 1.25rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transition: box-shadow 140ms ease, background 140ms ease;
 }
 
+.field:hover {
+  box-shadow: var(--shadow-lift);
+}
+
+/* Focus lifts rather than outlines. A ring on a pill reads as an error state; elevation reads as
+ * "this is where you are". The accent border keeps it visible in forced-colours mode, where
+ * shadows are dropped entirely. */
 .field:focus-within {
   border-color: var(--accent);
-  /* A second inset line rather than a glow. Sharper, and it does not bleed into neighbours. */
-  box-shadow: inset 0 0 0 1px var(--accent);
+  box-shadow: var(--shadow-pop);
+  background: var(--surface);
 }
 
 .field input {
@@ -207,36 +260,55 @@ a {
   color: var(--fg-faint);
 }
 
-/* Filters and pagination. Rectangular, hairline, quiet until they are current. */
+/* Filters and pagination. Pills, quiet until they are current. */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
-  padding: 0.3125rem 0.625rem;
+  padding: 0.4rem 0.85rem;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-pill);
   font-size: var(--text-sm);
   color: var(--fg-muted);
   white-space: nowrap;
-  min-block-size: 32px;
-  transition: border-color 100ms ease-out, color 100ms ease-out;
+  min-block-size: 34px;
+  background: transparent;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .chip:hover {
+  background: var(--surface-hover);
   border-color: var(--line-strong);
   color: var(--fg);
 }
 
-/* Current state is carried by fill *and* by aria-current — never by colour alone. */
+/* Current state is carried by fill *and* by aria-current — never by colour alone. Accent-tinted
+ * rather than inverted: a solid black pill on a soft page is the one element that still looked
+ * like the old design. */
 .chip[aria-current],
 .chip-active {
-  background: var(--fg);
-  border-color: var(--fg);
-  color: var(--bg);
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 550;
 }
 
 .chip-clear {
   border-style: dashed;
+}
+
+/* A result. Sits on the page as a surface rather than being cut from it by rules. */
+.card {
+  border-radius: var(--radius);
+  padding: var(--pad-card);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transition: box-shadow 140ms ease, background 140ms ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-lift);
+  background: var(--surface-hover);
 }
 
 /* No border, no fill. For a control that must be reachable but must not draw the eye — the

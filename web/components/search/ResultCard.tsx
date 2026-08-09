@@ -37,7 +37,7 @@ export function ResultCard({
     <li
       id={`result-${result.id}`}
       dir="auto"
-      className="min-w-0 overflow-hidden scroll-mt-24"
+      className="card min-w-0 overflow-hidden scroll-mt-24"
     >
       <div
         className="mb-1 flex flex-wrap items-center gap-2 text-xs"

@@ -100,8 +100,7 @@ export function Filters({
 
   return (
     <div
-      className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-b pb-4"
-      style={{ borderColor: 'var(--line)' }}
+      className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2"
     >
       {groups}
       {current.size > 0 && (

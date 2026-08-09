@@ -11,7 +11,14 @@
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
   --space-5: 20px; --space-6: 24px; --space-8: 32px;
   --text-xs: 12px; --text-sm: 14px; --text-base: 15px; --text-lg: 17px; --text-xl: 22px;
-  --radius-sm: 2px;
+  /* Matched to the product's tokens by hand rather than imported. This file must work when the
+   * frontend is down, so it depends on nothing outside this binary — the cost is that the two have
+   * to be kept in step deliberately. */
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-pill: 999px;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 1px 3px rgba(0,0,0,.04);
+  --shadow-lift: 0 2px 4px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.07);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -19,6 +26,10 @@
     --color-bg: #14181c; --color-surface: #1b2126; --color-text: #e9eef1;
     --color-text-muted: #93a1a9; --color-border: #2b343a; --color-accent: #46b483;
     --color-accent-weak: #17392a;
+    /* Elevation on dark is lightness, not shadow — a shadow on a dark ground is invisible. */
+    --color-surface: #1e252b;
+    --shadow: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-lift: 0 2px 8px rgba(0,0,0,.45);
     color-scheme: dark;
   }
 }
@@ -182,3 +193,74 @@ table.admin.wide td { max-inline-size: 0; overflow: hidden; text-overflow: ellip
 #doc-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
 #doc-filters input, #doc-filters select { padding: 0.35rem 0.5rem; border: 1px solid var(--line); background: transparent; color: var(--fg); }
 #doc-filters input[type="search"] { min-inline-size: 260px; }
+
+
+/* --- Gmail-like pass ------------------------------------------------------------------------
+ *
+ * Same reasoning as the product UI: separation by light rather than lines, generous padding, and
+ * pills for anything you press. The two are kept in step by hand because this file cannot import
+ * the other one — see the note at the top.
+ */
+body { font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+
+.site-header {
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.console { padding: var(--space-6) var(--space-6) 5rem; gap: var(--space-8); }
+
+.sidebar a { border-radius: var(--radius-pill); border-left: 0; padding: 0.45rem 0.9rem; }
+.sidebar a:hover { background: var(--color-surface); }
+.sidebar a.on { background: var(--color-accent-weak); color: var(--color-accent); font-weight: 600; }
+
+/* Tiles become surfaces rather than boxed cells. */
+.tile {
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow);
+  padding: 0.9rem 1.2rem;
+}
+
+/* Tables lose their ruled look: rows separate by hover, not by lines. */
+table.admin, table.admin.wide {
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+table.admin th, table.admin td { border: 0; padding: 0.6rem 1rem; }
+table.admin thead th {
+  font-size: var(--text-xs); font-weight: 600; color: var(--color-text-muted);
+  text-transform: lowercase; letter-spacing: 0.02em;
+}
+table.admin tbody tr { transition: background 120ms ease; }
+table.admin tbody tr:hover { background: rgba(127,127,127,.06); }
+
+.outcome { border-radius: var(--radius-pill); padding: 0.15rem 0.55rem; }
+
+button, .chip { border-radius: var(--radius-pill); }
+button {
+  padding: 0.45rem 1.1rem; border: 1px solid transparent;
+  background: var(--color-accent); color: #fff; font: inherit; cursor: pointer;
+  transition: filter 120ms ease;
+}
+button:hover { filter: brightness(1.08); }
+
+#doc-filters input, #doc-filters select {
+  border-radius: var(--radius-pill);
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+#doc-filters input:focus, #doc-filters select:focus {
+  outline: none; border-color: var(--color-accent); box-shadow: var(--shadow-lift);
+}
+
+form.admin { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.lede { font-size: var(--text-lg); }
+h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 1.05rem; font-weight: 600; margin-top: var(--space-8); }

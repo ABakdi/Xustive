@@ -11,6 +11,33 @@ updated: 2026-08-07
 > Replaces the former `UI - Design System` note, which is deleted rather than kept alongside —
 > two token lists is how the values drift. Contrast obligations live in [[UI - Accessibility]].
 
+## 0. The soft pass
+
+The system was rebuilt around **rounding, elevation and space** after the previous look — hairline
+rules and 2px corners — was judged old and clunky twice.
+
+That earlier version was coherent, and it read as a *printed table*. Correct for a document, wrong
+for something you act on. Three things separate the two, and of the three the space matters most:
+the corners are what you notice, the padding is what makes it feel calm.
+
+| | Was | Now |
+|:---|:---|:---|
+| Radius | 2px everywhere | 8 / 14 / 20px, plus a pill for anything you press |
+| Separation | hairline rules | elevation — surfaces sit *on* the page rather than being cut from it |
+| Search field | rectangle | pill, lifted, focus raises rather than outlines |
+| Current chip | inverted to solid black | accent-tinted |
+| Result | no container | a card with hover lift |
+
+**This reverses the earlier "do not use rounded elements a lot" rule**, deliberately and on
+instruction. Recorded rather than quietly changed, because the old rule was also given
+deliberately and someone reading the history should see the reversal rather than a contradiction.
+
+One accent still. A second colour is how a tool starts looking like a dashboard.
+
+The admin console mirrors these tokens by hand rather than importing them — it must work when the
+frontend is down, so it depends on nothing outside its own binary. The cost is that the two are
+kept in step deliberately.
+
 ## 1. The problem with looking like everything else
 
 shadcn/ui out of the box is a known quantity: neutral greys, `oklch` slate, 0.5 rem radii, Inter.
