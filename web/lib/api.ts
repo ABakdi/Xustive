@@ -53,6 +53,8 @@ export interface SearchResponse {
     expanded_terms: string[]
   }
   summary_token: string | null
+  /** True when the query reads as a question. Decides *where* the summary goes, not whether. */
+  is_question?: boolean
   instant?: InstantAnswer
   pagination: {
     page: number

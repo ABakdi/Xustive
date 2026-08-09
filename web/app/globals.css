@@ -407,3 +407,11 @@ bdi,
 .numeric {
   font-variant-numeric: tabular-nums;
 }
+
+/* A question's answer. Larger, and lifted off the page more than a summary beside results —
+   the placement already says it is primary, and the surface should agree. */
+.summary-answer {
+  box-shadow: var(--shadow-lift);
+  padding: 1.35rem 1.5rem;
+  padding-inline-start: 1.5rem;
+}

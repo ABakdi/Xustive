@@ -140,6 +140,14 @@ export default async function SearchPage({
           <ToolCard answer={data.instant} t={t} locale={lang} />
         ))}
 
+      {/* A question gets its answer first.
+          Someone typing a topic wants a list of pages; someone asking a question wants an answer,
+          and ten blue links above it makes them do the work themselves. The placement is the whole
+          difference — the summary itself is identical, and it still cites its sources. */}
+      {data.summary_token && data.is_question && (
+        <Summary token={data.summary_token} note={t.summaryNote} prominent />
+      )}
+
       {data.results.length === 0 ? (
         <div className="py-16 text-center">
           <p className="text-xl">{t.noResults}</p>
@@ -151,8 +159,12 @@ export default async function SearchPage({
         <>
           <Filters lang={lang} t={t} facets={data.facets} active={sp} q={q} />
 
-          {/* Fetched after paint. On CPU a summary takes tens of seconds; nothing may wait. */}
-          {data.summary_token && <Summary token={data.summary_token} note={t.summaryNote} />}
+          {/* Below the filters for a topic. A question puts it above them instead — see the
+              block before the filters. Fetched after paint either way: on CPU a summary takes
+              tens of seconds and nothing on the page may wait for it. */}
+          {data.summary_token && !data.is_question && (
+            <Summary token={data.summary_token} note={t.summaryNote} />
+          )}
 
           <ol
             className="list-none p-0"

@@ -18,7 +18,22 @@ import { summarise, type SummaryResponse } from '@/lib/api'
  * Carries the assert rule, because this is the engine asserting something rather than listing what
  * someone else published.
  */
-export function Summary({ token, note }: { token: string; note: string }) {
+export function Summary({
+  token,
+  note,
+  prominent = false,
+}: {
+  token: string
+  note: string
+  /**
+   * The query was a question, so this is the answer rather than a précis.
+   *
+   * Larger type and its sources listed explicitly beneath. Only the presentation changes — the
+   * text and the citations are identical, because a summary that read differently depending on
+   * where it sat would be two features pretending to be one.
+   */
+  prominent?: boolean
+}) {
   const [data, setData] = useState<SummaryResponse | null>(null)
 
   useEffect(() => {
@@ -34,15 +49,44 @@ export function Summary({ token, note }: { token: string; note: string }) {
 
   return (
     <section
-      className="assert rise mb-6 py-1"
+      className={`assert rise mb-6 py-1 ${prominent ? 'summary-answer' : ''}`.trim()}
       aria-label="Summary"
       // Announced once when it arrives, so a screen-reader user is not left unaware that content
       // appeared above where they are reading.
       aria-live="polite"
     >
-      <p dir="auto" className="m-0 text-base" style={{ lineHeight: 1.75 }}>
+      <p
+        dir="auto"
+        className={prominent ? 'm-0 text-lg' : 'm-0 text-base'}
+        style={{ lineHeight: 1.75 }}
+      >
         {renderCitations(data)}
       </p>
+
+      {/* Sources listed, not only linked inline.
+          An answer whose sources you have to hunt for through bracketed numbers is an answer you
+          cannot check, and an unverifiable answer from a 3B model is worse than a list of links.
+          Shown only for questions, where the summary is the primary content. */}
+      {prominent && (data.citations?.length ?? 0) > 0 && (
+        <ul className="mt-3 mb-0 flex flex-wrap gap-x-3 gap-y-1 list-none p-0 text-xs">
+          <li style={{ color: 'var(--fg-faint)' }}>{note ? 'sources:' : ''}</li>
+          {data.citations!.map((c) => (
+            <li key={c.n}>
+              <a
+                href={`#result-${c.result_id}`}
+                className="no-underline hover:underline"
+                style={{ color: 'var(--fg-muted)' }}
+              >
+                {/* The citation carries an id, not a domain. Numbered rather than named, and
+                    the link jumps to the result itself where the domain is already shown —
+                    inventing a display name here would mean a second place that can be wrong. */}
+                <bdi>[{c.n}]</bdi>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <p className="mt-2 text-xs" dir="auto" style={{ color: 'var(--fg-muted)' }}>
         {note}
       </p>

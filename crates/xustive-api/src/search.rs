@@ -112,6 +112,13 @@ pub struct SearchResponse {
     /// switched off, or the caller is past the first page. The client hides the block when it is
     /// absent rather than showing an empty one.
     pub summary_token: Option<String>,
+    /// True when the query reads as a question rather than a topic.
+    ///
+    /// The client uses this to decide *where* the summary goes, not whether to fetch it. Someone
+    /// typing a topic wants a list of pages; someone asking a question wants an answer, and ten
+    /// blue links above it makes them do the work themselves.
+    #[serde(default)]
+    pub is_question: bool,
     /// An instant answer, when the query *is* the question.
     ///
     /// Computed in microseconds from the raw query, so it rides along with the search rather than
@@ -217,6 +224,10 @@ pub async fn handler(
 
     // --- validate -------------------------------------------------------------------
     let raw = params.q.clone().unwrap_or_default();
+    // Computed before `raw` is consumed downstream, and on the raw query rather than the
+    // normalised one — normalisation folds the question mark, which is the single clearest signal
+    // a reader can give.
+    let asked_a_question = xustive_lang::is_question(&raw);
     // Computed from the raw query before it is consumed by the response. Normalisation folds the
     // characters an expression is made of, so `45*1.19` has to be seen intact to parse.
     // Rendered in the interface language the caller asked for, so an Arabic reader gets
@@ -496,6 +507,7 @@ pub async fn handler(
             corrected: None,
         },
         summary_token,
+        is_question: asked_a_question,
         instant,
         pagination: Pagination {
             page,
