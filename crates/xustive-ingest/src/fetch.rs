@@ -117,6 +117,9 @@ pub struct Fetcher {
     http: reqwest::Client,
     politeness: Arc<Mutex<Politeness>>,
     config: FetchConfig,
+    /// Shared across workers. Absent means every worker fetches its own `robots.txt`, which is
+    /// correct but rude at scale.
+    robots_cache: Option<crate::robots_cache::RobotsCache>,
 }
 
 impl Fetcher {
@@ -137,7 +140,18 @@ impl Fetcher {
                 config.ignore_politeness,
             ))),
             config,
+            robots_cache: None,
         })
+    }
+
+    /// Share `robots.txt` between workers through Redis.
+    ///
+    /// Optional on purpose. Without it the crawler is correct and merely wasteful; requiring it
+    /// would make a Redis outage a crawl outage, and would mean a single-process run needs Redis
+    /// in order to fetch one page.
+    pub fn with_shared_cache(mut self, cache: crate::robots_cache::RobotsCache) -> Self {
+        self.robots_cache = Some(cache);
+        self
     }
 
     /// Fetch a URL, honouring robots and pacing.
@@ -146,7 +160,10 @@ impl Fetcher {
     /// request per host when callers share a `Fetcher`.
     pub async fn get(&self, raw_url: &str) -> Result<Fetched, FetchError> {
         let url = SafeUrl::parse(raw_url)?;
-        let host = url.host_str().to_string();
+        // The authority, not the bare host: robots.txt is per origin, so `example.dz:8080` must
+        // not inherit `example.dz`'s rules. `Url::port()` returns `None` for a scheme's default
+        // port, so ordinary URLs still key on the bare host.
+        let host = url.authority();
 
         self.ensure_robots(&host, &url).await;
 
@@ -257,7 +274,28 @@ impl Fetcher {
     async fn ensure_robots(&self, host: &str, url: &SafeUrl) {
         {
             let p = self.politeness.lock().await;
+            if p.skip_robots_fetch() {
+                return;
+            }
             if !p.rules_stale(host, self.config.robots_ttl) {
+                return;
+            }
+        }
+
+        // Another worker may already have fetched this host's rules. Checking costs one Redis
+        // round trip against one HTTP request to somebody else's server.
+        if let Some(cache) = &self.robots_cache {
+            let now = xustive_core::now_unix();
+            if let Some(entry) = cache.get(host, now).await {
+                tracing::debug!(
+                    host,
+                    status = entry.status,
+                    "robots.txt from the shared cache"
+                );
+                self.politeness
+                    .lock()
+                    .await
+                    .set_rules(host, entry.to_robots());
                 return;
             }
         }
@@ -270,7 +308,11 @@ impl Fetcher {
             u.to_string()
         };
 
-        let rules = self.fetch_robots(host, &robots_url).await;
+        let (rules, entry) = self.fetch_robots_cached(host, &robots_url).await;
+
+        if let (Some(cache), Some(entry)) = (&self.robots_cache, entry) {
+            cache.put(host, &entry).await;
+        }
 
         if !rules.sitemaps.is_empty() {
             tracing::debug!(host, count = rules.sitemaps.len(), "discovered sitemaps");
@@ -287,9 +329,37 @@ impl Fetcher {
     /// while appearing to have blocked us.
     ///
     /// Every hop still goes through `SafeUrl`.
-    async fn fetch_robots(&self, host: &str, start_url: &str) -> Robots {
+    /// Fetch, and return an entry the shared cache can store alongside the parsed rules.
+    ///
+    /// The **text** is cached rather than the parsed rules, so a parser fix applies to everything
+    /// already cached instead of needing the cache dropped, and a human can read a cached entry to
+    /// see why a host is being refused.
+    async fn fetch_robots_cached(
+        &self,
+        host: &str,
+        start_url: &str,
+    ) -> (Robots, Option<crate::robots_cache::CachedRobots>) {
+        use crate::robots_cache::CachedRobots;
+        let now = xustive_core::now_unix();
+        let (rules, status, text) = self.fetch_robots_raw(host, start_url).await;
+
+        // A transport failure has no status and is not cached: the host may be up again in a
+        // second, and caching "unreachable" for a day would turn a blip into a day of silence.
+        let entry = status.map(|status| match text {
+            Some(text) => CachedRobots::from_text(text, status, now),
+            None => CachedRobots::denied(status, now),
+        });
+        (rules, entry)
+    }
+
+    /// The parsed rules, the status that produced them, and the body if there was one.
+    async fn fetch_robots_raw(
+        &self,
+        host: &str,
+        start_url: &str,
+    ) -> (Robots, Option<u16>, Option<String>) {
         let Ok(mut current) = SafeUrl::parse(start_url) else {
-            return Robots::deny_all();
+            return (Robots::deny_all(), None, None);
         };
 
         for hop in 0..=safe_url::MAX_REDIRECTS {
@@ -297,7 +367,7 @@ impl Fetcher {
                 Ok(r) => r,
                 Err(e) => {
                     tracing::warn!(host, error = %e, "robots.txt unreachable, treating as disallow");
-                    return Robots::deny_all();
+                    return (Robots::deny_all(), None, None);
                 }
             };
             let status = resp.status().as_u16();
@@ -308,7 +378,7 @@ impl Fetcher {
                     .get(reqwest::header::LOCATION)
                     .and_then(|v| v.to_str().ok())
                 else {
-                    return Robots::deny_all();
+                    return (Robots::deny_all(), Some(status), None);
                 };
                 match current.redirect_to(location, hop) {
                     Ok(next) => {
@@ -317,26 +387,26 @@ impl Fetcher {
                     }
                     Err(e) => {
                         tracing::warn!(host, error = %e, "unsafe robots.txt redirect");
-                        return Robots::deny_all();
+                        return (Robots::deny_all(), Some(status), None);
                     }
                 }
             }
 
             return match status {
                 200..=299 => match resp.text().await {
-                    Ok(text) => Robots::parse(&text),
-                    Err(_) => Robots::deny_all(),
+                    Ok(text) => (Robots::parse(&text), Some(status), Some(text)),
+                    Err(_) => (Robots::deny_all(), Some(status), None),
                 },
                 // The only status that genuinely means "no restrictions".
-                404 | 410 => Robots::permissive(),
+                404 | 410 => (Robots::permissive(), Some(status), Some(String::new())),
                 // 401 and 403 are a refusal; 5xx means we cannot tell. Neither is permission.
                 _ => {
                     tracing::warn!(host, status, "robots.txt unavailable, treating as disallow");
-                    Robots::deny_all()
+                    (Robots::deny_all(), Some(status), None)
                 }
             };
         }
-        Robots::deny_all()
+        (Robots::deny_all(), None, None)
     }
 
     /// Sleep until this host's next slot.

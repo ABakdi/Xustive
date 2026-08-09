@@ -189,6 +189,23 @@ impl SafeUrl {
         self.0.host_str().unwrap_or_default()
     }
 
+    /// Host plus port when the port is not the scheme's default.
+    ///
+    /// This, not the bare host, is what `robots.txt` is scoped to. RFC 9309 §2.3 makes the file
+    /// per **authority**: `http://example.dz:8080/robots.txt` is a different file from
+    /// `http://example.dz/robots.txt`, and they routinely say different things because they are
+    /// usually different applications.
+    ///
+    /// Keying politeness on the bare host merges them, so one of the two ends up governed by rules
+    /// it never published — and if those rules are the more permissive pair, we crawl a service
+    /// that refused us.
+    pub fn authority(&self) -> String {
+        match self.0.port() {
+            Some(port) => format!("{}:{port}", self.host_str()),
+            None => self.host_str().to_string(),
+        }
+    }
+
     pub fn into_url(self) -> Url {
         self.0
     }
