@@ -95,13 +95,19 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
 
 - [x] M2-T02.1 RFC 9309 parser with longest-match, wildcards, `$` — verified by the conformance
       suite below rather than by the unit tests, which were written from the implementation
-- [ ] M2-T02.2 Fetch-failure semantics: 404 → allow; 403/5xx/timeout → **disallow**
+- [x] M2-T02.2 Fetch-failure semantics: 404 → allow; 403/5xx/timeout → **disallow** — was already
+      implemented and is now asserted, as a table and over real HTTP against a server returning
+      each status. The failure here is silent: a crawler reading a 403 as "no restrictions"
+      behaves impeccably in testing and crawls a site that refused it
 - [ ] M2-T02.3 24 h cache in Redis; `Sitemap:` extraction handed to the orchestrator
 - [x] M2-T02.4 Crawl-delay resolution (max of robots / registry / default / adaptive) — the
       **maximum**, because each source is a floor set by someone with a reason. Taking the minimum
       would let a config change silently undo a `Crawl-delay` the site asked for, and a reduced
       delay is indistinguishable from ignoring it
-- [ ] M2-T02.5 Adaptive slowdown from latency, 429, 503 signals
+- [x] M2-T02.5 Adaptive slowdown from latency, 429, 503 signals — asserted rather than assumed:
+      a 429 more than doubles the pace, `Retry-After` is obeyed when named, one success does not
+      erase the backoff, and forty consecutive 429s stay bounded so a hostile host cannot park a
+      worker indefinitely
 - [x] M2-T02.6 Meta-robots and `X-Robots-Tag` post-fetch handling — the meta tag was already
       honoured; the **header was not**, which meant honouring the request only on documents that
       have a `<head>` and ignoring it on a PDF or an image, where the header is the site's only
