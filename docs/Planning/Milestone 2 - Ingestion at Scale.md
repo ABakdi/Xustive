@@ -191,6 +191,11 @@ one host that stopped answering. None of that shows in a document count.
 - [ ] M2-T04.4 Honest user-agent; per-host connection cap of 1
 - [ ] M2-T04.5 Outcome classification table
 - [ ] M2-T04.6 Headless escalation rules + ratio cap; sandboxed browser container
+- [ ] M2-T04.10 **Incomplete certificate chains.** Several `.gov.dz` hosts serve a valid Sectigo
+      certificate without the intermediate, so every correctly-configured client fails —
+      `curl` included. Browsers hide this by chasing the Authority Information Access extension;
+      rustls does not. Options are AIA chasing or bundling known intermediates. **Not** disabling
+      verification. Until then these hosts are unreachable and the log says why
 - [ ] M2-T04.7 Raw blob storage with TTL
 - [x] M2-T04.8 **SSRF suite including redirects to private IPs** — 13 cases covering the bypasses
       that get past a guard checking only literals: IPv4-mapped IPv6, decimal and octal spellings
