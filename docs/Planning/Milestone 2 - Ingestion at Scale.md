@@ -99,7 +99,11 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
       implemented and is now asserted, as a table and over real HTTP against a server returning
       each status. The failure here is silent: a crawler reading a 403 as "no restrictions"
       behaves impeccably in testing and crawls a site that refused it
-- [ ] M2-T02.3 24 h cache in Redis; `Sitemap:` extraction handed to the orchestrator
+- [x] M2-T02.3 24 h cache in Redis; `Sitemap:` extraction handed to the orchestrator — the cache
+      stores the **source text**, so a parser fix applies to everything already cached and a human
+      can read an entry to see why a host is refused. Fails **open**: a Redis outage means fetching
+      `robots.txt` directly, never "no rules cached, therefore disallow". Verified by counting the
+      requests the *site* saw — two fetchers, one request
 - [x] M2-T02.4 Crawl-delay resolution (max of robots / registry / default / adaptive) — the
       **maximum**, because each source is a floor set by someone with a reason. Taking the minimum
       would let a config change silently undo a `Crawl-delay` the site asked for, and a reduced
