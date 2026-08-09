@@ -6,8 +6,11 @@ tags:
 # Crawler Console
 
 > The operator's window into the crawler: what it is doing right now, what it has collected, and
-> the controls to change either. Part of the admin surface ([[Admin and Source Submission]]),
-> driven by the [[Crawler Orchestrator]].
+> the controls to change either. Driven by the [[Crawler Orchestrator]].
+>
+> **Behaviour and endpoints live here; the interface is [[UI - Admin Console]]**, which covers the
+> sidebar shell, the sections, and the performance budgets. Split because the endpoints are worth
+> specifying independently of how they are drawn.
 
 ---
 
@@ -152,5 +155,5 @@ enqueue and refetch are all things worth being able to attribute afterwards.
 
 ## 11. Related
 
-[[Crawler Orchestrator]] · [[Web Fetcher]] · [[Admin and Source Submission]] ·
+[[UI - Admin Console]] · [[Crawler Orchestrator]] · [[Web Fetcher]] · [[Admin and Source Submission]] ·
 [[Politeness and Robots]] · [[Indexer Worker]] · [[Observability]]

@@ -22,6 +22,9 @@ updated: 2026-08-06
 | [[UI - Frontend Architecture]] | **framework, routing, rendering strategy, i18n, budgets** |
 | [[UI - Design Language]] | **the visual identity: palette, type, shape, the qalam rule** |
 | [[UI - Tool Cards]] | **instant-answer cards: one section per tool** |
+- [[UI - Admin Console]] — the operator's surface: settings, crawler, index. Server-rendered in
+  the Rust API rather than Next.js, because a diagnostic must not share a failure domain with the
+  thing it diagnoses
 | [[UI - Design Language]] | tokens: colour, type, spacing, elevation, motion (contrast reference) |
 | [[UI - Component Library]] | every reusable component, its states and markup |
 | [[UI - Home Page]] | the search entry point + autocomplete |

@@ -157,32 +157,67 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
 - [ ] M2-T03.9 Backpressure response to queue depth
 - [ ] M2-T03.10 Leader failover test: kill the leader, assert no double dispatch
 
-## M2-T13 — [[Crawler Console]]
+## M2-T13 — [[Crawler Console]] and [[UI - Admin Console]]
 
-The crawler runs unattended, so the failure that matters is not a crash — a crash is loud — it is
-a crawl that keeps running while collecting nothing, or the same page repeatedly, or stuck behind
-one host that stopped answering. None of that shows in a document count.
+The question this answers, constantly: **is the crawler working, and is it collecting the right
+things?** A document count answers that badly — it rises identically whether we are finding
+Algerian news or four hundred copies of one calendar page, and it keeps rising for a while after
+the crawl has gone wrong. So the console shows *what* is being collected, not only how much.
 
-- [ ] M2-T13.1 `/admin/crawler` page: state, throughput, per-host activity
+Server-rendered in the Rust API, not Next.js: this is the tool for diagnosing a broken system, and
+a diagnostic that shares a failure domain with the thing it diagnoses is not a diagnostic. It is
+also the fastest option — no bundle to download, parse and hydrate.
+
+### Shell and navigation
+
+- [ ] M2-T13.0 Sidebar shell with sections as real URLs, and a status bar carrying crawler state
+      and throughput on **every** page — "is it still running" is asked while looking at something
+      else
+- [ ] M2-T13.1 Overview: crawler state, documents today, queue depth, dead letters, tool-data age.
+      Unknown values say so rather than showing zero, which is indistinguishable from healthy
+
+### Crawler
+
 - [ ] M2-T13.2 Start / stop / restart. **Stop drains** — in-flight fetches finish and index, and
-      the frontier survives. A stop that discarded work is a control operators avoid using
-- [ ] M2-T13.3 **Live counters over SSE**, one frame per second. Documents fetched and indexed
-      climbing in real time; a count that jumps in five-second steps reads as a stalled crawler
-- [ ] M2-T13.4 Browse what has been collected, paged, newest first
-- [ ] M2-T13.5 Document detail: extracted text, metadata, the raw fetch record. Rendered as
-      **text, never HTML** — a crawled page is untrusted input and an admin console that renders it
-      is stored XSS aimed at the most privileged account
-- [ ] M2-T13.6 Enqueue a URL, optionally at the front of its host's queue. Passes every check a
-      discovered URL passes — the console reorders, it does not grant permission
-- [ ] M2-T13.7 Force **refetch** (go back to the site) and **reindex** (re-run extraction on the
-      stored blob). Distinct on purpose: a parser fix needs no network, and conflating them spends
-      other people's bandwidth to fix our bug
-- [ ] M2-T13.8 Redis unavailable shows "cannot read crawler state", never zeroes — a zero reads as
-      a healthy idle crawler
-- [ ] M2-T13.9 Actions logged at `info` with the peer that took them
-- [ ] M2-T13.10 Tests: frontier survives restart; blocked and private-address URLs refused through
-      the enqueue path; a `<script>` in a crawled body is escaped in the detail view
+      the frontier survives
+- [ ] M2-T13.3 **Live**: one SSE stream at 1 Hz — counters, a documents-per-minute sparkline,
+      per-host activity, a rolling feed of the last ~50 URLs with outcome, and skip reasons broken
+      down. The feed is what shows it is collecting articles rather than tag pages; no aggregate can
+- [ ] M2-T13.4 **Documents**: paged, newest first, searchable over title/URL/body via Meilisearch
+      and filterable by host, source, language and date
+- [ ] M2-T13.5 Document detail: extracted text, metadata, outlinks, raw fetch record. Rendered as
+      **text, never HTML** — a crawled page is untrusted input and rendering it is stored XSS aimed
+      at the most privileged account
+- [ ] M2-T13.6 **Remove**, per document or selection, confirmed with a count. Removal suppresses the
+      URL so the next pass does not re-add it, or the button feels broken
+- [ ] M2-T13.7 **Queue**: depth per host, oldest entry, in flight. Enqueue a URL, optionally at the
+      front — ordering only, it still passes every check a discovered URL passes
+- [ ] M2-T13.8 **Discovered**: off-seed hosts, ranked by inbound links. The answer to "what would it
+      find if I let it", and where a new source is promoted from
+- [ ] M2-T13.9 **Sources**: seed list with per-source counts, last crawl, error rate, trust tier
+- [ ] M2-T13.10 Force **refetch** (go back to the site) and **reindex** (re-run extraction on the
+      stored blob). Distinct: a parser fix needs no network, and conflating them spends other
+      people's bandwidth on our bug
 
+### Index and system
+
+- [ ] M2-T13.11 Index search as an operator — same ranking, with score and raw document shown
+- [ ] M2-T13.12 Index health: counts by language and source, size, settings drift, last migration
+- [ ] M2-T13.13 System: existing compute and politeness controls moved into the shell, plus a log
+      tail with a level filter and no query text
+
+### Performance and safety
+
+- [ ] M2-T13.14 Budgets enforced: < 200 ms first render, CSS ≤ 8 KB, JS ≤ 10 KB, document list
+      < 300 ms at 1M documents. Paged never "all"; one SSE stream per page; absolute values not
+      deltas, so a dropped frame costs nothing
+- [ ] M2-T13.15 Nothing auto-refreshes under the cursor — new rows queue behind a "12 new" button.
+      A list that reorders as you reach for a row is how the wrong document gets deleted
+- [ ] M2-T13.16 Crawler exposes `/metrics`, so the console and Prometheus read the same counters
+      and cannot disagree
+- [ ] M2-T13.17 Tests: frontier survives restart; blocked and private-address URLs refused through
+      enqueue; a `<script>` in a crawled body is escaped in the detail view; Redis down shows
+      "cannot read state" rather than zeroes
 ## M2-T04 — [[Web Fetcher]]
 
 - [ ] M2-T04.1 `reqwest` client with timeouts, redirect revalidation, streamed body cap
