@@ -93,7 +93,8 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
 
 ## M2-T02 — [[Politeness and Robots]]
 
-- [ ] M2-T02.1 RFC 9309 parser with longest-match, wildcards, `$`
+- [x] M2-T02.1 RFC 9309 parser with longest-match, wildcards, `$` — verified by the conformance
+      suite below rather than by the unit tests, which were written from the implementation
 - [ ] M2-T02.2 Fetch-failure semantics: 404 → allow; 403/5xx/timeout → **disallow**
 - [ ] M2-T02.3 24 h cache in Redis; `Sitemap:` extraction handed to the orchestrator
 - [ ] M2-T02.4 Crawl-delay resolution (max of robots / registry / default / adaptive)
@@ -102,7 +103,10 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
 - [ ] M2-T02.7 Three-tier blocklist (global, takedown, host opt-out)
 - [ ] M2-T02.8 `/bot` page: user-agent, contact, how to block or rate-limit us
 - [ ] M2-T02.9 **Config guard test**: prod has `respect_crawl_delay = true`, `per_host_concurrency = 1`
-- [ ] M2-T02.10 Conformance suite including BOM, CRLF, duplicate groups, conflicting rules
+- [x] M2-T02.10 Conformance suite including BOM, CRLF, duplicate groups, conflicting rules — 27
+      cases written against RFC 9309 rather than against the code. Found a **panic**: the 512 KiB
+      cap sliced the file at a byte offset, so an Arabic `robots.txt` long enough to reach it
+      crashed the parser, and a site could have done that deliberately
 
 ## M2-T03 — [[Crawler Orchestrator]]
 
