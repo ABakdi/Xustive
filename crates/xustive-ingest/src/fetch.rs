@@ -366,7 +366,16 @@ impl Fetcher {
             let resp = match self.http.get(current.as_str()).send().await {
                 Ok(r) => r,
                 Err(e) => {
-                    tracing::warn!(host, error = %e, "robots.txt unreachable, treating as disallow");
+                    // The full error chain, not just the outer message. `error sending request`
+                    // alone is indistinguishable between DNS, TLS and connection refused, and the
+                    // three need different responses.
+                    let mut chain = e.to_string();
+                    let mut src = std::error::Error::source(&e);
+                    while let Some(inner) = src {
+                        chain.push_str(&format!(" <- {inner}"));
+                        src = std::error::Error::source(inner);
+                    }
+                    tracing::warn!(host, error = %chain, "robots.txt unreachable, treating as disallow");
                     return (Robots::deny_all(), None, None);
                 }
             };
