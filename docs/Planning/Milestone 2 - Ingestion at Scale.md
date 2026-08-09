@@ -150,6 +150,32 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
 - [ ] M2-T03.9 Backpressure response to queue depth
 - [ ] M2-T03.10 Leader failover test: kill the leader, assert no double dispatch
 
+## M2-T13 — [[Crawler Console]]
+
+The crawler runs unattended, so the failure that matters is not a crash — a crash is loud — it is
+a crawl that keeps running while collecting nothing, or the same page repeatedly, or stuck behind
+one host that stopped answering. None of that shows in a document count.
+
+- [ ] M2-T13.1 `/admin/crawler` page: state, throughput, per-host activity
+- [ ] M2-T13.2 Start / stop / restart. **Stop drains** — in-flight fetches finish and index, and
+      the frontier survives. A stop that discarded work is a control operators avoid using
+- [ ] M2-T13.3 **Live counters over SSE**, one frame per second. Documents fetched and indexed
+      climbing in real time; a count that jumps in five-second steps reads as a stalled crawler
+- [ ] M2-T13.4 Browse what has been collected, paged, newest first
+- [ ] M2-T13.5 Document detail: extracted text, metadata, the raw fetch record. Rendered as
+      **text, never HTML** — a crawled page is untrusted input and an admin console that renders it
+      is stored XSS aimed at the most privileged account
+- [ ] M2-T13.6 Enqueue a URL, optionally at the front of its host's queue. Passes every check a
+      discovered URL passes — the console reorders, it does not grant permission
+- [ ] M2-T13.7 Force **refetch** (go back to the site) and **reindex** (re-run extraction on the
+      stored blob). Distinct on purpose: a parser fix needs no network, and conflating them spends
+      other people's bandwidth to fix our bug
+- [ ] M2-T13.8 Redis unavailable shows "cannot read crawler state", never zeroes — a zero reads as
+      a healthy idle crawler
+- [ ] M2-T13.9 Actions logged at `info` with the peer that took them
+- [ ] M2-T13.10 Tests: frontier survives restart; blocked and private-address URLs refused through
+      the enqueue path; a `<script>` in a crawled body is escaped in the detail view
+
 ## M2-T04 — [[Web Fetcher]]
 
 - [ ] M2-T04.1 `reqwest` client with timeouts, redirect revalidation, streamed body cap
