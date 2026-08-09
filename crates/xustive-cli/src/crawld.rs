@@ -43,6 +43,25 @@ use crate::crawl::parse_seeds;
 /// thing anybody does is check whether it is still alive.
 const HEARTBEAT: Duration = Duration::from_secs(60);
 
+/// Queue depth above which the crawler slows down.
+///
+/// The crawler now outpaces the indexer by a wide margin — sixteen concurrent fetchers fill the
+/// queue far faster than a single Meilisearch writer drains it, and the backlog reached
+/// twenty-three thousand documents. Nothing was broken, and everything crawled was hours from
+/// being searchable.
+///
+/// Crawling faster than we can index is not throughput, it is a longer queue. Worse, it spends
+/// other sites' bandwidth to produce documents that sit in Redis — the one cost in this system
+/// paid by somebody else.
+const BACKPRESSURE_AT: usize = 5_000;
+
+/// How long to pause when the queue is deep.
+///
+/// Long enough for the indexer to make real progress, short enough that the crawler resumes
+/// promptly once it does. Paused rather than stopped: the frontier and the in-flight claims are
+/// untouched, so this costs nothing but time.
+const BACKPRESSURE_PAUSE: Duration = Duration::from_secs(10);
+
 /// Concurrent fetch workers.
 ///
 /// **This is the throughput lever, and it costs no politeness at all.** Crawl-delay is per host,
@@ -230,10 +249,12 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             }
             _ = ticker.tick() => {
                 let (waiting, inflight) = orchestrator.frontier().depth().await;
+                let backlog = queue.depth().await.unwrap_or(0);
                 tracing::info!(
                     queued = produced.load(std::sync::atomic::Ordering::Relaxed),
                     waiting,
                     inflight,
+                    backlog,
                     workers,
                     "crawling"
                 );
