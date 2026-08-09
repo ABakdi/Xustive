@@ -237,3 +237,86 @@ fn hidden_text_stuffing_does_not_dominate_the_excerpt() {
         assert!(p.document.body.contains("مقال حقيقي") || p.document.body.contains("الاقتصاد"));
     }
 }
+
+/// A page-builder page: a `<style>` block inside the content container.
+///
+/// This is not hypothetical markup. `mesrs.dz` produced an indexed document whose body began
+/// `.elementor-70966 .elementor-element{background-color:#214462}` — a stylesheet, presented to
+/// users as the article. Elementor is one of the most widely used WordPress builders, so this
+/// shape recurs across Algerian sites rather than being one site's mistake.
+#[test]
+fn a_stylesheet_inside_the_content_is_not_the_article() {
+    let html = format!(
+        r#"<html><head><title>وزارة التعليم العالي</title></head><body>
+        <article>
+          <style>.elementor-70966 .elementor-element{{background-color:#214462;}}
+                 .elementor-70966 .elementor-motion-effects-layer{{opacity:.5}}</style>
+          <p>{}</p>
+        </article></body></html>"#,
+        "الجزائر والنيجر تعززان تعاونهما بتوقيع اتفاقيات في عدة قطاعات مهمة للبلدين. ".repeat(12)
+    );
+
+    let parsed = Parser::new(ParseConfig::default())
+        .parse(&html, "https://www.mesrs.dz/a", "test", SourceType::Web)
+        .expect("should parse");
+
+    assert!(
+        !parsed.document.body.contains("elementor"),
+        "a stylesheet was indexed as the article body: {}",
+        &parsed.document.body[..120.min(parsed.document.body.len())]
+    );
+    assert!(
+        !parsed.document.body.contains("background-color"),
+        "CSS leaked into the body"
+    );
+    assert!(parsed.document.body.contains("الجزائر والنيجر"));
+}
+
+/// A language switcher: separate links with no whitespace between them.
+///
+/// `.text()` concatenates, so `aps.dz` produced a body beginning
+/// `العربيةEnglishFrançaisEspañolРусский中文` — one unbreakable token that matches nothing and
+/// reads as corruption. Joining with a space costs nothing and fixes every case of it.
+#[test]
+fn adjacent_elements_do_not_run_together() {
+    let html = format!(
+        r#"<html><head><title>وكالة الأنباء</title></head><body><article>
+          <nav><a href="/ar">العربية</a><a href="/en">English</a><a href="/fr">Français</a></nav>
+          <p>{}</p>
+        </article></body></html>"#,
+        "الجزائر تؤكد مكانتها كثالث أكبر اقتصاد في القارة الإفريقية حسب التقرير. ".repeat(12)
+    );
+
+    let parsed = Parser::new(ParseConfig::default())
+        .parse(&html, "https://www.aps.dz/a", "test", SourceType::Web)
+        .expect("should parse");
+
+    assert!(
+        !parsed.document.body.contains("العربيةEnglish"),
+        "adjacent links were glued into one token: {}",
+        &parsed.document.body[..120.min(parsed.document.body.len())]
+    );
+}
+
+/// `<script>` contents are not prose either.
+#[test]
+fn inline_javascript_is_not_the_article() {
+    let html = format!(
+        r#"<html><head><title>خبر</title></head><body><article>
+          <script>var dataLayer=[{{"pageType":"article","siteId":70966}}];</script>
+          <p>{}</p>
+        </article></body></html>"#,
+        "وزير التربية الوطنية يشارك في الاحتفال المخلد لليوم الوطني للجيش الشعبي الوطني. "
+            .repeat(12)
+    );
+
+    let parsed = Parser::new(ParseConfig::default())
+        .parse(&html, "https://e.dz/a", "test", SourceType::Web)
+        .expect("should parse");
+
+    assert!(
+        !parsed.document.body.contains("dataLayer"),
+        "JS leaked into the body"
+    );
+    assert!(!parsed.document.body.contains("pageType"));
+}
