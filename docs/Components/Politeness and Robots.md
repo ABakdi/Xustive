@@ -13,6 +13,45 @@ updated: 2026-08-06
 
 > **ID** C22 · **Binary** `xustive-crawler` · **Upstream** [[Crawler Orchestrator]], [[Web Fetcher]] · **Downstream** none
 
+## 0. The testing bypass
+
+A single flag, `crawl.ignore_politeness`, turns all of this off. It exists so the fixture site can
+be crawled at full speed without a `robots.txt` round trip per request, and for nothing else.
+
+**Default off.** Enabled in `config/{env}.toml`, or at runtime from `POST /admin/politeness`.
+
+| Bypassed | Not bypassed |
+|:---|:---|
+| `robots.txt` — not fetched, not consulted | **Global blocklist** — a safety block |
+| `Crawl-delay` and the adaptive pacing | **Takedown list** — a legal order |
+| Per-host wait between requests | |
+| Adaptive slowdown from 429 and 503 | |
+| Host opt-out tier | |
+
+The line is drawn there because those two are not politeness. One is a safety block and the other
+is a court order, and a testing flag must not be able to lift a court order. Nothing about crawling
+a local fixture site needs either of them lifted, so the exclusion costs the intended use nothing.
+
+### Why it is loud
+
+Pointed at the open web this produces exactly the behaviour the rest of this document exists to
+prevent, and the damage lands entirely on somebody else's server — there is no symptom in our own
+process, and by the time anyone notices we are in an abuse report. So:
+
+- **Production refuses to start** with it enabled. Not a warning: a warning in startup output is a
+  warning nobody reads. `CrawlConfig::guard` fails on `prod` and `staging`, and a test loads the
+  shipped `config/prod.toml` and `config/staging.toml` through it — a guard the deployed config was
+  never run through proves only that the guard compiles.
+- The same guard runs again when the admin endpoint is called, rather than trusting a check that
+  ran once at startup in a different function.
+- Enabling it logs at `warn` with the peer that did it.
+- The admin page carries an unmissable banner while it is on, and hides the control entirely in
+  environments where it is refused.
+
+`guard` also rejects the quieter routes to the same abuse: `respect_crawl_delay = false` and
+`per_host_concurrency > 1`. Neither looks alarming in a diff.
+
+
 ## 1. Purpose
 
 Decide whether we are allowed to fetch a URL, and how fast. This is the component that keeps Xustive

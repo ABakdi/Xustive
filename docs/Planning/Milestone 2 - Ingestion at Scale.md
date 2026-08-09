@@ -108,7 +108,14 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
       they are answerable to different people: withdrawing a host's opt-out must not lift a legal
       takedown. Subdomain matching, or a blocklist is evadable by the blocked site itself
 - [ ] M2-T02.8 `/bot` page: user-agent, contact, how to block or rate-limit us
-- [ ] M2-T02.9 **Config guard test**: prod has `respect_crawl_delay = true`, `per_host_concurrency = 1`
+- [x] M2-T02.9 **Config guard test**: prod has `respect_crawl_delay = true`, `per_host_concurrency = 1`
+      — and `ignore_politeness = false`. The guard runs at startup and the binary **refuses to
+      boot** rather than warning; a test loads the shipped `prod.toml` and `staging.toml` through
+      it, since a guard the deployed config never passes through proves only that it compiles
+- [x] M2-T02.11 **Testing bypass** (`crawl.ignore_politeness`, off by default) — ignores robots,
+      delays, adaptive slowdown and host opt-outs; never the takedown or global blocklists. Admin
+      toggle with a banner, `warn` log naming the peer, and refused outside development. Proven
+      against the fixture site in both directions
 - [x] M2-T02.10 Conformance suite including BOM, CRLF, duplicate groups, conflicting rules — 27
       cases written against RFC 9309 rather than against the code. Found a **panic**: the 512 KiB
       cap sliced the file at a byte offset, so an Arabic `robots.txt` long enough to reach it
