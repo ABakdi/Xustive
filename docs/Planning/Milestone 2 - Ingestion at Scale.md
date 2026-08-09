@@ -99,8 +99,14 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
 - [ ] M2-T02.3 24 h cache in Redis; `Sitemap:` extraction handed to the orchestrator
 - [ ] M2-T02.4 Crawl-delay resolution (max of robots / registry / default / adaptive)
 - [ ] M2-T02.5 Adaptive slowdown from latency, 429, 503 signals
-- [ ] M2-T02.6 Meta-robots and `X-Robots-Tag` post-fetch handling
-- [ ] M2-T02.7 Three-tier blocklist (global, takedown, host opt-out)
+- [x] M2-T02.6 Meta-robots and `X-Robots-Tag` post-fetch handling — the meta tag was already
+      honoured; the **header was not**, which meant honouring the request only on documents that
+      have a `<head>` and ignoring it on a PDF or an image, where the header is the site's only
+      option. Proven over real HTTP, including a repeated header line and a directive addressed to
+      another crawler
+- [x] M2-T02.7 Three-tier blocklist (global, takedown, host opt-out) — separate tiers because
+      they are answerable to different people: withdrawing a host's opt-out must not lift a legal
+      takedown. Subdomain matching, or a blocklist is evadable by the blocked site itself
 - [ ] M2-T02.8 `/bot` page: user-agent, contact, how to block or rate-limit us
 - [ ] M2-T02.9 **Config guard test**: prod has `respect_crawl_delay = true`, `per_host_concurrency = 1`
 - [x] M2-T02.10 Conformance suite including BOM, CRLF, duplicate groups, conflicting rules — 27
