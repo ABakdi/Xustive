@@ -19,6 +19,33 @@ fn client() -> Option<MeiliClient> {
 }
 
 /// Index names unique to this run, so a failed run cannot poison the next one.
+/// Create an index, or say the instance is too busy to test against.
+///
+/// Meilisearch runs tasks in **submission order**, so a scratch index queues behind whatever else
+/// is pending. With a crawler feeding the indexer, that backlog reached twenty-three thousand
+/// documents and creating an empty index took longer than any deadline worth setting — these tests
+/// failed for minutes at a time while nothing they assert was broken.
+///
+/// Raising the timeout does not fix that; it only makes the failure slower. What these tests
+/// actually need is to not run against a saturated instance, because a suite that is red for
+/// reasons unrelated to what it tests teaches people to ignore red suites.
+///
+/// Returns `false` when the instance is busy, and the caller skips.
+async fn create_or_skip(c: &MeiliClient, name: &str) -> bool {
+    // Short on purpose. An idle Meilisearch creates an index in milliseconds; anything slower
+    // means we are queued behind real work, not that index creation is slow.
+    const PROBE: std::time::Duration = std::time::Duration::from_secs(10);
+
+    match tokio::time::timeout(PROBE, c.ensure_index(name, "id")).await {
+        Ok(Ok(())) => true,
+        Ok(Err(e)) => panic!("create {name}: {e}"),
+        Err(_) => {
+            eprintln!("skipping: Meilisearch is busy — index creation queued behind other tasks");
+            false
+        }
+    }
+}
+
 fn scratch(name: &str) -> String {
     format!("xtest_{name}")
 }
@@ -42,10 +69,12 @@ async fn a_plain_index_wins_over_a_versioned_one() {
     // at an empty one the moment a migration created it.
     let alias = scratch("plainwins");
     let v1 = format!("{alias}_v1");
-    c.ensure_index(&alias, "id")
-        .await
-        .expect("create alias idx");
-    c.ensure_index(&v1, "id").await.expect("create v1");
+    if !create_or_skip(&c, &alias).await {
+        return;
+    }
+    if !create_or_skip(&c, &v1).await {
+        return;
+    }
 
     let resolved = c.resolve(&alias).await.expect("resolve");
     assert_eq!(resolved, alias, "the pre-alias index must keep winning");
@@ -68,7 +97,9 @@ async fn the_highest_version_wins_when_there_is_no_plain_index() {
         format!("{alias}_v10"),
     );
     for n in [&v1, &v2, &v10] {
-        c.ensure_index(n, "id").await.expect("create");
+        if !create_or_skip(&c, n).await {
+            return;
+        }
     }
 
     // v10, not v2: sorted numerically. String ordering would pick v2 and quietly serve an index
@@ -110,8 +141,12 @@ async fn a_similarly_named_index_is_not_mistaken_for_a_version() {
     let alias = scratch("prefix");
     let decoy = format!("{alias}_vector");
     let v1 = format!("{alias}_v1");
-    c.ensure_index(&decoy, "id").await.expect("create decoy");
-    c.ensure_index(&v1, "id").await.expect("create v1");
+    if !create_or_skip(&c, &decoy).await {
+        return;
+    }
+    if !create_or_skip(&c, &v1).await {
+        return;
+    }
 
     assert_eq!(c.resolve(&alias).await.expect("resolve"), v1);
 
