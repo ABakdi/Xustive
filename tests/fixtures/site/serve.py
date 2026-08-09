@@ -65,6 +65,38 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             return
 
+        # --- X-Robots-Tag ---------------------------------------------------------------
+        # A page that allows crawling and refuses indexing. The two are separate permissions, and
+        # this header is the only way a document without a <head> — a PDF, an image, a JSON feed —
+        # can express the second.
+        #
+        # Emitted as two header lines rather than one comma-joined value, because that is what
+        # real servers do and a parser that reads only the first sees half the directive.
+        if path == "/noindex-header.html":
+            data = (ROOT / "articles" / "normal.html").read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("X-Robots-Tag", "noindex")
+            self.send_header("X-Robots-Tag", "nofollow")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            if body:
+                self.wfile.write(data)
+            return
+
+        # Addressed to a different crawler. Obeying it would drop a document the site was happy
+        # for us to keep.
+        if path == "/noindex-other-agent.html":
+            data = (ROOT / "articles" / "normal.html").read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("X-Robots-Tag", "googlebot: noindex")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            if body:
+                self.wfile.write(data)
+            return
+
         # --- robots.txt -----------------------------------------------------------------
         # Served dynamically so the Sitemap directive names the host and port we are actually
         # listening on. A hardcoded absolute URL in the static file points somewhere else the

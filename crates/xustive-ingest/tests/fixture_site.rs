@@ -316,3 +316,42 @@ async fn the_sitemap_is_discovered_from_robots_txt() {
         "the navigational URLs should still be present for the caller to filter: {urls:?}"
     );
 }
+
+#[tokio::test]
+async fn an_x_robots_tag_header_is_honoured() {
+    // The header is the only way a document without a `<head>` can refuse indexing, so honouring
+    // the meta tag alone means honouring the request exactly where it is easy.
+    //
+    // Served as two separate header lines, which is what real servers emit — a parser reading only
+    // the first would see `noindex` and miss `nofollow`.
+    require_server!();
+    let fetched = fetcher()
+        .get(&format!("{}/noindex-header.html", base()))
+        .await
+        .expect("the page is crawlable; only indexing is refused");
+
+    let exclusion = fetched.exclusion.expect("the header should have been read");
+    assert!(exclusion.blocks_indexing(), "got {exclusion:?}");
+    assert!(
+        exclusion.blocks_links(),
+        "the second header line was dropped: {exclusion:?}"
+    );
+    // Still fetched and still parseable. Refusing indexing is not refusing the request.
+    assert!(!fetched.body.is_empty());
+}
+
+#[tokio::test]
+async fn an_x_robots_tag_for_another_crawler_is_ignored() {
+    // Obeying `googlebot: noindex` would silently drop documents the site was happy for us to
+    // keep, and nothing in the index would show why.
+    require_server!();
+    let fetched = fetcher()
+        .get(&format!("{}/noindex-other-agent.html", base()))
+        .await
+        .expect("fetch");
+    assert!(
+        fetched.exclusion.is_none(),
+        "another crawler's directive was applied to us: {:?}",
+        fetched.exclusion
+    );
+}
