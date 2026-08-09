@@ -5,6 +5,7 @@
 //! with HTTP.
 
 pub mod admin;
+pub mod admin_crawler;
 pub mod bot;
 pub mod dataage;
 pub mod deadline;
@@ -119,6 +120,15 @@ pub fn app(state: AppState) -> Router {
         // Operator surface. Read-mostly, and nothing here can stop the process starting.
         .route("/bot", get(bot::page))
         .route("/admin", get(admin::page))
+        .route("/admin/crawler", get(admin_crawler::page_live))
+        .route("/admin/documents", get(admin_crawler::page_documents))
+        .route("/admin/crawler/status", get(admin_crawler::status))
+        .route("/admin/crawler/events", get(admin_crawler::events))
+        .route("/admin/crawler/documents", get(admin_crawler::documents))
+        .route(
+            "/admin/crawler/enqueue",
+            axum::routing::post(admin_crawler::enqueue),
+        )
         .route(
             "/admin/politeness",
             axum::routing::post(admin::set_politeness),

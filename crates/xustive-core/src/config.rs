@@ -159,6 +159,11 @@ pub struct CrawlConfig {
     /// prevent, so it is loud: a warning on every startup, a counter, and a banner on the admin
     /// page. `config_guard` refuses to let it ship on in production.
     pub ignore_politeness: bool,
+    /// Rows per page in the admin document list.
+    ///
+    /// Paged rather than "all": a list that loads everything is fine at a thousand documents and
+    /// unusable at a million, and that failure arrives exactly when the crawler starts working.
+    pub documents_page_size: usize,
 }
 
 impl Default for CrawlConfig {
@@ -168,6 +173,7 @@ impl Default for CrawlConfig {
             per_host_concurrency: 1,
             // Off. The only safe default for a flag whose failure mode is being reported for abuse.
             ignore_politeness: false,
+            documents_page_size: 50,
         }
     }
 }

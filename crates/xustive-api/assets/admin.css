@@ -127,3 +127,58 @@ form.admin button {
 .state-ok { color: var(--color-accent); }
 .state-warn { color: var(--amber-600); }
 .state-missing { color: var(--color-text-muted); }
+
+/* --- console shell ------------------------------------------------------------------------ */
+/* A two-column grid, not a framework. The whole admin is ~6 KB of CSS; a component library
+   would be that before the first rule. */
+.console {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 4rem;
+}
+
+.sidebar { display: flex; flex-direction: column; gap: 1px; position: sticky; top: 1rem; align-self: start; }
+.sidebar a {
+  padding: 0.4rem 0.6rem;
+  color: var(--fg-muted);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  font-size: 0.875rem;
+}
+.sidebar a:hover { color: var(--fg); }
+/* State carried by the border and the weight, not colour alone. */
+.sidebar a.on { color: var(--fg); border-left-color: var(--accent); font-weight: 600; }
+.nav-group {
+  margin-top: 1.1rem;
+  padding: 0 0.6rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--fg-faint);
+}
+
+/* The status bar rides in the header, so it is present on every section. */
+.statusbar { margin-left: auto; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; }
+.dot { inline-size: 8px; block-size: 8px; border-radius: 50%; background: var(--fg-faint); }
+.dot.running { background: var(--accent); }
+.dot.bad { background: #d64545; }
+
+.tiles { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0 1.5rem; }
+.tile {
+  display: flex; flex-direction: column; gap: 0.15rem;
+  padding: 0.7rem 1rem; border: 1px solid var(--line); min-inline-size: 110px;
+}
+.tile-n { font-size: 1.5rem; font-weight: 550; font-variant-numeric: tabular-nums; }
+.tile-l { font-size: 0.75rem; color: var(--fg-muted); }
+
+table.admin.wide { inline-size: 100%; }
+table.admin.wide td { max-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outcome { font-size: 0.75rem; padding: 0.1rem 0.4rem; border: 1px solid var(--line); }
+.outcome.indexed { border-color: var(--accent); color: var(--accent); }
+.outcome.failed, .outcome.robots { color: var(--fg-faint); }
+
+#doc-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+#doc-filters input, #doc-filters select { padding: 0.35rem 0.5rem; border: 1px solid var(--line); background: transparent; color: var(--fg); }
+#doc-filters input[type="search"] { min-inline-size: 260px; }

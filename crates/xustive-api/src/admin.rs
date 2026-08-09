@@ -54,7 +54,7 @@ impl<S: Send + Sync> FromRequestParts<S> for Peer {
 ///   `0.0.0.0` — which is the default bind address.
 ///
 /// An unknown peer address is treated as remote. The guard errs towards refusing.
-fn authorise(
+pub(crate) fn authorise(
     state: &AppState,
     peer: Option<SocketAddr>,
     headers: &HeaderMap,
@@ -85,13 +85,13 @@ fn authorise(
     }
 }
 
-struct Denied {
+pub(crate) struct Denied {
     code: &'static str,
     message: &'static str,
 }
 
 impl Denied {
-    fn json(&self) -> (StatusCode, Json<serde_json::Value>) {
+    pub(crate) fn json(&self) -> (StatusCode, Json<serde_json::Value>) {
         (
             StatusCode::FORBIDDEN,
             Json(json!({"error": {"code": self.code, "message": self.message}})),
@@ -458,6 +458,60 @@ pub async fn page(State(state): State<AppState>, Peer(peer): Peer, headers: Head
 // still served by this process — an operator tool, not part of the product, and putting it behind
 // the frontend would mean device settings become unreachable exactly when the frontend is the
 // thing that is broken.
+
+/// Sections, in sidebar order.
+///
+/// Real URLs rather than tabs in one page: bookmarkable, linkable during an incident, and each
+/// loads on its own — a single page that fetched everything up front would be slowest exactly when
+/// one subsystem is unwell.
+pub const SECTIONS: &[(&str, &str, &str)] = &[
+    ("", "Overview", "/admin"),
+    ("CRAWLER", "Live", "/admin/crawler"),
+    ("CRAWLER", "Documents", "/admin/documents"),
+    ("SYSTEM", "Compute", "/admin/compute"),
+    ("SYSTEM", "Politeness", "/admin/politeness-settings"),
+];
+
+/// The shell: header, status bar, sidebar, content.
+///
+/// The status bar is on every section, not only the live one. "Is it still running" gets asked
+/// while you are looking at something else, and making someone navigate away to answer it is how
+/// they stop checking.
+pub fn console(current: &str, body: &str) -> String {
+    let mut nav = String::new();
+    let mut group = "";
+    for (g, label, href) in SECTIONS {
+        if g != &group {
+            if !g.is_empty() {
+                nav.push_str(&format!("<div class=\"nav-group\">{g}</div>"));
+            }
+            group = g;
+        }
+        let active = if *href == current {
+            " class=\"on\""
+        } else {
+            ""
+        };
+        nav.push_str(&format!("<a href=\"{href}\"{active}>{label}</a>"));
+    }
+
+    let page = format!(
+        r#"<header class="site-header">
+  <a class="wordmark" href="/admin">XUSTIVE</a>
+  <span class="muted">admin</span>
+  <span class="statusbar" id="statusbar">
+    <span class="dot" id="sb-dot"></span>
+    <span id="sb-state">…</span>
+    <span class="muted" id="sb-rate"></span>
+  </span>
+</header>
+<div class="console">
+  <nav class="sidebar">{nav}</nav>
+  <main id="results">{body}</main>
+</div>"#
+    );
+    admin_shell("Xustive admin", &page)
+}
 
 pub fn admin_shell(title: &str, body: &str) -> String {
     format!(
