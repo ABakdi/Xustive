@@ -355,3 +355,33 @@ async fn an_x_robots_tag_for_another_crawler_is_ignored() {
         fetched.exclusion
     );
 }
+
+#[tokio::test]
+async fn the_politeness_bypass_reaches_a_disallowed_path() {
+    // The flag has to change what actually gets fetched, not merely what a helper reports. This
+    // path is refused by the fixture's robots.txt and is fetched here — which is the entire point
+    // of the flag and the reason it must never be on outside testing.
+    require_server!();
+    let fetcher = Fetcher::new(FetchConfig {
+        ignore_politeness: true,
+        ..FetchConfig::default()
+    })
+    .expect("fetcher");
+
+    let url = format!("{}/private/secret.html", base());
+    let fetched = fetcher.get(&url).await.expect("the bypass should reach it");
+    assert_eq!(fetched.status, 200);
+}
+
+#[tokio::test]
+async fn without_the_bypass_the_same_path_is_refused() {
+    // The other half. A bypass indistinguishable from normal operation is not a bypass, and one
+    // that leaks into normal operation is the reason a crawler gets banned.
+    require_server!();
+    let url = format!("{}/private/secret.html", base());
+    let result = fetcher().get(&url).await;
+    assert!(
+        result.is_err(),
+        "robots.txt disallows /private/ — it must not be fetched: {result:?}"
+    );
+}

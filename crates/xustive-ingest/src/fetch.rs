@@ -61,6 +61,12 @@ pub struct FetchConfig {
     pub robots_ttl: Duration,
     /// Extra pause on top of the host's crawl-delay. Cheap insurance.
     pub politeness_margin: Duration,
+    /// **Testing only.** Ignore robots, delays and host opt-outs entirely.
+    ///
+    /// Threaded through the config rather than read from a global, so a `Fetcher` built without
+    /// asking for it can never acquire it — including in tests, where a global would be shared
+    /// state between cases that run in parallel.
+    pub ignore_politeness: bool,
 }
 
 impl Default for FetchConfig {
@@ -71,6 +77,7 @@ impl Default for FetchConfig {
             max_body_bytes: 10 * 1024 * 1024,
             robots_ttl: Duration::from_secs(24 * 3600),
             politeness_margin: Duration::from_millis(200),
+            ignore_politeness: false,
         }
     }
 }
@@ -126,7 +133,9 @@ impl Fetcher {
 
         Ok(Self {
             http,
-            politeness: Arc::new(Mutex::new(Politeness::new())),
+            politeness: Arc::new(Mutex::new(Politeness::with_bypass(
+                config.ignore_politeness,
+            ))),
             config,
         })
     }

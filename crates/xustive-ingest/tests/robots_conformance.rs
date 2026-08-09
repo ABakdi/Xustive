@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use xustive_ingest::robots::{Robots, UA_TOKEN};
+use xustive_ingest::robots::{Politeness, Robots, UA_TOKEN};
 
 /// Parse and ask about a path in one step.
 fn allows(robots_txt: &str, path: &str) -> bool {
@@ -309,4 +309,50 @@ fn sitemaps_are_collected_regardless_of_group() {
     );
     let r = Robots::parse(&txt);
     assert_eq!(r.sitemaps.len(), 2, "got {:?}", r.sitemaps);
+}
+
+// ── The testing bypass ──────────────────────────────────────────────────────────────────────
+
+#[test]
+fn the_bypass_is_off_unless_asked_for() {
+    let p = Politeness::new();
+    assert!(!p.bypassed());
+    // And with no rules cached, an unchecked host is refused rather than assumed open.
+    assert!(!p.allows("example.dz", "/anything"));
+}
+
+#[test]
+fn the_bypass_ignores_robots_delays_and_the_fetch_itself() {
+    let mut p = Politeness::with_bypass(true);
+    // A file that forbids everything, from a host that demands an hour between requests.
+    p.set_rules(
+        "example.dz",
+        Robots::parse("User-agent: *\nDisallow: /\nCrawl-delay: 3600\n"),
+    );
+
+    assert!(
+        p.allows("example.dz", "/admin/secret"),
+        "the bypass must ignore Disallow"
+    );
+    assert_eq!(
+        p.wait_for("example.dz"),
+        Duration::ZERO,
+        "and the crawl delay"
+    );
+    // And a host never checked at all is allowed, which is what removes the robots round trip.
+    assert!(p.allows("never-seen.dz", "/x"));
+    assert!(p.skip_robots_fetch());
+}
+
+#[test]
+fn without_the_bypass_the_same_rules_are_obeyed() {
+    // The other half of the previous test. A bypass that is indistinguishable from normal
+    // operation is not a bypass, and one that leaks into normal operation is a liability.
+    let mut p = Politeness::new();
+    p.set_rules(
+        "example.dz",
+        Robots::parse("User-agent: *\nDisallow: /\nCrawl-delay: 3600\n"),
+    );
+    assert!(!p.allows("example.dz", "/admin/secret"));
+    assert!(!p.skip_robots_fetch());
 }

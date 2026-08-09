@@ -264,6 +264,12 @@ fn matches_pattern(pattern: &str, path: &str) -> bool {
 #[derive(Debug, Default)]
 pub struct Politeness {
     hosts: HashMap<String, HostState>,
+    /// Testing bypass. See `CrawlConfig::ignore_politeness`.
+    ///
+    /// Held here rather than checked by every caller, so there is exactly one place that decides
+    /// whether a rule applies. A bypass consulted in five call sites is a bypass that will be
+    /// forgotten in one of them, and the forgotten one is the case that matters.
+    bypass: bool,
 }
 
 #[derive(Debug)]
@@ -278,6 +284,35 @@ struct HostState {
 impl Politeness {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Ignore robots, delays and the host opt-out list. **Testing only.**
+    ///
+    /// Loud on purpose. Pointed at the open web this is precisely the behaviour the politeness
+    /// layer exists to prevent, and the damage lands on somebody else's server where we would
+    /// never see it.
+    pub fn with_bypass(bypass: bool) -> Self {
+        if bypass {
+            tracing::warn!(
+                "POLITENESS BYPASS ENABLED — robots.txt, crawl delays and host opt-outs are \
+                 ignored. This is for crawling fixture sites. Never point it at the open web."
+            );
+        }
+        Self {
+            bypass,
+            ..Self::default()
+        }
+    }
+
+    pub fn bypassed(&self) -> bool {
+        self.bypass
+    }
+
+    /// True when robots.txt need not be fetched at all.
+    ///
+    /// Saves a round trip per host in tests, which is most of the point of the flag.
+    pub fn skip_robots_fetch(&self) -> bool {
+        self.bypass
     }
 
     pub fn has_rules_for(&self, host: &str) -> bool {
@@ -310,6 +345,9 @@ impl Politeness {
     }
 
     pub fn allows(&self, host: &str, path: &str) -> bool {
+        if self.bypass {
+            return true;
+        }
         match self.hosts.get(host) {
             Some(s) => s.robots.allows(path),
             // No rules cached means we have not checked yet. Refuse rather than assume.
@@ -319,6 +357,9 @@ impl Politeness {
 
     /// How long to wait before the next request to this host.
     pub fn wait_for(&self, host: &str) -> Duration {
+        if self.bypass {
+            return Duration::ZERO;
+        }
         match self.hosts.get(host) {
             Some(s) => s.next_allowed.saturating_duration_since(Instant::now()),
             None => Duration::ZERO,
