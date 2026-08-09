@@ -1,3 +1,5 @@
+environment = "prod"
+
 # Production configuration. Secrets come from the environment, never from this file.
 #
 # Dev and prod differ only in replica counts and secrets. Any behavioural difference belongs in

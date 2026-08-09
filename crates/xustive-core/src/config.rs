@@ -23,6 +23,14 @@ pub enum ConfigError {
     },
     #[error("invalid value for {key}: {msg}")]
     Value { key: String, msg: String },
+    #[error(
+        "{field} is set to an unsafe value for the {environment} environment; \
+         this configuration would crawl abusively"
+    )]
+    Unsafe {
+        field: &'static str,
+        environment: String,
+    },
 }
 
 impl Classify for ConfigError {
@@ -130,6 +138,69 @@ impl Default for QueueConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+pub struct CrawlConfig {
+    /// Honour `Crawl-delay` and the adaptive pacing derived from it.
+    pub respect_crawl_delay: bool,
+    /// Simultaneous requests to one host. One, always, in production.
+    pub per_host_concurrency: u32,
+
+    /// **Ignore politeness entirely.** Testing only.
+    ///
+    /// When on, the crawler does not fetch or consult `robots.txt`, does not wait between
+    /// requests to a host, ignores adaptive slowdown from 429 and 503, and ignores the host
+    /// opt-out list. It exists so a fixture site can be crawled at full speed without a robots
+    /// round trip per test.
+    ///
+    /// **Not** bypassed: the global and takedown blocklists. Those are not politeness — one is a
+    /// safety block and the other is a legal order, and a testing flag must not be able to lift a
+    /// court order. Nothing about a local fixture site needs them lifted.
+    ///
+    /// Pointed at the open web this produces exactly the behaviour the politeness layer exists to
+    /// prevent, so it is loud: a warning on every startup, a counter, and a banner on the admin
+    /// page. `config_guard` refuses to let it ship on in production.
+    pub ignore_politeness: bool,
+}
+
+impl Default for CrawlConfig {
+    fn default() -> Self {
+        Self {
+            respect_crawl_delay: true,
+            per_host_concurrency: 1,
+            // Off. The only safe default for a flag whose failure mode is being reported for abuse.
+            ignore_politeness: false,
+        }
+    }
+}
+
+impl CrawlConfig {
+    /// Refuse a configuration that would be abusive if deployed.
+    ///
+    /// Called at startup rather than left to review. The failure mode here is not a crash — it is
+    /// a crawler that behaves impeccably in testing and hammers real sites in production, and
+    /// nothing in the process's own behaviour reveals it.
+    pub fn guard(&self, environment: &str) -> Result<(), ConfigError> {
+        let production = matches!(environment, "prod" | "production" | "staging");
+        if !production {
+            return Ok(());
+        }
+        for (field, bad) in [
+            ("ignore_politeness", self.ignore_politeness),
+            ("respect_crawl_delay", !self.respect_crawl_delay),
+            ("per_host_concurrency", self.per_host_concurrency != 1),
+        ] {
+            if bad {
+                return Err(ConfigError::Unsafe {
+                    field,
+                    environment: environment.to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SuggestConfig {
     /// Hand-written high-value suggestions. Missing is fine — it improves on the corpus rather
     /// than being required by it.
@@ -183,15 +254,40 @@ impl Default for MlConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    /// Which deployment this is: `dev`, `ci`, `staging`, `prod`.
+    ///
+    /// Explicit rather than inferred from the config filename. The safety guards key off this, and
+    /// a guard that decides how careful to be by parsing a path is a guard that stops working the
+    /// day someone renames a file or passes the config on stdin.
+    ///
+    /// Defaults to `dev` — the *stricter* direction is the one that must be opted into, so a
+    /// missing value never accidentally grants production permissions.
+    pub environment: String,
     pub api: ApiConfig,
     pub search: SearchConfig,
     pub telemetry: TelemetryConfig,
     pub ml: MlConfig,
     pub suggest: SuggestConfig,
     pub queue: QueueConfig,
+    pub crawl: CrawlConfig,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            environment: "dev".into(),
+            api: ApiConfig::default(),
+            search: SearchConfig::default(),
+            telemetry: TelemetryConfig::default(),
+            ml: MlConfig::default(),
+            suggest: SuggestConfig::default(),
+            queue: QueueConfig::default(),
+            crawl: CrawlConfig::default(),
+        }
+    }
 }
 
 impl Config {
@@ -293,6 +389,84 @@ impl Config {
             });
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod crawl_guard_tests {
+    use super::*;
+
+    #[test]
+    fn the_bypass_is_off_by_default() {
+        // The only safe default for a flag whose failure mode is being reported for abuse.
+        let c = CrawlConfig::default();
+        assert!(!c.ignore_politeness);
+        assert!(c.respect_crawl_delay);
+        assert_eq!(c.per_host_concurrency, 1);
+    }
+
+    #[test]
+    fn production_refuses_to_start_with_the_bypass_on() {
+        // Not a warning. A warning in startup output is a warning nobody reads, and the symptom of
+        // getting this wrong appears on someone else's server rather than in our logs.
+        let c = CrawlConfig {
+            ignore_politeness: true,
+            ..CrawlConfig::default()
+        };
+        for env in ["prod", "production", "staging"] {
+            assert!(c.guard(env).is_err(), "{env} should refuse");
+        }
+    }
+
+    #[test]
+    fn development_may_use_the_bypass() {
+        // The whole point: crawling a local fixture site at full speed without a robots round trip
+        // per request.
+        let c = CrawlConfig {
+            ignore_politeness: true,
+            ..CrawlConfig::default()
+        };
+        for env in ["dev", "development", "ci", "test", ""] {
+            assert!(c.guard(env).is_ok(), "{env} should allow");
+        }
+    }
+
+    #[test]
+    fn production_also_refuses_the_quieter_ways_to_be_rude() {
+        // Turning off crawl-delay or raising per-host concurrency is the same abuse arrived at by
+        // a less obvious route, and neither looks alarming in a diff.
+        for c in [
+            CrawlConfig {
+                respect_crawl_delay: false,
+                ..CrawlConfig::default()
+            },
+            CrawlConfig {
+                per_host_concurrency: 8,
+                ..CrawlConfig::default()
+            },
+        ] {
+            assert!(c.guard("prod").is_err());
+        }
+    }
+
+    #[test]
+    fn the_shipped_production_config_is_safe() {
+        // Reads the file that actually deploys. A guard the deployed config was never run through
+        // proves only that the guard compiles.
+        for env in ["prod", "staging"] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join(format!("../../config/{env}.toml"));
+            let cfg = Config::load(Some(&path)).expect("config should load");
+            assert_eq!(
+                cfg.environment, env,
+                "config/{env}.toml must declare its environment"
+            );
+            assert!(
+                cfg.crawl.guard(&cfg.environment).is_ok(),
+                "config/{env}.toml would crawl abusively: {:?}",
+                cfg.crawl
+            );
+        }
     }
 }
 
