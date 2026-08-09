@@ -43,7 +43,23 @@ use crate::crawl::parse_seeds;
 /// thing anybody does is check whether it is still alive.
 const HEARTBEAT: Duration = Duration::from_secs(60);
 
+/// Concurrent fetch workers.
+///
+/// **This is the throughput lever, and it costs no politeness at all.** Crawl-delay is per host,
+/// and the frontier hands each worker a different host — so twenty workers means twenty hosts in
+/// flight while each individual site sees exactly the same one-request-at-a-time pacing it saw
+/// before.
+///
+/// The bottleneck is network latency, not CPU: a fetch is a few hundred milliseconds of waiting
+/// and a few milliseconds of parsing. Sequentially, one slow host stalls the entire crawl. There
+/// is nothing here a GPU could help with.
+///
+/// Bounded by hosts, not by cores. Past the number of distinct hosts that are due, extra workers
+/// find nothing to claim and idle — so this is set near the seed count and rises with it.
+pub const DEFAULT_WORKERS: usize = 16;
+
 pub struct Options {
+    pub workers: usize,
     pub seeds_path: String,
     pub max_documents: Option<usize>,
     pub discover_new_hosts: bool,
@@ -115,86 +131,138 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
         "crawler starting"
     );
 
-    let mut shutdown = std::pin::pin!(signal());
-    let mut last_beat = std::time::Instant::now();
-    let mut produced = 0usize;
+    // One orchestrator per worker, sharing the frontier. Claiming is atomic, so they coordinate
+    // through Redis rather than through a lock here — which is also what lets workers in separate
+    // processes join the same crawl.
+    let workers = opts.workers.max(1);
+    let mut tasks = tokio::task::JoinSet::new();
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let produced = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
+    for id in 0..workers {
+        let frontier = orchestrator.frontier().clone();
+        let queue = queue.clone();
+        let stop = stop.clone();
+        let produced = produced.clone();
+        let shared = shared.clone();
+        let max = opts.max_documents;
+        let discover = opts.discover_new_hosts;
+        let ignore_politeness = config.crawl.ignore_politeness;
+        let redis_url = config.queue.url.clone();
+
+        tasks.spawn(async move {
+            let Ok(fetcher) = Fetcher::new(FetchConfig {
+                ignore_politeness,
+                ..FetchConfig::default()
+            }) else {
+                return;
+            };
+            let fetcher = match RobotsCache::connect(&redis_url) {
+                Some(cache) => fetcher.with_shared_cache(cache),
+                None => fetcher,
+            };
+            let mut orch = Orchestrator::new(
+                fetcher,
+                frontier,
+                OrchestratorConfig {
+                    // The budget is global, so it is enforced against the shared counter rather
+                    // than per worker — sixteen workers each stopping at `max` would collect
+                    // sixteen times what was asked for.
+                    max_documents: None,
+                    discover_new_hosts: discover,
+                    ..OrchestratorConfig::default()
+                },
+            );
+            if let Some(s) = shared.clone() {
+                orch = orch.with_shared_stats(s);
+            }
+
+            loop {
+                if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                if let Some(max) = max {
+                    if produced.load(std::sync::atomic::Ordering::Relaxed) >= max {
+                        return;
+                    }
+                }
+
+                match orch.step(now_ms()).await {
+                    Outcome::Document(parsed) => {
+                        let Ok(document) = serde_json::to_value(&parsed.document) else {
+                            continue;
+                        };
+                        if let Err(e) = queue
+                            .produce(&IndexJob {
+                                document,
+                                index: None,
+                            })
+                            .await
+                        {
+                            tracing::warn!(worker = id, error = %e, "could not queue a document");
+                        } else {
+                            produced.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            if let Some(s) = &shared {
+                                s.incr("indexed", 1).await;
+                            }
+                        }
+                    }
+                    Outcome::Idle => tokio::time::sleep(orch.idle_sleep()).await,
+                    Outcome::Finished => return,
+                }
+            }
+        });
+    }
+
+    tracing::info!(workers, "workers started");
+
+    // The main task watches for shutdown and reports; the workers do the crawling.
+    let mut shutdown = std::pin::pin!(signal());
+    let mut ticker = tokio::time::interval(HEARTBEAT);
+    ticker.tick().await;
     loop {
-        let outcome = tokio::select! {
-            // Biased so a shutdown signal is seen even while work is always available, which is
-            // the normal state of a healthy crawler.
+        tokio::select! {
             biased;
             _ = &mut shutdown => {
-                tracing::info!("shutting down; the in-flight fetch will finish");
+                tracing::info!("shutting down; in-flight fetches will finish");
+                stop.store(true, std::sync::atomic::Ordering::Relaxed);
                 break;
             }
-            outcome = orchestrator.step(now_ms()) => outcome,
-        };
-
-        match outcome {
-            Outcome::Document(parsed) => {
-                if let Some(s) = &shared {
-                    s.incr("indexed", 1).await;
-                }
-                let document = serde_json::to_value(&parsed.document)?;
-                // A failure to queue is not a reason to stop. The document is lost, which is a
-                // shame; stopping would lose every document after it too.
-                if let Err(e) = queue
-                    .produce(&IndexJob {
-                        document,
-                        index: None,
-                    })
-                    .await
-                {
-                    tracing::warn!(error = %e, "could not queue a document");
-                } else {
-                    produced += 1;
+            _ = ticker.tick() => {
+                let (waiting, inflight) = orchestrator.frontier().depth().await;
+                tracing::info!(
+                    queued = produced.load(std::sync::atomic::Ordering::Relaxed),
+                    waiting,
+                    inflight,
+                    workers,
+                    "crawling"
+                );
+                if opts.max_documents.is_some_and(|m| {
+                    produced.load(std::sync::atomic::Ordering::Relaxed) >= m
+                }) {
+                    tracing::info!("document budget reached");
+                    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                    break;
                 }
             }
-            Outcome::Idle => {
-                tokio::time::sleep(orchestrator.idle_sleep()).await;
+            Some(_) = tasks.join_next() => {
+                if tasks.is_empty() {
+                    break;
+                }
             }
-            Outcome::Finished => {
-                tracing::info!("document budget reached");
-                break;
-            }
-        }
-
-        if last_beat.elapsed() > HEARTBEAT {
-            let (waiting, inflight) = orchestrator.frontier().depth().await;
-            let s = orchestrator.stats();
-            tracing::info!(
-                queued = produced,
-                fetched = s.fetched,
-                parsed = s.parsed,
-                discovered = s.discovered,
-                failed = s.failed,
-                waiting,
-                inflight,
-                "crawling"
-            );
-            last_beat = std::time::Instant::now();
         }
     }
 
-    // Recorded before the summary, so the console reflects reality even if this process is killed
-    // between the two.
-    if let Some(s) = &shared {
-        s.set_state("stopped").await;
-    }
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    // Drain rather than abort: an in-flight fetch finishes and its document is queued, so a
+    // restart resumes instead of re-fetching pages we already paid a site for.
+    while tasks.join_next().await.is_some() {}
 
-    let s = orchestrator.stats();
-    let mut skips: Vec<(&&str, &usize)> = s.skipped.iter().collect();
-    skips.sort_by(|a, b| b.1.cmp(a.1));
-    tracing::info!(
-        queued = produced,
-        fetched = s.fetched,
-        parsed = s.parsed,
-        discovered = s.discovered,
-        failed = s.failed,
-        skipped = ?skips,
-        "crawler stopped"
-    );
+    let produced = produced.load(std::sync::atomic::Ordering::Relaxed);
+
+    // Read from the shared counters rather than any one worker's, since the work was spread.
+    let (waiting, inflight) = orchestrator.frontier().depth().await;
+    tracing::info!(queued = produced, waiting, inflight, "crawler stopped");
     Ok(())
 }
 

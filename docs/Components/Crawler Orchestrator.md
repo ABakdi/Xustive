@@ -12,6 +12,27 @@ updated: 2026-08-06
 
 > **ID** C11 · **Binary** `xustive-crawler` · **Upstream** [[Data Sources Registry]], [[Admin and Source Submission]] · **Downstream** [[Web Fetcher]], social connectors via [[Task Queue]]
 
+## 0. Concurrency
+
+Workers run concurrently — sixteen by default — and **this costs no politeness at all.**
+
+Crawl-delay is a property of a host. The frontier hands each worker a *different* host and pushes
+that host's due-time forward atomically, so sixteen workers means sixteen hosts in flight while
+each individual site sees exactly the one-request-at-a-time pacing it saw before.
+
+The bottleneck was never CPU. A fetch is a few hundred milliseconds of waiting on somebody else's
+server and a few milliseconds of parsing, so a sequential loop spends almost all its time idle and
+one slow host stalls the whole crawl. Measured against the live seed list: **133 s sequential,
+13 s with sixteen workers, for the same twenty documents.**
+
+There is nothing here a GPU could accelerate. The work is network I/O and a little HTML parsing;
+GPUs matter elsewhere in this system — embeddings and the summariser — and not at all here.
+
+The useful ceiling is the number of **distinct hosts that are due**, not the number of cores. Past
+that, extra workers find nothing to claim and idle, which is why the default tracks the seed count
+rather than the CPU count. More corpus comes from more hosts, not from asking any one host faster.
+
+
 ## 1. Purpose
 
 Decide **what to fetch next, and when**. It owns the frontier: the prioritised set of pending URLs

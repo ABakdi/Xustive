@@ -58,6 +58,9 @@ enum Command {
         /// Start from an empty frontier instead of resuming.
         #[arg(long)]
         reset: bool,
+        /// Concurrent fetch workers. Politeness is per host, so this costs none of it.
+        #[arg(long, default_value_t = crawld::DEFAULT_WORKERS)]
+        workers: usize,
     },
     /// Crawl real sites from a seed list and index what they publish.
     Crawl {
@@ -154,10 +157,12 @@ async fn main() -> Result<()> {
             max,
             discover,
             reset,
+            workers,
         } => {
             crawld::run(
                 &config,
                 &crawld::Options {
+                    workers,
                     seeds_path: seeds.display().to_string(),
                     max_documents: max,
                     discover_new_hosts: discover,
