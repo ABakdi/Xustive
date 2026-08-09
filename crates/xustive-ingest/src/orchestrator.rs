@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use crate::crawl_stats::{CrawlStats, RecentUrl};
 use crate::fetch::{FetchError, Fetcher};
 use crate::frontier::{self, Frontier, Pending};
 use crate::parse::{ParseConfig, ParseError, Parsed, Parser};
@@ -98,6 +99,10 @@ pub struct Orchestrator {
     stats: Stats,
     documents: usize,
     last_reclaim: std::time::Instant,
+    /// Published so the console and Prometheus read the same numbers. Optional: a crawl without it
+    /// is fully functional and merely unobservable, which is the right way round — observability
+    /// must not be able to stop the crawl.
+    shared: Option<CrawlStats>,
 }
 
 impl Orchestrator {
@@ -111,6 +116,38 @@ impl Orchestrator {
             stats: Stats::default(),
             documents: 0,
             last_reclaim: std::time::Instant::now(),
+            shared: None,
+        }
+    }
+
+    /// Publish counters where the admin console can read them.
+    pub fn with_shared_stats(mut self, shared: CrawlStats) -> Self {
+        self.shared = Some(shared);
+        self
+    }
+
+    async fn publish(&self, field: &str) {
+        if let Some(s) = &self.shared {
+            s.incr(field, 1).await;
+        }
+    }
+
+    async fn publish_skip(&self, reason: &str) {
+        if let Some(s) = &self.shared {
+            s.incr_skip(reason).await;
+        }
+    }
+
+    async fn publish_recent(&self, url: &str, host: &str, outcome: &str, words: usize) {
+        if let Some(s) = &self.shared {
+            s.record(&RecentUrl {
+                url: url.to_string(),
+                host: host.to_string(),
+                outcome: outcome.to_string(),
+                at: xustive_core::now_unix(),
+                words,
+            })
+            .await;
         }
     }
 
@@ -183,15 +220,20 @@ impl Orchestrator {
             Ok(f) => f,
             Err(FetchError::RobotsDisallowed) => {
                 self.stats.skip("robots");
+                self.publish_skip("robots").await;
+                self.publish_recent(url, host, "robots", 0).await;
                 return Outcome::Idle;
             }
             Err(e) => {
                 self.stats.failed += 1;
                 tracing::debug!(%url, error = %e, "fetch failed");
+                self.publish("failed").await;
+                self.publish_recent(url, host, "failed", 0).await;
                 return Outcome::Idle;
             }
         };
         self.stats.fetched += 1;
+        self.publish("fetched").await;
 
         // The header the site sent, which is the only way a document without a `<head>` can refuse
         // indexing. Checked before parsing so we do not spend the work.
@@ -212,10 +254,14 @@ impl Orchestrator {
             Ok(p) => p,
             Err(ParseError::TooLittleContent { .. }) => {
                 self.stats.skip("thin");
+                self.publish_skip("thin").await;
+                self.publish_recent(url, host, "thin", 0).await;
                 return Outcome::Idle;
             }
             Err(ParseError::NoIndex) => {
                 self.stats.skip("noindex");
+                self.publish_skip("noindex").await;
+                self.publish_recent(url, host, "noindex", 0).await;
                 return Outcome::Idle;
             }
             Err(e) => {
@@ -227,6 +273,7 @@ impl Orchestrator {
             }
         };
         self.stats.parsed += 1;
+        self.publish("parsed").await;
 
         // Links are followed unless the page asked otherwise. A `noindex` page is still worth
         // crawling *through* — that combination is how sites let a crawler reach content behind a
@@ -241,6 +288,9 @@ impl Orchestrator {
         }
 
         self.documents += 1;
+        let words = parsed.document.body.split_whitespace().count();
+        self.publish_recent(&fetched.final_url, host, "indexed", words)
+            .await;
         Outcome::Document(Box::new(parsed))
     }
 
@@ -282,7 +332,10 @@ impl Orchestrator {
                 priority: frontier::priority_for(depth, 50, frontier::looks_like_article(u.path())),
             };
             match self.frontier.add(&pending).await {
-                Ok(true) => self.stats.discovered += 1,
+                Ok(true) => {
+                    self.stats.discovered += 1;
+                    self.publish("discovered").await;
+                }
                 Ok(false) => self.stats.skip("seen"),
                 Err(r) => self.stats.skip(r.as_str()),
             }

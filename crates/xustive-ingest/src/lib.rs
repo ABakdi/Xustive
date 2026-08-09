@@ -10,6 +10,7 @@
 //! persistent frontier, adaptive revisit scheduling, distributed politeness state and the social
 //! connectors — is a later milestone.
 
+pub mod crawl_stats;
 pub mod date;
 pub mod exclusion;
 pub mod fetch;

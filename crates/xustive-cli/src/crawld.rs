@@ -27,6 +27,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use xustive_core::Config;
+use xustive_ingest::crawl_stats::CrawlStats;
 use xustive_ingest::fetch::{FetchConfig, Fetcher};
 use xustive_ingest::frontier::Frontier;
 use xustive_ingest::orchestrator::{Orchestrator, OrchestratorConfig, Outcome};
@@ -71,6 +72,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
         None => fetcher,
     };
 
+    let shared = CrawlStats::connect(&config.queue.url);
     let mut orchestrator = Orchestrator::new(
         fetcher,
         frontier,
@@ -80,6 +82,10 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             ..OrchestratorConfig::default()
         },
     );
+    if let Some(s) = shared.clone() {
+        s.set_state("running").await;
+        orchestrator = orchestrator.with_shared_stats(s);
+    }
 
     // Seeded every start, not only the first. `add` is idempotent, so a seed already known is a
     // no-op — and a seed added to the file since the last start would otherwise never be picked up
@@ -127,6 +133,9 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
 
         match outcome {
             Outcome::Document(parsed) => {
+                if let Some(s) = &shared {
+                    s.incr("indexed", 1).await;
+                }
                 let document = serde_json::to_value(&parsed.document)?;
                 // A failure to queue is not a reason to stop. The document is lost, which is a
                 // shame; stopping would lose every document after it too.
@@ -166,6 +175,12 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             );
             last_beat = std::time::Instant::now();
         }
+    }
+
+    // Recorded before the summary, so the console reflects reality even if this process is killed
+    // between the two.
+    if let Some(s) = &shared {
+        s.set_state("stopped").await;
     }
 
     let s = orchestrator.stats();
