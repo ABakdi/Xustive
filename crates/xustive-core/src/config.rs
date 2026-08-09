@@ -159,6 +159,8 @@ pub struct CrawlConfig {
     /// prevent, so it is loud: a warning on every startup, a counter, and a banner on the admin
     /// page. `config_guard` refuses to let it ship on in production.
     pub ignore_politeness: bool,
+    /// The seed list. Read and written by the admin console, read by the crawler.
+    pub seeds_path: String,
     /// Rows per page in the admin document list.
     ///
     /// Paged rather than "all": a list that loads everything is fine at a thousand documents and
@@ -173,6 +175,7 @@ impl Default for CrawlConfig {
             per_host_concurrency: 1,
             // Off. The only safe default for a flag whose failure mode is being reported for abuse.
             ignore_politeness: false,
+            seeds_path: "data/sources/seeds.tsv".into(),
             documents_page_size: 50,
         }
     }

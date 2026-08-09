@@ -123,6 +123,16 @@ pub fn app(state: AppState) -> Router {
         .route("/admin/compute", get(admin::page))
         .route("/admin/crawler", get(admin_crawler::page_live))
         .route("/admin/documents", get(admin_crawler::page_documents))
+        .route("/admin/sources", get(admin_crawler::page_sources))
+        .route("/admin/crawler/sources", get(admin_crawler::sources))
+        .route(
+            "/admin/crawler/sources",
+            axum::routing::post(admin_crawler::add_source),
+        )
+        .route(
+            "/admin/crawler/sources/remove",
+            axum::routing::post(admin_crawler::remove_source),
+        )
         .route("/admin/crawler/status", get(admin_crawler::status))
         .route("/admin/crawler/events", get(admin_crawler::events))
         .route("/admin/crawler/documents", get(admin_crawler::documents))

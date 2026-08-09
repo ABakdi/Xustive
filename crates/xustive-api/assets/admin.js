@@ -200,3 +200,66 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   load();
 })();
+
+// --- sources ---------------------------------------------------------------------------------
+(function () {
+  var form = document.getElementById('seed-form');
+  if (!form) return;
+  var rows = document.getElementById('seed-rows');
+  var msg = document.getElementById('seed-msg');
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' }[c];
+  }); }
+
+  function load() {
+    fetch('/admin/crawler/sources').then(function (r) { return r.json(); }).then(function (d) {
+      // Seed URLs come from a file an operator edits, so they are escaped like anything else —
+      // this console is the highest-privilege page in the system.
+      rows.innerHTML = (d.seeds || []).map(function (s) {
+        return '<tr><td>' + esc(s.source_id) + '</td><td>' + esc(s.trust) + '</td>' +
+          '<td title="' + esc(s.url) + '"><a href="' + esc(s.url) + '" rel="noopener nofollow">' + esc(s.url) + '</a></td>' +
+          '<td>' + esc(s.note) + '</td>' +
+          '<td><button class="rm" data-url="' + esc(s.url) + '">remove</button></td></tr>';
+      }).join('');
+    });
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    msg.textContent = 'adding…';
+    fetch('/admin/crawler/sources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: document.getElementById('seed-url').value,
+        trust: document.getElementById('seed-trust').value,
+      }),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.error) { msg.textContent = d.error.message; return; }
+      msg.textContent = d.already_listed
+        ? 'already listed — queued to crawl next'
+        : 'added as ' + d.source_id + ' and queued to crawl next';
+      document.getElementById('seed-url').value = '';
+      load();
+    }).catch(function () { msg.textContent = 'could not add it'; });
+  });
+
+  rows.addEventListener('click', function (e) {
+    var btn = e.target.closest('.rm');
+    if (!btn) return;
+    // Confirmed with the URL, so it is obvious which row is going. A bare "are you sure" on a
+    // table of fifty rows is a rubber stamp.
+    if (!confirm('Stop crawling ' + btn.dataset.url + '?\nDocuments already collected stay in the index.')) return;
+    fetch('/admin/crawler/sources/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: btn.dataset.url }),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      msg.textContent = d.error ? d.error.message : 'removed — already-crawled documents remain';
+      load();
+    });
+  });
+
+  load();
+})();

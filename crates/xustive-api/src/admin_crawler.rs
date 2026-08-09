@@ -421,3 +421,262 @@ anywhere.</p>
 
     axum::response::Html(crate::admin::console("/admin", &body)).into_response()
 }
+
+// ── Sources ─────────────────────────────────────────────────────────────────────────────────
+
+/// One line of the seed file.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Seed {
+    pub source_id: String,
+    pub url: String,
+    pub trust: String,
+    pub note: String,
+}
+
+/// Read the seed file.
+///
+/// Comments and blank lines are kept out of the parsed list but preserved on write — the file
+/// carries the reasoning for several decisions (why social platforms are absent, why some hosts
+/// are unreachable) and an admin console that silently ate it would be destroying the only place
+/// that explains the list.
+fn read_seeds(path: &str) -> (Vec<Seed>, String) {
+    let raw = std::fs::read_to_string(path).unwrap_or_default();
+    let seeds = raw
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
+        .filter_map(|l| {
+            let mut parts = l.split('\t');
+            Some(Seed {
+                source_id: parts.next()?.trim().to_string(),
+                url: parts.next()?.trim().to_string(),
+                trust: parts.next().unwrap_or("B").trim().to_string(),
+                note: parts.next().unwrap_or("").trim().to_string(),
+            })
+        })
+        .filter(|s| s.url.starts_with("http"))
+        .collect();
+    (seeds, raw)
+}
+
+/// `GET /admin/crawler/sources`
+pub async fn sources(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
+    let (seeds, _) = read_seeds(&state.config.crawl.seeds_path);
+    Ok(Json(json!({ "seeds": seeds })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddSeed {
+    pub url: String,
+    #[serde(default)]
+    pub source_id: Option<String>,
+    #[serde(default)]
+    pub trust: Option<String>,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// `POST /admin/crawler/sources` — add a seed and crawl it next.
+///
+/// **Enqueued at the front**, which is the point. Priority sorts trusted sources first, so a newly
+/// added tier-B seed otherwise sits behind everything already known — with a frontier thousands of
+/// URLs deep that is days, and "I added a source" and "I can search it" being days apart is
+/// exactly the confusion this control exists to remove.
+///
+/// The URL still passes `SafeUrl` and the trap detectors. The console changes ordering, never
+/// permission.
+pub async fn add_source(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+    Json(req): Json<AddSeed>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
+
+    let safe = xustive_core::SafeUrl::parse(req.url.trim()).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": {"code": "unsafe_url", "message": e.to_string()}})),
+        )
+    })?;
+    let parsed = safe.as_url().clone();
+    if let Some(trap) = xustive_ingest::frontier::detect_trap(&parsed) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": {"code": "trap", "message": trap.as_str()}})),
+        ));
+    }
+
+    let host = safe.authority();
+    // Derived from the host when not given, so adding a source is one field rather than three.
+    let source_id = req
+        .source_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            host.trim_start_matches("www.")
+                .replace('.', "-")
+                .to_ascii_lowercase()
+        });
+    let trust = match req.trust.as_deref() {
+        Some("A") => "A",
+        Some("C") => "C",
+        // B by default: credible until we have a reason to say otherwise, and the tier is about
+        // accountability rather than agreement.
+        _ => "B",
+    };
+
+    let path = &state.config.crawl.seeds_path;
+    let (existing, raw) = read_seeds(path);
+    let already = existing.iter().any(|s| s.url == safe.as_str());
+
+    if !already {
+        let note = req
+            .note
+            .as_deref()
+            .unwrap_or("added from the admin console");
+        let line = format!("{source_id}\t{}\t{trust}\t{note}\n", safe.as_str());
+        // Written whole through a temporary file. A partial write to the seed list would leave the
+        // crawler reading a truncated file on its next start, and the failure would look like
+        // sources vanishing.
+        let tmp = format!("{path}.tmp");
+        let updated = format!("{}\n{line}", raw.trim_end_matches('\n'));
+        if std::fs::write(&tmp, &updated).is_err() || std::fs::rename(&tmp, path).is_err() {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(
+                    json!({"error": {"code": "write_failed", "message": "could not write the seed file"}}),
+                ),
+            ));
+        }
+    }
+
+    // Queued at the front regardless of whether the file already had it — "add" on a known source
+    // is a reasonable way to say "crawl this now".
+    let mut queued = false;
+    if let Some(f) = frontier(&state) {
+        let pending = xustive_ingest::frontier::Pending {
+            url: xustive_ingest::frontier::canonical(&parsed),
+            host: host.clone(),
+            source_id: source_id.clone(),
+            depth: 0,
+            priority: i64::MIN / 2,
+        };
+        let added = f.add(&pending).await.unwrap_or(false);
+        f.promote(&host, &pending.url).await;
+        queued = added;
+    }
+
+    tracing::info!(peer = ?peer, url = %safe.as_str(), %source_id, trust, "source added");
+    Ok(Json(json!({
+        "ok": true,
+        "source_id": source_id,
+        "url": safe.as_str(),
+        "trust": trust,
+        "already_listed": already,
+        "queued": queued,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RemoveSeed {
+    pub url: String,
+}
+
+/// `POST /admin/crawler/sources/remove`
+///
+/// Removes the line from the seed file. It does **not** remove what has already been crawled from
+/// that source — those are separate actions, and conflating them would make "stop crawling this"
+/// silently delete a section of the index.
+pub async fn remove_source(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+    Json(req): Json<RemoveSeed>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
+
+    let path = &state.config.crawl.seeds_path;
+    let raw = std::fs::read_to_string(path).unwrap_or_default();
+    let target = req.url.trim();
+
+    let mut removed = 0usize;
+    let kept: Vec<&str> = raw
+        .lines()
+        .filter(|l| {
+            let is_seed = !l.trim_start().starts_with('#') && l.contains('\t');
+            if is_seed && l.split('\t').nth(1).map(str::trim) == Some(target) {
+                removed += 1;
+                return false;
+            }
+            true
+        })
+        .collect();
+
+    if removed == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": {"code": "not_listed", "message": "no seed with that url"}})),
+        ));
+    }
+
+    let tmp = format!("{path}.tmp");
+    let updated = format!("{}\n", kept.join("\n"));
+    if std::fs::write(&tmp, &updated).is_err() || std::fs::rename(&tmp, path).is_err() {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(
+                json!({"error": {"code": "write_failed", "message": "could not write the seed file"}}),
+            ),
+        ));
+    }
+
+    tracing::info!(peer = ?peer, url = %target, "source removed");
+    Ok(Json(json!({
+        "ok": true,
+        "removed": removed,
+        // Said explicitly, because the obvious assumption is the opposite.
+        "note": "documents already crawled from this source remain in the index",
+    })))
+}
+
+/// `GET /admin/sources` — the page.
+pub async fn page_sources(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    if let Err(d) = crate::admin::authorise(&state, peer, &headers) {
+        return d.json().into_response();
+    }
+    let body = r#"<h1>Sources</h1>
+<p class="lede">The seed list. Adding one queues it <strong>at the front</strong>, so it is
+crawled next rather than behind everything already known.</p>
+
+<form class="admin" id="seed-form">
+  <input type="url" id="seed-url" placeholder="https://example.dz/" required>
+  <select id="seed-trust">
+    <option value="A">A — established, accountable</option>
+    <option value="B" selected>B — credible, narrower</option>
+    <option value="C">C — user-generated</option>
+  </select>
+  <button type="submit">Add and crawl next</button>
+</form>
+<p class="muted" id="seed-msg"></p>
+
+<table class="admin wide"><thead>
+  <tr><th>source</th><th>trust</th><th>url</th><th>note</th><th></th></tr>
+</thead><tbody id="seed-rows"></tbody></table>
+
+<p class="muted">Removing a source stops it being crawled. Documents already collected from it stay
+in the index — those are separate actions, and conflating them would make "stop crawling this"
+silently delete part of the index.</p>
+"#;
+    axum::response::Html(crate::admin::console("/admin/sources", body)).into_response()
+}
