@@ -183,6 +183,9 @@ also the fastest option — no bundle to download, parse and hydrate.
 - [ ] M2-T13.3 **Live**: one SSE stream at 1 Hz — counters, a documents-per-minute sparkline,
       per-host activity, a rolling feed of the last ~50 URLs with outcome, and skip reasons broken
       down. The feed is what shows it is collecting articles rather than tag pages; no aggregate can
+- [ ] M2-T13.3b Store a real `word_count` on the document. The Documents list currently shows
+      excerpt length, which is capped and so says nothing about article versus nav page — the one
+      thing the column exists for. The Live feed has the true count because it sees the parsed body
 - [ ] M2-T13.4 **Documents**: paged, newest first, searchable over title/URL/body via Meilisearch
       and filterable by host, source, language and date
 - [ ] M2-T13.5 Document detail: extracted text, metadata, outlinks, raw fetch record. Rendered as
