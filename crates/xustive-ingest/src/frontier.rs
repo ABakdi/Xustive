@@ -366,3 +366,272 @@ mod tests {
         assert!(CLAIM_TTL > Duration::from_secs(30));
     }
 }
+
+// ── The Redis-backed frontier ───────────────────────────────────────────────────────────────
+
+/// Default key namespace.
+///
+/// Namespaced rather than fixed, so two crawls can share one Redis without colliding — a staging
+/// run against a copy of production, or several test binaries in parallel. The tests needed it
+/// first: sharing one namespace, they wiped each other's state and failed in ways that looked like
+/// concurrency bugs in the frontier itself.
+pub const DEFAULT_NAMESPACE: &str = "frontier";
+
+/// Claim the next due URL, atomically.
+///
+/// One script rather than several commands, because the sequence — find a due host, pop its
+/// cheapest URL, push its due-time forward, record the claim — must not interleave with another
+/// worker doing the same. Done as separate round trips, two workers routinely pick the same host
+/// between the read and the write, and both fetch it. That is the exact failure the frontier
+/// exists to prevent, and it appears only under concurrency, which is where it is hardest to see.
+///
+/// Returns the claimed URL, or nothing when no host is due.
+const CLAIM_SCRIPT: &str = r#"
+local now = tonumber(ARGV[1])
+local delay_ms = tonumber(ARGV[2])
+local claim_until = tonumber(ARGV[3])
+
+-- The earliest host whose due-time has passed.
+local due = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', now, 'LIMIT', 0, 1)
+if #due == 0 then return nil end
+local host = due[1]
+
+local q = ARGV[4] .. ':q:' .. host
+local item = redis.call('ZPOPMIN', q, 1)
+if #item == 0 then
+  -- The host is due but has nothing left. Drop it so it stops being considered.
+  redis.call('ZREM', KEYS[1], host)
+  return nil
+end
+local url = item[1]
+
+-- Push the host's next slot forward *before* returning, so a second worker arriving in the same
+-- millisecond sees it as not due rather than claiming a second URL from it.
+redis.call('ZADD', KEYS[1], now + delay_ms, host)
+redis.call('HSET', KEYS[3], url, claim_until)
+return {host, url}
+"#;
+
+/// Return claims whose worker never came back.
+///
+/// A worker that dies mid-fetch cannot release anything, so claims expire and are swept. Without
+/// this the URL is lost and, worse, nothing indicates it: the frontier simply gets quietly smaller.
+const RECLAIM_SCRIPT: &str = r#"
+local now = tonumber(ARGV[1])
+local reclaimed = 0
+local claims = redis.call('HGETALL', KEYS[1])
+for i = 1, #claims, 2 do
+  local url = claims[i]
+  local expiry = tonumber(claims[i + 1])
+  if expiry and expiry < now then
+    redis.call('HDEL', KEYS[1], url)
+    reclaimed = reclaimed + 1
+  end
+end
+return reclaimed
+"#;
+
+#[derive(Clone)]
+pub struct Frontier {
+    client: redis::Client,
+    namespace: String,
+}
+
+/// A claimed URL. Dropping it does **not** release the claim — the claim expires instead, so a
+/// crashed worker behaves the same as a slow one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Claim {
+    pub host: String,
+    pub url: String,
+}
+
+impl Frontier {
+    pub fn connect(url: &str) -> Result<Self, redis::RedisError> {
+        Self::connect_in(url, DEFAULT_NAMESPACE)
+    }
+
+    pub fn connect_in(url: &str, namespace: &str) -> Result<Self, redis::RedisError> {
+        Ok(Self {
+            client: redis::Client::open(url)?,
+            namespace: namespace.to_string(),
+        })
+    }
+
+    fn k_hosts(&self) -> String {
+        format!("{}:hosts", self.namespace)
+    }
+    fn k_seen(&self) -> String {
+        format!("{}:seen", self.namespace)
+    }
+    fn k_inflight(&self) -> String {
+        format!("{}:inflight", self.namespace)
+    }
+    fn host_queue(&self, host: &str) -> String {
+        format!("{}:q:{host}", self.namespace)
+    }
+
+    async fn conn(&self) -> Option<redis::aio::MultiplexedConnection> {
+        self.client.get_multiplexed_async_connection().await.ok()
+    }
+
+    /// Add a URL, unless it is already known.
+    ///
+    /// Returns whether it was added. `seen` is checked and set in the same call so two workers
+    /// discovering the same link do not both queue it.
+    pub async fn add(&self, pending: &Pending) -> Result<bool, Rejected> {
+        let Some(mut conn) = self.conn().await else {
+            return Err(Rejected::Full);
+        };
+
+        let fresh: i64 = redis::cmd("SADD")
+            .arg(self.k_seen())
+            .arg(&pending.url)
+            .query_async(&mut conn)
+            .await
+            .unwrap_or(0);
+        if fresh == 0 {
+            return Ok(false);
+        }
+
+        let depth: usize = redis::cmd("ZCARD")
+            .arg(self.host_queue(&pending.host))
+            .query_async(&mut conn)
+            .await
+            .unwrap_or(0);
+        if depth >= MAX_PER_HOST {
+            return Err(Rejected::Full);
+        }
+
+        let _: Result<(), _> = redis::cmd("ZADD")
+            .arg(self.host_queue(&pending.host))
+            .arg(pending.priority)
+            .arg(&pending.url)
+            .query_async::<()>(&mut conn)
+            .await;
+        // `NX` so an existing due-time is never pushed backwards by a new discovery — a host that
+        // is due now must stay due, or a steady trickle of links would starve it forever.
+        let _: Result<(), _> = redis::cmd("ZADD")
+            .arg(self.k_hosts())
+            .arg("NX")
+            .arg(0)
+            .arg(&pending.host)
+            .query_async::<()>(&mut conn)
+            .await;
+        Ok(true)
+    }
+
+    /// Move a URL to the head of its host's queue.
+    ///
+    /// Ordering only. The URL still passes every check on the way in, and the host's crawl-delay
+    /// still applies — an operator being impatient does not make a site answer faster.
+    pub async fn promote(&self, host: &str, url: &str) {
+        let Some(mut conn) = self.conn().await else {
+            return;
+        };
+        let _: Result<(), _> = redis::cmd("ZADD")
+            .arg(self.host_queue(host))
+            .arg("XX")
+            .arg(i64::MIN)
+            .arg(url)
+            .query_async::<()>(&mut conn)
+            .await;
+    }
+
+    /// Claim the next due URL, or nothing.
+    pub async fn claim(&self, now_ms: i64, host_delay: Duration) -> Option<Claim> {
+        let mut conn = self.conn().await?;
+        let result: Option<Vec<String>> = redis::Script::new(CLAIM_SCRIPT)
+            .key(self.k_hosts())
+            .key("unused")
+            .key(self.k_inflight())
+            .arg(now_ms)
+            .arg(host_delay.as_millis() as i64)
+            .arg(now_ms + CLAIM_TTL.as_millis() as i64)
+            .arg(&self.namespace)
+            .invoke_async(&mut conn)
+            .await
+            .ok()?;
+        let parts = result?;
+        Some(Claim {
+            host: parts.first()?.clone(),
+            url: parts.get(1)?.clone(),
+        })
+    }
+
+    /// Mark a claimed URL finished. Idempotent.
+    pub async fn complete(&self, url: &str) {
+        let Some(mut conn) = self.conn().await else {
+            return;
+        };
+        let _: Result<(), _> = redis::cmd("HDEL")
+            .arg(self.k_inflight())
+            .arg(url)
+            .query_async::<()>(&mut conn)
+            .await;
+    }
+
+    /// Sweep expired claims. Returns how many were released.
+    pub async fn reclaim(&self, now_ms: i64) -> usize {
+        let Some(mut conn) = self.conn().await else {
+            return 0;
+        };
+        redis::Script::new(RECLAIM_SCRIPT)
+            .key(self.k_inflight())
+            .arg(now_ms)
+            .invoke_async(&mut conn)
+            .await
+            .unwrap_or(0)
+    }
+
+    /// How many URLs are waiting, and how many are in flight.
+    pub async fn depth(&self) -> (usize, usize) {
+        let Some(mut conn) = self.conn().await else {
+            return (0, 0);
+        };
+        let hosts: Vec<String> = redis::cmd("ZRANGE")
+            .arg(self.k_hosts())
+            .arg(0)
+            .arg(-1)
+            .query_async(&mut conn)
+            .await
+            .unwrap_or_default();
+        let mut waiting = 0usize;
+        for h in hosts {
+            let n: usize = redis::cmd("ZCARD")
+                .arg(self.host_queue(&h))
+                .query_async(&mut conn)
+                .await
+                .unwrap_or(0);
+            waiting += n;
+        }
+        let inflight: usize = redis::cmd("HLEN")
+            .arg(self.k_inflight())
+            .query_async(&mut conn)
+            .await
+            .unwrap_or(0);
+        (waiting, inflight)
+    }
+
+    /// Remove everything. Tests and a deliberate operator reset only.
+    pub async fn clear(&self) {
+        let Some(mut conn) = self.conn().await else {
+            return;
+        };
+        let hosts: Vec<String> = redis::cmd("ZRANGE")
+            .arg(self.k_hosts())
+            .arg(0)
+            .arg(-1)
+            .query_async(&mut conn)
+            .await
+            .unwrap_or_default();
+        for h in hosts {
+            let _: Result<(), _> = redis::cmd("DEL")
+                .arg(self.host_queue(&h))
+                .query_async::<()>(&mut conn)
+                .await;
+        }
+        for k in [self.k_hosts(), self.k_seen(), self.k_inflight()] {
+            let _: Result<(), _> = redis::cmd("DEL").arg(k).query_async::<()>(&mut conn).await;
+        }
+    }
+}
