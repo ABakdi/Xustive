@@ -3165,6 +3165,7 @@ dependencies = [
  "ulid",
  "url",
  "xustive-core",
+ "xustive-ingest",
  "xustive-lang",
  "xustive-ml",
  "xustive-search",

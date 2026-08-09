@@ -32,6 +32,7 @@ clap.workspace = true
 url.workspace = true
 async-stream = "0.3.6"
 futures-util = "0.3.33"
+xustive-ingest = { version = "0.1.0", path = "../xustive-ingest" }
 
 [dev-dependencies]
 tower = { workspace = true, features = ["util"] }

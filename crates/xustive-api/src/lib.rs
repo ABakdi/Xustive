@@ -5,6 +5,7 @@
 //! with HTTP.
 
 pub mod admin;
+pub mod bot;
 pub mod dataage;
 pub mod deadline;
 pub mod error;
@@ -116,6 +117,7 @@ pub fn app(state: AppState) -> Router {
         .route("/readyz", get(readyz))
         .route("/metrics", get(metrics_handler))
         // Operator surface. Read-mostly, and nothing here can stop the process starting.
+        .route("/bot", get(bot::page))
         .route("/admin", get(admin::page))
         .route(
             "/admin/politeness",
