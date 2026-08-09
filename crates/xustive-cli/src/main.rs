@@ -5,6 +5,7 @@
 //! nothing" is almost always a normalisation question.
 
 mod crawl;
+mod crawld;
 mod eval;
 mod worker;
 
@@ -42,6 +43,21 @@ enum Command {
         path: PathBuf,
         #[arg(long, default_value_t = 1000)]
         batch: usize,
+    },
+    /// Run the crawler continuously, resuming from the shared frontier.
+    Crawld {
+        #[arg(long, default_value = "data/sources/seeds.tsv")]
+        seeds: PathBuf,
+        /// Stop after this many documents. Omit to run until stopped.
+        #[arg(long)]
+        max: Option<usize>,
+        /// Follow links to hosts not in the seed list. Off by default — this is the difference
+        /// between crawling the seeds and crawling the web.
+        #[arg(long)]
+        discover: bool,
+        /// Start from an empty frontier instead of resuming.
+        #[arg(long)]
+        reset: bool,
     },
     /// Crawl real sites from a seed list and index what they publish.
     Crawl {
@@ -133,6 +149,23 @@ async fn main() -> Result<()> {
     match args.command {
         Command::Migrate { check } => cmd_migrate(&client, check).await,
         Command::Seed { path, batch } => cmd_seed(&client, &config, &path, batch).await,
+        Command::Crawld {
+            seeds,
+            max,
+            discover,
+            reset,
+        } => {
+            crawld::run(
+                &config,
+                &crawld::Options {
+                    seeds_path: seeds.display().to_string(),
+                    max_documents: max,
+                    discover_new_hosts: discover,
+                    reset,
+                },
+            )
+            .await
+        }
         Command::Crawl {
             seeds,
             source,

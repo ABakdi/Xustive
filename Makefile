@@ -97,6 +97,10 @@ run-api-fast: ## Run without the summariser — builds in seconds, no AI summari
 toold: ## Fetch weather and other external tool data into the cache
 	cargo run --release -q -p xustive-toold -- --once
 
+.PHONY: crawld
+crawld: ## Run the crawler continuously — resumes from the shared frontier, Ctrl-C to stop
+	cargo run --release -q -p xustive-cli -- --config $(CONFIG) crawld $(ARGS)
+
 .PHONY: worker
 worker: ## Drain the index queue into Meilisearch
 	cargo run --release -q -p xustive-cli -- --config $(CONFIG) worker
