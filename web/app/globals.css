@@ -42,20 +42,33 @@
 :root {
   /* Light. Off-white with a faint cool cast — flat white glares under long reading, and warm
    * cream reads as nostalgia. This is meant to look like a well-set page, not like paper. */
-  --bg: oklch(99% 0.002 250);
-  --bg-sunk: oklch(96.5% 0.003 250);
+  /* A faint violet cast rather than a cool grey one, so the ground and the accent belong to the
+   * same family instead of merely coexisting. */
+  --bg: oklch(98.8% 0.004 275);
+  --bg-sunk: oklch(96% 0.006 275);
   --fg: oklch(17% 0.008 250);
   --fg-muted: oklch(52% 0.008 250);
   --fg-faint: oklch(68% 0.006 250);
   --line: oklch(90.5% 0.004 250);
   --line-strong: oklch(80% 0.006 250);
 
-  /* One accent, used only for what is interactive or current. Deep enough to hold its own
-   * against near-black text without competing with it. */
-  --accent: oklch(52% 0.135 162);
-  --accent-hover: oklch(45% 0.14 162);
-  --accent-wash: oklch(95.5% 0.03 162);
+  /* A vibrant indigo-violet, replacing the muted green.
+   *
+   * The green was chosen to be restrained and it read as institutional — a government portal
+   * rather than a tool. This is saturated enough to carry a page and still legible as a link
+   * colour, which rules out most of the brighter options: anything past ~0.2 chroma at this
+   * lightness fails contrast against a white ground.
+   *
+   * Chroma is what makes it feel modern, not hue. A pale wash of the same hue does the tinting so
+   * the page stays calm while the accent itself stays strong. */
+  --accent: oklch(55% 0.23 275);
+  --accent-hover: oklch(48% 0.24 275);
+  --accent-wash: oklch(96% 0.035 275);
   --accent-fg: oklch(99% 0 0);
+
+  /* A second hue, used *only* for the tool cards' assert rule and nothing else, so an instant
+   * answer is distinguishable from a result at a glance without a legend. */
+  --assert-accent: oklch(62% 0.19 25);
 
   /* Cards sit on the page rather than being cut from it. */
   --surface: oklch(100% 0 0);
@@ -106,8 +119,8 @@
 :root[data-theme='dark'] {
   /* Dark is desaturated and genuinely dark, not a mid-grey. The same faint cool cast, so the two
    * themes feel like one product rather than two. */
-  --bg: oklch(15.5% 0.006 250);
-  --bg-sunk: oklch(19% 0.007 250);
+  --bg: oklch(15% 0.012 275);
+  --bg-sunk: oklch(18.5% 0.014 275);
   --fg: oklch(93% 0.004 250);
   --fg-muted: oklch(66% 0.007 250);
   --fg-faint: oklch(50% 0.007 250);
@@ -116,16 +129,18 @@
 
   /* Lifted for contrast against a dark ground. Same hue, more lightness and less chroma —
    * saturated colour on dark vibrates. */
-  --accent: oklch(72% 0.125 162);
-  --accent-hover: oklch(80% 0.12 162);
-  --accent-wash: oklch(26% 0.045 162);
-  --accent-fg: oklch(14% 0.01 162);
+  /* Lifted and slightly desaturated for a dark ground — saturated colour on dark vibrates. */
+  --accent: oklch(72% 0.19 278);
+  --accent-hover: oklch(80% 0.17 278);
+  --accent-wash: oklch(28% 0.07 278);
+  --accent-fg: oklch(15% 0.02 278);
+  --assert-accent: oklch(72% 0.16 30);
 
   /* A surface that sits *above* the page, which on dark means lighter rather than darker. Shadow
    * alone is nearly invisible on a dark ground, so elevation is carried by lightness with a very
    * soft shadow behind it. */
-  --surface: oklch(19.5% 0.007 250);
-  --surface-hover: oklch(23% 0.008 250);
+  --surface: oklch(19.5% 0.013 275);
+  --surface-hover: oklch(23% 0.015 275);
   --shadow: 0 1px 2px oklch(0% 0 0 / 0.4);
   --shadow-lift: 0 2px 6px oklch(0% 0 0 / 0.45);
   --shadow-pop: 0 8px 24px oklch(0% 0 0 / 0.5);
@@ -205,7 +220,7 @@ a {
  * looked like a leftover. border-inline-start, so it moves to the right edge in Arabic with no
  * direction-specific rule. */
 .assert {
-  border-inline-start: 3px solid var(--accent);
+  border-inline-start: 3px solid var(--assert-accent);
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow);

@@ -5,9 +5,9 @@
  * compute device — so it depends on nothing outside this binary.
  */
 :root {
-  --color-bg: #ffffff; --color-surface: #f6f8f9; --color-text: #0e1418;
-  --color-text-muted: #5b6a72; --color-border: #dde3e6; --color-accent: #167c4a;
-  --color-accent-weak: #e7f3ec; --amber-600: #8a6116;
+  --color-bg: #fbfaff; --color-surface: #f6f8f9; --color-text: #0e1418;
+  --color-text-muted: #5b6a72; --color-border: #dde3e6; --color-accent: #5b4bdb;
+  --color-accent-weak: #eceaff; --amber-600: #8a6116;
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
   --space-5: 20px; --space-6: 24px; --space-8: 32px;
   --text-xs: 12px; --text-sm: 14px; --text-base: 15px; --text-lg: 17px; --text-xl: 22px;
@@ -23,11 +23,11 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg: #14181c; --color-surface: #1b2126; --color-text: #e9eef1;
-    --color-text-muted: #93a1a9; --color-border: #2b343a; --color-accent: #46b483;
-    --color-accent-weak: #17392a;
+    --color-bg: #14131c; --color-surface: #1c1a26; --color-text: #e9eef1;
+    --color-text-muted: #93a1a9; --color-border: #2b343a; --color-accent: #9d90ff;
+    --color-accent-weak: #262163;
     /* Elevation on dark is lightness, not shadow — a shadow on a dark ground is invisible. */
-    --color-surface: #1e252b;
+    --color-surface: #201d2c;
     --shadow: 0 1px 2px rgba(0,0,0,.4);
     --shadow-lift: 0 2px 8px rgba(0,0,0,.45);
     color-scheme: dark;

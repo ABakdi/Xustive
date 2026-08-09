@@ -173,7 +173,11 @@ also the fastest option — no bundle to download, parse and hydrate.
 - [ ] M2-T13.0 Sidebar shell with sections as real URLs, and a status bar carrying crawler state
       and throughput on **every** page — "is it still running" is asked while looking at something
       else
-- [ ] M2-T13.1 Overview: crawler state, documents today, queue depth, dead letters, tool-data age.
+- [x] M2-T13.1 Overview: crawler state, documents, queue depth, usage counts. The document count
+      comes from **index stats, not a search** — a search reports at most `maxTotalHits` (2000), so
+      watching that number makes a healthy crawl look stalled the moment it passes the cap. That is
+      exactly how "the crawler is not indexing" was diagnosed wrongly
+- [ ] M2-T13.1b Overview: crawler state, documents today, queue depth, dead letters, tool-data age.
       Unknown values say so rather than showing zero, which is indistinguishable from healthy
 
 ### Crawler
