@@ -37,7 +37,7 @@ xustive/
 │   ├── xustive-search/        # Meilisearch + Qdrant clients, ranking
 │   ├── xustive-queue/         # Redis Streams abstraction
 │   └── xustive-telemetry/     # tracing + metrics setup, privacy guards
-├── web/                       # UI: src/, i18n/, dist/
+├── web/                       # Next.js app: app/, components/, lib/, public/
 ├── data/                      # lexicons, parser rules, gazetteers, blocklists
 │   ├── lang/ expansion/ sentiment/ parsers/ suggest/ spam/ crawl/
 ├── config/                    # dev.toml, staging.toml, prod.toml, ranking.toml
@@ -77,7 +77,7 @@ make setup          # ✅ exists — prerequisites, hooks, .env (model fetch arr
 make dev-up         # ✅ exists
 make seed           # ✅ exists
 make run-api        # ✅ exists
-make run-web        # ❌ NOT BUILT — the UI has no build step yet; edit web/public/ directly
+make run-web        # ✅ exists — Next.js dev server on :3000, proxies /api/v1 to :8080
 ```
 
 > **To actually run the system today, follow [[Running the System]].** It is verified against the
@@ -98,11 +98,11 @@ no models to fetch, so it only checks prerequisites, installs the git hooks and 
 | `make seed` / `migrate` | index the sample corpus; apply index settings | ✅ |
 | `make test` / `lint` / `check` | test and lint tiers ([[Testing Strategy]]) | ✅ |
 | `make text` / `search` | normalisation and search from the terminal | ✅ |
-| `make run-ml` / `run-crawler` / `run-worker` | the other binaries | ❌ M2/M3 |
-| `make run-web` | UI dev server with watch | ❌ no build step yet |
+| `make crawl` / `worker` / `toold` | crawler, index queue drain, tool-data fetcher | ✅ |
+| `make run-web` / `web-build` | Next.js dev server on :3000; production build | ✅ |
 | `make seed-crawl` | crawl the local fixture site | ❌ M2 |
-| `make eval` | relevance harness → nDCG report | ❌ M1-T15 |
-| `make dlq` | inspect/replay dead letters | ❌ M2 |
+| `make eval` | relevance harness → nDCG report | ✅ |
+| `make dlq` | inspect/replay dead letters | ✅ |
 
 `make help` is always the authoritative list — it is generated from the Makefile, so it cannot
 drift from reality the way this table can.
@@ -112,7 +112,7 @@ drift from reality the way this table can.
 ## 4. Local Topology
 
 ```
-localhost:3000  web (esbuild dev server, proxies /api → 8080)
+localhost:3000  xustive-web (Next.js) — the site; proxies /api/v1 → 8080
 localhost:8080  xustive-api
 localhost:8081  xustive-ml
 localhost:7700  meilisearch

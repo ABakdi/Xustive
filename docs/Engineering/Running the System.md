@@ -69,8 +69,16 @@ cd Xustive
 
 make setup       # check prerequisites, install git hooks, create .env
 make up          # infrastructure, corpus, index settings, and seed data
-make run-api     # foreground; Ctrl-C to stop
 ```
+
+**Xustive runs as two processes.** Start each in its own terminal and leave both running:
+
+```bash
+make run-api     # terminal 1 — the Rust API,        :8080
+make run-web     # terminal 2 — the Next.js frontend, :3000
+```
+
+Then open **<http://localhost:3000>**.
 
 `make setup` is optional — `make up` works without it — but it tells you up front if something is
 missing rather than failing halfway through. It is safe to re-run and will not overwrite an
@@ -79,14 +87,23 @@ existing `.env`.
 It does **not** download models. `xustive-ml` does not exist yet, so there is nothing to fetch;
 that step joins `setup` in [[Milestone 3 - Multimodal Input]].
 
-Then open <http://localhost:8080>, or run `make web`.
-
-> **There is no separate web server.** The UI is plain HTML, CSS and JavaScript in `web/public/`,
-> served by `xustive-api` itself. There is no `make run-web`, no dev server on port 3000 and no
-> build step — editing a file in `web/public/` and reloading the page is the whole workflow.
+> **Open :3000, not :8080.** This is the thing that most often goes wrong. `xustive-api` on 8080
+> answers JSON and nothing else — it stopped serving pages when the hand-written Rust renderer was
+> deleted in M1B. Visiting <http://localhost:8080/search?q=test> gives a **404**, which reads like
+> a broken install and is not.
 >
-> That changes when the Tailwind and esbuild pipeline arrives with the component library in
-> M1-T13. Until then, less machinery is the point.
+> | Port | Process | Serves |
+> |---:|:---|:---|
+> | 3000 | `xustive-web` (Next.js) | the site — **this is the one to open** |
+> | 8080 | `xustive-api` (Rust) | JSON under `/api/v1/…`, plus `/admin`, `/bot`, `/metrics` |
+>
+> The frontend proxies `/api/v1/*` through to 8080, so the browser only ever talks to one origin.
+> That is what keeps the Content-Security-Policy at `default-src 'self'`.
+
+`make run-web` installs the frontend's dependencies on first run, and warns if the API is not up —
+the UI will start either way, but every search errors until both are running.
+
+`make web` opens a browser at the right port, and tells you what is missing if nothing is there.
 
 `make up` took **12.7 s** on a warm build. The first run also has to compile the workspace, which
 takes a few minutes; everything after that is fast.
@@ -104,8 +121,12 @@ Expected output ends with:
   indexed 10385/10385
 ✓ seeded 10385 documents into documents
 
-Ready. Start the API with:  make run-api
-Then open:                  http://localhost:8080
+Ready. Xustive runs as TWO processes — start each in its own terminal:
+
+  1.  make run-api      the Rust API           http://localhost:8080
+  2.  make run-web      the Next.js frontend   http://localhost:3000
+
+Then open http://localhost:3000 — not 8080. The API serves JSON, not pages.
 ```
 
 ### Real content instead of the sample corpus
@@ -197,7 +218,8 @@ cargo run --release -p xustive-ml --example bench -- gpu    # GPU, on a cuda bui
 
 | Port | Service | Notes |
 |:---|:---|:---|
-| **8080** | `xustive-api` | the application |
+| **3000** | `xustive-web` | the site — open this one |
+| **8080** | `xustive-api` | JSON API, `/admin`, `/bot`, `/metrics` |
 | 7700 | Meilisearch | |
 | 6333 | Qdrant | running, unused |
 | **6390** | Redis | **not 6379** — see below |
@@ -329,6 +351,11 @@ kill "$(ss -tlnp | grep -oP '8080.*pid=\K[0-9]+' | head -1)"
 
 ## 7. Troubleshooting
 
+### The API is running and <http://localhost:8080> shows nothing
+
+Expected. 8080 is the JSON API — it has served no pages since the Rust renderer was deleted in
+M1B. The site is `make run-web` on **:3000**. `make web` opens the right one.
+
 ### `make run-api` and then "site can't be reached"
 
 Almost always the build, not the server. `xustive-api` links llama.cpp for the summariser, and
@@ -340,7 +367,7 @@ The port is not open until that finishes, so the browser correctly reports nothi
 ```
   Xustive is running.
 
-    Web UI    http://localhost:8080
+    API       http://localhost:8080   (JSON — the site is on :3000)
 ```
 
 To skip the summariser entirely and get a build in seconds:
@@ -415,7 +442,7 @@ The whole stack is rarely needed.
 
 | Working on | Run |
 |:---|:---|
-| UI | `make dev-up`, `make run-api`, then edit `web/public/` and reload. No build step, no watcher — the files are served as they are on disk. |
+| UI | `make dev-up`, then `make run-api` and `make run-web` in separate terminals. Next.js hot-reloads on save; the API only needs restarting for Rust changes. |
 | Ranking or search | `make dev-up`, `make run-api`, `make search Q='…'` |
 | Normalisation or language | `cargo test -p xustive-text -p xustive-lang` — no containers needed |
 | Lexicons | edit `data/`, `cargo test -p xustive-lang`, then `make migrate` for synonyms |

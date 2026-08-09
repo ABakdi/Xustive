@@ -35,16 +35,22 @@ Needs Rust 1.85+, Docker, and Python 3 (for the corpus generator).
 ```sh
 make setup       # check prerequisites, install hooks, create .env
 make up          # infrastructure, corpus, index settings, and seed data (~13s)
-make run-api     # http://localhost:8080
 ```
+
+Then **two processes**, each in its own terminal:
+
+```sh
+make run-api     # the Rust API,        http://localhost:8080
+make run-web     # the Next.js frontend, http://localhost:3000
+```
+
+Open **<http://localhost:3000>** and search for `سونلغاز`, `wach rak`, or `facture`.
+
+> Open :3000, not :8080. The API serves JSON — `localhost:8080/search` is a 404, which looks like
+> a broken install and is not. `make web` opens the right one and tells you what is missing.
 
 Full runbook, including ports, troubleshooting and per-area workflows:
 [`docs/Engineering/Running the System.md`](docs/Engineering/Running%20the%20System.md).
-
-Then open <http://localhost:8080> and search for `سونلغاز`, `wach rak`, or `facture`.
-
-The UI is served by `xustive-api` itself — there is no separate web server and no build step.
-`make web` opens it for you.
 
 | Command | Does |
 |:---|:---|
