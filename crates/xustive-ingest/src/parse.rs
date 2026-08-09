@@ -585,7 +585,7 @@ fn densest_block(doc: &Html) -> Option<String> {
         if is_hidden(&el) {
             continue;
         }
-        let text = clean(&el.text().collect::<String>());
+        let text = clean(&visible_text(el));
         let len = text.chars().count();
         if len < 200 {
             continue;
@@ -612,7 +612,7 @@ fn all_paragraphs(doc: &Html) -> String {
     };
     let joined: Vec<String> = doc
         .select(&sel)
-        .map(|el| clean(&el.text().collect::<String>()))
+        .map(|el| clean(&visible_text(el)))
         .filter(|t| t.chars().count() > 20)
         .collect();
     joined.join(" ")
@@ -654,6 +654,47 @@ fn absolutise(href: &str, base: &str) -> Option<String> {
 /// into `og:description`, and an excerpt containing a literal `<p>` reaches the results page and
 /// is rendered as visible text by the escaping layer, which is correct behaviour producing a
 /// visibly wrong result.
+/// Text a reader would actually see, from an element and its descendants.
+///
+/// `scraper`'s `.text()` returns **every** descendant text node, including the contents of
+/// `<style>` and `<script>`. On a page built with a WordPress page builder that means a stylesheet
+/// lands in the article body — real, indexed documents whose text began
+/// `.elementor-70966 .elementor-element{background-color:#214462}`. It is not visible to a reader,
+/// it is not about anything, and it poisons both the excerpt and the ranking.
+///
+/// Nodes are also joined with a space rather than concatenated. `.text()` glues adjacent elements
+/// together, which turned a language menu into `العربيةEnglishFrançaisEspañolРусский` — one
+/// unbreakable token that matches nothing and reads as corruption.
+fn visible_text(el: scraper::ElementRef<'_>) -> String {
+    /// Elements whose contents are never shown to a reader.
+    ///
+    /// `template` and `svg` are here for the same reason as `style` and `script`: their text is
+    /// markup or path data, not prose.
+    const INVISIBLE: &[&str] = &["style", "script", "noscript", "template", "svg", "iframe"];
+
+    let mut out = String::new();
+    let mut nodes: Vec<_> = vec![*el];
+    // Iterative rather than recursive: this runs over untrusted markup, and the adversarial suite
+    // already found that deeply nested documents exist.
+    while let Some(node) = nodes.pop() {
+        match node.value() {
+            scraper::Node::Text(t) => {
+                if !out.is_empty() && !out.ends_with(' ') {
+                    out.push(' ');
+                }
+                out.push_str(t.trim());
+            }
+            scraper::Node::Element(e) if INVISIBLE.contains(&e.name()) => continue,
+            _ => {}
+        }
+        // Reversed, because the stack pops in reverse and document order matters for prose.
+        for child in node.children().collect::<Vec<_>>().into_iter().rev() {
+            nodes.push(child);
+        }
+    }
+    out
+}
+
 fn clean(s: &str) -> String {
     let stripped = strip_tags(s);
     stripped.split_whitespace().collect::<Vec<_>>().join(" ")
