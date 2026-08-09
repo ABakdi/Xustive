@@ -84,6 +84,16 @@ pub struct Fetched {
     pub content_type: String,
     /// True when the charset was sniffed rather than declared.
     pub charset_guessed: bool,
+    /// What `X-Robots-Tag` asked for, if anything.
+    ///
+    /// Carried on the response rather than resolved here, because the fetcher's job is to report
+    /// what the server said and the caller's is to decide what to do about it — a `noindex` page
+    /// is still worth crawling for its links.
+    ///
+    /// This is the only way a non-HTML document can refuse indexing. A PDF or an image has no
+    /// `<head>` to put a meta tag in, so honouring the tag but not the header means honouring the
+    /// request exactly where it is easy and ignoring it where it is the site's only option.
+    pub exclusion: Option<crate::exclusion::Exclusion>,
 }
 
 const INDEXABLE: &[&str] = &[
@@ -201,6 +211,15 @@ impl Fetcher {
                 return Err(FetchError::ContentType(mime));
             }
 
+            let robots_tag: Vec<String> = resp
+                .headers()
+                .get_all("x-robots-tag")
+                .iter()
+                .filter_map(|v| v.to_str().ok())
+                .map(str::to_string)
+                .collect();
+            let exclusion = crate::exclusion::from_header(&robots_tag, crate::robots::UA_TOKEN);
+
             let final_url = resp.url().to_string();
             let bytes = resp
                 .bytes()
@@ -218,6 +237,7 @@ impl Fetcher {
                 body,
                 content_type: mime,
                 charset_guessed,
+                exclusion,
             });
         }
 
