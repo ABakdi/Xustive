@@ -173,3 +173,14 @@ a plan.
 
 [[Data Model]] · [[Crawler Orchestrator]] · [[Admin and Source Submission]] · [[Legal and Compliance]] ·
 [[Ranking and Relevance]] · [[Content Parser]] · [[Politeness and Robots]]
+
+## Social platforms are not seeds
+
+`facebook.com` and `instagram.com` both serve `User-agent: * / Disallow: /`. Seeding them produces
+zero documents — the crawler reads robots.txt, is refused, and skips every URL — while the seed
+list appears to cover social media. `youtube.com` and `tiktok.com` allow some paths but render them
+with JavaScript, so the text fetcher receives a shell.
+
+Social content arrives through direct collection instead ([[ADR-0009 - Direct Collection for Social
+Platforms]]), which is a separate pipeline with its own identity, fingerprint and signature
+machinery. It cannot be reached by adding a line to `seeds.tsv`.

@@ -157,6 +157,24 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
 - [ ] M2-T03.9 Backpressure response to queue depth
 - [ ] M2-T03.10 Leader failover test: kill the leader, assert no double dispatch
 
+## M2-T14 — [[UI - Search Verticals]]
+
+Tabs above the results: All, News, Images, Videos, Short videos, Files, Social. **They appear as
+their content does** — five of the seven have nothing behind them today, and a tab that returns
+"no results" is indistinguishable from a broken one.
+
+- [ ] M2-T14.1 Tab row, vertical in the URL (`?v=news`) so it is shareable and the back button
+      works, `role="tablist"` with arrow-key movement
+- [ ] M2-T14.2 **News** — a filter over what is already indexed: web source, has a date,
+      article-shaped. Real on day one
+- [ ] M2-T14.3 **Files** — accept `application/pdf` in the fetcher (it refuses it today), extract
+      text with a hard page cap, and a size limit well below the HTML one. A large share of
+      `.gov.dz` PDFs are **scans**, which yield no text at all, so this covers the born-digital
+      minority until OCR exists
+- [ ] M2-T14.4 An empty vertical names *which* vertical is empty and links back to All
+- [ ] M2-T14.5 Social tab, arriving with the connectors
+- [ ] M2-T14.6 Images / Videos / Short videos, arriving with [[Milestone 3 - Multimodal Input]]
+
 ## M2-T13 — [[Crawler Console]] and [[UI - Admin Console]]
 
 The question this answers, constantly: **is the crawler working, and is it collecting the right

@@ -39,3 +39,75 @@ sante-gov	https://www.sante.gov.dz/	A	Health ministry
 travail-gov	https://www.mtess.gov.dz/	A	Labour and social security ministry
 premier-ministre	https://www.premier-ministre.gov.dz/	A	Prime Minister's office
 joradp	https://www.joradp.dz/	A	Official journal
+
+# --- Government: ministries and institutions -------------------------------------------------
+#
+# Tier A throughout: these are the primary source for what they publish, and someone is
+# constitutionally answerable for it. Several serve an incomplete TLS chain and are unreachable
+# until M2-T04.10 — they are listed anyway, because the list should describe what we intend to
+# crawl rather than what happens to work this week.
+presidence	https://www.el-mouradia.dz/	A	Presidency
+gov-portal	https://www.gov.dz/	A	Government portal
+apn	https://www.apn.dz/	A	People's National Assembly
+conseil-nation	https://www.majliselouma.dz/	A	Council of the Nation
+mae	https://www.mfa.gov.dz/	A	Foreign Affairs
+mf	https://www.mf.gov.dz/	A	Finance
+menergie	https://www.energy.gov.dz/	A	Energy and Mines
+magri	https://madr.gov.dz/	A	Agriculture and Rural Development
+mind	https://www.industrie.gov.dz/	A	Industry
+mcom	https://www.commerce.gov.dz/	A	Commerce
+mtp	https://www.mtp.gov.dz/	A	Public Works
+mhabitat	https://www.mhuv.gov.dz/	A	Housing and Urbanism
+mjustice	https://www.mjustice.dz/	A	Justice
+mdn	https://www.mdn.dz/	A	National Defence
+mformation	https://www.mfep.gov.dz/	A	Vocational Training
+mculture	https://www.m-culture.gov.dz/	A	Culture
+mjeunesse	https://www.mjs.gov.dz/	A	Youth and Sports
+mtourisme	https://www.mta.gov.dz/	A	Tourism
+mtransport	https://www.ministere-transports.gov.dz/	A	Transport
+menv	https://www.meer.gov.dz/	A	Environment
+mpeche	https://www.mpeche.gov.dz/	A	Fisheries
+mrelig	https://www.marw.dz/	A	Religious Affairs
+mnumerique	https://www.mpt.gov.dz/	A	Post and Telecommunications
+ons	https://www.ons.dz/	A	National Statistics Office
+cnas	https://www.cnas.dz/	A	Social insurance
+casnos	https://www.casnos.com.dz/	A	Self-employed social insurance
+douane	https://www.douane.gov.dz/	A	Customs
+impots	https://www.mfdgi.gov.dz/	A	Tax administration
+onec	https://www.onec.dz/	A	Examinations board
+bac-results	https://bac.onec.dz/	A	Baccalaureate portal
+univ-alger	https://www.univ-alger.dz/	A	University of Algiers
+cerist	https://www.cerist.dz/	A	Research information centre
+
+# --- Reference -------------------------------------------------------------------------------
+#
+# Wikipedia in the three languages Algerians read. Tier B rather than A: it is credible and
+# heavily used, and nobody is accountable for any single edit.
+#
+# Seeded at the Algeria portal rather than the front page. A crawler pointed at ar.wikipedia.org/
+# will happily spend a month indexing the encyclopaedia of everything, which is not what this
+# engine is for.
+wikipedia-ar	https://ar.wikipedia.org/wiki/بوابة:الجزائر	B	Arabic Wikipedia, Algeria portal
+wikipedia-fr	https://fr.wikipedia.org/wiki/Portail:Algérie	B	French Wikipedia, Algeria portal
+wikipedia-en	https://en.wikipedia.org/wiki/Portal:Algeria	B	English Wikipedia, Algeria portal
+
+# --- Social platforms ------------------------------------------------------------------------
+#
+# NOT LISTED HERE, deliberately, and not an oversight.
+#
+#   facebook.com    User-agent: *  Disallow: /     — a total block
+#   instagram.com   User-agent: *  Disallow: /     — a total block
+#
+# Seeding those would produce exactly zero documents: the crawler reads robots.txt, is refused,
+# and skips every URL. The list would look like it covered social media while collecting nothing,
+# which is worse than an honest gap.
+#
+#   youtube.com     allows watch pages, but they are rendered by JavaScript
+#   tiktok.com      allows /foryou, /discover, /about — likewise
+#
+# Those two are fetchable and would yield a page shell with no content until headless rendering
+# exists (M2-T04.6).
+#
+# Social content comes through **direct collection** instead — [[ADR-0009]], and M2-T01a/b/c plus
+# the per-platform connectors. That is a different pipeline with its own identity, fingerprint and
+# signature machinery, and it cannot be reached by adding a line to this file.
