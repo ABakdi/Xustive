@@ -117,6 +117,10 @@ pub fn app(state: AppState) -> Router {
         .route("/metrics", get(metrics_handler))
         // Operator surface. Read-mostly, and nothing here can stop the process starting.
         .route("/admin", get(admin::page))
+        .route(
+            "/admin/politeness",
+            axum::routing::post(admin::set_politeness),
+        )
         .route("/admin.css", get(admin::admin_css))
         .route("/admin.js", get(admin::admin_js))
         .route("/admin/status", get(admin::status))

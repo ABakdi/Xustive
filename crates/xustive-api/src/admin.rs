@@ -150,6 +150,7 @@ pub async fn status(
         "device": current_resolution(&state),
         "gpu_support_compiled": device::gpu_support_compiled(),
         "gpu_detected": device::detect_gpu(),
+        "ignore_politeness": state.ignore_politeness.load(Ordering::Relaxed),
         "models": Registry::new(&state.config.ml.model_dir).status(),
         "logging": {
             "filter": crate::telemetry::level_status().0,
@@ -343,10 +344,50 @@ pub async fn page(State(state): State<AppState>, Peer(peer): Peer, headers: Head
     };
     let layers = state.gpu_layers.load(Ordering::Relaxed);
 
+    let bypass_on = state.ignore_politeness.load(Ordering::Relaxed);
+    let bypass_allowed = state.config.crawl.guard(&state.config.environment).is_ok();
+    // Rendered at the top of the page and impossible to miss when on. A destructive mode that
+    // looks like every other setting is one that gets left enabled.
+    let bypass_banner = if bypass_on {
+        r#"<p class="lede state-bad"><strong>POLITENESS BYPASS IS ON.</strong>
+  robots.txt, crawl delays and host opt-outs are being ignored. This is for fixture sites.
+  Turn it off before crawling anything you do not own.</p>"#
+    } else {
+        ""
+    };
+    let bypass_control = if bypass_allowed {
+        format!(
+            r#"<h1>Crawler politeness</h1>
+  <p class="lede">Bypass is <strong>{}</strong>.</p>
+  <form class="admin" id="politeness-form">
+    <label><input type="checkbox" id="ignore-politeness" {}> Ignore robots.txt, crawl delays and host opt-outs</label>
+    <button type="submit">Apply</button>
+  </form>
+  <p class="muted">Testing only — for crawling the local fixture site without a robots round trip
+  per request. Takedown and global blocklists are never bypassed: those are a legal order and a
+  safety block, not politeness. This environment is <code>{}</code>.</p>"#,
+            if bypass_on { "ON" } else { "off" },
+            if bypass_on { "checked" } else { "" },
+            state.config.environment,
+        )
+    } else {
+        format!(
+            r#"<h1>Crawler politeness</h1>
+  <p class="lede">Bypass is <strong>not available</strong> in <code>{}</code>.</p>
+  <p class="muted">The politeness bypass is a testing facility. It is refused outside development
+  because pointed at the open web it produces exactly the behaviour the politeness layer exists to
+  prevent, and the damage lands on somebody else's server.</p>"#,
+            state.config.environment,
+        )
+    };
+
     let body = format!(
         r#"<header class="site-header"><a class="wordmark" href="/">XUSTIVE</a>
   <span class="muted">admin</span></header>
 <main id="results">
+  {bypass_banner}
+  {bypass_control}
+
   <h1>Compute device</h1>
 
   <p class="lede state-{state_class}">Running on <strong>{active}</strong> — {reason}</p>
@@ -485,4 +526,65 @@ mod tests {
             "empty keys compare equal; the guard must never reach here with one"
         );
     }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct PolitenessUpdate {
+    pub ignore_politeness: bool,
+}
+
+/// `POST /admin/politeness` — turn the crawler's politeness bypass on or off.
+///
+/// **Testing only.** With this on, the crawler does not fetch or consult `robots.txt`, does not
+/// wait between requests to a host, ignores adaptive slowdown from 429 and 503, and ignores the
+/// host opt-out list. It exists so a fixture site can be crawled at full speed without a robots
+/// round trip per request.
+///
+/// The global and takedown blocklists are **not** bypassed. Those are not politeness — one is a
+/// safety block and the other is a legal order, and a testing flag must not be able to lift a
+/// court order. Nothing about crawling a local fixture site needs them lifted.
+///
+/// Pointed at the open web this produces exactly the behaviour the politeness layer exists to
+/// prevent, and the damage lands on somebody else's server where we would never see it. So
+/// turning it on is logged at `warn` with the peer that did it, and production refuses to start
+/// with it enabled at all — meaning this endpoint can only flip it where it is already permitted.
+pub async fn set_politeness(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+    Json(update): Json<PolitenessUpdate>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    authorise(&state, peer, &headers).map_err(|d| d.json())?;
+
+    // Belt as well as braces. The startup guard already refuses this configuration in production,
+    // but an endpoint that can enable abusive crawling should not depend on a check that ran once,
+    // hours ago, in a different function.
+    if update.ignore_politeness {
+        if let Err(e) = state.config.crawl.guard(&state.config.environment) {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": {
+                    "code": "not_permitted_here",
+                    "message": e.to_string(),
+                }})),
+            ));
+        }
+        tracing::warn!(
+            peer = ?peer,
+            "POLITENESS BYPASS ENABLED via admin — robots.txt, crawl delays and host opt-outs \
+             are now ignored. This is for fixture sites only."
+        );
+    } else {
+        tracing::info!(peer = ?peer, "politeness bypass disabled");
+    }
+
+    state
+        .ignore_politeness
+        .store(update.ignore_politeness, Ordering::Relaxed);
+
+    Ok(Json(json!({
+        "ok": true,
+        "ignore_politeness": update.ignore_politeness,
+        "note": "takedown and global blocklists are never bypassed",
+    })))
 }

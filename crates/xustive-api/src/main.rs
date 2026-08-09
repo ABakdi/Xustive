@@ -76,6 +76,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     let config = Config::load(Some(&args.config))?;
+    // Refuse to start rather than warn. A configuration that crawls abusively produces no symptom
+    // in this process at all — the damage is entirely on other people's servers, and by the time
+    // anyone notices we are in an abuse report. Failing at startup is the only feedback loop that
+    // closes here.
+    config.crawl.guard(&config.environment)?;
     telemetry::init(&config.telemetry);
     // Reverts any /admin/log-level override once its fifteen minutes are up.
     telemetry::spawn_override_expiry();

@@ -38,6 +38,13 @@ pub struct AppState {
     pub device_preference: Arc<AtomicU8>,
     /// GPU layers to offload. Negative means decide automatically.
     pub gpu_layers: Arc<AtomicI64>,
+    /// Runtime politeness bypass. **Testing only** — see `CrawlConfig::ignore_politeness`.
+    ///
+    /// Runtime as well as config, because the reason to turn it on is "I am about to crawl a
+    /// fixture site" and the reason to turn it off is "I have finished", neither of which is worth
+    /// a restart. The config value is the startup default; production refuses to start with it on
+    /// at all, so this can only ever be flipped where it is already permitted.
+    pub ignore_politeness: Arc<std::sync::atomic::AtomicBool>,
     /// Searches whose summary has not been requested yet.
     pub pending: Arc<PendingStore>,
     /// The loaded summariser, once it is ready.
@@ -179,6 +186,7 @@ impl AppState {
     }
 
     pub fn new(config: Config) -> Result<Self, SearchError> {
+        let ignore_politeness = config.crawl.ignore_politeness;
         // Falls back to the alias name itself, which is also what a pre-alias deployment uses.
         // `resolve` is async and this is not, so the real lookup happens in `resolve_index`
         // below, called from main once the runtime exists.
@@ -203,6 +211,7 @@ impl AppState {
                 xustive_ml::DevicePreference::parse(&device).unwrap_or_default() as u8,
             )),
             gpu_layers: Arc::new(AtomicI64::new(gpu_layers)),
+            ignore_politeness: Arc::new(std::sync::atomic::AtomicBool::new(ignore_politeness)),
             documents_index: Arc::new(std::sync::RwLock::new(documents_index)),
             suggest: Arc::new(std::sync::RwLock::new(Arc::new(
                 crate::suggest::PrefixIndex::build(&curated, &[]),

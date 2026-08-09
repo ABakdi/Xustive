@@ -40,3 +40,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+// The politeness bypass.
+//
+// Absent on deployments where it is refused, so everything here is guarded rather than assumed —
+// a null dereference at load would take the device controls down with it.
+(function () {
+  const form = document.getElementById('politeness-form');
+  if (!form) return;
+  const box = document.getElementById('ignore-politeness');
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const res = await fetch('/admin/politeness', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ignore_politeness: box.checked }),
+    });
+    // Reloaded rather than patched in place, so the banner state always matches the server's.
+    // A checkbox that says one thing while the crawler does another is the failure this whole
+    // control has to avoid.
+    if (res.ok) {
+      location.reload();
+    } else {
+      const body = await res.json().catch(function () { return null; });
+      alert((body && body.error && body.error.message) || 'Could not change the setting.');
+    }
+  });
+})();
