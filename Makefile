@@ -20,8 +20,12 @@ setup: ## Check prerequisites, install git hooks, create .env
 .PHONY: up
 up: dev-up corpus seed ## Everything needed to serve search, then tells you what to run next
 	@echo
-	@echo "Ready. Start the API with:  make run-api"
-	@echo "Then open:                  http://localhost:8080"
+	@echo "Ready. Xustive runs as TWO processes — start each in its own terminal:"
+	@echo
+	@echo "  1.  make run-api      the Rust API           http://localhost:8080"
+	@echo "  2.  make run-web      the Next.js frontend   http://localhost:3000"
+	@echo
+	@echo "Then open http://localhost:3000 — not 8080. The API serves JSON, not pages."
 
 .PHONY: dev-up
 dev-up: ## Start meilisearch, qdrant, redis, prometheus, grafana
@@ -75,7 +79,7 @@ stats: ## Show index document counts
 	cargo run -q -p xustive-cli -- --config $(CONFIG) stats
 
 .PHONY: run-api
-run-api: ## Run the API server — this also serves the web UI at http://localhost:8080
+run-api: ## Run the Rust API on :8080 (JSON only — the UI is `make run-web`)
 	@# Build first, and say so. The summariser links llama.cpp, which is compiled from source
 	@# and takes several minutes the first time. Without this notice `cargo run` looks like it
 	@# has hung, and http://localhost:8080 refuses connections until it finishes — which is
@@ -129,23 +133,37 @@ fixture-site: ## Serve the offline crawler fixture site on :8099
 	./tests/fixtures/site/serve.py --port $(FIXTURE_PORT)
 
 .PHONY: web
-web: ## Open the UI in a browser (the API serves it; there is no separate web server)
-	@if curl -fsS --max-time 2 http://localhost:8080/healthz >/dev/null 2>&1; then \
-		echo "Opening http://localhost:8080"; \
-		(xdg-open http://localhost:8080 >/dev/null 2>&1 \
-			|| open http://localhost:8080 >/dev/null 2>&1 \
-			|| echo "Could not open a browser. Go to http://localhost:8080"); \
+web: ## Open the UI in a browser
+	@if curl -fsS --max-time 2 http://localhost:3000 >/dev/null 2>&1; then \
+		echo "Opening http://localhost:3000"; \
+		(xdg-open http://localhost:3000 >/dev/null 2>&1 \
+			|| open http://localhost:3000 >/dev/null 2>&1 \
+			|| echo "Could not open a browser. Go to http://localhost:3000"); \
 	else \
-		echo "The API is not running."; \
+		echo "The frontend is not running."; \
 		echo; \
-		echo "  The UI has no separate server — xustive-api serves it from web/public."; \
-		echo "  Start it with:  make run-api"; \
-		echo "  Then:           make web   (or just open http://localhost:8080)"; \
+		echo "  Xustive is two processes. In separate terminals:"; \
+		echo "    make run-api      the Rust API,       :8080"; \
+		echo "    make run-web      the Next.js UI,     :3000"; \
+		echo; \
+		echo "  Open :3000. Port 8080 answers JSON, not pages — /search there is a 404."; \
 		exit 1; \
 	fi
 
-# The UI is hand-authored in web/public and served directly — there is no build step yet.
-# The Tailwind/esbuild pipeline arrives with the component library in M1-T13.
+.PHONY: run-web
+run-web: ## Run the Next.js frontend on :3000 (needs the API on :8080)
+	@command -v node >/dev/null || { echo "node is not installed (need 20+)"; exit 1; }
+	@[ -d web/node_modules ] || { echo "  Installing frontend dependencies (first run only)…"; cd web && npm install; }
+	@if ! curl -fsS --max-time 2 http://localhost:8080/healthz >/dev/null 2>&1; then \
+		echo "  Note: the API is not up on :8080. The UI will start, but every search will"; \
+		echo "        error until you run 'make run-api' in another terminal."; \
+		echo; \
+	fi
+	cd web && npm run dev
+
+.PHONY: web-build
+web-build: ## Production build of the frontend, then serve it on :3000
+	cd web && npm run build && npm start
 
 # --- quality ------------------------------------------------------------------------
 
