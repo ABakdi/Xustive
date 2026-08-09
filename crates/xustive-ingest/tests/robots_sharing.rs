@@ -23,8 +23,8 @@ use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use xustive_core::{DatePrecision, SafeUrl, SourceType};
-use xustive_ingest::{FetchConfig, FetchError, Fetcher, ParseConfig, Parser};
+use xustive_core::SafeUrl;
+use xustive_ingest::{FetchConfig, Fetcher};
 
 fn base() -> String {
     format!("http://127.0.0.1:{}", port())
@@ -87,18 +87,6 @@ fn server() -> Option<u16> {
         eprintln!("skipping: fixture site did not come up");
         None
     })
-}
-
-fn fetcher() -> Fetcher {
-    Fetcher::new(FetchConfig {
-        // Shorter than the fixture's 5-second /slow endpoint, which is the point of that endpoint.
-        total_timeout: Duration::from_secs(2),
-        connect_timeout: Duration::from_secs(2),
-        // The fixture declares Crawl-delay: 1. Honouring it makes this suite slow but it is the
-        // behaviour under test, so it stays.
-        ..Default::default()
-    })
-    .expect("fetcher should build")
 }
 
 macro_rules! require_server {
