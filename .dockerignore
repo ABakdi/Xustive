@@ -1,0 +1,27 @@
+# Docker sends the entire build context to the daemon before it does anything.
+#
+# Without this it sends `target/` — 46 GB on a warm workspace — on every `make dev-up`, because the
+# `toold` service builds with the repository root as its context. That turned a three-second
+# command into minutes of "transferring context" and looked exactly like Docker hanging.
+#
+# Nothing excluded here is needed inside an image: the Rust build happens in the builder stage from
+# source, and the frontend is not containerised in development.
+
+target/
+web/node_modules/
+web/.next/
+web/out/
+.git/
+.github/
+
+# Data and generated output. Large, reproducible, and never wanted in an image.
+data/raw/
+models/
+tests/fixtures/corpus/
+eval/reports/
+*.gguf
+
+# Local state and secrets.
+.env
+.env.*
+*.log

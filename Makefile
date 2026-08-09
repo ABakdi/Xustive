@@ -17,6 +17,19 @@ help: ## Show this help
 setup: ## Check prerequisites, install git hooks, create .env
 	@./scripts/setup.sh
 
+.PHONY: dev
+dev: ## ONE COMMAND — build and run everything, logs interleaved, Ctrl-C stops it all
+	./scripts/dev.sh $(ARGS)
+
+.PHONY: dev-stop
+dev-stop: ## Stop everything `make dev` started (from another terminal)
+	@pid=$$(cat $${TMPDIR:-/tmp}/xustive-dev.pid 2>/dev/null); \
+	if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
+		kill -INT "$$pid"; echo "  stopping (pid $$pid)"; \
+	else \
+		echo "  nothing running that 'make dev' started"; \
+	fi
+
 .PHONY: up
 up: dev-up corpus seed ## Everything needed to serve search, then tells you what to run next
 	@echo

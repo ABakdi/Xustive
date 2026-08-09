@@ -28,6 +28,12 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # The summariser is optional and `make run-api-fast` exists to skip it, so the build without
+      # it has to keep working. It broke once from a re-export that was not gated with its module,
+      # and nothing noticed because every other build enables the feature.
+      - name: build without the summariser
+        run: cargo build -p xustive-api -p xustive-cli --no-default-features
+
       # The privacy guarantee, enforced rather than promised.
       - name: Telemetry lint (no query or credential fields in logs)
         run: ./scripts/lint-telemetry.sh

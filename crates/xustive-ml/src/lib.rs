@@ -16,6 +16,9 @@ pub mod translate;
 pub mod validate;
 
 pub use device::{ActiveDevice, DeviceConfig, DevicePreference, Resolved};
+// Gated with the module it comes from. Unconditional, this broke every build without the
+// summariser — including `make run-api-fast`, whose entire purpose is to skip it.
+#[cfg(feature = "llama")]
 pub use engine::Chunk;
 pub use prompt::{OutputLang, Passage, Prompt};
 pub use registry::{ModelSpec, ModelStatus, Registry};

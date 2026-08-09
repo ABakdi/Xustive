@@ -71,11 +71,26 @@ make setup       # check prerequisites, install git hooks, create .env
 make up          # infrastructure, corpus, index settings, and seed data
 ```
 
-**Xustive runs as two processes.** Start each in its own terminal and leave both running:
+**One command runs everything:**
 
 ```bash
-make run-api     # terminal 1 — the Rust API,        :8080
-make run-web     # terminal 2 — the Next.js frontend, :3000
+make dev              # infrastructure, API, frontend, crawler, worker, tool fetcher
+make dev ARGS=--fast  # …without the summariser, so the build is seconds not minutes
+```
+
+Logs are interleaved with a prefix per service. Ctrl-C stops them all; the infrastructure
+containers stay up. From another terminal, `make dev-stop`.
+
+It refuses to start if something is already listening on 8080 or 3000, rather than half-starting
+alongside it — two APIs cannot both bind 8080, and the old one carrying on serving is what makes
+code changes appear to do nothing.
+
+**Or run the pieces separately**, each in its own terminal:
+
+```bash
+make dev-up      # infrastructure only
+make run-api     # the Rust API,         :8080
+make run-web     # the Next.js frontend, :3000
 ```
 
 Then open **<http://localhost:3000>**.

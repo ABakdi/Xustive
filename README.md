@@ -34,17 +34,21 @@ Needs Rust 1.85+, Docker, and Python 3 (for the corpus generator).
 
 ```sh
 make setup       # check prerequisites, install hooks, create .env
-make up          # infrastructure, corpus, index settings, and seed data (~13s)
+make dev         # build and run everything; Ctrl-C stops it all
 ```
 
-Then **two processes**, each in its own terminal:
+`make dev` starts the infrastructure, the API, the frontend, the crawler, the index worker and the
+tool-data fetcher, with the logs interleaved and prefixed per service. Add `--fast` to skip the
+summariser — the first build otherwise compiles llama.cpp from source, which takes minutes:
 
 ```sh
-make run-api     # the Rust API,        http://localhost:8080
-make run-web     # the Next.js frontend, http://localhost:3000
+make dev ARGS=--fast
 ```
 
 Open **<http://localhost:3000>** and search for `سونلغاز`, `wach rak`, or `facture`.
+
+To run pieces separately instead — `make dev-up`, then `make run-api` and `make run-web` in their
+own terminals. `make dev-stop` stops a `make dev` from another terminal.
 
 > Open :3000, not :8080. The API serves JSON — `localhost:8080/search` is a 404, which looks like
 > a broken install and is not. `make web` opens the right one and tells you what is missing.
