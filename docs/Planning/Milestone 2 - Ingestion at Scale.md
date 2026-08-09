@@ -139,13 +139,20 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
 
 ## M2-T03 — [[Crawler Orchestrator]]
 
-- [ ] M2-T03.1 Frontier structures in Redis; leader election with a lock
+- [~] M2-T03.1 Frontier structures in Redis; leader election with a lock — frontier done and
+      namespaced (two crawls can share one Redis). Claiming is a single Lua script: as separate
+      round trips, two workers routinely pick the same host between the read and the write and
+      both fetch it. Asserted with 16 concurrent workers, zero duplicate claims. **Leader election
+      still open**, though atomic claiming makes it an optimisation rather than a correctness need
 - [ ] M2-T03.2 Scheduling loop with per-host due-times
-- [ ] M2-T03.3 Priority computation
+- [x] M2-T03.3 Priority computation — depth dominates; trust and article-shape only break ties, or one trusted source swallows the crawl
 - [ ] M2-T03.4 Adaptive revisit intervals (changed / unchanged / 304)
 - [ ] M2-T03.5 Sitemap and feed discovery with caps
 - [ ] M2-T03.6 Outlink filtering and `SafeUrl` validation
-- [ ] M2-T03.7 Crawler-trap detectors (depth, params, repeating segments)
+- [x] M2-T03.7 Crawler-trap detectors (depth, params, repeating segments) — plus session ids, and
+      repeats counted rather than checked adjacently: `/a/b/a/b` never repeats adjacently, which is
+      what a naive check looks for. Tested in both directions, since a detector that refuses real
+      pages yields a thin index with nothing to explain it
 - [ ] M2-T03.8 Budget enforcement per source and per host
 - [ ] M2-T03.9 Backpressure response to queue depth
 - [ ] M2-T03.10 Leader failover test: kill the leader, assert no double dispatch
