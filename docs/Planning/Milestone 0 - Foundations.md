@@ -27,9 +27,9 @@ either is painful, and getting normalisation wrong means Arabic search silently 
 
 ## M0-T01 — Repository and workspace skeleton
 
-- [x] M0-T01.1 Cargo workspace with the crate layout from [[Local Development]] §1
+- [x] M0-T01.1 Cargo workspace with the crate layout from [[Running Xustive]] §4
 - [x] M0-T01.2 `rustfmt.toml`, `clippy.toml` with `unwrap_used`/`expect_used` denied
-- [x] M0-T01.3 `Makefile` with the targets in [[Local Development]] §3
+- [x] M0-T01.3 `Makefile` with the targets in [[Running Xustive]] §6
 - [x] M0-T01.4 Layered config loader (defaults → toml → env), typed structs, no direct `env::var`
 - [x] M0-T01.5 `config/dev.toml`, `staging.toml`, `prod.toml`
 - [x] M0-T01.6 `.env.example`, `.gitignore`, pre-commit hook running `fmt` + `clippy`
@@ -132,7 +132,7 @@ either is painful, and getting normalisation wrong means Arabic search silently 
       a slow endpoint, `robots.txt` with `Crawl-delay` and `Disallow`, malformed HTML,
       `windows-1256` page, Maghrebi dates, a prompt-injection page, and a crawler trap.
       Exercised by 11 tests running the real `Fetcher` against it
-- [x] M0-T10.3 Documented in [[Local Development]] §5
+- [x] M0-T10.3 Documented in [[Running Xustive]] §5
 
 ---
 
@@ -157,5 +157,5 @@ either is painful, and getting normalisation wrong means Arabic search silently 
 
 ## Related
 
-[[TODO]] · [[Local Development]] · [[Data Model]] · [[Search Index]] · [[Security and Privacy]] ·
+[[TODO]] · [[Running Xustive]] · [[Data Model]] · [[Search Index]] · [[Security and Privacy]] ·
 [[Milestone 1 - Text Search MVP]]

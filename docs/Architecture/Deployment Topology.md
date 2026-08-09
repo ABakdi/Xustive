@@ -197,4 +197,4 @@ recoverable by full re-crawl (days). Restore drills are a checklist item in
 ## Related
 
 [[System Architecture]] · [[Observability]] · [[Security and Privacy]] ·
-[[Error Handling and Resilience]] · [[Local Development]]
+[[Error Handling and Resilience]] · [[Running Xustive]]

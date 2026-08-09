@@ -13,7 +13,7 @@ French, and English**. Searches are not recorded, and nothing leaves the country
 | What are the components? | [`docs/Architecture/Component Map.md`](docs/Architecture/Component%20Map.md) |
 | What does the API return? | [`docs/Architecture/API Contract.md`](docs/Architecture/API%20Contract.md) |
 | Why was X chosen? | [`docs/Decisions/Decision Log.md`](docs/Decisions/Decision%20Log.md) |
-| How do I run it? | [`docs/Engineering/Running the System.md`](docs/Engineering/Running%20the%20System.md) |
+| How do I run it? | [`docs/Engineering/Running Xustive.md`](docs/Engineering/Running%20Xustive.md) |
 | What are we building next? | [`docs/Planning/TODO.md`](docs/Planning/TODO.md) |
 | What does this word mean? | [`docs/Glossary.md`](docs/Glossary.md) |
 
@@ -54,7 +54,7 @@ own terminals. `make dev-stop` stops a `make dev` from another terminal.
 > a broken install and is not. `make web` opens the right one and tells you what is missing.
 
 Full runbook, including ports, troubleshooting and per-area workflows:
-[`docs/Engineering/Running the System.md`](docs/Engineering/Running%20the%20System.md).
+[`docs/Engineering/Running Xustive.md`](docs/Engineering/Running%20Xustive.md).
 
 | Command | Does |
 |:---|:---|

@@ -93,7 +93,7 @@ returns.
 
 ## 6. Pipeline E2E
 
-Against the local fixture site ([[Local Development]] §5), fully offline:
+Against the local fixture site ([[Running Xustive]] §8), fully offline:
 
 ```
 fixture site → crawl → parse → dedup → enrich → index → search → assert
@@ -216,5 +216,5 @@ worse than not having it.
 
 ## Related
 
-[[Performance Budgets]] · [[Ranking and Relevance]] · [[Local Development]] ·
+[[Performance Budgets]] · [[Ranking and Relevance]] · [[Running Xustive]] ·
 [[Security and Privacy]] · [[UI - Accessibility]] · [[Observability]] · [[TODO]]
