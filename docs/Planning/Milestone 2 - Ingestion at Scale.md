@@ -97,7 +97,10 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
       suite below rather than by the unit tests, which were written from the implementation
 - [ ] M2-T02.2 Fetch-failure semantics: 404 → allow; 403/5xx/timeout → **disallow**
 - [ ] M2-T02.3 24 h cache in Redis; `Sitemap:` extraction handed to the orchestrator
-- [ ] M2-T02.4 Crawl-delay resolution (max of robots / registry / default / adaptive)
+- [x] M2-T02.4 Crawl-delay resolution (max of robots / registry / default / adaptive) — the
+      **maximum**, because each source is a floor set by someone with a reason. Taking the minimum
+      would let a config change silently undo a `Crawl-delay` the site asked for, and a reduced
+      delay is indistinguishable from ignoring it
 - [ ] M2-T02.5 Adaptive slowdown from latency, 429, 503 signals
 - [x] M2-T02.6 Meta-robots and `X-Robots-Tag` post-fetch handling — the meta tag was already
       honoured; the **header was not**, which meant honouring the request only on documents that
@@ -107,7 +110,10 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
 - [x] M2-T02.7 Three-tier blocklist (global, takedown, host opt-out) — separate tiers because
       they are answerable to different people: withdrawing a host's opt-out must not lift a legal
       takedown. Subdomain matching, or a blocklist is evadable by the blocked site itself
-- [ ] M2-T02.8 `/bot` page: user-agent, contact, how to block or rate-limit us
+- [x] M2-T02.8 `/bot` page: user-agent, contact, how to block or rate-limit us — pasteable rules
+      rather than prose, served from the API so it answers when the UI is not deployed. A test
+      asserts the token on the page is the one the parser actually matches; a page naming the wrong
+      token would look correct and block nothing
 - [x] M2-T02.9 **Config guard test**: prod has `respect_crawl_delay = true`, `per_host_concurrency = 1`
       — and `ignore_politeness = false`. The guard runs at startup and the binary **refuses to
       boot** rather than warning; a test loads the shipped `prod.toml` and `staging.toml` through
@@ -143,7 +149,11 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
 - [ ] M2-T04.5 Outcome classification table
 - [ ] M2-T04.6 Headless escalation rules + ratio cap; sandboxed browser container
 - [ ] M2-T04.7 Raw blob storage with TTL
-- [ ] M2-T04.8 **SSRF suite including redirects to private IPs**
+- [x] M2-T04.8 **SSRF suite including redirects to private IPs** — 13 cases covering the bypasses
+      that get past a guard checking only literals: IPv4-mapped IPv6, decimal and octal spellings
+      of loopback, credentials hiding the real host, non-HTTP schemes, resolved addresses (one bad
+      entry in a round-robin sinks the set), and a redirect from a public host to a private one.
+      All passed — the guard was already sound
 - [ ] M2-T04.9 Politeness assertion under 50 concurrent workers: one in-flight request per host
 
 ## M2-T05 — [[Deduplication Service]]
