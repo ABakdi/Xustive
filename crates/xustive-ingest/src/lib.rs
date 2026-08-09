@@ -13,6 +13,7 @@
 pub mod date;
 pub mod exclusion;
 pub mod fetch;
+pub mod frontier;
 pub mod parse;
 pub mod robots;
 pub mod robots_cache;
