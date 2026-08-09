@@ -154,6 +154,41 @@ impl Metrics {
             .store(value, Ordering::Relaxed);
     }
 
+    /// Total across every series of a counter.
+    ///
+    /// For the admin dashboard, which wants "how many searches" rather than a breakdown by route
+    /// and status. Reading the same counters Prometheus exports, so the two cannot disagree — a
+    /// separate tally kept for the dashboard is a second number that drifts.
+    pub fn counter_total(&self, name: &str) -> u64 {
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner
+            .counters
+            .get(name)
+            .map(|fam| {
+                fam.series
+                    .values()
+                    .map(|(_, v)| v.load(Ordering::Relaxed))
+                    .sum()
+            })
+            .unwrap_or(0)
+    }
+
+    /// Total across series whose labels contain a given key/value pair.
+    pub fn counter_where(&self, name: &str, key: &str, value: &str) -> u64 {
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner
+            .counters
+            .get(name)
+            .map(|fam| {
+                fam.series
+                    .values()
+                    .filter(|(labels, _)| labels.iter().any(|(k, v)| *k == key && v == value))
+                    .map(|(_, v)| v.load(Ordering::Relaxed))
+                    .sum()
+            })
+            .unwrap_or(0)
+    }
+
     /// Render the Prometheus text exposition format.
     pub fn render(&self) -> String {
         let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
@@ -262,6 +297,12 @@ pub const HTTP_DURATION_HELP: &str = "HTTP request duration by route";
 pub const DEGRADED: &str = "xustive_degraded_total";
 pub const DEGRADED_HELP: &str =
     "Requests that skipped a stage to stay inside the deadline, by stage";
+
+/// Instant answers served, by tool.
+///
+/// Bounded cardinality: the label is the tool name, of which there are nine. Never the query.
+pub const INSTANT_ANSWERS: &str = "xustive_instant_answers_total";
+pub const INSTANT_ANSWERS_HELP: &str = "Instant answers served, by tool";
 
 pub const SUGGEST_TOTAL: &str = "xustive_suggest_total";
 pub const SUGGEST_TOTAL_HELP: &str =

@@ -231,6 +231,13 @@ pub async fn handler(
         Some(answer) => Some(answer),
         None => crate::weather::answer(&state, &raw, ui_lang).await,
     };
+    if let Some(a) = &instant {
+        state.metrics.incr(
+            crate::metrics::INSTANT_ANSWERS,
+            crate::metrics::INSTANT_ANSWERS_HELP,
+            &[("tool", a.tool)],
+        );
+    }
 
     // The budget starts here, once, and is absolute. Passing a duration down the chain would let
     // every stage believe it had the whole thing.
