@@ -257,6 +257,13 @@ pub struct MeiliClient {
     timeout: Duration,
 }
 
+/// How long to wait for a task by default.
+///
+/// Generous because the wait is dominated by whatever else is queued, not by the task. Five
+/// minutes is long enough to sit behind a substantial indexing backlog and short enough that a
+/// genuinely stuck task still surfaces.
+pub const DEFAULT_TASK_WAIT: Duration = Duration::from_secs(300);
+
 impl MeiliClient {
     pub fn new(base_url: &str, key: &str, timeout: Duration) -> Result<Self, SearchError> {
         let base = Url::parse(base_url)
@@ -538,8 +545,25 @@ impl MeiliClient {
     /// The indexer acknowledges its queue message only after this returns successfully, so a
     /// crash here costs re-work rather than data.
     pub async fn wait_task(&self, uid: u64) -> Result<TaskStatus, SearchError> {
+        self.wait_task_for(uid, DEFAULT_TASK_WAIT).await
+    }
+
+    /// Wait for a task, with an explicit deadline.
+    ///
+    /// Meilisearch runs tasks **in submission order**, so how long one takes has almost nothing to
+    /// do with the task itself: creating an empty index behind a backlog of document batches waits
+    /// for every one of them. Once the crawler could fill the queue faster than the indexer drains
+    /// it, a one-millisecond index creation started timing out at sixty seconds.
+    ///
+    /// So the deadline belongs to the caller. A migration can afford to wait minutes; a request on
+    /// the serving path cannot wait at all.
+    pub async fn wait_task_for(
+        &self,
+        uid: u64,
+        max_wait: Duration,
+    ) -> Result<TaskStatus, SearchError> {
         let mut delay = Duration::from_millis(50);
-        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        let deadline = std::time::Instant::now() + max_wait;
 
         loop {
             let t = self.task(uid).await?;
@@ -557,7 +581,7 @@ impl MeiliClient {
                 return Ok(t);
             }
             if std::time::Instant::now() >= deadline {
-                return Err(SearchError::Timeout(Duration::from_secs(60)));
+                return Err(SearchError::Timeout(max_wait));
             }
             tokio::time::sleep(delay).await;
             delay = (delay * 2).min(Duration::from_secs(1));
