@@ -258,6 +258,39 @@ fn matches_pattern(pattern: &str, path: &str) -> bool {
     }
 }
 
+/// Resolve the delay to use for a host.
+///
+/// Four sources can each ask us to slow down, and the answer is the **largest** of them. Every one
+/// is a floor set by somebody with a reason:
+///
+/// | Source | Set by | Why it can only raise the delay |
+/// |:---|:---|:---|
+/// | `robots.txt` `Crawl-delay` | the site | it is the site telling us its capacity |
+/// | Registry `crawl_delay_ms` | us, per source | a site we know is fragile, or one that asked |
+/// | Default | us, globally | the floor for a host that has said nothing |
+/// | Adaptive | the host's behaviour | 429 and 503 are the site saying it now, under load |
+///
+/// Taking the minimum, or letting one source override another, means a configuration change can
+/// silently undo a request the site made — and a `Crawl-delay: 30` quietly reduced to our default
+/// is indistinguishable from ignoring it.
+///
+/// Bounded at the top, because a host asking for an hour between requests would otherwise park a
+/// worker for an hour; past `MAX_CRAWL_DELAY` the honest response is to crawl that source rarely
+/// rather than to hold a slot open.
+pub fn resolve_delay(
+    robots: Option<Duration>,
+    registry: Option<Duration>,
+    adaptive: Option<Duration>,
+) -> Duration {
+    [robots, registry, adaptive]
+        .into_iter()
+        .flatten()
+        .chain(std::iter::once(DEFAULT_CRAWL_DELAY))
+        .max()
+        .unwrap_or(DEFAULT_CRAWL_DELAY)
+        .min(MAX_CRAWL_DELAY)
+}
+
 /// Per-host politeness state: cached rules and when we may next fetch.
 ///
 /// Concurrency per host is one, enforced by the scheduler holding this lock across the wait.

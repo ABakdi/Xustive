@@ -14,7 +14,9 @@
 
 use std::time::Duration;
 
-use xustive_ingest::robots::{Politeness, Robots, UA_TOKEN};
+use xustive_ingest::robots::{
+    resolve_delay, Politeness, Robots, DEFAULT_CRAWL_DELAY, MAX_CRAWL_DELAY, UA_TOKEN,
+};
 
 /// Parse and ask about a path in one step.
 fn allows(robots_txt: &str, path: &str) -> bool {
@@ -355,4 +357,37 @@ fn without_the_bypass_the_same_rules_are_obeyed() {
     );
     assert!(!p.allows("example.dz", "/admin/secret"));
     assert!(!p.skip_robots_fetch());
+}
+
+// ── Crawl-delay resolution ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn the_largest_requested_delay_wins() {
+    // Each source is a floor set by somebody with a reason, so the answer is the maximum. Taking
+    // the minimum would let a configuration change silently undo what a site asked for.
+    let s = Duration::from_secs;
+    assert_eq!(resolve_delay(Some(s(10)), Some(s(2)), Some(s(3))), s(10));
+    assert_eq!(resolve_delay(Some(s(2)), Some(s(10)), Some(s(3))), s(10));
+    assert_eq!(resolve_delay(Some(s(2)), Some(s(3)), Some(s(10))), s(10));
+}
+
+#[test]
+fn the_default_is_a_floor_not_a_fallback() {
+    // A site asking for *less* than our default does not get it. The default exists because we
+    // decided what we are willing to do, and a site cannot raise our rate.
+    assert_eq!(resolve_delay(None, None, None), DEFAULT_CRAWL_DELAY);
+    assert_eq!(
+        resolve_delay(Some(Duration::from_millis(1)), None, None),
+        DEFAULT_CRAWL_DELAY
+    );
+}
+
+#[test]
+fn an_absurd_delay_is_bounded() {
+    // A host asking for an hour would otherwise park a worker for an hour. Past the cap the honest
+    // answer is to crawl that source rarely, not to hold a slot open.
+    assert_eq!(
+        resolve_delay(Some(Duration::from_secs(86_400)), None, None),
+        MAX_CRAWL_DELAY
+    );
 }
