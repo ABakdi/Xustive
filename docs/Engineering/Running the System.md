@@ -27,8 +27,8 @@ generated locally from the results.
 | Runs today | Not built yet |
 |:---|:---|
 | `xustive-api` — HTTP, search, server-rendered results | `xustive-worker` — a standing parse/enrich/index service |
-| `xustive-cli` — migrate, seed, **crawl**, stats, text, search | Continuous scheduled crawling — [[Milestone 3 - Ingestion at Scale]] |
-| Language detection, Arabizi ↔ Arabic expansion, sentiment | Voice and image search — [[Milestone 2 - Multimodal Input]] |
+| `xustive-cli` — migrate, seed, **crawl**, stats, text, search | Continuous scheduled crawling — [[Milestone 2 - Ingestion at Scale]] |
+| Language detection, Arabizi ↔ Arabic expansion, sentiment | Voice and image search — [[Milestone 3 - Multimodal Input]] |
 | Meilisearch index + generated synonyms | Qdrant is running but unused |
 | The web UI, including the no-JavaScript path | Autocomplete, filters UI |
 | **AI summaries** — local Qwen2.5 via llama.cpp ([[Summarizer]]) | Streaming summaries — see [[Summarizer]] §3 |
@@ -55,7 +55,7 @@ gap is real and measured; see [[Summarizer]] §8.
 
 No system libraries are needed yet. Tesseract, `libtorch` and the model files listed in
 [[Deployment Topology]] only become prerequisites when `xustive-ml` arrives in
-[[Milestone 2 - Multimodal Input]].
+[[Milestone 3 - Multimodal Input]].
 
 Disk: roughly 6 GB for the Rust build plus about 200 MB for the sample index.
 
@@ -77,7 +77,7 @@ missing rather than failing halfway through. It is safe to re-run and will not o
 existing `.env`.
 
 It does **not** download models. `xustive-ml` does not exist yet, so there is nothing to fetch;
-that step joins `setup` in [[Milestone 2 - Multimodal Input]].
+that step joins `setup` in [[Milestone 3 - Multimodal Input]].
 
 Then open <http://localhost:8080>, or run `make web`.
 

@@ -39,7 +39,7 @@ either is painful, and getting normalisation wrong means Arabic search silently 
 
 - [x] M0-T02.1 `deploy/docker-compose.yml`: meilisearch, qdrant, redis, prometheus, grafana
 - [~] M0-T02.2 Networks `core` / `obs` with `internal: true`; `edge`/`ingest` land with the
-      services that need them (Caddy in M4, crawler in M3)
+      services that need them (Caddy in M4, crawler in M2)
       ([[Deployment Topology]] §3)
 - [x] M0-T02.3 Named volumes and healthchecks for every service
 - [x] M0-T02.4 Resource limits matching [[Performance Budgets]] §7, scaled to a development
@@ -60,7 +60,7 @@ either is painful, and getting normalisation wrong means Arabic search silently 
 - [x] M0-T03.6 SSRF test suite against `SafeUrl` — private IPs, IPv6, decimal literals, rebinding
 
 > `SafeUrl` lands in M0 even though nothing fetches anything yet. It exists so that when
-> [[Web Fetcher]] is written in M3, there is no plausible path that bypasses it.
+> [[Web Fetcher]] is written in M2, there is no plausible path that bypasses it.
 
 ## M0-T04 — `xustive-text` normalisation ★
 

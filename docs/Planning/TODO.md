@@ -36,20 +36,30 @@ Task id format: `M<milestone>-T<task>` → `M1-T04`. Subtasks are `M1-T04.3`.
 | **M0** | [[Milestone 0 - Foundations]] | repo, infra, index, a search box that works | 10k docs searchable end-to-end |
 | **M1** | [[Milestone 1 - Text Search MVP]] | the full text search product | nDCG@10 ≥ 0.60 on the golden set; p95 ≤ 200 ms |
 | **M1B** | [[Milestone 1B - Frontend and Instant Answers]] | Next.js UI + instant-answer tools | Rust renderer deleted; no-JS path passes; zero false tool activations |
-| **M2** | [[Milestone 2 - Multimodal Input]] | voice and image | WER/OCR targets met; image search ≤ 500 ms |
-| **M3** | [[Milestone 3 - Ingestion at Scale]] | real crawling + direct social collection | 1M documents; identity lifespan ≥ 60 d; cloaking detected |
+| **M2** | [[Milestone 2 - Ingestion at Scale]] | real crawling + direct social collection | 1M documents; identity lifespan ≥ 60 d; cloaking detected |
+| **M3** | [[Milestone 3 - Multimodal Input]] | voice and image | WER/OCR targets met; image search ≤ 500 ms |
 | **M4** | [[Milestone 4 - Quality and Operations]] | make it survivable | load test passes at 10M docs; restore drill green |
 | **M5** | [[Milestone 5 - Beta Launch]] | legal, a11y, launch | legal checklist clear; a11y AA; public beta |
 
 ```
-M0 ──► M1 ──► M2 ──┐
-        │          ├──► M4 ──► M5
-        └──► M3 ───┘
+M0 ──► M1 ──► M1B ──► M2 ──► M3 ──► M4 ──► M5
 ```
 
-M2 and M3 are independent after M1 and can run in parallel with enough people. **M3 has a wall-clock
-critical path**: identity warm-up takes 10+ days per account and cannot be parallelised away, so
-account acquisition and warm-up start during M1 ([[Session Manager]] §4.4).
+**Ingestion runs before multimodal.** They are technically independent after M1 and were originally
+drawn side by side, but the order is not a free choice:
+
+- Everything downstream is starved without it. Ranking is tuned against a fixture corpus, the
+  summariser reads passages that barely exist, and the evaluation set describes 500 documents
+  rather than a country's web. Each of those has to be redone once real content lands, so doing
+  them first means doing them twice.
+- Multimodal makes that worse rather than better. Voice and image search add ways to *ask*; they
+  add nothing to *answer with*. An image search over a corpus this size returns the same emptiness
+  more expensively.
+- **M2 has a wall-clock critical path** the others do not: identity warm-up takes 10+ days per
+  account and cannot be parallelised away, so account acquisition and warm-up start during M1
+  ([[Session Manager]] §4.4). Time spent on multimodal first is time that path is not running.
+
+M3 is unchanged in content — it is deferred, not reduced.
 
 ---
 
@@ -99,32 +109,32 @@ Breakdown in [[Milestone 1B - Frontend and Instant Answers]].
 - [ ] M1B-T07 Tier 2 and 3 tools
 - [ ] M1B-T08 Localisation — catalogues, plurals, numerals, visual regression
 
-### M2 — Multimodal Input
-- [ ] M2-T01 `xustive-ml` service scaffold and model management
-- [ ] M2-T02 [[Speech to Text]] pipeline
-- [ ] M2-T03 [[UI - Voice Search]]
-- [ ] M2-T04 [[Image Pipeline]] OCR path
-- [ ] M2-T05 CLIP embedding + [[Vector Index]]
-- [ ] M2-T06 [[UI - Image Search]]
-- [ ] M2-T07 Index-side media enrichment
-- [ ] M2-T08 Quality suites: WER, CER, ANN recall
+### M2 — Ingestion at Scale
+- [ ] M2-T01a [[Session Manager]] ← **start in M1**, warm-up is wall-clock
+- [ ] M2-T01b [[Fingerprint Engine]]
+- [ ] M2-T01c [[Signature Service]]
+- [ ] M2-T01d Legal entity, Law 18-07, provider due diligence *(reduced scope)*
+- [ ] M2-T02 [[Politeness and Robots]] — incl. the two crawl profiles
+- [ ] M2-T03 [[Crawler Orchestrator]] frontier and scheduling
+- [ ] M2-T04 [[Web Fetcher]] plain + impersonated + stealth headless
+- [ ] M2-T05 [[Deduplication Service]]
+- [ ] M2-T06 [[Enrichment Pipeline]] step framework
+- [ ] M2-T07 [[Proxy Manager]] residential/mobile pools *(now required)*
+- [ ] M2-T08 [[Social Connector - Facebook]] (gated on T01a/b/c)
+- [ ] M2-T09 [[Social Connector - Instagram]] (gated on T01a/b/c)
+- [ ] M2-T10 [[Social Connector - TikTok]] (gated on T01a/b/c)
+- [ ] M2-T11 [[Data Sources Registry]] seeding to ~500 sources
+- [ ] M2-T12 [[Admin and Source Submission]] admin surface + takedown path
 
-### M3 — Ingestion at Scale
-- [ ] M3-T01a [[Session Manager]] ← **start in M1**, warm-up is wall-clock
-- [ ] M3-T01b [[Fingerprint Engine]]
-- [ ] M3-T01c [[Signature Service]]
-- [ ] M3-T01d Legal entity, Law 18-07, provider due diligence *(reduced scope)*
-- [ ] M3-T02 [[Politeness and Robots]] — incl. the two crawl profiles
-- [ ] M3-T03 [[Crawler Orchestrator]] frontier and scheduling
-- [ ] M3-T04 [[Web Fetcher]] plain + impersonated + stealth headless
-- [ ] M3-T05 [[Deduplication Service]]
-- [ ] M3-T06 [[Enrichment Pipeline]] step framework
-- [ ] M3-T07 [[Proxy Manager]] residential/mobile pools *(now required)*
-- [ ] M3-T08 [[Social Connector - Facebook]] (gated on T01a/b/c)
-- [ ] M3-T09 [[Social Connector - Instagram]] (gated on T01a/b/c)
-- [ ] M3-T10 [[Social Connector - TikTok]] (gated on T01a/b/c)
-- [ ] M3-T11 [[Data Sources Registry]] seeding to ~500 sources
-- [ ] M3-T12 [[Admin and Source Submission]] admin surface + takedown path
+### M3 — Multimodal Input
+- [ ] M3-T01 `xustive-ml` service scaffold and model management
+- [ ] M3-T02 [[Speech to Text]] pipeline
+- [ ] M3-T03 [[UI - Voice Search]]
+- [ ] M3-T04 [[Image Pipeline]] OCR path
+- [ ] M3-T05 CLIP embedding + [[Vector Index]]
+- [ ] M3-T06 [[UI - Image Search]]
+- [ ] M3-T07 Index-side media enrichment
+- [ ] M3-T08 Quality suites: WER, CER, ANN recall
 
 ### M4 — Quality and Operations
 - [ ] M4-T01 [[Observability]] metrics, dashboards, alerts
@@ -176,7 +186,7 @@ arrives.
 - [ ] Egress test in CI from the first container
 - [ ] Dependency audit (`cargo-deny`, `cargo-audit`) in CI
 
-### Collection maintenance (continuous from M3, **permanent**)
+### Collection maintenance (continuous from M2, **permanent**)
 - [ ] Signer re-extraction when platforms rotate ([[Signature Service]] §4.5)
 - [ ] Fingerprint profile version ageing and successor migration
 - [ ] Access-path repair as platform DOM/endpoints change
@@ -195,15 +205,15 @@ arrives.
 
 | # | Item | Blocks | Owner | Needed by |
 |:--|:---|:---|:---|:---|
-| B1 | **Account acquisition + pool sizing** for FB/IG; warm-up is 10+ days wall-clock | M3-T08/09 | — | **start in M1** |
-| B2 | **Residential/mobile proxy provider** — DZ coverage across ≥ 4 ASNs, exit-node consent | M3-T07, all platform collection | — | before M3-T07 |
-| B3 | Monthly bandwidth budget for residential pools | M3-T07 cost gate | — | M3 planning |
+| B1 | **Account acquisition + pool sizing** for FB/IG; warm-up is 10+ days wall-clock | M2-T08/09 | — | **start in M1** |
+| B2 | **Residential/mobile proxy provider** — DZ coverage across ≥ 4 ASNs, exit-node consent | M2-T07, all platform collection | — | before M2-T07 |
+| B3 | Monthly bandwidth budget for residential pools | M2-T07 cost gate | — | M2 planning |
 | ~~B4~~ | Is a 3B model good enough for Arabic summaries? | — | **Yes on quality, no on speed.** Resolved during M1; became a latency question, see [[Summarizer]] §8 | closed |
 | B5 | Who owns lexicon and registry curation? | quality of everything | — | M1 |
-| B6 | Hardware: is a GPU in the budget? | **Now blocking summary latency**, not just M2 | Code is ready: build with `--features cuda` and the device layer does the rest. Needs the CUDA toolkit installed on the host | urgent |
+| B6 | Hardware: is a GPU in the budget? | **Now blocking summary latency**, not just M3 | Code is ready: build with `--features cuda` and the device layer does the rest. Needs the CUDA toolkit installed on the host | urgent |
 | B7 | Native Darija speakers for UI strings and evaluation | M1-T14, M5-T06 | — | M1 |
 | B8 | Legal entity (for takedowns/submissions) + Law 18-07 position | M5-T01 | — | before M5 |
-| B9 | Who owns the collection maintenance tail? Signer re-extraction, path repair, pool refresh | M3 onward, **permanently** | — | M3 |
+| B9 | Who owns the collection maintenance tail? Signer re-extraction, path repair, pool refresh | M2 onward, **permanently** | — | M2 |
 
 **B1, B2, B5, B7, and B9 are people/procurement problems, not engineering problems**, and they are
 the ones most likely to slip. B1 and B9 are new consequences of

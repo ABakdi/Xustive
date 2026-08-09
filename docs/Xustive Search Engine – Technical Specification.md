@@ -218,7 +218,7 @@ All components are **100% open-source and free** under permissive licenses (MIT/
 
 > Superseded in detail by **[[TODO]]** and the milestone notes, which break these phases into tasks
 > and subtasks with exit gates: [[Milestone 0 - Foundations]] · [[Milestone 1 - Text Search MVP]] ·
-> [[Milestone 2 - Multimodal Input]] · [[Milestone 3 - Ingestion at Scale]] ·
+> [[Milestone 3 - Multimodal Input]] · [[Milestone 2 - Ingestion at Scale]] ·
 > [[Milestone 4 - Quality and Operations]] · [[Milestone 5 - Beta Launch]].
 >
 > Note the sequencing change: legal review and platform API applications now start during Milestone 1,

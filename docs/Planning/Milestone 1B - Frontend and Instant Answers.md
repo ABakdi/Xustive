@@ -8,7 +8,7 @@ updated: 2026-08-07
 
 # Milestone 1B — Frontend and Instant Answers
 
-> Sits between [[Milestone 1 - Text Search MVP]] and [[Milestone 2 - Multimodal Input]]. Numbered
+> Sits between [[Milestone 1 - Text Search MVP]] and [[Milestone 3 - Multimodal Input]]. Numbered
 > 1B rather than appended to M1 because M1's remaining work — the task queue, the indexer worker —
 > is backend and can proceed in parallel with none of this.
 

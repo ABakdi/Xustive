@@ -83,7 +83,7 @@ Design choices:
 | 128 | ~0.98 | ~40 ms |
 
 Default `ef = 64`. These numbers must be **measured** on our own corpus during
-[[Milestone 2 - Multimodal Input]], not assumed.
+[[Milestone 3 - Multimodal Input]], not assumed.
 
 ## 5. Configuration
 

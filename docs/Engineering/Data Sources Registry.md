@@ -141,7 +141,7 @@ extraction fell back to the generic path, and quality dropped without a single e
 |:---|:---|
 | [[Milestone 0 - Foundations]] | 10 sources — fixture site + a handful of news sites with clean sitemaps |
 | [[Milestone 1 - Text Search MVP]] | ~50 web sources across news, government, and services |
-| [[Milestone 3 - Ingestion at Scale]] | ~500 web sources + whatever social access has actually been granted |
+| [[Milestone 2 - Ingestion at Scale]] | ~500 web sources + whatever social access has actually been granted |
 | [[Milestone 5 - Beta Launch]] | ~2 000, including community submissions |
 
 The social numbers are deliberately not specified: they depend entirely on outreach outcomes

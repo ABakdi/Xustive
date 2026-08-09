@@ -255,7 +255,7 @@ Dashboard **Collection Health** (shared with [[Session Manager]]). Alerts: `Prox
 - [ ] Provider selection: which residential/mobile providers offer genuine DZ coverage across
       multiple ASNs, and can they evidence consent for their exit nodes?
 - [ ] Is mobile needed at all, or is residential sufficient for Facebook? Mobile is materially more
-      expensive; decide with measured challenge rates in [[Milestone 3 - Ingestion at Scale]].
+      expensive; decide with measured challenge rates in [[Milestone 2 - Ingestion at Scale]].
 - [ ] Bandwidth budget per month — needs a real number before residential pools are enabled.
 - [ ] Should media fetching route through `direct` by default to keep residential spend down, and
       does that create a correlatable split (page from residential, images from datacentre)?

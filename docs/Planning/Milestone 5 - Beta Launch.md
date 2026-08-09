@@ -145,7 +145,7 @@ Every item from [[Legal and Compliance]] §8:
 
 | Risk | Mitigation |
 |:---|:---|
-| Legal items slip and block launch indefinitely | started in M3; tracked as blockers B1/B2 in [[TODO]] §5 |
+| Legal items slip and block launch indefinitely | started in M2; tracked as blockers B1/B2 in [[TODO]] §5 |
 | No feedback loop without query logs | M5-T07.2 designs it deliberately rather than hoping |
 | Coverage disappoints users expecting "all of Algerian Facebook" | be explicit about what is indexed; this is a communications decision made in advance |
 | Accessibility treated as a checkbox | manual AT passes are an exit gate, not a nice-to-have |

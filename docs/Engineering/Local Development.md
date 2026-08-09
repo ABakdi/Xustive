@@ -73,7 +73,7 @@ System libraries for `xustive-ml`: `libtesseract-dev`, `libleptonica-dev`, `libc
 
 ```bash
 git clone … && cd xustive
-make setup          # ✅ exists — prerequisites, hooks, .env (model fetch arrives with M2)
+make setup          # ✅ exists — prerequisites, hooks, .env (model fetch arrives with M3)
 make dev-up         # ✅ exists
 make seed           # ✅ exists
 make run-api        # ✅ exists
@@ -100,9 +100,9 @@ no models to fetch, so it only checks prerequisites, installs the git hooks and 
 | `make text` / `search` | normalisation and search from the terminal | ✅ |
 | `make run-ml` / `run-crawler` / `run-worker` | the other binaries | ❌ M2/M3 |
 | `make run-web` | UI dev server with watch | ❌ no build step yet |
-| `make seed-crawl` | crawl the local fixture site | ❌ M3 |
+| `make seed-crawl` | crawl the local fixture site | ❌ M2 |
 | `make eval` | relevance harness → nDCG report | ❌ M1-T15 |
-| `make dlq` | inspect/replay dead letters | ❌ M3 |
+| `make dlq` | inspect/replay dead letters | ❌ M2 |
 
 `make help` is always the authoritative list — it is generated from the Makefile, so it cannot
 drift from reality the way this table can.

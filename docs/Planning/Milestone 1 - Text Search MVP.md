@@ -13,7 +13,7 @@ updated: 2026-08-06
 > AI summary, and a real UI. If the project stopped here, it would still be useful.
 > **Exit gate:** nDCG@10 ≥ 0.60 on the golden set; `/search` p95 ≤ 200 ms; summary faithfulness
 > ≥ 95 %.
-> Parent: [[TODO]] · Previous: [[Milestone 0 - Foundations]] · Next: [[Milestone 2 - Multimodal Input]], [[Milestone 3 - Ingestion at Scale]]
+> Parent: [[TODO]] · Previous: [[Milestone 0 - Foundations]] · Next: [[Milestone 3 - Multimodal Input]], [[Milestone 2 - Ingestion at Scale]]
 
 ---
 
@@ -22,7 +22,7 @@ updated: 2026-08-06
 This is where the product's actual differentiator gets built: **Darija works**. Everything else here
 is standard search engineering; the language work is not, and it is where the time will go.
 
-The corpus is still the M0 fixture set — real crawling comes in M3. That is deliberate: tuning
+The corpus is still the M0 fixture set — real crawling comes in M2. That is deliberate: tuning
 ranking against a stable corpus is possible, tuning it against a corpus that changes hourly is not.
 
 ---
@@ -196,7 +196,7 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [x] M1-T11.4 Pre-submit validation: missing id, not an object, empty, oversized. Caught here
       because a batch the engine rejects takes the good documents with it
 - [ ] M1-T11.5 Deletion path (vectors → comments → document → blocklist) — needs the vector
-      index, which is M2
+      index, which is M3
 - [x] M1-T11.6 Crash safety: a worker that consumes without acknowledging leaves its job pending
       and recoverable; redelivery overwrites rather than duplicating because writes are keyed by id
 
@@ -293,7 +293,7 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 |:---|:---|
 | Lexicon work is unglamorous and gets deferred | it is on the critical path for the exit gate, and B5/B7 name it as a people problem |
 | ~~3B summaries are not good enough in Arabic~~ | **Resolved.** Quality is adequate; speed is not. The live risk is now latency, tracked in [[Summarizer]] §8 |
-| Ranking tuned to the fixture corpus, not reality | re-run the full evaluation after M3 when real content arrives |
+| Ranking tuned to the fixture corpus, not reality | re-run the full evaluation after M2 when real content arrives |
 | Golden set judged by non-native speakers | explicitly blocked on B7; do not substitute |
 
 ## Related

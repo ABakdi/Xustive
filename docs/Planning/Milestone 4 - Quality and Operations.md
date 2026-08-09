@@ -13,7 +13,7 @@ updated: 2026-08-06
 > real data, and build the operational apparatus that lets a small team run this without heroics.
 > **Exit gate:** load test passes at 10M documents; restore drill green; every alert has a runbook;
 > security review clear.
-> Parent: [[TODO]] · Previous: [[Milestone 3 - Ingestion at Scale]] · Next: [[Milestone 5 - Beta Launch]]
+> Parent: [[TODO]] · Previous: [[Milestone 2 - Ingestion at Scale]] · Next: [[Milestone 5 - Beta Launch]]
 
 ---
 
@@ -143,7 +143,7 @@ the entire point. Discovering it during beta is not.
 |:---|:---|
 | Single Meilisearch node misses the latency budget at 10M | this is an expected outcome; M4-T03.8 makes it a planned decision rather than a beta incident |
 | Real-corpus relevance is worse than fixture relevance | M4-T05.7 schedules the re-tune explicitly |
-| Redis memory becomes the binding constraint | monitored since M3; the object-storage option is pre-designed |
+| Redis memory becomes the binding constraint | monitored since M2; the object-storage option is pre-designed |
 | Alert fatigue from a large new alert set | M4-T09.5 forces deletion of unactionable alerts |
 | Operational work is deprioritised for features | it is the exit gate; there is no M5 without it |
 

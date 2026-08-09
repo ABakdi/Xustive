@@ -39,18 +39,18 @@ Decisions we know we must make, with the milestone that forces them.
 
 | Question | Forced by | Notes |
 |:---|:---|:---|
-| Which residential/mobile proxy provider? DZ coverage, ≥ 4 ASNs, exit-node consent | [[Milestone 3 - Ingestion at Scale]] | [[Proxy Manager]] §12 |
-| Which JS runtime for signer execution — `deno_core`, `rusty_v8`, `boa`? | [[Milestone 3 - Ingestion at Scale]] | [[Signature Service]] §12 — prototype against a real bundle first |
-| Which impersonation library — `rquest` or alternatives? | [[Milestone 3 - Ingestion at Scale]] | [[Fingerprint Engine]] §12 — validate JA4 accuracy before committing |
-| Do we join closed groups with our identities? | [[Milestone 3 - Ingestion at Scale]] | default no; per-source, operator-performed ([[Social Connector - Facebook]] §4.3) |
-| Is the embedded-JSON path alone enough for IG/TikTok monitoring? | [[Milestone 3 - Ingestion at Scale]] | would make collection near signature-independent — measure early |
+| Which residential/mobile proxy provider? DZ coverage, ≥ 4 ASNs, exit-node consent | [[Milestone 2 - Ingestion at Scale]] | [[Proxy Manager]] §12 |
+| Which JS runtime for signer execution — `deno_core`, `rusty_v8`, `boa`? | [[Milestone 2 - Ingestion at Scale]] | [[Signature Service]] §12 — prototype against a real bundle first |
+| Which impersonation library — `rquest` or alternatives? | [[Milestone 2 - Ingestion at Scale]] | [[Fingerprint Engine]] §12 — validate JA4 accuracy before committing |
+| Do we join closed groups with our identities? | [[Milestone 2 - Ingestion at Scale]] | default no; per-source, operator-performed ([[Social Connector - Facebook]] §4.3) |
+| Is the embedded-JSON path alone enough for IG/TikTok monitoring? | [[Milestone 2 - Ingestion at Scale]] | would make collection near signature-independent — measure early |
 | Store `translit_body` (index +35 %) or transliterate at query time? | [[Milestone 1 - Text Search MVP]] | [[Data Model]] §9 |
 | One Meilisearch node at 10M docs, or a read replica? | [[Milestone 4 - Quality and Operations]] | [[Performance Budgets]] §10 — needs a real load test |
 | Is a 3B model good enough for Arabic synthesis? | [[Milestone 1 - Text Search MVP]] | [[Summarizer]] §12 — decided by the faithfulness gate |
 | Proxy remote thumbnails through our own server? | [[Milestone 5 - Beta Launch]] | [[Security and Privacy]] §9 — leaning yes |
-| Enable aggregate popularity for autocomplete? | [[Milestone 2 - Multimodal Input]] | [[Autocomplete Service]] §12 — leaning no |
+| Enable aggregate popularity for autocomplete? | [[Milestone 3 - Multimodal Input]] | [[Autocomplete Service]] §12 — leaning no |
 | Sentiment transformer mode: where does labelled data come from? | [[Milestone 4 - Quality and Operations]] | [[Sentiment Engine]] §12 |
-| What happens if Facebook group access is unobtainable? | [[Milestone 3 - Ingestion at Scale]] | [[Legal and Compliance]] §9 — a product-strategy question |
+| What happens if Facebook group access is unobtainable? | [[Milestone 2 - Ingestion at Scale]] | [[Legal and Compliance]] §9 — a product-strategy question |
 | Service worker for static assets only? | [[Milestone 5 - Beta Launch]] | [[UI - States and Errors]] §8 |
 
 ---

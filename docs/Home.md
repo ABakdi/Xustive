@@ -110,8 +110,8 @@ social media posts, serving results in **Arabic, Darija, French, and English**.
 - [[TODO]] — **the master implementation checklist**
 - [[Milestone 0 - Foundations]]
 - [[Milestone 1 - Text Search MVP]]
-- [[Milestone 2 - Multimodal Input]]
-- [[Milestone 3 - Ingestion at Scale]]
+- [[Milestone 3 - Multimodal Input]]
+- [[Milestone 2 - Ingestion at Scale]]
 - [[Milestone 4 - Quality and Operations]]
 - [[Milestone 5 - Beta Launch]]
 
