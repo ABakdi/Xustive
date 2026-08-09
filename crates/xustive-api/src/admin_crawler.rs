@@ -335,3 +335,89 @@ pub async fn page_documents(
     ))
     .into_response()
 }
+
+/// `GET /admin` — the overview.
+///
+/// Answers "is anything wrong" in one screen. Every number that could be *unknown* says so rather
+/// than showing zero, because a zero and an unreachable dependency look identical and the second
+/// is the one that needs attention.
+pub async fn page_overview(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    if let Err(d) = crate::admin::authorise(&state, peer, &headers) {
+        return d.json().into_response();
+    }
+
+    // The **real** document count, from the index, not from a search.
+    //
+    // A search reports at most `maxTotalHits`, which is 2000 — so watching a search count to see
+    // the crawler working shows a number that stops moving at 2000 while indexing continues
+    // perfectly well. That is exactly how "the crawler is not indexing" gets diagnosed wrongly.
+    let indexed = match state.search.stats(&state.documents_index()).await {
+        Ok(s) => s.number_of_documents.to_string(),
+        Err(_) => "unknown".to_string(),
+    };
+
+    let snap = snapshot(&state).await;
+    let searches =
+        state
+            .metrics
+            .counter_where(crate::metrics::HTTP_REQUESTS, "route", "/api/v1/search");
+    let suggests =
+        state
+            .metrics
+            .counter_where(crate::metrics::HTTP_REQUESTS, "route", "/api/v1/suggest");
+    let summaries =
+        state
+            .metrics
+            .counter_where(crate::metrics::HTTP_REQUESTS, "route", "/api/v1/summary");
+    let tools = state.metrics.counter_total(crate::metrics::INSTANT_ANSWERS);
+
+    let crawl_state = if snap.unavailable {
+        "unknown".to_string()
+    } else {
+        snap.state.clone()
+    };
+
+    let body = format!(
+        r#"<h1>Overview</h1>
+<p class="lede">Everything at a glance. A number that reads <em>unknown</em> means we could not
+reach the thing that knows — which is not the same as zero.</p>
+
+<h2>Index</h2>
+<div class="tiles">
+  <div class="tile"><span class="tile-n">{indexed}</span><span class="tile-l">documents indexed</span></div>
+  <div class="tile"><span class="tile-n">{waiting}</span><span class="tile-l">urls queued</span></div>
+  <div class="tile"><span class="tile-n">{discovered}</span><span class="tile-l">discovered</span></div>
+</div>
+<p class="muted">The document count comes from the index itself, not from a search. A search
+reports at most 2&nbsp;000 results by design, so watching that number makes a healthy crawl look
+stalled the moment it passes the cap.</p>
+
+<h2>Crawler</h2>
+<div class="tiles">
+  <div class="tile"><span class="tile-n">{crawl_state}</span><span class="tile-l">state</span></div>
+  <div class="tile"><span class="tile-n">{fetched}</span><span class="tile-l">fetched</span></div>
+  <div class="tile"><span class="tile-n">{failed}</span><span class="tile-l">failed</span></div>
+</div>
+
+<h2>Usage</h2>
+<p class="muted">Since this process started. Counts only — no queries are recorded, here or
+anywhere.</p>
+<div class="tiles">
+  <div class="tile"><span class="tile-n">{searches}</span><span class="tile-l">searches</span></div>
+  <div class="tile"><span class="tile-n">{suggests}</span><span class="tile-l">suggestions</span></div>
+  <div class="tile"><span class="tile-n">{tools}</span><span class="tile-l">tool answers</span></div>
+  <div class="tile"><span class="tile-n">{summaries}</span><span class="tile-l">summaries</span></div>
+</div>
+"#,
+        waiting = snap.waiting,
+        discovered = snap.discovered,
+        fetched = snap.fetched,
+        failed = snap.failed,
+    );
+
+    axum::response::Html(crate::admin::console("/admin", &body)).into_response()
+}

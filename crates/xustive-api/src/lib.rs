@@ -119,7 +119,8 @@ pub fn app(state: AppState) -> Router {
         .route("/metrics", get(metrics_handler))
         // Operator surface. Read-mostly, and nothing here can stop the process starting.
         .route("/bot", get(bot::page))
-        .route("/admin", get(admin::page))
+        .route("/admin", get(admin_crawler::page_overview))
+        .route("/admin/compute", get(admin::page))
         .route("/admin/crawler", get(admin_crawler::page_live))
         .route("/admin/documents", get(admin_crawler::page_documents))
         .route("/admin/crawler/status", get(admin_crawler::status))

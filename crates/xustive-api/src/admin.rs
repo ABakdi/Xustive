@@ -447,7 +447,7 @@ pub async fn page(State(state): State<AppState>, Peer(peer): Peer, headers: Head
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        Html(admin_shell("Xustive admin", &body)),
+        Html(console("/admin/compute", &body)),
     )
         .into_response()
 }
@@ -469,7 +469,6 @@ pub const SECTIONS: &[(&str, &str, &str)] = &[
     ("CRAWLER", "Live", "/admin/crawler"),
     ("CRAWLER", "Documents", "/admin/documents"),
     ("SYSTEM", "Compute", "/admin/compute"),
-    ("SYSTEM", "Politeness", "/admin/politeness-settings"),
 ];
 
 /// The shell: header, status bar, sidebar, content.
