@@ -15,6 +15,7 @@ pub mod exclusion;
 pub mod fetch;
 pub mod parse;
 pub mod robots;
+pub mod robots_cache;
 pub mod rules;
 pub mod sitemap;
 

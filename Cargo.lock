@@ -3216,6 +3216,7 @@ dependencies = [
  "chardetng",
  "encoding_rs",
  "quick-xml",
+ "redis",
  "reqwest",
  "scraper",
  "serde",
