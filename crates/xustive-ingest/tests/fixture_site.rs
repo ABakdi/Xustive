@@ -291,10 +291,13 @@ async fn the_sitemap_is_discovered_from_robots_txt() {
         .await
         .expect("should fetch");
 
-    // Keyed by host without the port. This returns the sitemap *locations* declared in
-    // robots.txt, not the URLs inside them — a distinction worth keeping straight, since one is
-    // a discovery step and the other is the crawl frontier.
-    let locations = f.sitemaps_for("127.0.0.1").await;
+    // Keyed by **authority**, host and port. robots.txt is per origin — `example.dz:8080` serves
+    // a different file from `example.dz` and usually a different application — so keying on the
+    // bare host would let one inherit rules it never published.
+    //
+    // This returns the sitemap *locations* declared in robots.txt, not the URLs inside them: one
+    // is a discovery step and the other is the crawl frontier.
+    let locations = f.sitemaps_for(&format!("127.0.0.1:{}", port())).await;
     assert_eq!(locations.len(), 1, "got {locations:?}");
     assert!(
         locations[0].contains(&port().to_string()),
