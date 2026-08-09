@@ -200,6 +200,28 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                 if stop.load(std::sync::atomic::Ordering::Relaxed) {
                     return;
                 }
+                // Back off when the indexer is behind.
+                //
+                // Checked per worker rather than centrally: all sixteen pause together, and it
+                // needs no extra shared state. One Redis call against a ten-second pause.
+                //
+                // Fails **open** — a crawler that stops on a Redis blip is worse than one that
+                // briefly runs ahead — but the failure is logged, because a backpressure check
+                // that silently never fires is indistinguishable from one that is not there.
+                match queue.depth().await {
+                    Ok(backlog) if backlog >= BACKPRESSURE_AT => {
+                        tracing::debug!(worker = id, backlog, "indexer behind; pausing");
+                        tokio::time::sleep(BACKPRESSURE_PAUSE).await;
+                        continue;
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(
+                        worker = id,
+                        error = %e,
+                        "cannot read the queue depth; not pausing"
+                    ),
+                }
+
                 if let Some(max) = max {
                     if produced.load(std::sync::atomic::Ordering::Relaxed) >= max {
                         return;
