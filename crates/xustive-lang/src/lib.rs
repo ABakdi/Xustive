@@ -10,10 +10,12 @@
 pub mod detect;
 pub mod expand;
 pub mod lexicon;
+pub mod question;
 pub mod sentiment;
 pub mod translit;
 
 pub use detect::{Detection, Detector, DetectorConfig};
 pub use expand::{Expander, ExpanderConfig, Expansion};
 pub use lexicon::{Lexicon, Score};
+pub use question::is_question;
 pub use sentiment::{Scorer, ScorerConfig};
