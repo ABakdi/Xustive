@@ -65,6 +65,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             return
 
+        # --- robots.txt failure modes ---------------------------------------------------
+        # An unreachable robots.txt is not permission. These routes let the crawler's handling of
+        # each status be asserted rather than assumed, because the failure is silent: a crawler
+        # that reads a 403 as "no restrictions" behaves impeccably in testing and crawls a site
+        # that refused it in production.
+        if path.startswith("/robots-status/"):
+            try:
+                code = int(path.rsplit("/", 1)[-1])
+            except ValueError:
+                self.send_error(404)
+                return
+            self.send_response(code)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
         # --- X-Robots-Tag ---------------------------------------------------------------
         # A page that allows crawling and refuses indexing. The two are separate permissions, and
         # this header is the only way a document without a <head> — a PDF, an image, a JSON feed —

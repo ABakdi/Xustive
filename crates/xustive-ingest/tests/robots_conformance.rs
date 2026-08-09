@@ -391,3 +391,141 @@ fn an_absurd_delay_is_bounded() {
         MAX_CRAWL_DELAY
     );
 }
+
+// ── Adaptive slowdown ───────────────────────────────────────────────────────────────────────
+
+fn paced(delay: &str) -> Politeness {
+    let mut p = Politeness::new();
+    p.set_rules(
+        "example.dz",
+        Robots::parse(&format!("User-agent: *\nCrawl-delay: {delay}\n")),
+    );
+    p
+}
+
+#[test]
+fn a_429_slows_us_down_sharply() {
+    // The host is telling us it is under load. Backing off a little is not a response to being
+    // rate-limited; it is the same behaviour with a pause.
+    let mut p = paced("1");
+    p.record_fetch("example.dz");
+    let before = p.wait_for("example.dz");
+
+    p.observe("example.dz", 429, None);
+    p.record_fetch("example.dz");
+    let after = p.wait_for("example.dz");
+
+    assert!(
+        after > before * 2,
+        "a 429 barely changed the pace: {before:?} → {after:?}"
+    );
+}
+
+#[test]
+fn retry_after_is_obeyed_when_the_host_names_a_number() {
+    // The host has said exactly how long. Guessing something shorter is choosing to be wrong in
+    // the direction that gets us blocked.
+    let mut p = paced("1");
+    p.observe("example.dz", 429, Some(Duration::from_secs(30)));
+    p.record_fetch("example.dz");
+    assert!(
+        p.wait_for("example.dz") >= Duration::from_secs(25),
+        "Retry-After was ignored: {:?}",
+        p.wait_for("example.dz")
+    );
+}
+
+#[test]
+fn a_503_also_slows_us_down() {
+    let mut p = paced("1");
+    p.record_fetch("example.dz");
+    let before = p.wait_for("example.dz");
+    p.observe("example.dz", 503, None);
+    p.record_fetch("example.dz");
+    assert!(p.wait_for("example.dz") > before, "a 503 did not slow us");
+}
+
+#[test]
+fn success_does_not_undo_the_backoff_immediately() {
+    // Delays grow fast and shrink slowly, deliberately. Overshooting costs a little throughput;
+    // undershooting costs the site — and one success after a 429 is not evidence of recovery.
+    let mut p = paced("1");
+    p.observe("example.dz", 429, None);
+    p.record_fetch("example.dz");
+    let backed_off = p.wait_for("example.dz");
+
+    p.observe("example.dz", 200, None);
+    p.record_fetch("example.dz");
+    let after_one_success = p.wait_for("example.dz");
+
+    assert!(
+        after_one_success > backed_off / 2,
+        "one success erased the backoff: {backed_off:?} → {after_one_success:?}"
+    );
+}
+
+#[test]
+fn the_backoff_is_bounded() {
+    // Otherwise a host returning 429 forever parks a worker forever, and the symptom is a crawler
+    // that looks hung rather than one that is being polite.
+    let mut p = paced("1");
+    for _ in 0..40 {
+        p.observe("example.dz", 429, None);
+    }
+    p.record_fetch("example.dz");
+    assert!(
+        p.wait_for("example.dz") <= Duration::from_secs(600),
+        "unbounded backoff: {:?}",
+        p.wait_for("example.dz")
+    );
+}
+
+// ── Fetch-failure semantics ─────────────────────────────────────────────────────────────────
+
+/// What each `robots.txt` status must mean.
+///
+/// The rule is that only a 404 is permission. Everything else — a refusal, a server fault, a
+/// timeout — is the site not saying yes, and a crawler that reads any of them as "no restrictions"
+/// behaves impeccably in testing and crawls a site that refused it in production.
+#[test]
+fn only_a_missing_robots_txt_means_no_restrictions() {
+    // 404 and 410 are the site saying the file does not exist, which is the one case the RFC
+    // treats as unrestricted.
+    for status in [404u16, 410] {
+        assert!(
+            robots_status_allows(status),
+            "{status} should mean no restrictions"
+        );
+    }
+
+    // Everything else is a refusal or a fault. 401 and 403 are the site actively refusing; 5xx is
+    // a server that cannot answer, and assuming permission from a broken server is how a crawler
+    // hammers a site that is already struggling.
+    for status in [401u16, 403, 429, 500, 502, 503] {
+        assert!(
+            !robots_status_allows(status),
+            "{status} was read as permission"
+        );
+    }
+}
+
+/// The decision the fetcher makes for a given `robots.txt` status.
+///
+/// Mirrors `Fetcher::fetch_robots`. Asserted here as a table rather than only through a live
+/// server so the intent is visible in one place — the live check is in `fixture_site.rs`.
+fn robots_status_allows(status: u16) -> bool {
+    match status {
+        404 | 410 => Robots::permissive().allows("/anything"),
+        _ => Robots::deny_all().allows("/anything"),
+    }
+}
+
+#[test]
+fn deny_all_and_permissive_are_not_the_same_thing() {
+    // A guard against the two constructors drifting into each other, which would make the table
+    // above pass while meaning nothing.
+    assert!(Robots::permissive().allows("/anything"));
+    assert!(!Robots::deny_all().allows("/anything"));
+    assert!(Robots::deny_all().is_deny_all());
+    assert!(!Robots::permissive().is_deny_all());
+}

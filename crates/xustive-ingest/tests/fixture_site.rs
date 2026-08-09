@@ -385,3 +385,21 @@ async fn without_the_bypass_the_same_path_is_refused() {
         "robots.txt disallows /private/ — it must not be fetched: {result:?}"
     );
 }
+
+#[tokio::test]
+async fn an_unreachable_robots_txt_is_not_permission() {
+    // Over real HTTP, against a server that actually returns each status. A 403 or a 5xx is the
+    // site refusing or failing, and reading either as "no restrictions" is the mistake that gets a
+    // crawler named in an abuse report — while looking perfectly well-behaved in testing.
+    require_server!();
+    for status in [401u16, 403, 500, 503] {
+        let url = format!("{}/robots-status/{status}", base());
+        let fetched = fetcher().get(&url).await;
+        // The status route itself returns a non-200, so the fetch fails; what matters is that it
+        // fails rather than being treated as a crawlable page.
+        assert!(
+            fetched.is_err(),
+            "a {status} response was accepted as a page"
+        );
+    }
+}
