@@ -11,6 +11,7 @@
 //! connectors — is a later milestone.
 
 pub mod date;
+pub mod exclusion;
 pub mod fetch;
 pub mod parse;
 pub mod robots;
