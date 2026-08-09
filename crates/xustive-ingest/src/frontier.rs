@@ -502,7 +502,15 @@ impl Frontier {
             return Err(Rejected::Full);
         }
 
-        let _: Result<(), _> = redis::cmd("ZADD")
+        // Errors here are **not** swallowed, unlike most of this file.
+        //
+        // `seen` was already written, so a silent failure leaves the URL marked as known with
+        // nothing queued — and it is then never retried, because every future discovery sees it in
+        // `seen` and stops. One dropped write loses a URL permanently and reports success.
+        //
+        // Observed: a source added from the admin console landed in `seen` with no host queue and
+        // no due-time, and the endpoint returned `queued: true`.
+        let queued: Result<(), _> = redis::cmd("ZADD")
             .arg(self.host_queue(&pending.host))
             .arg(pending.priority)
             .arg(&pending.url)
@@ -510,13 +518,25 @@ impl Frontier {
             .await;
         // `NX` so an existing due-time is never pushed backwards by a new discovery — a host that
         // is due now must stay due, or a steady trickle of links would starve it forever.
-        let _: Result<(), _> = redis::cmd("ZADD")
+        let host_added: Result<(), _> = redis::cmd("ZADD")
             .arg(self.k_hosts())
             .arg("NX")
             .arg(0)
             .arg(&pending.host)
             .query_async::<()>(&mut conn)
             .await;
+
+        if let Err(e) = queued.and(host_added) {
+            // Undo the `seen` write so the URL can be discovered again. Leaving it would make one
+            // transient Redis error a permanent hole in the crawl.
+            let _: Result<(), _> = redis::cmd("SREM")
+                .arg(self.k_seen())
+                .arg(&pending.url)
+                .query_async::<()>(&mut conn)
+                .await;
+            tracing::warn!(url = %pending.url, error = %e, "could not queue; will be retried");
+            return Err(Rejected::Full);
+        }
         Ok(true)
     }
 
