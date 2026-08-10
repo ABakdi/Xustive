@@ -80,6 +80,49 @@ pub struct Queue {
     pub group: String,
 }
 
+/// Pull one group's `lag` out of an `XINFO GROUPS` reply.
+///
+/// Parsed by hand because the reply is a nested array of alternating keys and values, and the
+/// shape differs between Redis versions — a typed deserialisation would break on an upgrade,
+/// where a missing field here simply falls back to the stream length.
+fn group_lag(reply: &redis::Value, group: &str) -> Option<usize> {
+    let redis::Value::Array(entries) = reply else {
+        return None;
+    };
+    for entry in entries {
+        let redis::Value::Array(fields) = entry else {
+            continue;
+        };
+        let mut name: Option<String> = None;
+        let mut lag: Option<usize> = None;
+        for pair in fields.chunks(2) {
+            let [k, v] = pair else { continue };
+            let key = match k {
+                redis::Value::BulkString(b) => String::from_utf8_lossy(b).to_string(),
+                redis::Value::SimpleString(s) => s.clone(),
+                _ => continue,
+            };
+            match key.as_str() {
+                "name" => {
+                    if let redis::Value::BulkString(b) = v {
+                        name = Some(String::from_utf8_lossy(b).to_string());
+                    }
+                }
+                "lag" => {
+                    if let redis::Value::Int(n) = v {
+                        lag = usize::try_from(*n).ok();
+                    }
+                }
+                _ => {}
+            }
+        }
+        if name.as_deref() == Some(group) {
+            return lag;
+        }
+    }
+    None
+}
+
 impl Queue {
     /// Connect and ensure the consumer group exists.
     pub async fn connect(url: &str, stream: &str, group: &str) -> Result<Self, QueueError> {
@@ -252,6 +295,29 @@ impl Queue {
     /// Entries in the stream, acknowledged or not.
     pub async fn depth(&self) -> Result<usize, QueueError> {
         let mut conn = self.conn().await?;
+
+        // The group's **lag**, not the stream length.
+        //
+        // A Redis stream keeps entries after they are acknowledged — `XLEN` only shrinks on a
+        // trim. So it counts work already done, and once the stream reaches its trim ceiling it
+        // reports that ceiling forever regardless of how much is actually outstanding.
+        //
+        // That is not academic: it feeds the crawler's backpressure, which would have paused
+        // permanently the moment the stream passed the threshold, and it fed an admin figure that
+        // read as a growing backlog when the indexer was keeping up. Measured here: `XLEN` said
+        // 38,274 while the real lag was 32,128, and no amount of draining moved the first number.
+        let groups: redis::Value = redis::cmd("XINFO")
+            .arg("GROUPS")
+            .arg(&self.stream)
+            .query_async(&mut conn)
+            .await
+            .unwrap_or(redis::Value::Nil);
+
+        if let Some(lag) = group_lag(&groups, &self.group) {
+            return Ok(lag);
+        }
+
+        // No group yet — nothing has consumed, so everything in the stream is outstanding.
         let len: usize = conn.xlen(&self.stream).await?;
         Ok(len)
     }
