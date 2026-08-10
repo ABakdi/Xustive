@@ -178,11 +178,10 @@ document.addEventListener('DOMContentLoaded', () => {
         var when = h.published_at ? new Date(h.published_at * 1000).toISOString().slice(0, 16).replace('T', ' ') : '';
         // Titles come from crawled pages. Escaped, never rendered — an admin console that renders
         // untrusted markup is stored XSS aimed at the most privileged account in the system.
-        // Labelled `excerpt` because that is what it measures. The document's real length is not
-        // a stored field, and the excerpt is capped — so showing this under a "words" heading
-        // implied article-versus-nav-page while actually measuring the truncation. The Live feed
-        // has the true count; this list will once the field exists.
-        var words = h.excerpt ? h.excerpt.split(/\s+/).length : '';
+        // `body_len` is the extracted body's real length, which is what distinguishes an article
+        // from a navigation page. This column previously measured the *excerpt*, which is capped —
+        // so it was reporting the truncation, not the document.
+        var words = h.body_len != null ? h.body_len : (h.excerpt ? h.excerpt.length : '');
         return '<tr><td title="' + esc(h.title) + '"><a href="' + esc(h.url) + '" rel="noopener nofollow">' + esc(h.title || h.url) + '</a></td>' +
           '<td>' + esc(h.domain || '') + '</td><td>' + esc(h.language || '') + '</td>' +
           '<td>' + words + '</td><td>' + when + '</td></tr>';

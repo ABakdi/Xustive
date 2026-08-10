@@ -50,7 +50,11 @@ pub fn documents_settings() -> Value {
         "displayedAttributes": [
             "id", "title", "url", "canonical_url", "excerpt", "source_type", "source_id",
             "domain", "author", "published_at", "published_at_precision", "sentiment",
-            "engagement", "language", "media", "simhash", "quality_score", "comments_count"
+            "engagement", "language", "media", "simhash", "quality_score", "comments_count",
+            // The extracted body's length. Not shown to searchers — it is here so the admin
+            // console can tell an article from a navigation page at a glance, which the excerpt
+            // cannot: the excerpt is capped, so measuring it measures the truncation.
+            "body_len"
         ],
         // `words`..`exactness` are the Meilisearch defaults; the two custom rules add
         // freshness and quality as tie-breakers *after* textual relevance, never before it.

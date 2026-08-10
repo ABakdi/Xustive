@@ -300,7 +300,7 @@ news or four hundred copies of one calendar page.</p>
 
 <p class="muted" id="doc-count">{placeholder}</p>
 <table class="admin wide"><thead>
-  <tr><th>title</th><th>domain</th><th>language</th><th>excerpt</th><th>published</th></tr>
+  <tr><th>title</th><th>domain</th><th>language</th><th>length</th><th>published</th></tr>
 </thead><tbody id="doc-rows"></tbody></table>
 <div id="doc-pager"></div>
 "#,
