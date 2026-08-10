@@ -174,7 +174,8 @@ secrets file holds them in production ([[Security and Privacy]] §7).
 |:---|:---|
 | `make dev` | everything, one terminal |
 | `make dev-stop` | stop a `make dev` from elsewhere |
-| `make dev-up` / `dev-down` / `dev-reset` | infrastructure only; `reset` **deletes volumes** |
+| `make dev-up` / `dev-down` | infrastructure only; `dev-down` keeps the data |
+| `make reset` | stop everything and **delete all crawled data** (§12) |
 | `make migrate` / `migrate-check` | apply index settings; report drift |
 | `make corpus` / `seed` | generate and index the sample corpus |
 | `make crawl` | one-shot crawl of the seed list |
@@ -294,11 +295,25 @@ this is wrong ([[Language Detector]] §9).
 ```bash
 make dev-stop     # stop the processes, leave the containers
 make dev-down     # stop the containers, keep the data
-make dev-reset    # stop the containers and DELETE every volume
+make reset        # stop EVERYTHING and DELETE every trace of crawled data
 ```
 
-`dev-reset` is the only destructive one. After it, `make up` rebuilds the index from the sample
-corpus; anything crawled is gone, and re-crawling costs the *sites* bandwidth, not just you.
+`make reset` is the only destructive one, and it is the one to reach for when the engine is in a
+state you no longer trust — a stalled index, a frontier full of junk, counters that sit at a fixed
+number. It stops the application processes *before* removing the volumes (a crawler still running
+while Redis is recreated writes a frontier into the fresh instance, so a "clean" slate is dirty
+before you have looked at it), then deletes:
+
+- the search index,
+- the crawl frontier — every discovered URL,
+- the index queue and its dead letters,
+- cached robots rules and tool data.
+
+Your seeds, config and code are kept. It prints how many documents you are about to lose and asks
+you to type `delete`; pass `--yes` in a script. Afterwards `make up` rebuilds from the sample
+corpus — anything crawled is gone, and re-crawling costs the *sites* bandwidth, not just you.
+
+`dev-reset` remains as an alias.
 
 ---
 

@@ -56,9 +56,12 @@ dev-up: ## Start meilisearch, qdrant, redis, prometheus, grafana
 dev-down: ## Stop infrastructure (keeps volumes)
 	$(COMPOSE) down
 
+.PHONY: reset
+reset: ## Stop everything and DELETE all crawled data — index, frontier, queue
+	@./scripts/reset.sh
+
 .PHONY: dev-reset
-dev-reset: ## Stop infrastructure and DELETE all data volumes
-	$(COMPOSE) down -v
+dev-reset: reset ## Alias for `reset`
 
 .PHONY: dev-logs
 dev-logs: ## Tail infrastructure logs
