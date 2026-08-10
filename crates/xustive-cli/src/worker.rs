@@ -7,6 +7,7 @@
 
 use anyhow::{Context, Result};
 use xustive_core::Config;
+use xustive_queue::indexer::SubmitError;
 use xustive_queue::indexer::{Indexer, Sink};
 use xustive_queue::Queue;
 use xustive_search::MeiliClient;
@@ -16,30 +17,46 @@ use xustive_search::MeiliClient;
 /// The waiting is the whole point. Meilisearch returns a task id immediately and performs the
 /// write afterwards; returning success on submission would let the worker acknowledge documents
 /// that never landed.
+/// Map a search error to the indexer's retry decision.
+///
+/// This is the classification the indexer depends on: a timeout or an unreachable backend is left
+/// for retry, anything else is the document's fault and dead-lettered. Getting it wrong in the
+/// permanent direction discards real documents, which is what happened before it existed.
+fn classify(e: xustive_search::SearchError) -> SubmitError {
+    use xustive_core::Classify;
+    if e.is_retryable() {
+        SubmitError::transient(e.to_string())
+    } else {
+        SubmitError::permanent(e.to_string())
+    }
+}
+
 struct MeiliSink {
     client: MeiliClient,
 }
 
 impl Sink for MeiliSink {
-    async fn submit(&self, index: &str, documents: &[serde_json::Value]) -> Result<(), String> {
+    async fn submit(
+        &self,
+        index: &str,
+        documents: &[serde_json::Value],
+    ) -> Result<(), SubmitError> {
         let task = self
             .client
             .add_documents(index, documents)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(classify)?;
 
-        let status = self
-            .client
-            .wait_task(task)
-            .await
-            .map_err(|e| e.to_string())?;
+        let status = self.client.wait_task(task).await.map_err(classify)?;
 
         if status.is_success() {
             Ok(())
         } else {
             // The engine's message names the failure but not the document. Bisection in the
             // indexer is what turns this into a usable diagnosis.
-            Err(status.error_message())
+            // A task that ran and failed is the document's problem, not the backend's — retrying
+            // it unchanged would fail identically.
+            Err(SubmitError::permanent(status.error_message()))
         }
     }
 }

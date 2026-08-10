@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::json;
+use xustive_queue::indexer::SubmitError;
 use xustive_queue::indexer::{IndexJob, Indexer, Sink};
 use xustive_queue::Queue;
 
@@ -57,7 +58,11 @@ impl FakeSink {
 }
 
 impl Sink for FakeSink {
-    async fn submit(&self, _index: &str, documents: &[serde_json::Value]) -> Result<(), String> {
+    async fn submit(
+        &self,
+        _index: &str,
+        documents: &[serde_json::Value],
+    ) -> Result<(), SubmitError> {
         self.submissions.fetch_add(1, Ordering::Relaxed);
         let poison = self.poison.lock().unwrap().clone();
         let ids: Vec<String> = documents
@@ -262,4 +267,74 @@ async fn work_left_by_a_crashed_worker_is_picked_up() {
 
     q.destroy().await.ok();
     q.dead_letter().destroy().await.ok();
+}
+
+/// A transient failure must not dead-letter the document.
+///
+/// This was losing real work: a slow Meilisearch timed out, the batch bisected all the way to
+/// single documents, and each was dead-lettered as "the culprit" — 125 documents discarded with
+/// `attempts 1`, at exactly the moment the system was under load and least able to afford it.
+#[tokio::test]
+async fn a_timeout_leaves_the_document_for_retry() {
+    let Some(queue) = queue("retryable").await else {
+        return;
+    };
+    for i in 0..4 {
+        queue
+            .produce(&IndexJob {
+                document: serde_json::json!({ "id": format!("doc-{i}"), "title": "t", "body": "b" }),
+                index: None,
+            })
+            .await
+            .expect("produce");
+    }
+
+    // A sink that always times out, which is what a saturated index looks like.
+    struct Timeout;
+    impl Sink for Timeout {
+        async fn submit(&self, _: &str, _: &[serde_json::Value]) -> Result<(), SubmitError> {
+            Err(SubmitError::transient("search backend timed out after 60s"))
+        }
+    }
+
+    let indexer = Indexer::new(queue.clone(), Timeout, "test", "documents");
+    let stats = indexer.run_once().await.expect("run");
+
+    assert_eq!(stats.indexed, 0);
+    assert_eq!(
+        stats.dead_lettered + stats.rejected,
+        0,
+        "a timeout discarded documents instead of leaving them for retry"
+    );
+    // Still pending, so a later run picks them up.
+    assert!(
+        queue.pending().await.unwrap_or(0) > 0,
+        "nothing left to retry"
+    );
+}
+
+/// The other direction: a permanent failure still dead-letters, or a poison document loops forever.
+#[tokio::test]
+async fn a_permanent_failure_still_dead_letters() {
+    let Some(queue) = queue("permanent").await else {
+        return;
+    };
+    queue
+        .produce(&IndexJob {
+            document: serde_json::json!({ "id": "bad", "title": "t", "body": "b" }),
+            index: None,
+        })
+        .await
+        .expect("produce");
+
+    struct Rejects;
+    impl Sink for Rejects {
+        async fn submit(&self, _: &str, _: &[serde_json::Value]) -> Result<(), SubmitError> {
+            Err(SubmitError::permanent("invalid document id"))
+        }
+    }
+
+    let indexer = Indexer::new(queue.clone(), Rejects, "test", "documents");
+    let stats = indexer.run_once().await.expect("run");
+    assert_eq!(stats.rejected, 1, "a poison document must not loop forever");
 }

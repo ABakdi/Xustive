@@ -139,13 +139,57 @@ pub fn validate(document: &serde_json::Value) -> Result<(), Invalid> {
 /// A trait so the worker's ordering and split-on-failure logic can be tested without a live
 /// Meilisearch — those are the parts most worth testing and the hardest to provoke against a real
 /// engine, since making it fail a specific batch on demand is not something it offers.
+/// Why a submission failed.
+///
+/// Typed rather than a string, because the indexer has to tell one case from the other and
+/// nothing else can: a **transient** failure is left for retry, a **permanent** one is
+/// dead-lettered. When this was a `String` every failure looked permanent, so a slow index
+/// discarded real documents.
+#[derive(Debug, Clone)]
+pub struct SubmitError {
+    pub message: String,
+    /// True when retrying could succeed — a timeout, an unreachable backend, a 5xx.
+    pub retryable: bool,
+}
+
+impl SubmitError {
+    pub fn permanent(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            retryable: false,
+        }
+    }
+
+    pub fn transient(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            retryable: true,
+        }
+    }
+}
+
+impl From<&str> for SubmitError {
+    /// Defaults to **permanent**, matching the old `String` behaviour so an implementor that has
+    /// not thought about it keeps the semantics it had — dead-lettering a document that should
+    /// have been retried is visible in the DLQ, where retrying one that never can would loop.
+    fn from(message: &str) -> Self {
+        Self::permanent(message)
+    }
+}
+
+impl std::fmt::Display for SubmitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
 pub trait Sink: Send + Sync {
     /// Submit and wait for the write to be durable. An error means nothing landed.
     fn submit(
         &self,
         index: &str,
         documents: &[serde_json::Value],
-    ) -> impl std::future::Future<Output = Result<(), String>> + Send;
+    ) -> impl std::future::Future<Output = Result<(), SubmitError>> + Send;
 }
 
 pub struct Indexer<S: Sink> {
@@ -275,6 +319,25 @@ impl<S: Sink> Indexer<S> {
                 Ok(())
             }
             Err(error) => {
+                // A transient failure is not the document's fault.
+                //
+                // Left unacknowledged rather than dead-lettered, so it is reclaimed and retried.
+                // Bisecting is pointless too — halving a batch does not make a busy index answer
+                // faster, it just produces more timeouts.
+                //
+                // This was losing documents. A slow Meilisearch timed out, the batch bisected all
+                // the way down to single documents, and each one was dead-lettered as "the
+                // culprit" — 125 real documents discarded with `attempts 1`, at exactly the moment
+                // the system was under load and least able to afford it.
+                if error.retryable {
+                    tracing::warn!(
+                        count = chunk.len(),
+                        %error,
+                        "transient index failure; leaving for retry"
+                    );
+                    return Ok(());
+                }
+
                 // A single document cannot be bisected further, so it is the culprit.
                 if chunk.len() == 1 {
                     let (id, document) = chunk.into_iter().next().expect("length checked");
