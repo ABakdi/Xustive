@@ -425,7 +425,16 @@ async fn cmd_seed(
         return Ok(());
     }
 
-    let index = &config.search.documents_index;
+    // Resolve, never write to the bare alias.
+    //
+    // Meilisearch creates a missing index on first write, so submitting to `documents` when only
+    // `documents_v1` exists silently manufactures a second, keyless index. Inference then has to
+    // guess a primary key from the batch, sees both `id` and `source_id`, and fails the task.
+    //
+    // The second-order damage is worse than the failed seed: `resolve` prefers a plain index over
+    // a versioned one, so once the empty `documents` exists every other component starts resolving
+    // to it instead of the real index — a corruption that repairs itself only by hand.
+    let index = &client.resolve(&config.search.documents_index).await?;
     let total = docs.len();
     let mut indexed = 0usize;
 
@@ -446,10 +455,16 @@ async fn cmd_seed(
 }
 
 async fn cmd_stats(client: &MeiliClient, config: &Config) -> Result<()> {
-    for index in [
+    for alias in [
         &config.search.documents_index,
         &config.search.comments_index,
     ] {
+        // Reads resolve too, or `stats` reports the alias as unavailable while the versioned index
+        // behind it is perfectly healthy.
+        let index = &client
+            .resolve(alias)
+            .await
+            .unwrap_or_else(|_| alias.clone());
         match client.stats(index).await {
             Ok(s) => println!(
                 "{index}: {} documents{}",
@@ -558,9 +573,8 @@ async fn cmd_search(
 ) -> Result<()> {
     let normalized = xustive_text::normalize(query);
     let q = xustive_search::Query::new(&normalized).limit(limit);
-    let hits = client
-        .search::<Value>(&config.search.documents_index, &q)
-        .await?;
+    let index = client.resolve(&config.search.documents_index).await?;
+    let hits = client.search::<Value>(&index, &q).await?;
 
     println!("query      {query:?}");
     println!("normalized {normalized:?}");
