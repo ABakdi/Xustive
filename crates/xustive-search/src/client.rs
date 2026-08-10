@@ -524,7 +524,15 @@ impl MeiliClient {
         index: &str,
         docs: &[T],
     ) -> Result<u64, SearchError> {
-        let url = self.url(&format!("/indexes/{index}/documents"))?;
+        // Always state the primary key; never let the engine infer one.
+        //
+        // Meilisearch creates a missing index on first write. Without this parameter it then
+        // guesses the key from the batch, and our documents carry both `id` and `source_id` — two
+        // fields ending in `id`, which is ambiguous, so the task fails and the documents are lost.
+        //
+        // Naming it here means an accidentally auto-created index is at least keyed correctly and
+        // can be merged, rather than becoming a keyless index that shadows the real one.
+        let url = self.url(&format!("/indexes/{index}/documents?primaryKey=id"))?;
         let t: TaskRef = self.send(self.http.post(url).json(docs)).await?;
         Ok(t.task_uid)
     }
