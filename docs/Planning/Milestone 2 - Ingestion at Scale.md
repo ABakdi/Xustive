@@ -2,12 +2,12 @@
 tags:
   - planning
   - milestone
-milestone: 3
+milestone: 2
 status: not-started
 updated: 2026-08-06
 ---
 
-# Milestone 3 - Ingestion at Scale
+# Milestone 2 - Ingestion at Scale
 
 > **Goal:** stop using fixtures. Crawl the real Algerian web politely, ingest whatever social access
 > we have actually been granted, and get to 1M documents.
@@ -145,9 +145,12 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
       both fetch it. Asserted with 16 concurrent workers, zero duplicate claims. **Leader election
       still open**, though atomic claiming makes it an optimisation rather than a correctness need
 - [ ] M2-T03.2 Scheduling loop with per-host due-times
-- [x] M2-T03.3 Priority computation — depth dominates; trust and article-shape only break ties, or one trusted source swallows the crawl
-- [ ] M2-T03.4 Adaptive revisit intervals (changed / unchanged / 304)
-- [ ] M2-T03.5 Sitemap and feed discovery with caps
+- [~] M2-T03.3 Priority computation — depth dominates; trust and article-shape only break ties, or
+      one trusted source swallows the crawl. **Reopened**: `orchestrator.rs` pins `depth = 1`, so
+      every URL scores identically and `max_depth` never fires. Superseded by M2-T15.7
+- [ ] M2-T03.4 Adaptive revisit intervals (changed / unchanged / 304) → **specified in M2-T15**
+- [ ] M2-T03.5 Sitemap and feed discovery with caps — also the highest-yield freshness signal, see
+      M2-T15.6
 - [ ] M2-T03.6 Outlink filtering and `SafeUrl` validation
 - [x] M2-T03.7 Crawler-trap detectors (depth, params, repeating segments) — plus session ids, and
       repeats counted rather than checked adjacently: `/a/b/a/b` never repeats adjacently, which is
@@ -247,6 +250,7 @@ also the fastest option — no bundle to download, parse and hydrate.
 
 - [ ] M2-T04.1 `reqwest` client with timeouts, redirect revalidation, streamed body cap
 - [ ] M2-T04.2 Conditional requests (`If-None-Match` / `If-Modified-Since`) and 304 short-circuit
+      — **blocks M2-T15**: adaptive recrawl is unaffordable without cheap revisits
 - [ ] M2-T04.3 Charset detection cascade including `windows-1256`
 - [ ] M2-T04.4 Honest user-agent; per-host connection cap of 1
 - [ ] M2-T04.5 Outcome classification table
@@ -273,7 +277,7 @@ also the fastest option — no bundle to download, parse and hydrate.
 - [ ] M2-T05.5 pHash image dedup and embedding reuse
 - [ ] M2-T05.6 Cluster ids for the 4–8 distance band
 - [ ] M2-T05.7 **Fail-open on Redis unavailability** + a test proving it
-- [ ] M2-T05.8 Volatile-page detection (revision loop guard)
+- [ ] M2-T05.8 Volatile-page detection (revision loop guard) — shares its mechanism with M2-T15.4
 - [ ] M2-T05.9 Quality evaluation: 500 dup + 500 distinct pairs, precision ≥ 0.95, recall ≥ 0.85
 
 ## M2-T06 — [[Enrichment Pipeline]]
@@ -288,6 +292,85 @@ also the fastest option — no bundle to download, parse and hydrate.
 - [ ] M2-T06.8 Per-step watchdog timeouts
 - [ ] M2-T06.9 Repass job for partial documents
 - [ ] M2-T06.10 Spam evaluation: 300 labelled posts, precision ≥ 0.90
+
+## M2-T15 — Freshness and Adaptive Recrawl ★ *the index is a photograph until this lands*
+
+Governed by [[ADR-0011 - Adaptive Recrawl over Static Crawling]]. A URL is crawled once today and
+then forgotten, so a corrected story or a new decree never reaches the index. Two results from the
+literature shape this and both are counterintuitive enough to restate: **recrawling in proportion
+to change rate is worse than recrawling everything uniformly** (Cho & Garcia-Molina 2003), and the
+signal that matters is **whether a change persisted**, not whether bytes differed
+(Olston & Pandey 2008).
+
+Order matters here. T15.1 and T15.2 are the substrate; nothing above them works without both.
+
+- [ ] M2-T15.1 **Dual content hash.** One over the raw body, one over extracted article text after
+      boilerplate stripping. Only the second counts as a change. This is longevity scoring at the
+      cost of a second hash, and it is what stops the crawler chasing view counters and "most read"
+      sidebars on every Algerian news page it holds
+- [ ] M2-T15.2 **Change history on the document**: `last_fetched`, `last_modified`, `etag`, both
+      hashes, current interval, and a bounded ring of `(when, content_changed)`. Schema change plus
+      migration; everything below reads from this
+- [ ] M2-T15.3 **Adaptive interval, multiplicative.** Changed → × 0.5, unchanged → × 1.5, clamped
+      per trust tier. Chosen over the formal estimators because we never observe *how many* times a
+      page changed — only whether it differs from our copy — so the obvious estimator is biased low
+      exactly where it costs most
+- [ ] M2-T15.4 **Volatile-page abandonment.** Changes on every visit even at its floor → slow lane.
+      The Cho result applied directly: a page that cannot be kept fresh should not be chased.
+      Shares its mechanism with M2-T05.8
+- [ ] M2-T15.5 **Conditional requests wired into scheduling** — depends on M2-T04.2. A 304 is
+      "unchanged" at a few hundred bytes. Without this the whole task group costs more than it saves
+- [ ] M2-T15.6 **Sitemap `lastmod` and feed polling as freshness signals** — depends on M2-T03.5.
+      One fetch reports on hundreds of URLs; for news sources this is the highest-yield signal
+      available and it should be preferred over polling pages directly
+- [ ] M2-T15.7 **Frontier priority becomes `trust × change_probability × age`**, replacing
+      `depth × 1000`. Folds into the depth-tracking fix — `orchestrator.rs` pins `depth = 1`, so
+      every URL currently has identical priority and `max_depth` is dead code. Same edit, do them
+      together
+- [ ] M2-T15.8 **Recrawl budget is separate from discovery budget**, so freshness and coverage
+      cannot starve each other. Split visible in the console and in `/metrics`
+- [ ] M2-T15.9 **Boilerplate-stripping quality tests.** T15.1 gives bad stripping a second failure
+      mode: churn that reads as content, and a crawler that chases it forever. Fixtures from real
+      Algerian news pages, asserting the extracted text is byte-identical across two fetches that
+      differ only in furniture
+- [ ] M2-T15.10 **Freshness evaluation**: sample 200 known-changed and 200 known-static URLs, report
+      mean staleness and fetches-per-real-change against a fixed-interval baseline. The claim this
+      task group makes is "better freshness at lower cost" — measure both halves or it is unproven
+
+## M2-T16 — Corpus Bootstrap and Discovery Aggregation
+
+Governed by [[ADR-0012 - Discovery-Only Aggregation]]. External sources are used to learn **which
+URLs exist**, never to answer a user's search. Live metasearch is rejected: Bing's API retired in
+August 2025, Google's Custom Search JSON API is closed to new customers and retires January 2027,
+and a third-party call on the query path would breach the serving plane's no-egress boundary and
+undercut [[ADR-0008 - No Query Logging]].
+
+Everything discovered here enters the ordinary frontier under the ordinary rules — robots,
+politeness, `SafeUrl`, dedup, trust tiering. **An externally discovered URL gets no privileges.**
+
+- [ ] M2-T16.1 **Common Crawl index ingestion.** Read the columnar/CDX index, filter by host and
+      domain, emit URLs into the frontier at a discovered-tier trust. 250B+ pages, free, and it
+      costs the sites nothing because someone already fetched them
+- [ ] M2-T16.2 **Algeria filter**: `.dz` plus known Algerian hosts on generic TLDs, plus Arabic and
+      French content on those hosts. The filter is the whole value — unfiltered Common Crawl is
+      three orders of magnitude more data than we want
+- [ ] M2-T16.3 **Incremental snapshot tracking** so a monthly release is ingested once. Resumable:
+      this is a long batch job over remote Parquet and it will be interrupted
+- [ ] M2-T16.4 **Query-driven discovery.** Searches returning zero or few results are a free, precise
+      signal of weak coverage. Must operate on aggregate counts over normalised terms with a
+      frequency floor — never a stored query log, never anything attributable to a person
+      ([[ADR-0008 - No Query Logging]]). The privacy constraint is the design constraint
+- [ ] M2-T16.5 **Weak-coverage queue in the console**: which queries are underserved, what was
+      enqueued for them, whether coverage improved. Otherwise T16.4 is a black box
+- [ ] M2-T16.6 **Brave Search API connector** for the residual only — weak queries T16.1–T16.4 did
+      not resolve. Rate-limited, budgeted, **off by default**, key in config. The one paid route
+      whose terms permit this
+- [ ] M2-T16.7 **Provenance on every document**: seed, link, sitemap, Common Crawl, query-driven, or
+      Brave. Without it we cannot tell which discovery channel earns its cost, and T16.8 cannot be
+      answered at all
+- [ ] M2-T16.8 **Per-channel yield reporting**: URLs discovered, fetched, indexed, and surviving
+      dedup, per channel. Expected to show Common Crawl dominating volume and query-driven
+      dominating relevance — but measured, not assumed
 
 ## M2-T07 — [[Proxy Manager]] *(now required)*
 
@@ -368,7 +451,8 @@ also the fastest option — no bundle to download, parse and hydrate.
 |:---|:---|
 | Scale | 1M documents indexed from real sources |
 | Politeness | ≤ 1 concurrent request per host; crawl-delay honoured within ±10 %; zero robots violations in an audit |
-| Freshness | tier-A sources under 6 h staleness |
+| Freshness | tier-A sources under 6 h staleness; adaptive recrawl beats a fixed-interval baseline on **both** mean staleness and fetches-per-real-change (M2-T15.10) |
+| Discovery | every document carries its provenance; per-channel yield reported (M2-T16.7/.8) |
 | Dedup | duplicate rate between 5 % and 60 %; precision ≥ 0.95 |
 | Social | all three connectors live and collecting; path ladders demote correctly under failure |
 | Collection health | median identity lifespan ≥ 60 days; challenge rate < 10 %; canaries green |
@@ -392,10 +476,15 @@ also the fastest option — no bundle to download, parse and hydrate.
 | Parser rules rot as sites redesign | `parser_rule_miss_total` alerting from day one; each rule ships with a fixture |
 | Redis memory exhausted by raw blobs | monitor early; the object-storage decision is pre-identified ([[Task Queue]] §12) |
 | Real content breaks M1's ranking assumptions | re-run the full relevance evaluation at the end of this milestone |
+| **Boilerplate stripping mistakes churn for content** | M2-T15.1 gives bad stripping a second failure mode — the crawler chases furniture forever. M2-T15.9 asserts extracted text is stable across fetches that differ only in furniture |
+| Common Crawl bootstrap floods the frontier with dead URLs | discovered-tier trust, ordinary dedup and `SafeUrl`; per-channel yield (M2-T16.8) makes a bad channel visible rather than merely expensive |
+| Query-driven discovery reintroduces query logging | aggregate counts over normalised terms with a frequency floor, never a stored log ([[ADR-0008 - No Query Logging]]); the privacy constraint is the design constraint |
 
 ## Related
 
-[[TODO]] · [[ADR-0009 - Direct Collection for Social Platforms]] · [[Session Manager]] ·
+[[TODO]] · [[ADR-0009 - Direct Collection for Social Platforms]] ·
+[[ADR-0011 - Adaptive Recrawl over Static Crawling]] · [[ADR-0012 - Discovery-Only Aggregation]] ·
+[[Session Manager]] ·
 [[Fingerprint Engine]] · [[Signature Service]] · [[Proxy Manager]] · [[Crawler Orchestrator]] ·
 [[Politeness and Robots]] · [[Data Sources Registry]] · [[Legal and Compliance]] ·
 [[Milestone 4 - Quality and Operations]]
