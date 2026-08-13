@@ -11,8 +11,8 @@ date: 2026-08-06
 
 > [!warning] Superseded by [[ADR-0009 - Direct Collection for Social Platforms]]
 > This ADR is retained for the record. Its reasoning about *coverage cost* proved decisive — but in
-> the opposite direction: the coverage gap it accepted was judged too large, and the project owner
-> directed that direct collection be used, accepting the risk. Read ADR-0009 for the design in force.
+> the opposite direction: the coverage gap it accepted was judged too large, and I directed that
+> direct collection be used, accepting the risk. Read ADR-0009 for the design in force.
 >
 > The commitments in §Consequences that were **not** consequences of this decision — open-web
 > politeness, deletion propagation, takedowns, no profiling — survive unchanged

@@ -256,8 +256,8 @@ A rising `xustive_429_total` is treated as **our** bug, not the host's.
 - We do not access content behind paywalls.
 
 **Platforms** (`platform` profile) — governed by
-[[ADR-0009 - Direct Collection for Social Platforms]], which the project owner accepted along with
-its contractual and legal risk. Collection uses browser fingerprints and authenticated identities
+[[ADR-0009 - Direct Collection for Social Platforms]], where I accepted the contractual and legal
+risk. Collection uses browser fingerprints and authenticated identities
 rather than an announced bot. What that ADR did **not** change, and this component still enforces:
 
 - The takedown blocklist applies to platform content identically — a taken-down URL is never

@@ -85,7 +85,7 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
 
 - [ ] M2-T01d.1 Establish the legal entity (prerequisite for takedowns and submissions)
 - [ ] M2-T01d.2 Clarify Law 18-07 obligations; ANPDP notification if required
-- [ ] M2-T01d.3 Record the owner's risk acceptance, dated
+- [ ] M2-T01d.3 Record my risk acceptance, dated
       ([[ADR-0009 - Direct Collection for Social Platforms]])
 - [ ] M2-T01d.4 Residential proxy provider due diligence — exit-node consent ([[Proxy Manager]] §10)
 - [ ] M2-T01d.5 Opportunistic API authorisations where a source offers one — cheaper and more stable
@@ -351,8 +351,8 @@ upstream has failed.
 
 Everything discovered here enters the ordinary frontier under the ordinary rules — robots,
 politeness, `SafeUrl`, dedup, trust tiering. **An externally discovered URL gets no privileges.** We
-disregard the search engine's terms by owner direction; we do not disregard the terms of the sites
-it points at.
+disregard the search engine's terms by my direction; we do not disregard the terms of the sites it
+points at.
 
 - [ ] M2-T16.1 **Common Crawl index ingestion.** Read the columnar/CDX index, filter by host and
       domain, emit URLs into the frontier at a discovered-tier trust. 250B+ pages, free, and it
@@ -379,7 +379,7 @@ it points at.
       Expected to show Common Crawl dominating volume and query-driven dominating relevance, but
       measured, not assumed. This is the number that decides whether T16.9 keeps its place
 
-### Direct SERP collection *(owner-directed — [[ADR-0013 - Direct SERP Collection for Discovery]])*
+### Direct SERP collection *(my direction — [[ADR-0013 - Direct SERP Collection for Discovery]])*
 
 Last in the ladder and deliberately narrow. Reuses the collection layer built for M2-T01a/b/c
 rather than growing a second evasion path — a SERP source is just another consumer of the identity,

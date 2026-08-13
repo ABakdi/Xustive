@@ -33,10 +33,10 @@ Facebook groups are where Algerian classifieds, job posts, and civic discussion 
 index without them is missing the corpus that most differentiates the product. The API-only path
 makes the product's core value contingent on thousands of individual admin installations.
 
-**The project owner has directed that direct collection be used, states they are covered legally,
-and accepts the contractual and legal risk.** That is the decision this ADR records. The engineering
-question that remains is not *whether* but *how to do it well* — because a collection system that is
-detected and banned within a week is a failed system regardless of its legal footing.
+**I have directed that direct collection be used. I am covered legally, and I accept the
+contractual and legal risk.** That is the decision this ADR records. The engineering question that
+remains is not *whether* but *how to do it well* — because a collection system that is detected and
+banned within a week is a failed system regardless of its legal footing.
 
 ## Decision
 
@@ -104,7 +104,7 @@ in the data did not.
   than one that crashes ([[Session Manager]] §4.6).
 - **CI cannot test against live platforms.** Everything is fixture-driven, so real breakage is
   detected in production by canaries, not in CI.
-- **Legal and contractual exposure** — accepted by the project owner per §Context.
+- **Legal and contractual exposure** — accepted by me per §Context.
 - Higher operational complexity: three new components and a stateful account pool, which is the
   first genuinely stateful thing in the ingestion plane.
 
@@ -130,7 +130,7 @@ in the data did not.
 - A platform introduces a compliant bulk-access path that matches direct-collection coverage.
 - Detection cost per document exceeds the value of the content — measured, per source, in
   [[Data Sources Registry]] §7.
-- Counsel's position changes, or the owner's risk assessment changes.
+- Counsel's position changes, or my risk assessment changes.
 
 ## Related
 

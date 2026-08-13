@@ -15,8 +15,8 @@ updated: 2026-08-06
 > clearance.
 
 > [!note] Decision on record
-> The project owner has directed that **direct collection** be used for social platforms, states they
-> are covered legally, and has accepted the contractual and legal risk. That decision is recorded in
+> I have directed that **direct collection** be used for social platforms. I am covered legally, and
+> I accept the contractual and legal risk. That decision is recorded in
 > [[ADR-0009 - Direct Collection for Social Platforms]] and is not re-litigated here.
 >
 > This note is therefore no longer a *blocker* on the social connectors. It remains the register of
@@ -33,10 +33,10 @@ collects social media content operates under platform contracts and personal-dat
 different regimes with different consequences, and the design has to reflect the distinction rather
 than blur it.
 
-The **platform-contract** question was decided by the owner
-([[ADR-0009 - Direct Collection for Social Platforms]]) and the risk accepted. The
-**personal-data** question was not, and cannot be — it involves duties owed to the people appearing
-in the content, not to the platforms. Those duties are the substance of this note, and the
+I decided the **platform-contract** question
+([[ADR-0009 - Direct Collection for Social Platforms]]) and accepted the risk. I cannot decide the
+**personal-data** question the same way — it involves duties owed to the people appearing in the
+content, not to the platforms. Those duties are the substance of this note, and the
 architecture implements them regardless of collection method:
 
 - takedown path removes content, comments, and vectors permanently, with a re-crawl blocklist
@@ -223,7 +223,7 @@ Tracked as tasks in [[Milestone 5 - Beta Launch]]:
 - [ ] `/bot` page published with contact details and opt-out instructions — **covers open-web
       crawling**, which is the traffic site owners can see and identify
 - [ ] Data-processing record maintained
-- [ ] Owner's acceptance of collection risk recorded and dated
+- [ ] My acceptance of collection risk recorded and dated
       ([[ADR-0009 - Direct Collection for Social Platforms]])
 
 ---

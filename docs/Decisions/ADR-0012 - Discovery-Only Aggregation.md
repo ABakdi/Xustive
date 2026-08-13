@@ -11,7 +11,7 @@ date: 2026-08-13
 
 > [!warning] Superseded by [[ADR-0013 - Direct SERP Collection for Discovery]]
 > Retained for the record. Of its three objections to querying Google, only the terms-of-service one
-> was overturned — by owner direction, on a stated legal basis, for a personal project. The other
+> was overturned — by my direction, on a settled legal basis, for a personal project. The other
 > two were never about Google: the **no-egress boundary** and **[[ADR-0008 - No Query Logging]]**
 > are our own invariants, and ADR-0013 keeps both by making collection a background activity that
 > crosses planes through the queue rather than through a call.
@@ -111,8 +111,8 @@ keeps it true.
 tension with our own privacy position, and it makes the product a proxy.
 
 **Rejected: scraping Google's SERPs.** Against their terms and adversarially defended. Distinct
-from [[ADR-0009 - Direct Collection for Social Platforms]], where the owner accepted a specific
-risk for a corpus unavailable any other way — here the corpus *is* available another way, so there
+from [[ADR-0009 - Direct Collection for Social Platforms]], where I accepted a specific risk for a
+corpus unavailable any other way — here the corpus *is* available another way, so there
 is nothing to trade for.
 
 ## Revisit when

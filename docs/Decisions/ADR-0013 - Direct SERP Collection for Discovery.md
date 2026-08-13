@@ -22,11 +22,11 @@ Constrains [[Crawler Orchestrator]], [[Query Pipeline]], [[Proxy Manager]], [[Se
 APIs are closing, the terms forbid scraping, and a call on the serving path would breach the
 no-egress boundary. It kept Common Crawl, query-driven discovery, sitemaps, and Brave.
 
-**The project owner has directed that Google be queried directly, states the legal position in
-their jurisdiction is settled, and notes this is a personal project rather than a production
-service.** That is the decision this ADR records, and it is the same shape as
-[[ADR-0009 - Direct Collection for Social Platforms]]: the owner accepts a contractual risk, and
-the engineering question becomes *how to do it without it collapsing*.
+**I have directed that Google be queried directly. The legal position in my jurisdiction is
+settled, and this is a personal project rather than a production service.** That is the decision
+this ADR records, and it is the same shape as
+[[ADR-0009 - Direct Collection for Social Platforms]]: I accept a contractual risk, and the
+engineering question becomes *how to do it without it collapsing*.
 
 Two of ADR-0012's three objections were never about terms of service, and they survive unchanged:
 
@@ -91,7 +91,7 @@ budgeted accordingly.
 
 9. **Query handling still obeys [[ADR-0008 - No Query Logging]].** Only normalised terms above a
    frequency floor cross the plane boundary — never a per-user query, never anything attributable.
-   The owner's direction covers Google's terms, not our own privacy position, so that constraint is
+   My direction covers Google's terms, not our own privacy position, so that constraint is
    unchanged.
 
 ## Consequences
@@ -120,8 +120,8 @@ third-party call sits on the serving path. That was never the terms-of-service o
   working, and the answer is to stop, not to escalate.
 - **Common Crawl coverage of `.dz` proves strong.** Then this channel's remaining value is freshness
   on weak queries only, and it may not be worth the tail.
-- **The project stops being personal.** The owner's stated basis is personal, non-production use. If
-  that changes, this decision does not automatically carry over.
+- **The project stops being personal.** My stated basis is personal, non-production use. If that
+  changes, this decision does not automatically carry over.
 
 ## Related
 
