@@ -21,7 +21,8 @@ updated: 2026-08-06
 |:---|:---|:---|:---|
 | [[ADR-0010 - Next.js for the Frontend]] | React Server Components; `xustive-api` stops rendering HTML | accepted | [[UI - Frontend Architecture]], [[UI - Design Language]] |
 | [[ADR-0011 - Adaptive Recrawl over Static Crawling]] | recrawl on content longevity, not change rate; abandon volatile pages | accepted | [[Crawler Orchestrator]], [[Web Fetcher]], [[Deduplication Service]] |
-| [[ADR-0012 - Discovery-Only Aggregation]] | external engines discover URLs; never called on the serving path | accepted | [[Crawler Orchestrator]], [[Query Pipeline]], [[API Gateway]] |
+| [[ADR-0012 - Discovery-Only Aggregation]] | external engines discover URLs; never called on the serving path | **superseded by 0013** | [[Crawler Orchestrator]], [[Query Pipeline]], [[API Gateway]] |
+| [[ADR-0013 - Direct SERP Collection for Discovery]] | query Google directly for discovery, in the ingestion plane only, as the narrowest channel | accepted | [[Crawler Orchestrator]], [[Proxy Manager]], [[Session Manager]], [[Fingerprint Engine]] |
 | [[ADR-0001 - Two-Plane Architecture]] | Split serving and ingestion, coupled only through the index | accepted | [[System Architecture]] |
 | [[ADR-0002 - Meilisearch as System of Record]] | No separate database; the index is the store | accepted | [[Search Index]], [[Data Model]] |
 | [[ADR-0003 - Comments in a Separate Index]] | Comments are their own index, folded in at query time | accepted | [[Data Model]], [[Query Pipeline]] |

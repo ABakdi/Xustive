@@ -2,15 +2,25 @@
 tags:
   - adr
 adr-id: "0012"
-status: accepted
+status: superseded
+superseded-by: "0013"
 date: 2026-08-13
 ---
 
 # ADR-0012 - Discovery-Only Aggregation
 
+> [!warning] Superseded by [[ADR-0013 - Direct SERP Collection for Discovery]]
+> Retained for the record. Of its three objections to querying Google, only the terms-of-service one
+> was overturned — by owner direction, on a stated legal basis, for a personal project. The other
+> two were never about Google: the **no-egress boundary** and **[[ADR-0008 - No Query Logging]]**
+> are our own invariants, and ADR-0013 keeps both by making collection a background activity that
+> crosses planes through the queue rather than through a call.
+> Its ordering of discovery channels also survives: Common Crawl for volume, query-driven for
+> relevance, SERP collection last and narrowest.
+
 ## Status
 
-**Accepted.**
+**Superseded** by [[ADR-0013 - Direct SERP Collection for Discovery]].
 
 Constrains [[Crawler Orchestrator]], [[Query Pipeline]], [[API Gateway]],
 [[Data Sources Registry]], [[Admin and Source Submission]].
