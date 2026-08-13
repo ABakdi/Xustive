@@ -177,5 +177,6 @@ copy can never displace an earlier high-trust one.
 
 ## Related
 
+[[ADR-0011 - Adaptive Recrawl over Static Crawling]] ·
 [[Content Parser]] · [[Enrichment Pipeline]] · [[Query Pipeline]] · [[Image Pipeline]] ·
 [[Ranking and Relevance]] · [[Task Queue]]

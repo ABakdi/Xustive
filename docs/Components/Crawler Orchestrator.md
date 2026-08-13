@@ -212,5 +212,6 @@ changes require admin auth. The orchestrator never executes content; it only sch
 
 ## Related
 
+[[ADR-0011 - Adaptive Recrawl over Static Crawling]] · [[ADR-0012 - Discovery-Only Aggregation]] ·
 [[Politeness and Robots]] · [[Web Fetcher]] · [[Task Queue]] · [[Data Sources Registry]] ·
 [[Error Handling and Resilience]] · [[Proxy Manager]]

@@ -202,5 +202,6 @@ URLs are corpus data, not user data — logging them is fine and necessary.
 
 ## Related
 
+[[ADR-0011 - Adaptive Recrawl over Static Crawling]] ·
 [[Crawler Orchestrator]] · [[Politeness and Robots]] · [[Proxy Manager]] · [[Content Parser]] ·
 [[Security and Privacy]] · [[Task Queue]]

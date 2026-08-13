@@ -184,5 +184,6 @@ through untouched; escaping is the client's job ([[UI - Results Page]], [[Securi
 
 ## Related
 
+[[ADR-0012 - Discovery-Only Aggregation]] ·
 [[Ranking and Relevance]] · [[Search Index]] · [[Query Expander]] · [[Language Detector]] ·
 [[Summarizer]] · [[API Contract]] · [[Error Handling and Resilience]]
