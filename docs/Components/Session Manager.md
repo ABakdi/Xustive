@@ -297,6 +297,7 @@ Alerts: `PoolExhausted` (page), `ChallengeSpike` (page), `CanaryDown` (page),
 
 ## Related
 
+[[ADR-0013 - Direct SERP Collection for Discovery]] ·
 [[ADR-0009 - Direct Collection for Social Platforms]] · [[Proxy Manager]] · [[Fingerprint Engine]] ·
 [[Signature Service]] · [[Social Connector - Facebook]] · [[Social Connector - Instagram]] ·
 [[Social Connector - TikTok]] · [[Security and Privacy]] · [[Observability]]

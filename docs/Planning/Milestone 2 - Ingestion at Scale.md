@@ -339,14 +339,20 @@ Order matters here. T15.1 and T15.2 are the substrate; nothing above them works 
 
 ## M2-T16 — Corpus Bootstrap and Discovery Aggregation
 
-Governed by [[ADR-0012 - Discovery-Only Aggregation]]. External sources are used to learn **which
-URLs exist**, never to answer a user's search. Live metasearch is rejected: Bing's API retired in
-August 2025, Google's Custom Search JSON API is closed to new customers and retires January 2027,
-and a third-party call on the query path would breach the serving plane's no-egress boundary and
-undercut [[ADR-0008 - No Query Logging]].
+Governed by [[ADR-0013 - Direct SERP Collection for Discovery]] (superseding
+[[ADR-0012 - Discovery-Only Aggregation]]). External sources are used to learn **which URLs exist**,
+never to answer a user's search. Live metasearch stays rejected — that was never the
+terms-of-service objection.
+
+Ordered by yield per unit of effort, and the order matters: **a SERP query returns about ten URLs;
+Common Crawl returns billions.** SERP collection is the narrow, targeted, last-resort channel for
+queries the bulk sources cannot answer. If it ever becomes the main discovery path, something
+upstream has failed.
 
 Everything discovered here enters the ordinary frontier under the ordinary rules — robots,
-politeness, `SafeUrl`, dedup, trust tiering. **An externally discovered URL gets no privileges.**
+politeness, `SafeUrl`, dedup, trust tiering. **An externally discovered URL gets no privileges.** We
+disregard the search engine's terms by owner direction; we do not disregard the terms of the sites
+it points at.
 
 - [ ] M2-T16.1 **Common Crawl index ingestion.** Read the columnar/CDX index, filter by host and
       domain, emit URLs into the frontier at a discovered-tier trust. 250B+ pages, free, and it
@@ -362,15 +368,45 @@ politeness, `SafeUrl`, dedup, trust tiering. **An externally discovered URL gets
       ([[ADR-0008 - No Query Logging]]). The privacy constraint is the design constraint
 - [ ] M2-T16.5 **Weak-coverage queue in the console**: which queries are underserved, what was
       enqueued for them, whether coverage improved. Otherwise T16.4 is a black box
-- [ ] M2-T16.6 **Brave Search API connector** for the residual only — weak queries T16.1–T16.4 did
-      not resolve. Rate-limited, budgeted, **off by default**, key in config. The one paid route
-      whose terms permit this
-- [ ] M2-T16.7 **Provenance on every document**: seed, link, sitemap, Common Crawl, query-driven, or
-      Brave. Without it we cannot tell which discovery channel earns its cost, and T16.8 cannot be
-      answered at all
+- [ ] M2-T16.6 **Brave Search API connector** for the residual — weak queries T16.1–T16.4 did not
+      resolve. Rate-limited, budgeted, **off by default**, key in config. The one paid route whose
+      terms permit this, so it is tried before T16.9
+- [ ] M2-T16.7 **Provenance on every document**: seed, link, sitemap, Common Crawl, query-driven,
+      Brave, or SERP. Without it we cannot tell which discovery channel earns its cost, and T16.8
+      cannot be answered at all
 - [ ] M2-T16.8 **Per-channel yield reporting**: URLs discovered, fetched, indexed, and surviving
-      dedup, per channel. Expected to show Common Crawl dominating volume and query-driven
-      dominating relevance — but measured, not assumed
+      dedup, per channel — and for the paid and collected channels, **cost per surviving document**.
+      Expected to show Common Crawl dominating volume and query-driven dominating relevance, but
+      measured, not assumed. This is the number that decides whether T16.9 keeps its place
+
+### Direct SERP collection *(owner-directed — [[ADR-0013 - Direct SERP Collection for Discovery]])*
+
+Last in the ladder and deliberately narrow. Reuses the collection layer built for M2-T01a/b/c
+rather than growing a second evasion path — a SERP source is just another consumer of the identity,
+proxy and fingerprint machinery, bound by the same pinning invariant.
+
+- [ ] M2-T16.9 **SERP source behind the queue, never a call.** The serving plane publishes a
+      weak-coverage term to a stream; the ingestion plane consumes it and owns all egress. Keeps
+      `scripts/test-egress.sh` green and meaningful — the boundary is ours, not Google's, and
+      nothing about T16.9 requires giving it up
+- [ ] M2-T16.10 **Wired into [[Proxy Manager]] / [[Session Manager]] / [[Fingerprint Engine]]**, with
+      residential egress **required** — datacenter ranges are classified almost immediately. Off by
+      default; it costs money to run
+- [ ] M2-T16.11 **Endpoint ladder**, lightest first, demoting on failure — the shape of
+      [[Signature Service]] §4.6. Most discovery only needs a list of URLs, which the plainest
+      endpoint gives at a fraction of the cost and exposure of a rendered browser
+- [ ] M2-T16.12 **Human-shaped pacing**: low volume, jitter, diurnal shaping ([[Session Manager]]
+      §4.5). The failure mode is never a single request; it is a regular pattern
+- [ ] M2-T16.13 **Challenge → quarantine and back off.** CAPTCHA, interstitial or consent wall
+      retires the identity per M2-T01a.7/.9. **Challenges are detected, not solved** — a challenge
+      means the identity is already classified, and pushing through burns it faster than resting it
+- [ ] M2-T16.14 **Canary queries against silent degradation.** Suspected bots are served plausible
+      but degraded results rather than an error, so a neutered channel reports itself healthy.
+      Known-stable queries checked against expected URLs, borrowed from M2-T01a.8. Without this,
+      T16.8's yield figures are measuring a lie
+- [ ] M2-T16.15 **Parser fixtures and a rot alarm.** SERP markup changes without notice and this
+      will break repeatedly — the maintenance tail [[ADR-0009 - Direct Collection for Social
+      Platforms]] names. Fixtures committed, `serp_parse_miss_total` alerting from day one
 
 ## M2-T07 — [[Proxy Manager]] *(now required)*
 
@@ -478,6 +514,9 @@ politeness, `SafeUrl`, dedup, trust tiering. **An externally discovered URL gets
 | Real content breaks M1's ranking assumptions | re-run the full relevance evaluation at the end of this milestone |
 | **Boilerplate stripping mistakes churn for content** | M2-T15.1 gives bad stripping a second failure mode — the crawler chases furniture forever. M2-T15.9 asserts extracted text is stable across fetches that differ only in furniture |
 | Common Crawl bootstrap floods the frontier with dead URLs | discovered-tier trust, ordinary dedup and `SafeUrl`; per-channel yield (M2-T16.8) makes a bad channel visible rather than merely expensive |
+| **SERP collection is silently degraded rather than blocked** | canary queries with known-stable results (M2-T16.14). Without them a neutered channel reports itself healthy and T16.8's yield numbers measure nothing |
+| SERP channel competes with social for the identity pool | it is last in the ladder, off by default, and M2-T01a.12 already halts rather than degrading to unpinned identities |
+| SERP maintenance tail is underestimated | fixtures plus `serp_parse_miss_total` from day one (M2-T16.15); the tail is real and permanent, as with the social connectors |
 | Query-driven discovery reintroduces query logging | aggregate counts over normalised terms with a frequency floor, never a stored log ([[ADR-0008 - No Query Logging]]); the privacy constraint is the design constraint |
 
 ## Related

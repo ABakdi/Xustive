@@ -262,6 +262,7 @@ Dashboard **Collection Health** (shared with [[Session Manager]]). Alerts: `Prox
 
 ## Related
 
+[[ADR-0013 - Direct SERP Collection for Discovery]] ·
 [[ADR-0009 - Direct Collection for Social Platforms]] · [[Session Manager]] · [[Fingerprint Engine]] ·
 [[Web Fetcher]] · [[Politeness and Robots]] · [[Error Handling and Resilience]] ·
 [[Data Sources Registry]] · [[Security and Privacy]]

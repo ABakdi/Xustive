@@ -222,5 +222,6 @@ capabilities, seccomp ([[Web Fetcher]] §10). Fingerprint patching does not rela
 
 ## Related
 
+[[ADR-0013 - Direct SERP Collection for Discovery]] ·
 [[ADR-0009 - Direct Collection for Social Platforms]] · [[Session Manager]] · [[Proxy Manager]] ·
 [[Signature Service]] · [[Web Fetcher]] · [[Security and Privacy]]
