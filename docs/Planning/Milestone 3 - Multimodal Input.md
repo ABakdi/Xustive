@@ -2,17 +2,17 @@
 tags:
   - planning
   - milestone
-milestone: 2
+milestone: 3
 status: not-started
 updated: 2026-08-06
 ---
 
-# Milestone 2 - Multimodal Input
+# Milestone 3 - Multimodal Input
 
 > **Goal:** voice and image become real input methods, and crawled images become searchable text.
 > **Exit gate:** WER within targets; screenshot OCR CER ≤ 15 %; `/search/image` p95 ≤ 500 ms; no
 > regression to text search latency.
-> Parent: [[TODO]] · Previous: [[Milestone 1 - Text Search MVP]] · Runs parallel to [[Milestone 2 - Ingestion at Scale]]
+> Parent: [[TODO]] · Previous: [[Milestone 1 - Text Search MVP]] · Previous: [[Milestone 2 - Ingestion at Scale]]
 
 ---
 
