@@ -20,6 +20,8 @@ updated: 2026-08-06
 | ID | Decision | Status | Affects |
 |:---|:---|:---|:---|
 | [[ADR-0010 - Next.js for the Frontend]] | React Server Components; `xustive-api` stops rendering HTML | accepted | [[UI - Frontend Architecture]], [[UI - Design Language]] |
+| [[ADR-0011 - Adaptive Recrawl over Static Crawling]] | recrawl on content longevity, not change rate; abandon volatile pages | accepted | [[Crawler Orchestrator]], [[Web Fetcher]], [[Deduplication Service]] |
+| [[ADR-0012 - Discovery-Only Aggregation]] | external engines discover URLs; never called on the serving path | accepted | [[Crawler Orchestrator]], [[Query Pipeline]], [[API Gateway]] |
 | [[ADR-0001 - Two-Plane Architecture]] | Split serving and ingestion, coupled only through the index | accepted | [[System Architecture]] |
 | [[ADR-0002 - Meilisearch as System of Record]] | No separate database; the index is the store | accepted | [[Search Index]], [[Data Model]] |
 | [[ADR-0003 - Comments in a Separate Index]] | Comments are their own index, folded in at query time | accepted | [[Data Model]], [[Query Pipeline]] |
@@ -28,7 +30,6 @@ updated: 2026-08-06
 | [[ADR-0006 - Redis Streams for the Ingestion Pipeline]] | Streams + consumer groups, not lists or a broker | accepted | [[Task Queue]] |
 | [[ADR-0007 - API-First Social Access]] | No scraping fallback exists in the code | **superseded by 0009** | social connectors, [[Legal and Compliance]] |
 | [[ADR-0008 - No Query Logging]] | Zero query retention, enforced structurally | accepted | [[Security and Privacy]], [[Observability]] |
-| [[ADR-0010 - Next.js for the Frontend]] | accepted | 2026-08-07 | React Server Components; the Rust API stops rendering HTML |
 | [[ADR-0009 - Direct Collection for Social Platforms]] | Direct collection is a first-class path; adds the collection layer | accepted | social connectors, [[Session Manager]], [[Fingerprint Engine]], [[Signature Service]], [[Proxy Manager]] |
 
 ---
