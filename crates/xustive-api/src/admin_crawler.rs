@@ -224,6 +224,8 @@ pub async fn enqueue(
         host: host.clone(),
         source_id: "admin".into(),
         depth: 0,
+        // A URL an operator typed is as trusted as a seed, and its outlinks inherit that.
+        trust: 100,
         priority: xustive_ingest::frontier::priority_for(0, 100, true),
     };
 
@@ -566,6 +568,7 @@ pub async fn add_source(
             host: host.clone(),
             source_id: source_id.clone(),
             depth: 0,
+            trust: 100,
             priority: i64::MIN / 2,
         };
         let added = f.add(&pending).await.unwrap_or(false);

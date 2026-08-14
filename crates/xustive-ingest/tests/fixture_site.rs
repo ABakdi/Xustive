@@ -406,3 +406,132 @@ async fn an_unreachable_robots_txt_is_not_permission() {
         );
     }
 }
+
+// --- crawl depth -------------------------------------------------------------------------------
+
+/// A frontier in its own namespace, or `None` without Redis.
+fn depth_frontier(namespace: &str) -> Option<xustive_ingest::frontier::Frontier> {
+    let url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6390".into());
+    xustive_ingest::frontier::Frontier::connect_in(&url, &format!("test:{namespace}")).ok()
+}
+
+/// Discovered links must be one hop deeper than the page they came from.
+///
+/// The regression this exists for: `enqueue_outlinks` hardcoded `let depth = 1`, so every
+/// discovery was recorded at depth 1 no matter how far in it actually was. The check immediately
+/// below it compared that constant against `max_depth` (3), which is never true — so the depth
+/// limit could not fire and every URL in the frontier scored identically, leaving the crawl with
+/// no breadth-first ordering at all.
+///
+/// Seeded at depth 2 rather than 0 on purpose. From a depth-0 seed the old constant and the
+/// correct arithmetic agree — both give 1 — so a test starting at the root passes either way and
+/// proves nothing.
+#[tokio::test]
+async fn discovered_links_are_one_hop_deeper_than_their_parent() {
+    let Some(f) = depth_frontier("crawl_depth") else {
+        eprintln!("skipping: no Redis");
+        return;
+    };
+    if port() == 0 {
+        return;
+    }
+    f.clear().await;
+
+    let Ok(fetcher) = Fetcher::new(FetchConfig {
+        ignore_politeness: true,
+        ..FetchConfig::default()
+    }) else {
+        return;
+    };
+    let mut orch = xustive_ingest::orchestrator::Orchestrator::new(
+        fetcher,
+        f.clone(),
+        xustive_ingest::orchestrator::OrchestratorConfig {
+            max_depth: 5,
+            default_delay: Duration::from_millis(0),
+            ..Default::default()
+        },
+    );
+
+    let index = format!("{}/index.html", base());
+    let parsed = url::Url::parse(&index).unwrap();
+    let pending = xustive_ingest::frontier::Pending {
+        url: index.clone(),
+        host: parsed.host_str().unwrap().to_string(),
+        source_id: "fixture".into(),
+        depth: 2,
+        trust: 77,
+        priority: 0,
+    };
+    assert_eq!(f.add(&pending).await, Ok(true));
+
+    // One turn: claims the seed, fetches it, queues what it links to.
+    let _ = orch.step(1_000).await;
+
+    // The articles the index links to must now be claimable at depth 3, not depth 1.
+    let claim = f
+        .claim(10_000, Duration::from_millis(0))
+        .await
+        .expect("the index links to articles, so something should be queued");
+    assert_ne!(claim.url, index, "the seed was already consumed");
+    assert_eq!(
+        claim.depth, 3,
+        "a link found on a depth-2 page is at depth 3, not the old constant 1"
+    );
+    assert_eq!(claim.trust, 77, "trust is inherited from the linking page");
+}
+
+/// `max_depth` must actually stop the crawl.
+///
+/// With the depth constant in place this could only ever fire at `max_depth = 0`, which made the
+/// setting look functional while doing nothing at any realistic value.
+#[tokio::test]
+async fn max_depth_stops_link_following() {
+    let Some(f) = depth_frontier("crawl_max_depth") else {
+        eprintln!("skipping: no Redis");
+        return;
+    };
+    if port() == 0 {
+        return;
+    }
+    f.clear().await;
+
+    let Ok(fetcher) = Fetcher::new(FetchConfig {
+        ignore_politeness: true,
+        ..FetchConfig::default()
+    }) else {
+        return;
+    };
+    let mut orch = xustive_ingest::orchestrator::Orchestrator::new(
+        fetcher,
+        f.clone(),
+        xustive_ingest::orchestrator::OrchestratorConfig {
+            // The seed sits at depth 2, so its links are depth 3 — past the limit.
+            max_depth: 2,
+            default_delay: Duration::from_millis(0),
+            ..Default::default()
+        },
+    );
+
+    let index = format!("{}/index.html", base());
+    let parsed = url::Url::parse(&index).unwrap();
+    assert_eq!(
+        f.add(&xustive_ingest::frontier::Pending {
+            url: index.clone(),
+            host: parsed.host_str().unwrap().to_string(),
+            source_id: "fixture".into(),
+            depth: 2,
+            trust: 50,
+            priority: 0,
+        })
+        .await,
+        Ok(true)
+    );
+
+    let _ = orch.step(1_000).await;
+
+    assert!(
+        f.claim(10_000, Duration::from_millis(0)).await.is_none(),
+        "links from a page at max_depth must not be queued"
+    );
+}

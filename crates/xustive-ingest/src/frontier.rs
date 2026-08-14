@@ -58,6 +58,8 @@ pub struct Pending {
     pub source_id: String,
     /// Links followed from the seed. Used by the trap detectors and by priority.
     pub depth: u32,
+    /// How much we rate the source, 0–100. Inherited by whatever this page links to.
+    pub trust: u8,
     /// Lower is sooner. Not a timestamp — an ordering.
     pub priority: i64,
 }
@@ -409,7 +411,12 @@ local url = item[1]
 -- millisecond sees it as not due rather than claiming a second URL from it.
 redis.call('ZADD', KEYS[1], now + delay_ms, host)
 redis.call('HSET', KEYS[3], url, claim_until)
-return {host, url}
+-- Read the metadata inside the script rather than as a follow-up GET: a separate round trip could
+-- observe a `complete` from another worker in between and hand back a URL with no depth, which
+-- silently resets that branch of the crawl to the root.
+-- Lua truncates a table at the first nil, so an absent entry must become a string here.
+local meta = redis.call('HGET', KEYS[2], url)
+return {host, url, meta or ''}
 "#;
 
 /// Return claims whose worker never came back.
@@ -443,6 +450,41 @@ pub struct Frontier {
 pub struct Claim {
     pub host: String,
     pub url: String,
+    /// Links followed from a seed to reach this URL.
+    ///
+    /// Carried through the frontier because it cannot be recovered from the URL itself. Without
+    /// it the orchestrator has no parent depth to increment, every discovery looks like depth 1,
+    /// and `max_depth` can never fire.
+    pub depth: u32,
+    /// The seed this descends from, so budgets and provenance survive link-following.
+    pub source_id: String,
+    /// Inherited from the parent. A link from a source we rate highly is worth reaching sooner
+    /// than one from a source we do not.
+    pub trust: u8,
+}
+
+/// Per-URL state the queue itself cannot hold.
+///
+/// The host queue is a sorted set of URLs scored by priority, so there is nowhere in it to put
+/// depth. Encoded as one field rather than three keys because it is written on every discovery and
+/// read on every claim, and at five million URLs that ratio decides the cost.
+///
+/// `source_id` is last so it may contain anything; the numbers before it are parsed positionally.
+fn encode_meta(depth: u32, trust: u8, source_id: &str) -> String {
+    format!("{depth}\t{trust}\t{source_id}")
+}
+
+/// Decode what `encode_meta` wrote, falling back to a root-level default.
+///
+/// A missing or unparsable entry yields depth 0, which is the **conservative** direction: it makes
+/// the crawler treat the URL as a seed and keep going. Defaulting to `max_depth` instead would
+/// make one bad write look like a crawl that mysteriously stops following links.
+fn decode_meta(raw: &str) -> (u32, u8, String) {
+    let mut parts = raw.splitn(3, '\t');
+    let depth = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let trust = parts.next().and_then(|s| s.parse().ok()).unwrap_or(50);
+    let source_id = parts.next().unwrap_or_default().to_string();
+    (depth, trust, source_id)
 }
 
 impl Frontier {
@@ -465,6 +507,9 @@ impl Frontier {
     }
     fn k_inflight(&self) -> String {
         format!("{}:inflight", self.namespace)
+    }
+    fn k_meta(&self) -> String {
+        format!("{}:meta", self.namespace)
     }
     fn host_queue(&self, host: &str) -> String {
         format!("{}:q:{host}", self.namespace)
@@ -493,12 +538,14 @@ impl Frontier {
             return Ok(false);
         }
 
-        let depth: usize = redis::cmd("ZCARD")
+        // Named for what it is. This is how many URLs the host already has queued, not the crawl
+        // depth of anything — a distinction that now matters, since `Pending::depth` is real.
+        let queued_for_host: usize = redis::cmd("ZCARD")
             .arg(self.host_queue(&pending.host))
             .query_async(&mut conn)
             .await
             .unwrap_or(0);
-        if depth >= MAX_PER_HOST {
+        if queued_for_host >= MAX_PER_HOST {
             return Err(Rejected::Full);
         }
 
@@ -516,6 +563,18 @@ impl Frontier {
             .arg(&pending.url)
             .query_async::<()>(&mut conn)
             .await;
+        // Depth travels with the URL, not with the worker that found it. Written before the host
+        // becomes due, so a claim can never arrive ahead of the metadata it needs.
+        let meta: Result<(), _> = redis::cmd("HSET")
+            .arg(self.k_meta())
+            .arg(&pending.url)
+            .arg(encode_meta(
+                pending.depth,
+                pending.trust,
+                &pending.source_id,
+            ))
+            .query_async::<()>(&mut conn)
+            .await;
         // `NX` so an existing due-time is never pushed backwards by a new discovery — a host that
         // is due now must stay due, or a steady trickle of links would starve it forever.
         let host_added: Result<(), _> = redis::cmd("ZADD")
@@ -526,11 +585,19 @@ impl Frontier {
             .query_async::<()>(&mut conn)
             .await;
 
-        if let Err(e) = queued.and(host_added) {
+        if let Err(e) = queued.and(meta).and(host_added) {
             // Undo the `seen` write so the URL can be discovered again. Leaving it would make one
             // transient Redis error a permanent hole in the crawl.
             let _: Result<(), _> = redis::cmd("SREM")
                 .arg(self.k_seen())
+                .arg(&pending.url)
+                .query_async::<()>(&mut conn)
+                .await;
+            // And the metadata, or a failed add leaves an orphan that nothing will ever claim or
+            // clear. `seen` is what gates rediscovery, so this is tidiness rather than correctness
+            // — but the hash is unbounded and nobody sweeps it.
+            let _: Result<(), _> = redis::cmd("HDEL")
+                .arg(self.k_meta())
                 .arg(&pending.url)
                 .query_async::<()>(&mut conn)
                 .await;
@@ -562,7 +629,7 @@ impl Frontier {
         let mut conn = self.conn().await?;
         let result: Option<Vec<String>> = redis::Script::new(CLAIM_SCRIPT)
             .key(self.k_hosts())
-            .key("unused")
+            .key(self.k_meta())
             .key(self.k_inflight())
             .arg(now_ms)
             .arg(host_delay.as_millis() as i64)
@@ -572,9 +639,13 @@ impl Frontier {
             .await
             .ok()?;
         let parts = result?;
+        let (depth, trust, source_id) = decode_meta(parts.get(2).map(String::as_str).unwrap_or(""));
         Some(Claim {
             host: parts.first()?.clone(),
             url: parts.get(1)?.clone(),
+            depth,
+            trust,
+            source_id,
         })
     }
 
@@ -585,6 +656,14 @@ impl Frontier {
         };
         let _: Result<(), _> = redis::cmd("HDEL")
             .arg(self.k_inflight())
+            .arg(url)
+            .query_async::<()>(&mut conn)
+            .await;
+        // The metadata dies with the claim. It exists to carry depth from discovery to fetch, and
+        // once fetched the URL is in `seen` and will not be queued again — so keeping it would grow
+        // a hash the size of every URL ever crawled.
+        let _: Result<(), _> = redis::cmd("HDEL")
+            .arg(self.k_meta())
             .arg(url)
             .query_async::<()>(&mut conn)
             .await;

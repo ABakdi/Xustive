@@ -175,6 +175,7 @@ impl Orchestrator {
             host,
             source_id: source_id.to_string(),
             depth: 0,
+            trust,
             priority: frontier::priority_for(0, trust, false),
         };
         matches!(self.frontier.add(&pending).await, Ok(true))
@@ -207,7 +208,7 @@ impl Orchestrator {
             return Outcome::Idle;
         };
 
-        let outcome = self.process(&claim.url, &claim.host).await;
+        let outcome = self.process(&claim).await;
         // Completed whatever happened. A URL that failed is not retried by leaving it claimed —
         // that would block its host until the claim expired, which punishes the host for our
         // problem. Retries belong to the frontier, as a fresh entry.
@@ -215,7 +216,8 @@ impl Orchestrator {
         outcome
     }
 
-    async fn process(&mut self, url: &str, host: &str) -> Outcome {
+    async fn process(&mut self, claim: &frontier::Claim) -> Outcome {
+        let (url, host) = (claim.url.as_str(), claim.host.as_str());
         let fetched = match self.fetcher.get(url).await {
             Ok(f) => f,
             Err(FetchError::RobotsDisallowed) => {
@@ -252,10 +254,18 @@ impl Orchestrator {
             xustive_core::SourceType::Web,
         ) {
             Ok(p) => p,
-            Err(ParseError::TooLittleContent { .. }) => {
+            Err(ParseError::TooLittleContent { outlinks, .. }) => {
+                // Not indexed, but still walked through. Listing and category pages are mostly
+                // links and little prose, so they land here almost by definition — and they are
+                // where most new URLs come from. Returning here without queuing them made the
+                // crawler refuse to follow precisely the pages that exist to be followed.
                 self.stats.skip("thin");
                 self.publish_skip("thin").await;
                 self.publish_recent(url, host, "thin", 0).await;
+                if !fetched.exclusion.is_some_and(|e| e.blocks_links()) {
+                    self.enqueue_outlinks(&outlinks, &claim.source_id, claim)
+                        .await;
+                }
                 return Outcome::Idle;
             }
             Err(ParseError::NoIndex) => {
@@ -279,7 +289,8 @@ impl Orchestrator {
         // crawling *through* — that combination is how sites let a crawler reach content behind a
         // section they do not want listed.
         if !fetched.exclusion.is_some_and(|e| e.blocks_links()) {
-            self.enqueue_outlinks(&parsed, host).await;
+            self.enqueue_outlinks(&parsed.outlinks, &parsed.document.source_id, claim)
+                .await;
         }
 
         if fetched.exclusion.is_some_and(|e| e.blocks_indexing()) {
@@ -294,13 +305,23 @@ impl Orchestrator {
         Outcome::Document(Box::new(parsed))
     }
 
-    async fn enqueue_outlinks(&mut self, parsed: &Parsed, from_host: &str) {
-        let depth = 1; // Depth tracking through the frontier arrives with revisit scheduling.
+    async fn enqueue_outlinks(
+        &mut self,
+        links: &[String],
+        source_id: &str,
+        from: &frontier::Claim,
+    ) {
+        // One hop further than the page we just fetched. Previously this was the constant 1, which
+        // made the check below compare 1 against a limit of 3 — always false, so `max_depth` never
+        // fired and every URL in the frontier scored identically. The crawler had no breadth-first
+        // ordering at all: it would follow a single site's archive as readily as a new homepage.
+        let depth = from.depth + 1;
         if depth > self.config.max_depth {
+            self.stats.skip("too_deep");
             return;
         }
 
-        for link in &parsed.outlinks {
+        for link in links {
             let Ok(u) = url::Url::parse(link) else {
                 continue;
             };
@@ -311,7 +332,7 @@ impl Orchestrator {
 
             // Off-site links are dropped unless discovery is on. Following them is the difference
             // between crawling twenty sources and crawling the web.
-            if host != from_host
+            if host != from.host
                 && !self.config.discover_new_hosts
                 && !self.known_hosts.contains(&host)
             {
@@ -324,12 +345,21 @@ impl Orchestrator {
                 continue;
             }
 
+            // Trust is inherited from the page that linked here, rather than the flat 50 this used
+            // before. A link off a tier-A ministry site is a better bet than one off a page we
+            // reached by accident, and with depth now real the two compose the way priority
+            // intends.
             let pending = Pending {
                 url: frontier::canonical(&u),
                 host,
-                source_id: parsed.document.source_id.clone(),
+                source_id: source_id.to_string(),
                 depth,
-                priority: frontier::priority_for(depth, 50, frontier::looks_like_article(u.path())),
+                trust: from.trust,
+                priority: frontier::priority_for(
+                    depth,
+                    from.trust,
+                    frontier::looks_like_article(u.path()),
+                ),
             };
             match self.frontier.add(&pending).await {
                 Ok(true) => {

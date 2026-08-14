@@ -47,6 +47,7 @@ fn pending(host: &str, url: &str, priority: i64) -> Pending {
         host: host.to_string(),
         source_id: "test".into(),
         depth: 0,
+        trust: 50,
         priority,
     }
 }
@@ -242,4 +243,71 @@ fn now_ms() -> i64 {
     // Fixed base plus nothing — these tests pass time explicitly so they do not depend on the
     // wall clock, which would make the delay assertions flaky under load.
     1_786_000_000_000
+}
+
+/// Depth must survive the round trip through Redis.
+///
+/// The frontier's queue is a sorted set of URLs scored by priority — there is nowhere in it to put
+/// depth, so it travels in a separate hash. If that hash is not written, not read, or cleared too
+/// early, the claim comes back at depth 0 and every page looks like a seed.
+///
+/// This is the assertion that was missing when `enqueue_outlinks` hardcoded `let depth = 1`.
+#[tokio::test]
+async fn a_claim_carries_the_depth_and_trust_it_was_queued_with() {
+    let f = require_redis!("claim_meta");
+
+    let mut p = pending("example.dz", "https://example.dz/deep", 10);
+    p.depth = 3;
+    p.trust = 87;
+    p.source_id = "ministry".into();
+    assert_eq!(f.add(&p).await, Ok(true));
+
+    let claim = f.claim(1_000, Duration::from_millis(0)).await;
+    let claim = claim.expect("a queued URL should be claimable");
+    assert_eq!(claim.url, "https://example.dz/deep");
+    assert_eq!(claim.depth, 3, "depth must survive the frontier");
+    assert_eq!(claim.trust, 87, "trust must survive the frontier");
+    assert_eq!(claim.source_id, "ministry");
+}
+
+/// A source id may contain anything, including the separator used to encode the metadata.
+///
+/// It is encoded last precisely so this cannot corrupt the numbers in front of it. Worth asserting
+/// rather than trusting, because the failure is silent: a mangled parse yields depth 0, which is
+/// indistinguishable from a fresh seed.
+#[tokio::test]
+async fn a_source_id_containing_the_separator_does_not_corrupt_the_depth() {
+    let f = require_redis!("claim_meta_sep");
+
+    let mut p = pending("example.dz", "https://example.dz/x", 10);
+    p.depth = 2;
+    p.trust = 40;
+    p.source_id = "odd\tid\twith\tseparators".into();
+    assert_eq!(f.add(&p).await, Ok(true));
+
+    let claim = f.claim(1_000, Duration::from_millis(0)).await.unwrap();
+    assert_eq!(claim.depth, 2);
+    assert_eq!(claim.trust, 40);
+    assert_eq!(claim.source_id, "odd\tid\twith\tseparators");
+}
+
+/// Completing a URL must not leave its metadata behind.
+///
+/// The hash is keyed by URL and nothing sweeps it, so an entry that outlives its claim is a leak
+/// the size of every URL ever crawled.
+#[tokio::test]
+async fn completing_a_claim_clears_its_metadata() {
+    let f = require_redis!("claim_meta_cleanup");
+
+    let p = pending("example.dz", "https://example.dz/gone", 10);
+    assert_eq!(f.add(&p).await, Ok(true));
+    let claim = f.claim(1_000, Duration::from_millis(0)).await.unwrap();
+    f.complete(&claim.url).await;
+
+    // Re-adding is refused by `seen`, so the only way to observe the hash is to look at it. A
+    // second claim of a completed URL must not resurrect anything.
+    assert!(
+        f.claim(2_000, Duration::from_millis(0)).await.is_none(),
+        "a completed URL should not be claimable again"
+    );
 }
