@@ -318,3 +318,55 @@ async fn creating_a_group_twice_is_not_an_error() {
     assert!(Queue::connect(&url(), &q.stream, &q.group).await.is_ok());
     q.destroy().await.ok();
 }
+
+/// Redis must be configured to refuse writes rather than evict them.
+///
+/// M1-T12.4. `noeviction` is set in `deploy/docker-compose.yml`, and until now that was the only
+/// thing asserting it — a comment and a flag, neither of which fails if someone changes them.
+///
+/// The stakes are why this is worth a test at all. Under any `allkeys-*` policy Redis reclaims
+/// memory by deleting keys of its own choosing, and the queue's stream is a perfectly ordinary key.
+/// A full Redis would then drop queued documents **silently**: no error to the producer, no
+/// dead letter, no gap anyone can see afterwards. The documents simply never arrive, and the only
+/// symptom is an index that is quietly smaller than the crawl says it should be.
+///
+/// `noeviction` converts that into a write error, which the producer can retry and an operator can
+/// see. Loudly refusing is strictly better than silently losing.
+#[tokio::test]
+async fn redis_refuses_to_evict_rather_than_dropping_queued_work() {
+    let Some(q) = queue("eviction").await else {
+        eprintln!("skipping: no Redis");
+        return;
+    };
+    let _ = q;
+
+    let Ok(client) = redis::Client::open(url()) else {
+        return;
+    };
+    let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+        return;
+    };
+
+    let policy: Vec<String> = match redis::cmd("CONFIG")
+        .arg("GET")
+        .arg("maxmemory-policy")
+        .query_async(&mut conn)
+        .await
+    {
+        Ok(v) => v,
+        // A managed Redis may refuse CONFIG GET. Skipping is right: this asserts a deployment
+        // setting, and being unable to read it is not evidence that it is wrong.
+        Err(e) => {
+            eprintln!("skipping: cannot read maxmemory-policy ({e})");
+            return;
+        }
+    };
+
+    let value = policy.get(1).map(String::as_str).unwrap_or("");
+    assert_eq!(
+        value, "noeviction",
+        "maxmemory-policy is {value:?}; under any allkeys-* policy Redis would delete queued \
+         documents to reclaim memory, with no error and no dead letter — an index quietly smaller \
+         than the crawl claims"
+    );
+}
