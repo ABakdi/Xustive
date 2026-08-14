@@ -547,3 +547,65 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod locale_tests {
+    use super::*;
+
+    /// Every unit must have an Arabic and a French name.
+    ///
+    /// The table is the kind of list people append to, and an entry added with only its English
+    /// name degrades silently: the converter still answers, just in the wrong language, and only
+    /// for the one unit nobody tested. Checking the whole table mechanically is the only way this
+    /// stays true as it grows.
+    #[test]
+    fn every_unit_is_named_in_arabic_and_french() {
+        for u in UNITS {
+            assert!(
+                !u.names.0.trim().is_empty(),
+                "{} has no Arabic name",
+                u.name
+            );
+            assert!(
+                !u.names.1.trim().is_empty(),
+                "{} has no French name",
+                u.name
+            );
+            assert!(
+                u.names
+                    .0
+                    .chars()
+                    .any(|c| ('\u{0600}'..='\u{06FF}').contains(&c)),
+                "{}'s Arabic name {:?} is not in Arabic script — an English word in the ar slot \
+                 passes a non-empty check while still answering the wrong language",
+                u.name,
+                u.names.0
+            );
+        }
+    }
+
+    /// Darija reads Arabic, never English.
+    #[test]
+    fn darija_falls_back_to_arabic() {
+        for u in UNITS {
+            assert_eq!(
+                u.display("ary"),
+                u.display("ar"),
+                "{} differs between ar and ary",
+                u.name
+            );
+        }
+    }
+
+    /// The unit whose Arabic name the reader is most likely to already know.
+    #[test]
+    fn qintar_answers_in_the_language_it_was_asked_in() {
+        let q = UNITS
+            .iter()
+            .find(|u| u.name == "qintar")
+            .expect("qintar is the reason this converter exists");
+        assert_ne!(q.display("ar"), q.name);
+        assert_ne!(q.display("fr"), q.name);
+        assert_eq!(q.display("en"), q.name);
+    }
+}
