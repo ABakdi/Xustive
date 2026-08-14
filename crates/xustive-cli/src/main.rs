@@ -121,6 +121,9 @@ enum Command {
         query: String,
         #[arg(long, default_value_t = 10)]
         limit: usize,
+        /// Show the per-signal score breakdown behind each result's position.
+        #[arg(long)]
+        explain: bool,
     },
 }
 
@@ -215,7 +218,11 @@ async fn main() -> Result<()> {
         Command::Dlq { action, limit } => worker::dlq(&config, &action, limit).await,
         Command::Keys { show } => cmd_keys(&client, show).await,
         Command::Stats => cmd_stats(&client, &config).await,
-        Command::Search { query, limit } => cmd_search(&client, &config, &query, limit).await,
+        Command::Search {
+            query,
+            limit,
+            explain,
+        } => cmd_search(&client, &config, &query, limit, explain).await,
         Command::Text { .. } => unreachable!("handled above"),
     }
 }
@@ -570,6 +577,7 @@ async fn cmd_search(
     config: &Config,
     query: &str,
     limit: usize,
+    explain: bool,
 ) -> Result<()> {
     let normalized = xustive_text::normalize(query);
     let q = xustive_search::Query::new(&normalized).limit(limit);
@@ -582,6 +590,59 @@ async fn cmd_search(
         "hits       {} (in {} ms)\n",
         hits.estimated_total_hits, hits.processing_time_ms
     );
+
+    // Ranked through the same `rerank` the API uses, not Meilisearch's own order.
+    //
+    // The point of `--explain` is to answer "why is this result here", and that question is only
+    // meaningful about the order a user actually sees. Explaining the raw engine order would
+    // describe a ranking nothing serves.
+    let ranked = if explain {
+        Some(xustive_search::rank::rerank(
+            &hits.hits,
+            &normalized,
+            xustive_core::now_unix(),
+            &trust_tiers(),
+            &xustive_search::rank::Weights::default(),
+        ))
+    } else {
+        None
+    };
+
+    if let Some(ranked) = ranked {
+        for (i, r) in ranked.iter().enumerate() {
+            let title = r
+                .hit
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or("(no title)");
+            let url = r.hit.get("url").and_then(Value::as_str).unwrap_or("");
+            let src = r
+                .hit
+                .get("source_type")
+                .and_then(Value::as_str)
+                .unwrap_or("?");
+            let e = &r.explain;
+            println!("{:>3}. [{src}] {title}", i + 1);
+            println!("     {url}");
+            println!(
+                "     score {:.4}  = relevance {:.3}  freshness {:.3}  trust {:.3}  \
+                 quality {:.3}  spam {:.3}",
+                e.total, e.relevance, e.freshness, e.trust, e.quality, e.spam
+            );
+            // Age is only meaningful when the date is trusted. Printing `0 days` for a document
+            // whose date we guessed reads as "published today", which is how a freshness bug hides.
+            let age = if e.date_trusted {
+                format!("{:.1} days", e.age_days)
+            } else {
+                format!("{:.1} days (date not trusted)", e.age_days)
+            };
+            println!(
+                "     age {age}, {} near-duplicate(s) folded in",
+                e.collapsed
+            );
+        }
+        return Ok(());
+    }
 
     for (i, hit) in hits.hits.iter().enumerate() {
         let title = hit
@@ -597,6 +658,33 @@ async fn cmd_search(
         println!("     {url}");
     }
     Ok(())
+}
+
+/// Trust tiers from the seed list.
+///
+/// Read the same way the API reads them, and from the same file, or `--explain` would describe a
+/// ranking the server does not perform — which is worse than not explaining it at all.
+fn trust_tiers() -> std::collections::HashMap<String, xustive_core::TrustTier> {
+    use xustive_core::TrustTier;
+    const SEEDS: &str = include_str!("../../../data/sources/seeds.tsv");
+    let mut out = std::collections::HashMap::new();
+    for line in SEEDS.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let cols: Vec<&str> = line.split('\t').map(str::trim).collect();
+        if cols.len() < 3 {
+            continue;
+        }
+        let tier = match cols[2].to_ascii_uppercase().as_str() {
+            "A" => TrustTier::A,
+            "C" => TrustTier::C,
+            _ => TrustTier::B,
+        };
+        out.insert(cols[0].to_string(), tier);
+    }
+    out
 }
 
 #[cfg(test)]
