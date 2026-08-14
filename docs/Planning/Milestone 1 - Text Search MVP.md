@@ -110,8 +110,11 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [x] M1-T06.3 Freshness τ by inferred query intent
 - [x] M1-T06.4 Diversity: per-domain cap, per-author cap, source-type spread
 - [x] M1-T06.5 SimHash collapse at result time
-- [~] M1-T06.6 Per-signal `Explain` struct is computed and returned; the `--explain` CLI
-      surface is not wired up yet
+- [x] M1-T06.6 Per-signal `Explain` struct is computed and returned, and `search --explain` prints
+      it. Ranked through the same `rerank` the API uses rather than Meilisearch's own order — the
+      question it answers is why a result sits where it does, which is only meaningful about the
+      order a user sees. Age carries a not-trusted marker when the date was inferred, because a
+      bare `0 days` on a guessed date reads as "published today"
 - [ ] M1-T06.7 Weight tuning against the golden set — blocked on M1-T15.5
 
 ## M1-T07 — [[Sentiment Engine]] (lexicon mode)
@@ -207,9 +210,16 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
       crashed worker's jobs do not wait behind a fresh backlog
 - [x] M1-T12.3 Approximate trimming on write **and** on each worker pass — a queue that stops
       receiving work stops trimming itself
-- [~] M1-T12.4 `noeviction` is set in compose; the eviction test is not written
-- [~] M1-T12.5 `depth()`, `pending()` and `dead_count()` exist and are exposed by `make dlq`;
-      they are not yet Prometheus gauges
+- [x] M1-T12.4 `noeviction` is set in compose **and asserted**. Under any `allkeys-*` policy Redis
+      reclaims memory by deleting keys of its own choosing, and the stream is an ordinary key —
+      queued documents would vanish with no error, no dead letter and no visible gap, leaving an
+      index quietly smaller than the crawl claims. Skips rather than fails where `CONFIG GET` is
+      refused: being unable to read the setting is not evidence it is wrong
+- [x] M1-T12.5 `depth()`, `pending()` and `dead_count()` are exposed by `make dlq` **and as
+      Prometheus gauges**. Sampled at scrape time rather than pushed from the indexer: the indexer
+      is not always running, and a backlog nobody is draining is exactly what wants alerting on, so
+      a gauge that only updates while a worker lives goes silent when it matters. Every failure is
+      silent — `/metrics` shares a port with the liveness probe
 - [x] M1-T12.6 `make dlq` stats / peek / replay. Replay is always deliberate — a queue that
       retries its own poison on a timer will do it at 3am after someone fixed the bug
 
