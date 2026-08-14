@@ -309,20 +309,29 @@ signal that matters is **whether a change persisted**, not whether bytes differe
 
 Order matters here. T15.1 and T15.2 are the substrate; nothing above them works without both.
 
-- [ ] M2-T15.1 **Dual content hash.** One over the raw body, one over extracted article text after
+- [~] M2-T15.1 **Dual content hash.** One over the raw body, one over extracted article text after
       boilerplate stripping. Only the second counts as a change. This is longevity scoring at the
       cost of a second hash, and it is what stops the crawler chasing view counters and "most read"
-      sidebars on every Algerian news page it holds
-- [ ] M2-T15.2 **Change history on the document**: `last_fetched`, `last_modified`, `etag`, both
-      hashes, current interval, and a bounded ring of `(when, content_changed)`. Schema change plus
-      migration; everything below reads from this
-- [ ] M2-T15.3 **Adaptive interval, multiplicative.** Changed → × 0.5, unchanged → × 1.5, clamped
+      sidebars on every Algerian news page it holds. **Half of this already existed**: `content_hash`
+      is BLAKE3 over the *extracted, normalised* body, so comparing it across fetches already
+      ignores everything outside the article. Remaining: a raw-body hash, useful only to tell
+      "nothing moved" apart from "only the furniture moved" when diagnosing a channel
+- [x] M2-T15.2 **Change history**: `last_fetched`, `last_modified`, `etag`, the content hash, the
+      current interval and the volatility count. **Stored in Redis beside the frontier, not on the
+      indexed document** as ADR-0011's consequences assumed — it is written on every fetch
+      including unchanged ones, and Meilisearch takes writes as queued tasks, so a million-page
+      corpus revisiting daily would enqueue a million bookkeeping tasks a day that change nothing
+      searchable. Losing Redis costs intervals, not documents
+- [x] M2-T15.3 **Adaptive interval, multiplicative.** Changed → × 0.5, unchanged → × 1.5, clamped
       per trust tier. Chosen over the formal estimators because we never observe *how many* times a
       page changed — only whether it differs from our copy — so the obvious estimator is biased low
-      exactly where it costs most
-- [ ] M2-T15.4 **Volatile-page abandonment.** Changes on every visit even at its floor → slow lane.
+      exactly where it costs most. Bounds are per trust tier, or a large quiet corpus drags every
+      interval to the ceiling and the sources that matter go stale with the rest
+- [x] M2-T15.4 **Volatile-page abandonment.** Changes on every visit even at its floor → slow lane.
       The Cho result applied directly: a page that cannot be kept fresh should not be chased.
-      Shares its mechanism with M2-T05.8
+      Shares its mechanism with M2-T05.8. Parked at the ceiling rather than dropped, so a ticker
+      that becomes an archive is eventually noticed; four consecutive changes rather than one, so a
+      burst of breaking news is not mistaken for a page that never settles
 - [ ] M2-T15.5 **Conditional requests wired into scheduling** — depends on M2-T04.2. A 304 is
       "unchanged" at a few hundred bytes. Without this the whole task group costs more than it saves
 - [ ] M2-T15.6 **Sitemap `lastmod` and feed polling as freshness signals** — depends on M2-T03.5.
