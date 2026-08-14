@@ -145,9 +145,14 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
       both fetch it. Asserted with 16 concurrent workers, zero duplicate claims. **Leader election
       still open**, though atomic claiming makes it an optimisation rather than a correctness need
 - [ ] M2-T03.2 Scheduling loop with per-host due-times
-- [~] M2-T03.3 Priority computation — depth dominates; trust and article-shape only break ties, or
-      one trusted source swallows the crawl. **Reopened**: `orchestrator.rs` pins `depth = 1`, so
-      every URL scores identically and `max_depth` never fires. Superseded by M2-T15.7
+- [x] M2-T03.3 Priority computation — depth dominates; trust and article-shape only break ties, or
+      one trusted source swallows the crawl. Reopened once: `orchestrator.rs` pinned `depth = 1`
+      and compared it against a limit of 3, so `max_depth` could never fire and every URL scored
+      identically — the crawl had no breadth-first ordering at all. Depth now travels through the
+      frontier in a metadata hash, read inside the claim script so a concurrent `complete` cannot
+      hand back a URL with no depth. Trust is inherited from the linking page rather than a flat
+      50. Asserted from a depth-2 seed, because from the root the old constant and the correct
+      arithmetic agree and a test starting there passes either way
 - [ ] M2-T03.4 Adaptive revisit intervals (changed / unchanged / 304) → **specified in M2-T15**
 - [ ] M2-T03.5 Sitemap and feed discovery with caps — also the highest-yield freshness signal, see
       M2-T15.6
@@ -323,10 +328,10 @@ Order matters here. T15.1 and T15.2 are the substrate; nothing above them works 
 - [ ] M2-T15.6 **Sitemap `lastmod` and feed polling as freshness signals** — depends on M2-T03.5.
       One fetch reports on hundreds of URLs; for news sources this is the highest-yield signal
       available and it should be preferred over polling pages directly
-- [ ] M2-T15.7 **Frontier priority becomes `trust × change_probability × age`**, replacing
-      `depth × 1000`. Folds into the depth-tracking fix — `orchestrator.rs` pins `depth = 1`, so
-      every URL currently has identical priority and `max_depth` is dead code. Same edit, do them
-      together
+- [~] M2-T15.7 **Frontier priority becomes `trust × change_probability × age`**, replacing
+      `depth × 1000`. Depth tracking and trust inheritance are **done** (M2-T03.3); the remaining
+      half is `change_probability` and `age`, which cannot be computed until the change history in
+      M2-T15.2 exists. Blocked on it rather than forgotten
 - [ ] M2-T15.8 **Recrawl budget is separate from discovery budget**, so freshness and coverage
       cannot starve each other. Split visible in the console and in `/metrics`
 - [ ] M2-T15.9 **Boilerplate-stripping quality tests.** T15.1 gives bad stripping a second failure
