@@ -406,6 +406,7 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
     state
         .metrics
         .set_gauge(metrics::BUILD_INFO, metrics::BUILD_INFO_HELP, 1);
+    sample_queue_gauges(&state).await;
     (
         StatusCode::OK,
         [(
@@ -415,4 +416,42 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
         state.metrics.render(),
     )
         .into_response()
+}
+
+/// Read the ingestion queue's real numbers at scrape time.
+///
+/// Sampled here rather than pushed from the indexer because the indexer is not always running, and
+/// a backlog nobody is draining is precisely the condition worth alerting on. A gauge that only
+/// updates while a worker is alive would go silent exactly when it matters.
+///
+/// Connects per scrape rather than holding a connection in [`AppState`]. Scrapes are infrequent,
+/// and the alternative is a Redis handle on the serving path that has to be kept healthy for the
+/// benefit of a metrics endpoint. **Every failure here is silent on purpose:** `/metrics` must
+/// answer even when Redis does not, or the monitoring goes dark at the same moment as the thing it
+/// monitors — and a liveness probe shares this port.
+async fn sample_queue_gauges(state: &AppState) {
+    let cfg = &state.config.queue;
+    let Ok(queue) = xustive_queue::Queue::connect(&cfg.url, &cfg.index_stream, "indexers").await
+    else {
+        return;
+    };
+    if let Ok(depth) = queue.depth().await {
+        state.metrics.set_gauge(
+            metrics::QUEUE_DEPTH,
+            metrics::QUEUE_DEPTH_HELP,
+            depth as u64,
+        );
+    }
+    if let Ok(pending) = queue.pending().await {
+        state.metrics.set_gauge(
+            metrics::QUEUE_PENDING,
+            metrics::QUEUE_PENDING_HELP,
+            pending as u64,
+        );
+    }
+    if let Ok(dead) = queue.dead_count().await {
+        state
+            .metrics
+            .set_gauge(metrics::QUEUE_DEAD, metrics::QUEUE_DEAD_HELP, dead as u64);
+    }
 }

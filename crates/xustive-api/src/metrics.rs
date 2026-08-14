@@ -333,6 +333,16 @@ pub const LANG_DETECTED_HELP: &str =
 pub const BUILD_INFO: &str = "xustive_build_info";
 pub const BUILD_INFO_HELP: &str = "Always 1; presence indicates the process is up";
 
+pub const QUEUE_DEPTH: &str = "xustive_queue_depth";
+pub const QUEUE_DEPTH_HELP: &str =
+    "Documents waiting to be indexed. Consumer-group lag, not stream length: the stream is capped and trimmed, so its length stops rising long before the backlog does and would read as a healthy queue during exactly the incident this is meant to catch.";
+pub const QUEUE_PENDING: &str = "xustive_queue_pending";
+pub const QUEUE_PENDING_HELP: &str =
+    "Claimed but not acknowledged. Rising while the depth falls means workers are taking work and dying with it.";
+pub const QUEUE_DEAD: &str = "xustive_queue_dead_letters";
+pub const QUEUE_DEAD_HELP: &str =
+    "Documents the indexer gave up on. Any sustained rise is data loss; replay is deliberate and manual, so nothing clears this on its own.";
+
 #[cfg(test)]
 mod tests {
     use super::*;
