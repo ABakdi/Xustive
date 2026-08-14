@@ -103,9 +103,12 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 - [~] M1B-T05.1 Calculator — decimal, not binary float; precedence, percentages, functions,
       Arabic-Indic digits, depth and length guards. **~40 golden expressions, not several
       hundred**
-- [~] M1B-T05.2 Unit converter incl. qintar and sa'a; 7 dimensions, ar/fr/en phrasings,
-      temperature by offset. **Unit names render in English in every locale** — the table has one
-      canonical name per unit and no translations
+- [x] M1B-T05.2 Unit converter incl. qintar and sa'a; 7 dimensions, ar/fr/en phrasings,
+      temperature by offset. Unit names are localised — every entry carries `ar` and `fr` names and
+      Darija falls back to Arabic, never English. Asserted across the whole table, since the table
+      is the kind of list people append to and an entry added with only its English name degrades
+      silently. The Arabic check tests for Arabic *script*: an English word in the `ar` slot passes
+      a non-empty check while still answering the wrong language
 - [ ] M1B-T05.3 Currency — official **and** parallel, side by side, each with `as_of`
 - [~] M1B-T05.4 Translator on the existing local Qwen; streaming, cancellable, nothing leaves —
       **built but not enabled.** The engine now streams token by token and a dropped connection
