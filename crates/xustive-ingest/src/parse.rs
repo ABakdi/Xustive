@@ -73,7 +73,16 @@ pub struct Parsed {
 #[derive(Debug, thiserror::Error)]
 pub enum ParseError {
     #[error("no usable content ({chars} chars, minimum {min})")]
-    TooLittleContent { chars: usize, min: usize },
+    TooLittleContent {
+        chars: usize,
+        min: usize,
+        /// Carried on the error so a listing page still contributes its links.
+        ///
+        /// Unusual for an error type, and deliberate: "too thin to index" and "useless to the
+        /// crawl" are different judgements, and conflating them costs the crawler its main source
+        /// of new URLs.
+        outlinks: Vec<String>,
+    },
     #[error("page is marked noindex")]
     NoIndex,
     /// The markup is too complex to parse within a sane budget.
@@ -221,9 +230,20 @@ impl Parser {
         let body = truncate_bytes(&body, self.config.max_body_bytes);
 
         if body.chars().count() < self.config.min_body_chars {
+            // The links come back with the refusal.
+            //
+            // A thin page is not worth *indexing*, but it is very often worth crawling *through*:
+            // index pages, category listings, tag pages and paginators are mostly links and little
+            // prose, so they fail this check almost by definition. Dropping their outlinks means
+            // the crawler refuses to follow exactly the pages that exist to be followed, and the
+            // symptom is a crawl that quietly stops finding anything new.
+            //
+            // Same reasoning the orchestrator already applies to `noindex`: do not index it, do
+            // still walk through it.
             return Err(ParseError::TooLittleContent {
                 chars: body.chars().count(),
                 min: self.config.min_body_chars,
+                outlinks: extract_outlinks(&doc, url, self.config.max_outlinks),
             });
         }
 
@@ -943,6 +963,34 @@ mod tests {
             .parse(html, "https://example.dz/a", "test", SourceType::Web)
             .unwrap_err();
         assert!(matches!(err, ParseError::TooLittleContent { .. }));
+    }
+
+    /// A listing page is thin by nature, and its links are the whole point of it.
+    ///
+    /// Index pages, category listings, tag pages and paginators are mostly anchors and little
+    /// prose, so they fail the body-length check almost by definition. When the refusal carried no
+    /// outlinks, the crawler declined to follow exactly the pages that exist to be followed, and
+    /// the symptom was a crawl that quietly stopped finding anything new.
+    #[test]
+    fn a_thin_page_still_yields_its_links() {
+        let html = r#"<html><head><title>Actualités</title></head><body>
+            <ul>
+              <li><a href="/articles/one">Un</a></li>
+              <li><a href="/articles/two">Deux</a></li>
+              <li><a href="https://autre.dz/trois">Trois</a></li>
+            </ul>
+        </body></html>"#;
+        let err = p()
+            .parse(html, "https://example.dz/actu", "test", SourceType::Web)
+            .unwrap_err();
+        let ParseError::TooLittleContent { outlinks, .. } = err else {
+            panic!("a link list has no body, so it should be refused as thin");
+        };
+        assert!(
+            outlinks.contains(&"https://example.dz/articles/one".to_string()),
+            "relative links must still be absolutised and returned: {outlinks:?}"
+        );
+        assert!(outlinks.contains(&"https://autre.dz/trois".to_string()));
     }
 
     #[test]
