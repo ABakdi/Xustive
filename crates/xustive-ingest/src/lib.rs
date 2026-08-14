@@ -17,6 +17,7 @@ pub mod fetch;
 pub mod frontier;
 pub mod orchestrator;
 pub mod parse;
+pub mod revisit;
 pub mod robots;
 pub mod robots_cache;
 pub mod rules;
