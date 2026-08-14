@@ -378,3 +378,240 @@ mod tests {
         );
     }
 }
+
+// --- storage -----------------------------------------------------------------------------------
+
+use serde::{Deserialize, Serialize};
+
+/// What we remember about a URL between visits.
+///
+/// # Why this lives in Redis rather than on the document
+///
+/// [[ADR-0011]] listed the change history as a schema change on the indexed document. Writing it
+/// there turns out to defeat the purpose.
+///
+/// This record is written on **every** fetch, including the unchanged ones — and the cheapness of
+/// an unchanged revisit is the entire reason adaptive scheduling pays for itself. Meilisearch takes
+/// writes as queued tasks, so a corpus of a million pages revisiting daily would enqueue a million
+/// bookkeeping tasks a day that change nothing anyone searches for. This project has already lost
+/// a day to a Meilisearch task queue that stopped draining; feeding it write traffic proportional
+/// to crawl volume rather than to content volume is how that happens again.
+///
+/// So: scheduling state sits beside the frontier, which is where the rest of the crawl's hot state
+/// already is and shares its lifetime. The durable facts — `content_hash`, `crawled_at` — remain on
+/// the document in Meilisearch, which is still the system of record for anything a user can see.
+///
+/// **What losing Redis costs.** Intervals reset, so every page looks new and is fetched once at its
+/// floor before backing off again. Degraded, self-correcting, and in the safe direction: the
+/// failure is extra politeness-bounded traffic, not a corpus that silently stops refreshing.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Visit {
+    /// Current revisit interval, in seconds.
+    #[serde(default)]
+    pub interval_secs: u64,
+    /// Consecutive changed visits at the floor. Carries the volatility signal across restarts.
+    #[serde(default)]
+    pub changes_at_floor: u32,
+    /// `content_hash` of the last successfully parsed body. The comparison key.
+    #[serde(default)]
+    pub content_hash: String,
+    /// Validators, so the next request can be conditional and cost a few hundred bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub etag: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<String>,
+    /// Unix seconds of the last fetch.
+    #[serde(default)]
+    pub last_fetched: i64,
+    /// Parked as untrackable. Kept so the console can explain why a page is rarely visited.
+    #[serde(default)]
+    pub volatile: bool,
+}
+
+impl Visit {
+    /// The scheduling half of this record.
+    pub fn schedule(&self) -> Schedule {
+        Schedule {
+            interval: Duration::from_secs(self.interval_secs),
+            changes_at_floor: self.changes_at_floor,
+        }
+    }
+
+    /// Fold an observation in, returning when to come back.
+    ///
+    /// Takes the new hash rather than reading it back out, so the caller cannot forget to store
+    /// what it just compared against — an omission that would make every visit look like a change
+    /// and hold the whole corpus at its floor forever.
+    pub fn record(
+        &mut self,
+        observation: Observation,
+        trust: u8,
+        hash: &str,
+        now: i64,
+    ) -> Decision {
+        let mut schedule = self.schedule();
+        let decision = schedule.observe(observation, trust);
+        self.interval_secs = schedule.interval.as_secs();
+        self.changes_at_floor = schedule.changes_at_floor;
+        self.volatile = decision.is_volatile();
+        self.last_fetched = now;
+        // A 304 carries no body to hash, so the stored hash must survive it untouched.
+        if observation != Observation::NotModified && !hash.is_empty() {
+            self.content_hash = hash.to_string();
+        }
+        decision
+    }
+
+    /// When this URL is next due, in unix seconds.
+    pub fn due_at(&self) -> i64 {
+        self.last_fetched.saturating_add(self.interval_secs as i64)
+    }
+}
+
+/// Revisit state for a crawl, in Redis beside the frontier.
+#[derive(Clone)]
+pub struct Visits {
+    client: redis::Client,
+    namespace: String,
+}
+
+impl Visits {
+    pub fn connect_in(url: &str, namespace: &str) -> Option<Self> {
+        Some(Self {
+            client: redis::Client::open(url).ok()?,
+            namespace: namespace.to_string(),
+        })
+    }
+
+    fn key(&self) -> String {
+        format!("{}:visits", self.namespace)
+    }
+
+    async fn conn(&self) -> Option<redis::aio::MultiplexedConnection> {
+        self.client.get_multiplexed_async_connection().await.ok()
+    }
+
+    /// What we know about a URL. `None` means never fetched — which the scheduler treats as a
+    /// change, not as "unchanged", so a page we have never read cannot back off to the ceiling.
+    pub async fn get(&self, url: &str) -> Option<Visit> {
+        let mut conn = self.conn().await?;
+        let raw: Option<String> = redis::cmd("HGET")
+            .arg(self.key())
+            .arg(url)
+            .query_async(&mut conn)
+            .await
+            .ok()?;
+        serde_json::from_str(&raw?).ok()
+    }
+
+    /// Store what we learned. Best-effort on purpose.
+    ///
+    /// A failed write costs one page's scheduling memory: it looks unvisited next time and is
+    /// fetched at its floor. Failing the crawl over bookkeeping would be the wrong trade — the same
+    /// reasoning as the robots cache failing open.
+    pub async fn put(&self, url: &str, visit: &Visit) {
+        let Some(mut conn) = self.conn().await else {
+            return;
+        };
+        let Ok(encoded) = serde_json::to_string(visit) else {
+            return;
+        };
+        let _: Result<(), _> = redis::cmd("HSET")
+            .arg(self.key())
+            .arg(url)
+            .arg(encoded)
+            .query_async::<()>(&mut conn)
+            .await;
+    }
+
+    /// Forget a URL, for a takedown or a manual reindex.
+    pub async fn forget(&self, url: &str) {
+        let Some(mut conn) = self.conn().await else {
+            return;
+        };
+        let _: Result<(), _> = redis::cmd("HDEL")
+            .arg(self.key())
+            .arg(url)
+            .query_async::<()>(&mut conn)
+            .await;
+    }
+
+    /// How many URLs have revisit state.
+    pub async fn len(&self) -> usize {
+        let Some(mut conn) = self.conn().await else {
+            return 0;
+        };
+        redis::cmd("HLEN")
+            .arg(self.key())
+            .query_async(&mut conn)
+            .await
+            .unwrap_or(0)
+    }
+
+    pub async fn is_empty(&self) -> bool {
+        self.len().await == 0
+    }
+}
+
+#[cfg(test)]
+mod store_tests {
+    use super::*;
+
+    /// A 304 carries no body, so it must not overwrite the hash it was validated against.
+    ///
+    /// Clearing it would make the *next* visit compare against an empty hash, read that as a
+    /// change, and pull the page back to its floor — turning the cheapest possible outcome into a
+    /// reason to crawl harder.
+    #[test]
+    fn not_modified_preserves_the_stored_hash() {
+        let mut v = Visit::default();
+        v.record(Observation::Changed, 90, "b3:first", 1_000);
+        assert_eq!(v.content_hash, "b3:first");
+
+        v.record(Observation::NotModified, 90, "", 2_000);
+        assert_eq!(
+            v.content_hash, "b3:first",
+            "a 304 has no body and must leave the comparison key alone"
+        );
+        assert_eq!(v.last_fetched, 2_000, "but it is still a visit");
+    }
+
+    #[test]
+    fn a_visit_round_trips_through_json() {
+        let mut v = Visit {
+            etag: Some("\"abc\t123\"".into()),
+            last_modified: Some("Wed, 21 Oct 2026 07:28:00 GMT".into()),
+            ..Visit::default()
+        };
+        v.record(Observation::Changed, 60, "b3:x", 5_000);
+
+        let encoded = serde_json::to_string(&v).unwrap();
+        let decoded: Visit = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(
+            decoded, v,
+            "validators may contain anything, including tabs"
+        );
+    }
+
+    #[test]
+    fn due_at_is_the_last_fetch_plus_the_interval() {
+        let mut v = Visit::default();
+        v.record(Observation::Unchanged, 90, "b3:x", 10_000);
+        assert_eq!(v.due_at(), 10_000 + v.interval_secs as i64);
+    }
+
+    /// Volatility must survive a restart, or a parked page resumes being chased on every deploy.
+    #[test]
+    fn volatility_survives_a_round_trip() {
+        let mut v = Visit::default();
+        for i in 0..VOLATILE_AFTER {
+            v.record(Observation::Changed, 90, "b3:x", i as i64);
+            // A changing page: a fresh hash every time.
+            v.content_hash = format!("b3:{i}");
+        }
+        assert!(v.volatile);
+        let decoded: Visit = serde_json::from_str(&serde_json::to_string(&v).unwrap()).unwrap();
+        assert!(decoded.volatile);
+        assert_eq!(decoded.changes_at_floor, v.changes_at_floor);
+    }
+}
