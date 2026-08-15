@@ -101,9 +101,24 @@ run-api: ## Run the Rust API on :8080 (JSON only — the UI is `make run-web`)
 	@# has hung, and http://localhost:8080 refuses connections until it finishes — which is
 	@# exactly what it looks like when the server is broken.
 	@echo "  Building (the first build compiles llama.cpp and can take several minutes)…"
-	@cargo build -p xustive-api
+	@# GPU support is decided here, not in config: the cuda feature needs nvcc at *build* time,
+	@# so a config switch alone can never turn it on. When the toolkit is present the binary is
+	@# built with it and the admin page's device switch does the rest; when absent, CPU-only,
+	@# and the device layer says why.
+	@if [ -x /opt/cuda/bin/nvcc ]; then \
+		echo "  CUDA toolkit found — building with GPU support"; \
+		PATH=/opt/cuda/bin:$$PATH CUDA_PATH=/opt/cuda CUDACXX=/opt/cuda/bin/nvcc \
+			cargo build -p xustive-api --features cuda; \
+	else \
+		cargo build -p xustive-api; \
+	fi
 	@echo
-	cargo run -p xustive-api -- --config $(CONFIG)
+	@if [ -x /opt/cuda/bin/nvcc ]; then \
+		PATH=/opt/cuda/bin:$$PATH CUDA_PATH=/opt/cuda CUDACXX=/opt/cuda/bin/nvcc \
+			cargo run -p xustive-api --features cuda -- --config $(CONFIG); \
+	else \
+		cargo run -p xustive-api -- --config $(CONFIG); \
+	fi
 
 .PHONY: run-api-fast
 run-api-fast: ## Run without the summariser — builds in seconds, no AI summaries

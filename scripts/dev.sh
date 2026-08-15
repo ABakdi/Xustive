@@ -128,6 +128,15 @@ make dev-up || {
 # minutes, during which nothing would answer and it would look broken.
 say "building (the first build compiles llama.cpp — several minutes; --fast skips it)"
 # shellcheck disable=SC2086
+# GPU support is a build-time decision: the cuda feature needs nvcc, so it is chosen here by
+# detecting the toolkit rather than by config. --fast still wins — it exists to skip llama.cpp
+# entirely, and cuda would drag it straight back in.
+if [ -z "$API_FEATURES" ] && [ -x /opt/cuda/bin/nvcc ]; then
+  API_FEATURES="--features cuda"
+  export PATH=/opt/cuda/bin:$PATH CUDA_PATH=/opt/cuda CUDACXX=/opt/cuda/bin/nvcc
+  echo "  CUDA toolkit found — building the API with GPU support"
+fi
+
 cargo build -p xustive-api -p xustive-cli $API_FEATURES || {
   say "build failed — nothing started"
   exit 1
