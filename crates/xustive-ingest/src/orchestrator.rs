@@ -261,7 +261,19 @@ impl Orchestrator {
 
     async fn process(&mut self, claim: &frontier::Claim) -> Outcome {
         let (url, host) = (claim.url.as_str(), claim.host.as_str());
-        let fetched = match self.fetcher.get(url).await {
+
+        // A revisit carries the validators from last time, so an unchanged page answers 304 for a
+        // few hundred bytes instead of a full body. Discovery has no history and sends none.
+        let prior = match (&self.visits, self.config.revisit) {
+            (Some(v), true) => v.get(url).await,
+            _ => None,
+        };
+        let cond = crate::fetch::Conditional {
+            etag: prior.as_ref().and_then(|v| v.etag.as_deref()),
+            last_modified: prior.as_ref().and_then(|v| v.last_modified.as_deref()),
+        };
+
+        let fetched = match self.fetcher.get_conditional(url, cond).await {
             Ok(f) => f,
             Err(FetchError::RobotsDisallowed) => {
                 self.stats.skip("robots");
@@ -279,6 +291,17 @@ impl Orchestrator {
         };
         self.stats.fetched += 1;
         self.publish("fetched").await;
+
+        if fetched.status == 304 {
+            // The best possible outcome of a revisit: the page is exactly what we hold, learned
+            // without transferring it. Not a document — the index already has it — so the loop
+            // reports Idle, but the scheduler still gets its observation, or 304s would look like
+            // silence and the interval would stop adapting.
+            self.stats.skip("not_modified");
+            self.publish_skip("not_modified").await;
+            self.schedule_revisit(claim, None, None, None).await;
+            return Outcome::Idle;
+        }
 
         // The header the site sent, which is the only way a document without a `<head>` can refuse
         // indexing. Checked before parsing so we do not spend the work.
@@ -345,8 +368,13 @@ impl Orchestrator {
         let words = parsed.document.body.split_whitespace().count();
         self.publish_recent(&fetched.final_url, host, "indexed", words)
             .await;
-        self.schedule_revisit(claim, &parsed.document.content_hash)
-            .await;
+        self.schedule_revisit(
+            claim,
+            Some(&parsed.document.content_hash),
+            fetched.etag.clone(),
+            fetched.last_modified.clone(),
+        )
+        .await;
         Outcome::Document(Box::new(parsed))
     }
 
@@ -359,7 +387,14 @@ impl Orchestrator {
     /// Silent when there is no store, and silent on a write failure. A crawl that cannot reach
     /// Redis should still crawl; the cost of losing this is that the page looks unvisited next time
     /// and is fetched at its floor, which is the safe direction.
-    async fn schedule_revisit(&mut self, claim: &frontier::Claim, content_hash: &str) {
+    /// `content_hash` is `None` on a 304, which has no body to hash.
+    async fn schedule_revisit(
+        &mut self,
+        claim: &frontier::Claim,
+        content_hash: Option<&str>,
+        etag: Option<String>,
+        last_modified: Option<String>,
+    ) {
         if !self.config.revisit {
             return;
         }
@@ -368,9 +403,22 @@ impl Orchestrator {
         };
 
         let mut visit = visits.get(&claim.url).await.unwrap_or_default();
-        let observation = Observation::from_hashes(&visit.content_hash, content_hash);
+        let observation = match content_hash {
+            Some(hash) => Observation::from_hashes(&visit.content_hash, hash),
+            None => Observation::NotModified,
+        };
         let now = xustive_core::now_unix();
-        let decision = visit.record(observation, claim.trust, content_hash, now);
+        let decision = visit.record(observation, claim.trust, content_hash.unwrap_or(""), now);
+
+        // Overwritten only when the server sent new ones. A 304 sends none, and clearing the old
+        // validators on it would make the *next* request unconditional — paying full price
+        // precisely because the last visit was free.
+        if etag.is_some() {
+            visit.etag = etag;
+        }
+        if last_modified.is_some() {
+            visit.last_modified = last_modified;
+        }
 
         visits.put(&claim.url, &visit).await;
 
