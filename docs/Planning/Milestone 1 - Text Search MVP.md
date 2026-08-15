@@ -195,9 +195,15 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [x] M1-T10.6 Adversarial DOM suite — 13 cases. It found a real denial of service: 50 000
       nested divs took **47 seconds** and 20 000 unclosed tags took 18. A pre-parse complexity
       guard (bytes, tag count, nesting depth) takes the whole suite to 0.09 s
-- [ ] M1-T10.7 200-page labelled corpus: ≥ 90 % title, ≥ 85 % date, ≥ 0.9 body F1 ← *B7*.
-      Labelling 200 pages by hand is annotation work, not engineering; the fixture harness it
-      would run against exists
+- [~] M1-T10.7 Extraction accuracy measured: **title 100 %, date 100 %, body F1 0.980** against
+      gates of ≥ 90 / ≥ 85 / ≥ 0.9. Eight machine-written cases reproducing the structures that
+      break extractors, **not** the 200 saved pages the task asks for — a synthetic set cannot tell
+      you a publisher redesigned last Tuesday, which is the failure that actually happens. Real
+      saved pages still wanted, in `tests/fixtures/pages/`. ← *still wants a labelled sample*; B7.
+      Boilerplate leakage is asserted separately from the F1 mean, because a high average hides a
+      systematic leak: nav text is short, so admitting it on every page costs a few points while
+      making every document's first words identical. It caught a real one — related-article blocks
+      were being prepended to every body
 
 ## M1-T11 — [[Indexer Worker]]
 
