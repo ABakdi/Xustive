@@ -115,6 +115,12 @@ export function SearchBox({
         />
         <input
           ref={inputRef}
+          // Password managers and Chrome's own autofill inject attributes onto search inputs
+          // before React hydrates — `form_signature`, `field_signature`, `visibility_annotation`.
+          // Those make the server HTML and the client tree disagree, which React reports as a
+          // hydration mismatch. It is not our bug and there is nothing to fix in the markup; this
+          // tells React to tolerate attribute differences on this one element it does not control.
+          suppressHydrationWarning
           type="search"
           name="q"
           dir="auto"
