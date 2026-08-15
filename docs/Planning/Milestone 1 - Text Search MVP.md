@@ -268,7 +268,7 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [x] M1-T13.5 [[UI - Filters and Facets]] — language, source and tone chips, rendered both
       server-side and client-side so narrowing works without JavaScript. Chips toggle, preserve
       each other, and stay visible while active so a filter can always be cleared
-- [ ] M1-T13.6 [[UI - States and Errors]] for every row of its §4
+- [x] M1-T13.6 [[UI - States and Errors]] rows built, including the offline banner and the degraded-facets note (see M1B-T03.6). Loading, zero-result, error, offline and degraded are all covered
 - [x] M1-T13.7 URL-as-state — the query string *is* the state; no client store to desync
 - [~] M1-T13.8 Bundle budgets enforced by `make ui-gates`, measuring what a browser actually
       downloads. **The budgets had to be raised from 40/90 KB to 185/195** — React and Next are

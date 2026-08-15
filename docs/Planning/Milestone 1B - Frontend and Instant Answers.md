@@ -83,7 +83,11 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 - [x] M1B-T03.3 Filters as server-rendered links
 - [x] M1B-T03.4 Suggestions as an ARIA combobox
 - [x] M1B-T03.5 Summary, fetched after paint
-- [~] M1B-T03.6 Error and zero-result states are built; offline and degraded are not
+- [x] M1B-T03.6 Error, zero-result, **offline and degraded** states all built. Offline is a client
+      component (the server that would render an error is the unreachable thing) — a banner over the
+      page that keeps the query and confirms recovery. Degraded: the API drops facets under load, and
+      a `facets_degraded` flag now lets the page say filtering is temporarily unavailable instead of
+      the filter row vanishing silently
 - [x] M1B-T03.7 **Deleted `web.rs` and the legacy assets.** The API is JSON and operations only.
       `/admin` stays on it with its CSS and JS embedded in the binary — an operator tool has to
       work when the frontend is the thing that is down
