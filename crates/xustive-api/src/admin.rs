@@ -218,6 +218,19 @@ pub async fn set_device(
 
 /// Resolve the current settings against the hardware actually present.
 fn current_resolution(state: &AppState) -> device::Resolved {
+    // Prefer what the engine actually resolved to at load time over a fresh probe.
+    //
+    // A fresh `resolve` re-measures free VRAM, and once our own model is loaded that measurement
+    // includes the memory the model is using — so a summariser running happily on the GPU makes
+    // the page report "cpu, not enough free memory". The engine already knows where it loaded;
+    // ask it. The live probe is only the answer before the first model load, or after a device
+    // change that has not taken effect yet.
+    if let Ok(guard) = state.engine.read() {
+        if let Some(engine) = guard.as_ref() {
+            return engine.resolved().clone();
+        }
+    }
+
     let pref = match state.device_preference.load(Ordering::Relaxed) {
         1 => DevicePreference::Gpu,
         2 => DevicePreference::Cpu,
