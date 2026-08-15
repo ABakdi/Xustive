@@ -348,10 +348,13 @@ Order matters here. T15.1 and T15.2 are the substrate; nothing above them works 
       document count that stopped rising
 - [ ] M2-T15.8 **Recrawl budget is separate from discovery budget**, so freshness and coverage
       cannot starve each other. Split visible in the console and in `/metrics`
-- [ ] M2-T15.9 **Boilerplate-stripping quality tests.** T15.1 gives bad stripping a second failure
-      mode: churn that reads as content, and a crawler that chases it forever. Fixtures from real
-      Algerian news pages, asserting the extracted text is byte-identical across two fetches that
-      differ only in furniture
+- [~] M2-T15.9 **Boilerplate-stripping stability tests.** Two fetches of the same article with a
+      rotating most-read sidebar and a changed ad slot now assert an identical body **and content
+      hash** — the property the freshness scheduler rests on, since a leak that rotates would make
+      every revisit read as a change. The common case (external furniture) passes. One documented
+      gap remains, left as an ignored test: a relative timestamp rendered *inside* the article
+      ("updated 2 hours ago") still leaks, and fixing it needs a per-domain rule rather than a
+      heuristic
 - [x] M2-T15.10 **Freshness evaluation** — simulates a population of known change periods and runs
       the real scheduler against two fixed intervals and the proportional policy, measuring mean
       staleness and fetches against exact ground truth. It earned its place immediately: it caught
