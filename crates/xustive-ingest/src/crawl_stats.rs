@@ -61,6 +61,10 @@ pub struct Snapshot {
     pub hosts: HashMap<String, i64>,
     pub waiting: usize,
     pub inflight: usize,
+    /// Pages waiting for their revisit due time. The freshness backlog, distinct from `waiting`:
+    /// these are pages we already hold and have booked a return to.
+    #[serde(default)]
+    pub deferred: usize,
     /// True when the counters could not be read at all.
     ///
     /// The console shows this rather than zeroes. A zero and an unreachable Redis look identical,
@@ -189,6 +193,9 @@ impl CrawlStats {
             // No state key at all means the crawler has never run, which is different from stopped
             // and worth saying differently.
             state: state.unwrap_or_else(|| "never started".into()),
+            // Filled by the caller that holds a Frontier; the stats store does not know about
+            // the due set and should not — it would be a second reader disagreeing with the first.
+            deferred: 0,
             fetched: counters.get("fetched").copied().unwrap_or(0),
             parsed: counters.get("parsed").copied().unwrap_or(0),
             indexed: counters.get("indexed").copied().unwrap_or(0),

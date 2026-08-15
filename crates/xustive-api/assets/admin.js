@@ -114,6 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
     text('c-fetched', s.fetched);
     text('c-discovered', s.discovered);
     text('c-waiting', s.waiting);
+    text('c-deferred', s.deferred);
     text('c-failed', s.failed);
 
     var recent = document.getElementById('crawl-recent');

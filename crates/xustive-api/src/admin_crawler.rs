@@ -49,6 +49,7 @@ async fn snapshot(state: &AppState) -> xustive_ingest::crawl_stats::Snapshot {
         let (waiting, inflight) = f.depth().await;
         snap.waiting = waiting;
         snap.inflight = inflight;
+        snap.deferred = f.deferred().await;
     }
     snap
 }
@@ -259,6 +260,7 @@ pub fn section_live() -> String {
   <div class="tile"><span class="tile-n" id="c-fetched">–</span><span class="tile-l">fetched</span></div>
   <div class="tile"><span class="tile-n" id="c-discovered">–</span><span class="tile-l">discovered</span></div>
   <div class="tile"><span class="tile-n" id="c-waiting">–</span><span class="tile-l">queued</span></div>
+  <div class="tile"><span class="tile-n" id="c-deferred">–</span><span class="tile-l">revisits booked</span></div>
   <div class="tile"><span class="tile-n" id="c-failed">–</span><span class="tile-l">failed</span></div>
 </div>
 
