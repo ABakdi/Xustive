@@ -94,7 +94,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
         frontier.clear().await;
     }
 
-    let queue = Queue::connect(&config.queue.url, &config.queue.index_stream, "crawld")
+    let queue = Queue::connect_producer(&config.queue.url, &config.queue.index_stream)
         .await
         .context("could not reach the index queue")?;
 

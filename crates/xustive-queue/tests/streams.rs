@@ -431,3 +431,49 @@ async fn depth_reads_the_named_consumers_lag_not_the_producers() {
          reading the producer's own group is what froze the crawler"
     );
 }
+
+/// A producer connection must not create a consumer group.
+///
+/// The crawler is a pure producer. When it connected with `connect` it left a group nothing drains,
+/// whose lag grew forever and which it then read for backpressure — freezing itself. A producer
+/// gets no group, so there is nothing to misread and nothing phantom in `XINFO GROUPS`.
+#[tokio::test]
+async fn a_producer_connection_creates_no_group() {
+    let stream = format!("xtest:producer:{}", std::process::id());
+    let Some(producer) = Queue::connect_producer(&url(), &stream).await.ok() else {
+        eprintln!("skipping: no Redis at {}", url());
+        return;
+    };
+
+    #[derive(serde::Serialize)]
+    struct Job {
+        n: u32,
+    }
+    producer.produce(&Job { n: 1 }).await.expect("produce");
+
+    let Ok(client) = redis::Client::open(url()) else {
+        return;
+    };
+    let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+        return;
+    };
+    let groups: redis::Value = redis::cmd("XINFO")
+        .arg("GROUPS")
+        .arg(&stream)
+        .query_async(&mut conn)
+        .await
+        .unwrap_or(redis::Value::Nil);
+    let count = match groups {
+        redis::Value::Array(v) => v.len(),
+        _ => 0,
+    };
+    assert_eq!(
+        count, 0,
+        "a producer connection left {count} consumer group(s); it should leave none"
+    );
+
+    let _: Result<(), _> = redis::cmd("DEL")
+        .arg(&stream)
+        .query_async::<()>(&mut conn)
+        .await;
+}

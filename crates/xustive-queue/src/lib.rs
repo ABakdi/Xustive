@@ -145,6 +145,28 @@ impl Queue {
         Ok(queue)
     }
 
+    /// Connect as a **producer only** — no consumer group is created.
+    ///
+    /// A component that just appends work (the crawler) has no group of its own, and creating one
+    /// is worse than pointless: it is a group nothing consumes, whose lag grows without bound with
+    /// every message written. That group is what the crawler once read for backpressure, freezing
+    /// itself the moment its lag passed the threshold while the indexer was keeping up. Giving a
+    /// producer no group removes the temptation to measure the wrong thing, and keeps `XINFO
+    /// GROUPS` free of a phantom group an operator has to learn to ignore.
+    ///
+    /// `produce`, `produce_many` and `depth_of` are the whole surface a producer needs, and none of
+    /// them touches `self.group`.
+    pub async fn connect_producer(url: &str, stream: &str) -> Result<Self, QueueError> {
+        let client = redis::Client::open(url)?;
+        Ok(Self {
+            client,
+            stream: stream.to_string(),
+            // Never used by the producer paths. Named so a stray consume() is obviously wrong
+            // rather than silently joining some default group.
+            group: "__producer__".to_string(),
+        })
+    }
+
     async fn conn(&self) -> Result<redis::aio::MultiplexedConnection, QueueError> {
         Ok(self.client.get_multiplexed_async_connection().await?)
     }
