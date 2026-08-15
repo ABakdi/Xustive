@@ -116,6 +116,7 @@ pub struct Detector {
     darija_ar: Lexicon,
     arabizi: Lexicon,
     french: Lexicon,
+    english: Lexicon,
     config: DetectorConfig,
 }
 
@@ -131,6 +132,7 @@ impl Detector {
             darija_ar: lexicon::darija_arabic(),
             arabizi: lexicon::arabizi(),
             french: lexicon::french_common(),
+            english: lexicon::english_common(),
             config,
         }
     }
@@ -202,9 +204,28 @@ impl Detector {
             return Verdict::lexicon(Lang::Ary, conf.min(0.95)).with_secondary(secondary);
         }
 
-        if fre.is_evidence() && fre.hits() > ara.hits() {
+        let eng = self.english.score(text);
+
+        if fre.is_evidence() && fre.hits() > ara.hits() && fre.hits() >= eng.hits() {
             let secondary = (ara.hits() > 0).then(|| (Lang::Ary, ara.coverage()));
             return Verdict::lexicon(Lang::Fr, (0.6 + (fre.weight * 0.08).min(0.3)).min(0.95))
+                .with_secondary(secondary);
+        }
+
+        // English, on the same footing as French.
+        //
+        // Without this, English fell through to trigram statistics, which is exactly where a
+        // general-purpose detector is weakest: at query length whatlang reported an unreliable,
+        // narrow margin for most English queries, so they landed under the confidence floor and
+        // became `Und`. English was detected 53% of the time on the labelled set — worse than the
+        // languages with a lexicon, and for the same reason.
+        //
+        // Ordered after French because the two lists are disjoint by construction (there is a test
+        // for it), so whichever has more hits is the answer; the tie goes to French, which carries
+        // far more Algerian traffic than English does.
+        if eng.is_evidence() && eng.hits() > ara.hits() && eng.hits() > fre.hits() {
+            let secondary = (fre.hits() > 0).then(|| (Lang::Fr, fre.coverage()));
+            return Verdict::lexicon(Lang::En, (0.6 + (eng.weight * 0.08).min(0.3)).min(0.95))
                 .with_secondary(secondary);
         }
 
@@ -323,6 +344,16 @@ fn arabizi_digit_score(text: &str) -> usize {
     score
 }
 
+thread_local! {
+    /// Built once per thread: constructing a detector allocates its model, and this is on the
+    /// query path.
+    static DETECTOR: whatlang::Detector = whatlang::Detector::with_allowlist(vec![
+        whatlang::Lang::Ara,
+        whatlang::Lang::Fra,
+        whatlang::Lang::Eng,
+    ]);
+}
+
 /// Trigram statistics, restricted to the three languages we actually serve.
 ///
 /// # Reading whatlang's confidence correctly
@@ -339,7 +370,19 @@ fn arabizi_digit_score(text: &str) -> usize {
 fn statistical(text: &str) -> Option<(Lang, f32)> {
     use whatlang::Lang as W;
 
-    let info = whatlang::detect(text)?;
+    // Restricted to the three languages we serve.
+    //
+    // Unrestricted, whatlang ranks a short query against every language it knows, and on
+    // query-length text the winner is routinely one we do not serve at all: measured on this
+    // corpus, "best places to visit in algeria" came back Latin, "what documents do i need for a
+    // passport" Catalan, and "software engineer jobs remote" Norwegian. Each of those fell through
+    // the arm below and became `Und`, so **ordinary English queries were not being detected at
+    // all** — 53% accuracy on the English portion of the labelled set.
+    //
+    // We only ever serve ar, fr and en, so asking "which of these three" is both the question we
+    // actually have and a far easier one on short text. It cannot introduce a wrong answer that
+    // the unrestricted call would have got right, because any other winner was discarded anyway.
+    let info = DETECTOR.with(|d| d.detect(text))?;
     let lang = match info.lang() {
         W::Ara => Lang::Ar,
         W::Fra => Lang::Fr,
