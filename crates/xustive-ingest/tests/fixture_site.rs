@@ -535,3 +535,48 @@ async fn max_depth_stops_link_following() {
         "links from a page at max_depth must not be queued"
     );
 }
+
+/// A revisit carrying validators gets a 304 instead of the page (M2-T04.2).
+///
+/// The fixture server is Python's `SimpleHTTPRequestHandler`, which answers `If-Modified-Since`
+/// with 304 for static files — so this exercises the real header round trip, not a mock.
+#[tokio::test]
+async fn a_conditional_refetch_of_an_unchanged_page_costs_no_body() {
+    if port() == 0 {
+        return;
+    }
+    let Ok(fetcher) = Fetcher::new(FetchConfig {
+        ignore_politeness: true,
+        ..FetchConfig::default()
+    }) else {
+        return;
+    };
+
+    let url = format!("{}/articles/normal.html", base());
+    let first = fetcher.get(&url).await.expect("plain fetch");
+    assert_eq!(first.status, 200);
+    let Some(lm) = first.last_modified.clone() else {
+        eprintln!("skipping: server sent no Last-Modified");
+        return;
+    };
+    assert!(!first.body.is_empty());
+
+    let second = fetcher
+        .get_conditional(
+            &url,
+            xustive_ingest::fetch::Conditional {
+                etag: first.etag.as_deref(),
+                last_modified: Some(&lm),
+            },
+        )
+        .await
+        .expect("conditional fetch");
+    assert_eq!(second.status, 304, "unchanged page should answer 304");
+    assert!(second.body.is_empty(), "a 304 carries no body");
+
+    // And without validators the same page still comes back whole — the discovery path is
+    // untouched by any of this.
+    let third = fetcher.get(&url).await.expect("unconditional refetch");
+    assert_eq!(third.status, 200);
+    assert!(!third.body.is_empty());
+}

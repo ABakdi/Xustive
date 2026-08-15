@@ -101,6 +101,20 @@ pub struct Fetched {
     /// `<head>` to put a meta tag in, so honouring the tag but not the header means honouring the
     /// request exactly where it is easy and ignoring it where it is the site's only option.
     pub exclusion: Option<crate::exclusion::Exclusion>,
+    /// Validators the server sent, for the next visit's conditional request.
+    ///
+    /// Stored rather than discarded because they are the whole economics of recrawl: a request
+    /// carrying them back costs a few hundred bytes when nothing changed, where an unconditional
+    /// one costs the page. Without them, adaptive scheduling pays full price to learn "unchanged".
+    pub etag: Option<String>,
+    pub last_modified: Option<String>,
+}
+
+/// Validators from a previous fetch, replayed on the next one.
+#[derive(Debug, Clone, Default)]
+pub struct Conditional<'a> {
+    pub etag: Option<&'a str>,
+    pub last_modified: Option<&'a str>,
 }
 
 const INDEXABLE: &[&str] = &[
@@ -159,6 +173,20 @@ impl Fetcher {
     /// Blocks until this host's crawl-delay has elapsed, which is what enforces one in-flight
     /// request per host when callers share a `Fetcher`.
     pub async fn get(&self, raw_url: &str) -> Result<Fetched, FetchError> {
+        self.get_conditional(raw_url, Conditional::default()).await
+    }
+
+    /// Fetch with `If-None-Match` / `If-Modified-Since` (M2-T04.2).
+    ///
+    /// A 304 comes back as `Ok` with `status == 304` and an empty body — not as an error, because
+    /// it is the best possible answer: the page is exactly what we already hold, learned for a few
+    /// hundred bytes. Callers on the revisit path check the status; the discovery path never sends
+    /// validators and never sees one.
+    pub async fn get_conditional(
+        &self,
+        raw_url: &str,
+        cond: Conditional<'_>,
+    ) -> Result<Fetched, FetchError> {
         let url = SafeUrl::parse(raw_url)?;
         // The authority, not the bare host: robots.txt is per origin, so `example.dz:8080` must
         // not inherit `example.dz`'s rules. `Url::port()` returns `None` for a scheme's default
@@ -181,7 +209,14 @@ impl Fetcher {
             // an hour ago may not now.
             safe_url::resolve_and_check(&current).await?;
 
-            let resp = self.http.get(current.as_str()).send().await.map_err(|e| {
+            let mut req = self.http.get(current.as_str());
+            if let Some(etag) = cond.etag {
+                req = req.header(reqwest::header::IF_NONE_MATCH, etag);
+            }
+            if let Some(lm) = cond.last_modified {
+                req = req.header(reqwest::header::IF_MODIFIED_SINCE, lm);
+            }
+            let resp = req.send().await.map_err(|e| {
                 if e.is_timeout() {
                     FetchError::Timeout
                 } else {
@@ -201,6 +236,21 @@ impl Fetcher {
                 let mut p = self.politeness.lock().await;
                 p.observe(&host, status, retry_after);
                 p.record_fetch(&host);
+            }
+
+            if status == 304 {
+                // No body, no content type, nothing to decode. The caller keeps what it has.
+                return Ok(Fetched {
+                    url: raw_url.to_string(),
+                    final_url: resp.url().to_string(),
+                    status,
+                    body: String::new(),
+                    content_type: String::new(),
+                    charset_guessed: false,
+                    exclusion: None,
+                    etag: None,
+                    last_modified: None,
+                });
             }
 
             if (300..400).contains(&status) {
@@ -246,6 +296,15 @@ impl Fetcher {
                 .collect();
             let exclusion = crate::exclusion::from_header(&robots_tag, crate::robots::UA_TOKEN);
 
+            let take = |name: reqwest::header::HeaderName| {
+                resp.headers()
+                    .get(name)
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_string)
+            };
+            let etag = take(reqwest::header::ETAG);
+            let last_modified = take(reqwest::header::LAST_MODIFIED);
+
             let final_url = resp.url().to_string();
             let bytes = resp
                 .bytes()
@@ -264,6 +323,8 @@ impl Fetcher {
                 content_type: mime,
                 charset_guessed,
                 exclusion,
+                etag,
+                last_modified,
             });
         }
 
