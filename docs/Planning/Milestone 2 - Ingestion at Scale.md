@@ -342,10 +342,13 @@ Order matters here. T15.1 and T15.2 are the substrate; nothing above them works 
 - [ ] M2-T15.6 **Sitemap `lastmod` and feed polling as freshness signals** — depends on M2-T03.5.
       One fetch reports on hundreds of URLs; for news sources this is the highest-yield signal
       available and it should be preferred over polling pages directly
-- [~] M2-T15.7 **Frontier priority becomes `trust × change_probability × age`**, replacing
-      `depth × 1000`. Depth tracking and trust inheritance are done (M2-T03.3), and the change
-      history now exists and is populated (M2-T15.2). What remains is folding `change_probability`
-      and `age` into `priority_for`, which is now unblocked
+- [x] M2-T15.7 **Revisit priority folds in measured change rate and lateness**, alongside the depth
+      and trust base. Not the literal `trust × change_probability × age` product: a page held near
+      its floor is one we have *measured* as changing, so the converged interval is the signal, and
+      both it and overdueness are capped. Uncapped, a page changing every hour would outrank
+      everything on its host forever — precisely the page the Cho result says not to chase. Bands
+      rather than a curve, because a continuous function is much harder to reason about from a
+      document count that stopped rising
 - [ ] M2-T15.8 **Recrawl budget is separate from discovery budget**, so freshness and coverage
       cannot starve each other. Split visible in the console and in `/metrics`
 - [ ] M2-T15.9 **Boilerplate-stripping quality tests.** T15.1 gives bad stripping a second failure
