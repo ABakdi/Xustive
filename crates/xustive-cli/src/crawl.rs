@@ -85,6 +85,19 @@ pub async fn run(
     seeds: &[Seed],
     opts: &CrawlOptions,
 ) -> Result<Stats> {
+    // Resolve the alias once, up front, and index into the resolved name.
+    //
+    // Writing to the bare alias `documents` makes Meilisearch auto-create a second, unconfigured
+    // index of that name (it creates a missing index on first write), and because `resolve` prefers
+    // a plain index over a versioned one, every reader — the API included — then resolves to that
+    // empty, keyless index instead of `documents_v1`. A faceted search against it fails outright:
+    // no filterable attributes, so the search page 500s. This was fixed in `seed`, `stats` and
+    // `search`; this third write site was missed, so every `make crawl` recreated the stray index.
+    let index = client
+        .resolve(&config.search.documents_index)
+        .await
+        .context("resolving the documents index")?;
+
     let fetcher = Fetcher::new(FetchConfig::default()).context("building the fetcher")?;
     // Per-domain rules, loaded once for the whole crawl. Without them, publishers that emit no
     // machine-readable metadata — which is most of the Algerian press — yield no date at all.
@@ -186,13 +199,13 @@ pub async fn run(
             stats.indexed += 1;
 
             if batch.len() >= opts.batch_size {
-                flush(client, config, &mut batch).await?;
+                flush(client, &index, &mut batch).await?;
             }
         }
         println!("  indexed {from_source}");
     }
 
-    flush(client, config, &mut batch).await?;
+    flush(client, &index, &mut batch).await?;
 
     println!(
         "\n{} indexed, {} fetched, {} duplicates, {} thin, {} robots-blocked, {} failed in {:.1}s",
@@ -318,12 +331,12 @@ fn looks_like_article(path: &str) -> bool {
     !is_asset && segments >= 2 && (has_digits || segments >= 3)
 }
 
-async fn flush(client: &MeiliClient, config: &Config, batch: &mut Vec<Value>) -> Result<()> {
+async fn flush(client: &MeiliClient, index: &str, batch: &mut Vec<Value>) -> Result<()> {
     if batch.is_empty() {
         return Ok(());
     }
     let uid = client
-        .add_documents(&config.search.documents_index, batch)
+        .add_documents(index, batch)
         .await
         .context("submitting batch")?;
     // Wait for the task: reporting success for a batch that later fails is worse than slow.
