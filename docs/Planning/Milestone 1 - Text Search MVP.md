@@ -152,7 +152,18 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [x] M1-T08.6 Bounded queue; shed rather than queue under load
 - [x] M1-T08.7 Injection fixture — one hostile-passage case runs against the real model. Not yet
       a *suite*, and it is skipped when the weights are absent, so it does not gate CI
-- [ ] M1-T08.8 **Faithfulness evaluation: 100 cases, ≥ 95 %, human-sampled** — blocked on B7
+- [~] M1-T08.8 **Faithfulness evaluation: 95.8 % over 30 cases**, against the ≥ 95 % gate. Run
+      against the real 3B model, 407 s on CPU: `cargo test -p xustive-ml --test faithfulness --
+      --ignored`. Thirty cases, not the hundred asked for — reusing passages under reworded queries
+      would inflate the denominator without testing anything new, making the percentage look better
+      by making it mean less. ← *the remaining 70 want a person with real crawled documents*; B7.
+      Graded mechanically rather than by asking a model whether its own summary was faithful: that
+      fails in the correlated direction, since the weakness that makes a summary drift makes the
+      judge accept it. Withheld summaries are not counted as failures — one the validator refused
+      never reaches a user. **The harness needed three fixes before the model did any**: a bare
+      `000` from splitting `200 000`, Arabic `ال-` prefixing read as foreign vocabulary, and French
+      accents unmatched against unaccented sources. It still under-scores one faithful Arabic
+      paraphrase, which is the conservative direction
 - [x] M1-T08.9 **Decide B4.** Quality: 3B is enough — grounded, correctly cited MSA on real
       crawled pages, refuses when passages do not answer, resisted an injected instruction.
       Latency: it is not — 27 s on CPU against a 2.5 s budget ([[Summarizer]] §8). The decision
