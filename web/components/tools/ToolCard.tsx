@@ -27,10 +27,15 @@ export function ToolCard({
   // `detail` is whatever the tool chose to attach, so it is validated rather than trusted: a
   // non-array here would throw during render and take the whole result page with it.
   const detail = answer.detail as
-    | { alternatives?: unknown; administered?: unknown }
+    | { alternatives?: unknown; administered?: unknown; official?: unknown }
     | undefined
   const raw = detail?.alternatives
   const alternatives = Array.isArray(raw) ? raw.filter((a): a is string => typeof a === 'string') : []
+
+  // A tool whose value is an official portal URL — the exam-results tool — renders as a link, not
+  // copyable text. The `official` flag is the tool's promise that this URL is authoritative and
+  // nothing is mirrored; `rel="noopener"` and no `referrer` keep the student's visit their own.
+  const official = detail?.official === true
 
   // Set by tools whose value is fixed by an authority rather than measured — fuel prices, which
   // the ARH changes with no announcement. Without this the number reads as a live quote, and the
@@ -59,12 +64,27 @@ export function ToolCard({
       </p>
 
       <div className="mt-1 flex items-baseline gap-3">
-        <p
-          className="numeric m-0 text-2xl"
-          style={{ fontWeight: 550, letterSpacing: '-0.015em' }}
-        >
-          <bdi>{answer.value}</bdi>
-        </p>
+        {official ? (
+          // The official portal, as a link. No result is shown or stored — only the way to the one
+          // authoritative source. `dir="ltr"` because a URL is not Arabic text.
+          <a
+            className="m-0 text-xl underline"
+            href={answer.value}
+            dir="ltr"
+            rel="noopener noreferrer"
+            target="_blank"
+            style={{ fontWeight: 550, color: 'var(--accent)' }}
+          >
+            {answer.value}
+          </a>
+        ) : (
+          <p
+            className="numeric m-0 text-2xl"
+            style={{ fontWeight: 550, letterSpacing: '-0.015em' }}
+          >
+            <bdi>{answer.value}</bdi>
+          </p>
+        )}
         <CopyButton value={answer.value} label={t.copy} copied={t.copied} />
         <DismissTool tool={answer.tool} label={t.hideTool} />
       </div>

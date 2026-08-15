@@ -25,6 +25,7 @@
 
 pub mod calculator;
 pub mod datetime;
+pub mod exam;
 pub mod fuel;
 pub mod prayer;
 pub mod translator;
@@ -101,6 +102,7 @@ pub fn registry() -> Vec<Box<dyn Tool>> {
         Box::new(datetime::DateTool),
         Box::new(prayer::PrayerTool),
         Box::new(fuel::FuelTool),
+        Box::new(exam::ExamTool),
         Box::new(wilaya::WilayaTool),
         Box::new(utilities::Utilities),
         // `translator::Translator` is deliberately NOT registered. The detector, the endpoint and
@@ -191,7 +193,6 @@ mod tests {
         // with a calculator card is worse than one with no tools at all.
         for query in [
             "الجزائر",
-            "نتائج البكالوريا 2026",
             "prix du gaz butane à Alger",
             "Sonelgaz consommation record",
             "horaires trains Oran Alger",
