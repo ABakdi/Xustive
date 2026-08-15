@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 
 import { LangSwitcher } from '@/components/layout/LangSwitcher'
+import { DensityToggle } from '@/components/layout/DensityToggle'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { Wordmark } from '@/components/layout/Wordmark'
 import { Toggle } from '@/components/ui/Toggle'
@@ -8,7 +9,7 @@ import { tools } from '@/lib/api'
 import { isLocale } from '@/lib/i18n/config'
 import { messages, type Messages } from '@/lib/i18n/messages'
 import { setToolEnabled } from '@/lib/prefs'
-import { readTheme } from '@/lib/theme'
+import { readDensity, readTheme } from '@/lib/theme'
 import { readDisabledTools } from '@/lib/tools'
 
 export const metadata = { title: 'Xustive' }
@@ -26,7 +27,7 @@ export default async function Settings({ params }: { params: Promise<{ lang: str
   const { lang } = await params
   if (!isLocale(lang)) notFound()
   const t: Messages = messages(lang)
-  const theme = await readTheme()
+  const [theme, density] = await Promise.all([readTheme(), readDensity()])
 
   const [inventory, disabled] = await Promise.all([tools(), readDisabledTools()])
 
@@ -38,6 +39,10 @@ export default async function Settings({ params }: { params: Promise<{ lang: str
           current={theme}
           labels={{ system: t.themeSystem, light: t.themeLight, dark: t.themeDark }}
         />
+<DensityToggle
+              current={density}
+              labels={{ comfortable: t.densityComfortable, compact: t.densityCompact }}
+            />
       </div>
 
       <main className="mx-auto max-w-xl px-6 pb-20">

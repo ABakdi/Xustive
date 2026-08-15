@@ -10,13 +10,14 @@ import { TranslateCard } from '@/components/tools/TranslateCard'
 import { readDisabledTools } from '@/lib/tools'
 import { translateLanguages } from '@/lib/api'
 import { LangSwitcher } from '@/components/layout/LangSwitcher'
+import { DensityToggle } from '@/components/layout/DensityToggle'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { Wordmark } from '@/components/layout/Wordmark'
 import { search, SearchFailed } from '@/lib/api'
 import { isLocale, type Locale } from '@/lib/i18n/config'
 import { formatNumber, plural } from '@/lib/i18n/format'
 import { messages } from '@/lib/i18n/messages'
-import { readTheme } from '@/lib/theme'
+import { readDensity, readTheme } from '@/lib/theme'
 
 /**
  * The results page.
@@ -193,7 +194,7 @@ async function Shell({
   q: string
   children: React.ReactNode
 }) {
-  const theme = await readTheme()
+  const [theme, density] = await Promise.all([readTheme(), readDensity()])
   return (
     <>
       <header
@@ -214,6 +215,10 @@ async function Shell({
             <ThemeToggle
               current={theme}
               labels={{ system: t.themeSystem, light: t.themeLight, dark: t.themeDark }}
+            />
+<DensityToggle
+              current={density}
+              labels={{ comfortable: t.densityComfortable, compact: t.densityCompact }}
             />
           </div>
         </div>
