@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 
 import '../fonts.css'
 import '../globals.css'
+import { OfflineBanner } from '@/components/layout/OfflineBanner'
 import { dirOf, isLocale, LOCALES } from '@/lib/i18n/config'
 import { messages } from '@/lib/i18n/messages'
 import { readDensity, readTheme, THEME_SCRIPT } from '@/lib/theme'
@@ -40,6 +41,7 @@ export default async function LocaleLayout({
 
   // Both resolved server-side, so the first byte already carries the right theme and direction.
   const [theme, density] = await Promise.all([readTheme(), readDensity()])
+  const t = messages(lang)
 
   return (
     <html lang={lang} dir={dirOf(lang)} data-theme={theme} data-density={density}>
@@ -66,7 +68,10 @@ export default async function LocaleLayout({
         {/* Before paint, not in an effect. An effect is what causes the flash. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
-      <body>{children}</body>
+      <body>
+        <OfflineBanner offline={t.offline} hint={t.offlineHint} backOnline={t.backOnline} />
+        {children}
+      </body>
     </html>
   )
 }
