@@ -193,8 +193,14 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
 - [x] M1B-T08.3 `Intl.NumberFormat` / `DateTimeFormat` in one module, numeral system an explicit
       constant. `Intl` defaults Arabic to Eastern digits; Algerian print uses Western, so the
       locale default would be wrong for this audience
-- [~] M1B-T08.4 Darija falls back to Arabic, never English. A distinct catalogue still needs a
-      native speaker ← *B7*
+- [~] M1B-T08.4 Darija falls back to Arabic, never English, **and now has its own catalogue** —
+      32 keys overridden. Only the strings a person would say differently: Darija has no settled
+      written standard, so invented spellings for institutional vocabulary (`الإعدادات`,
+      `الولاية`) read more slowly than the MSA every Algerian knows from forms and bulletins, and
+      those rows keep the Arabic wording deliberately. What changes is the conversational register.
+      A test asserts it is not an alias, by counting overrides rather than pinning strings — pinning
+      would break whenever a reviewer improves one, which is the edit most worth encouraging.
+      ← *machine-generated, spelling wants a native speaker*; B7
 - [ ] M1B-T08.5 Visual regression: 4 languages × 2 directions × 2 themes
 - [x] M1B-T08.6 `<bdi>` on numbers, expressions and URLs inside RTL text — verified in a browser
       against the Arabic locale, and enforced by `scripts/lint-bidi.sh`. Brackets were the real
