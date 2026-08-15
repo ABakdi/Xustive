@@ -66,6 +66,8 @@ export interface SearchResponse {
   took_ms: number
   results: ResultCard[]
   facets: Record<string, Record<string, number>>
+  /** True when facets were dropped under load, not genuinely empty. */
+  facets_degraded?: boolean
 }
 
 export interface Suggestion {

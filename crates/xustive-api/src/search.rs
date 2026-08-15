@@ -130,6 +130,11 @@ pub struct SearchResponse {
     pub took_ms: u64,
     pub results: Vec<ResultCard>,
     pub facets: Value,
+    /// True when facets were dropped under time pressure rather than genuinely empty. Lets the UI
+    /// say filtering is temporarily unavailable instead of silently showing no filters, which
+    /// reads as "this search has nothing to filter by" — a different, wrong message.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub facets_degraded: bool,
 }
 
 /// Below this many primary hits, try the expanded leg.
@@ -519,6 +524,9 @@ pub async fn handler(
         took_ms: started.elapsed().as_millis() as u64,
         results,
         facets: hits.facet_distribution,
+        // Facets were asked for but the deadline cut them, versus simply absent. Only the first is
+        // a degradation worth signalling.
+        facets_degraded: !want_facets,
     }))
 }
 

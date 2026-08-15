@@ -160,6 +160,16 @@ export default async function SearchPage({
         <>
           <Filters lang={lang} t={t} facets={data.facets} active={sp} q={q} />
 
+          {/* Degraded, not empty. When the backend drops facets under load the filter row is bare,
+              and without this note that reads as "nothing here to filter by" rather than "filters
+              are resting". Shown only for the real degradation, never for a genuinely unfacetable
+              result. */}
+          {data.facets_degraded && (
+            <p className="mb-4 text-xs" style={{ color: 'var(--fg-faint)' }}>
+              {t.filtersUnavailable}
+            </p>
+          )}
+
           {/* Below the filters for a topic. A question puts it above them instead — see the
               block before the filters. Fetched after paint either way: on CPU a summary takes
               tens of seconds and nothing on the page may wait for it. */}
