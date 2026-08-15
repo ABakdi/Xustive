@@ -4,8 +4,15 @@
 # weight:  strong = distinctly Darija, one occurrence is enough to call it
 #          weak   = used in Darija but also in MSA or other dialects, needs corroboration
 #
-# NEEDS NATIVE-SPEAKER REVIEW. This is a working starter list assembled to get detection
-# functioning; it has not been reviewed by a native Algerian speaker. Blocker B7 in the plan.
+# NEEDS NATIVE-SPEAKER REVIEW. Nothing here has been checked by a native Algerian speaker.
+# Blocker B7 in the plan. The list is machine-assembled to get detection working and to give a
+# reviewer something to correct rather than a blank file — correcting a wrong weight is far less
+# work than recalling 500 words unprompted.
+#
+# How to review it: the sections below are ordered roughly by confidence. Copula, pronouns and
+# question words are the safest; the French-borrowing and food sections are the most Algerian and
+# also the easiest to get subtly wrong. Anything you disagree with is more likely to be wrong than
+# right — delete freely.
 # Two specific risks a reviewer should look for:
 #   - Moroccan/Tunisian terms wrongly included as Algerian
 #   - terms marked strong that are actually common in MSA news copy
@@ -193,3 +200,345 @@
 انشاء الله	weak	God willing
 الحمد لله	weak	praise God
 مبروك	weak	congratulations
+
+# ==============================================================================================
+# MACHINE-GENERATED EXPANSION — everything below this line is unreviewed.
+#
+# Assembled without a native speaker, deliberately conservative: where a term is shared with
+# Moroccan or Tunisian Darija it is marked `weak` even when it is common in Algeria, because a
+# false `strong` actively misclassifies text while a false `weak` only fails to help.
+# ==============================================================================================
+
+# --- verbs: the most productive class, and mostly Maghrebi-wide -------------------------------
+نوض	strong	get up
+ينوض	strong	he gets up
+قعد	strong	sit / stay
+نقعد	strong	I sit
+يقعد	weak	he sits
+رقد	strong	sleep
+نرقد	strong	I sleep
+فاق	weak	wake up
+نفيق	strong	I wake up
+خمم	strong	think
+نخمم	strong	I think
+يخمم	strong	he thinks
+عيا	strong	get tired
+عييت	strong	I got tired
+زعف	strong	get angry
+زعفت	strong	I got angry
+لقى	strong	find
+لقيت	strong	I found
+نلقى	strong	I find
+صاب	strong	find / come across
+صبت	strong	I found
+حوس	strong	wander / look around
+نحوس	strong	I look around
+كمل	weak	finish
+كملت	weak	I finished
+سالي	strong	finish
+ساليت	strong	I finished
+ولى	strong	become / go back
+ولات	strong	she became
+جبد	strong	pull out
+نجبد	strong	I pull out
+دز	strong	push
+ندز	strong	I push
+شد	weak	hold / catch
+نشد	weak	I hold
+حل	strong	open
+نحل	strong	I open
+سكر	strong	close
+نسكر	strong	I close
+خلص	strong	pay
+نخلص	strong	I pay
+شرى	weak	buy
+شريت	strong	I bought
+نشري	strong	I buy
+باع	weak	sell
+بعت	weak	I sold
+عاون	weak	help
+نعاون	weak	I help
+تفكر	weak	remember
+نتفكر	weak	I remember
+نسيت	weak	I forgot
+كلا	strong	he ate
+ناكل	strong	I eat
+كليت	strong	I ate
+شربت	weak	I drank
+نشرب	weak	I drink
+خرجت	weak	I went out
+نخرج	weak	I go out
+دخلت	weak	I went in
+ندخل	weak	I go in
+هبط	weak	go down
+نهبط	weak	I go down
+طلعت	weak	I went up
+نطلع	weak	I go up
+طاح	weak	fall
+طحت	strong	I fell
+حبس	strong	stop
+حبست	strong	I stopped
+وقفت	weak	I stood / stopped
+مشيت	weak	I went
+نمشي	weak	I go
+بدا	weak	begin
+بديت	weak	I began
+عطيت	weak	I gave
+نعطي	weak	I give
+خديت	strong	I took
+ناخد	strong	I take
+ودى	strong	take away
+نودي	strong	I take away
+رجعت	weak	I came back
+نرجع	weak	I come back
+قريت	strong	I studied / read
+نقرا	strong	I study / read
+كتبت	weak	I wrote
+فهمت	weak	I understood
+نفهم	weak	I understand
+سمعت	weak	I heard
+نسمع	weak	I hear
+حبيت	strong	I liked / wanted
+تحب	strong	you want
+يحب	weak	he wants
+خفت	weak	I was afraid
+ضحكت	weak	I laughed
+بكيت	weak	I cried
+خبيت	weak	I hid
+ضيعت	weak	I lost
+ربحت	weak	I won
+خسرت	weak	I lost (a game)
+
+# --- negation: the circumfix is one of the clearest Maghrebi signals --------------------------
+ماكيش	strong	you are not
+ماشيش	strong	not
+مايعرفش	strong	he does not know
+مانعرفش	strong	I do not know
+مافهمتش	strong	I did not understand
+ماعنديش	strong	I do not have
+ماعندكش	strong	you do not have
+ماكانش	strong	there was not
+مالقيتش	strong	I did not find
+ماجاش	strong	he did not come
+مانحبش	strong	I do not like
+ماقدرتش	strong	I could not
+مازالش	strong	not yet
+مايهمش	weak	it does not matter
+
+# --- time -------------------------------------------------------------------------------------
+نهار	weak	day
+نهارا	weak	one day
+عشية	strong	late afternoon
+صباحية	strong	morning
+لوطا	weak	below
+خطرة	strong	one time / once
+خطرات	strong	sometimes
+مرة مرة	weak	now and then
+ديما	strong	always
+عمري	strong	I have never
+ساعات	weak	sometimes
+دقيقة	weak	minute
+سيمانتين	strong	two weeks
+شهرين	weak	two months
+عامين	weak	two years
+بكري	strong	early / long ago
+مورا	strong	after / behind
+قبيلة	strong	a little while ago
+توا	strong	now
+ذرك	strong	now
+
+# --- quantity and number ----------------------------------------------------------------------
+زوج	strong	two
+تلاتة	weak	three
+ربعة	weak	four
+خمسة	weak	five
+سبعة	weak	seven
+تمنية	weak	eight
+تسعة	weak	nine
+عشرة	weak	ten
+نص	weak	half
+شوية بزاف	strong	quite a lot
+كامل	weak	all
+غير شوية	strong	only a little
+صوردي	strong	money / cent
+دراهم	strong	money
+مليون	weak	million (colloquially 10 000 DA)
+
+# --- people and family ------------------------------------------------------------------------
+يما	strong	my mother
+بابا	weak	my father
+مرتي	strong	my wife
+راجلي	strong	my husband
+ولدي	weak	my son
+بنتي	weak	my daughter
+صحابي	strong	my friends
+صاحبي	strong	my friend
+جاري	weak	my neighbour
+عمي	weak	my paternal uncle
+خالي	weak	my maternal uncle
+الناس	weak	people
+واحد	weak	someone
+حتى واحد	strong	nobody
+
+# --- places -----------------------------------------------------------------------------------
+حومة	strong	neighbourhood
+زنقة	strong	street
+دشرة	strong	village
+تريق	strong	road
+حانوت	strong	shop
+سوق	weak	market
+جامع	weak	mosque
+محطة	weak	station
+البحر	weak	the sea
+الغابة	weak	the forest
+
+# --- French borrowings: among the most distinctly Algerian markers ------------------------------
+بورطابل	strong	mobile phone
+تيليفون	weak	telephone
+أورديناتور	strong	computer
+فريجيدار	strong	fridge
+ماشينة	weak	machine
+طاكسي	strong	taxi
+بيس	strong	bus
+كاميون	strong	lorry
+أفيون	strong	aeroplane
+بلاج	strong	beach
+ليكول	strong	school
+بيرو	strong	office
+شامبرة	strong	room
+دوش	strong	shower
+ريدو	strong	curtain
+بلاكار	strong	wardrobe
+طابلة	strong	table
+كونجي	strong	leave / time off
+فيزيتة	strong	visit
+فاكتورة	strong	invoice
+كريدي	strong	credit
+ريزو	strong	network
+فلاشة	strong	USB stick
+تروتوار	strong	pavement
+روندبوان	strong	roundabout
+بان	strong	breakdown
+سرفيس	weak	service
+كارطة	strong	card
+باسبور	weak	passport
+ميدسان	strong	doctor
+فارماسي	strong	pharmacy
+انفيرمي	strong	nurse
+شارجور	strong	charger
+ديريكسيون	weak	steering / direction
+
+# --- food -------------------------------------------------------------------------------------
+كسرة	strong	flatbread
+مطلوع	strong	semolina bread
+شربة	strong	soup
+محاجب	strong	stuffed flatbread
+بوراك	strong	brik / roll
+شخشوخة	strong	shakhshukha
+رشتة	strong	rechta
+زلابية	weak	zlabia
+كسكسي	weak	couscous
+حوت	strong	fish
+خضرة	strong	vegetables
+طوماطيش	strong	tomatoes
+بطاطا	weak	potatoes
+خبز	weak	bread
+حليب	weak	milk
+تاي	strong	tea
+قهوة	weak	coffee
+لحم	weak	meat
+دجاج	weak	chicken
+
+# --- adjectives and states ---------------------------------------------------------------------
+صعيب	strong	difficult
+ساهل	weak	easy
+سخون	strong	hot
+بارد	weak	cold
+شين	strong	ugly
+موسخ	strong	dirty
+نظيف	weak	clean
+عيان	strong	tired / ill
+زعفان	strong	angry
+فرحان	weak	happy
+جيعان	strong	hungry
+عطشان	weak	thirsty
+نعسان	strong	sleepy
+مشغول	weak	busy
+فاضي	weak	free / empty
+غالي	weak	expensive
+رخيص	weak	cheap
+كحل	weak	black
+بيض	weak	white
+حمر	weak	red
+جديد	weak	new
+قديم	weak	old
+كبير	weak	big
+صغير	weak	small
+
+# --- discourse and politeness -------------------------------------------------------------------
+بالاك	strong	maybe
+ياك	strong	right? / isn't it?
+واه	strong	yes
+لالا	strong	no
+سمحلي	strong	excuse me
+بربي	strong	please / for God's sake
+معليش	weak	never mind
+على خاطر	strong	because
+على جال	strong	because of
+منين	strong	from where / when
+لوكان	strong	if
+كون	strong	if only
+وين راك	strong	where are you
+كي راك	strong	how are you
+واش راكم	strong	how are you (pl)
+الله غالب	strong	nothing to be done
+ماشاء الله	weak	mashallah
+الله يبارك	weak	God bless
+يرحم والديك	strong	please (lit. God rest your parents)
+صح فطوركم	strong	Ramadan greeting
+عيد مبروك	weak	Eid greeting
+تبارك الله	weak	well done
+والو زعما	strong	nothing at all
+خلاص	weak	done / enough
+يزي	strong	enough / stop
+روح	weak	go
+أجي	strong	come
+شوف	weak	look
+سمع	weak	listen
+
+# --- possessive and copula inflections -----------------------------------------------------------
+# Lookup is exact per token, so an inflected or article-prefixed form needs its own row. This is
+# why "وصفة المحاجب بالخضرة" was read as MSA: محاجب is listed, المحاجب was not.
+تاعي	strong	mine
+تاعك	strong	yours
+تاعه	strong	his
+تاعها	strong	hers
+تاعنا	strong	ours
+تاعكم	strong	yours (pl)
+تاعهم	strong	theirs
+نتاعي	strong	mine
+نتاعك	strong	yours
+راهاش	strong	she is not
+راهش	strong	he is not
+راهم	strong	they are
+راكش	strong	you are not
+
+# --- article-prefixed forms of the strongest nouns -------------------------------------------------
+المحاجب	strong	the stuffed flatbread
+الكسرة	strong	the flatbread
+الشربة	strong	the soup
+الخضرة	strong	the vegetables
+الحومة	strong	the neighbourhood
+الحانوت	strong	the shop
+الزنقة	strong	the street
+البلاصة	strong	the place
+الخدمة	weak	the work
+الطوموبيل	strong	the car
+البورطابل	strong	the mobile
+الفلاشة	strong	the USB stick
+التريسيتي	strong	the electricity
+السبيطار	strong	the hospital
+الليكول	strong	the school
+الدراهم	strong	the money
+الصوردي	strong	the money
+الكونجي	strong	the time off

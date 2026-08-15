@@ -119,3 +119,57 @@ wilaya	weak	province
 commune	weak	municipality
 ministere	weak	ministry
 gouvernement	weak	government
+
+# --- machine-generated expansion, unreviewed (B7) ------------------------------------------------
+# Content words, not only function words: an Algerian query is often a bare noun phrase
+# ("location appartement a constantine") with no function word in it at all, and the function-word
+# list alone left those undetected.
+emploi	strong	employment
+offre	strong	offer
+offres	strong	offers
+inscription	strong	registration
+inscriptions	strong	registrations
+universitaire	strong	university (adj)
+universite	strong	university
+ligne	strong	line
+location	strong	rental
+appartement	strong	flat
+maison	weak	house
+ingenieur	strong	engineer
+informatique	strong	computing
+travail	strong	work
+salaire	strong	salary
+entreprise	strong	company
+demande	strong	request
+dossier	strong	file
+carte	weak	card
+identite	strong	identity
+naissance	strong	birth
+extrait	strong	extract
+mairie	strong	town hall
+wilaya	weak	province
+horaires	strong	opening hours
+resultats	strong	results
+baccalaureat	strong	baccalaureate
+concours	strong	competitive exam
+bourse	weak	grant
+sante	strong	health
+medecin	strong	doctor
+hopital	strong	hospital
+pharmacie	strong	pharmacy
+voiture	strong	car
+essence	weak	petrol
+carburant	strong	fuel
+prix	weak	price
+achat	strong	purchase
+vente	strong	sale
+livraison	strong	delivery
+meteo	strong	weather
+demain	strong	tomorrow
+aujourd	strong	today (elided)
+semaine	strong	week
+annee	strong	year
+recette	strong	recipe
+cuisine	weak	kitchen
+voyage	weak	travel
+billet	strong	ticket

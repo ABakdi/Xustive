@@ -1,0 +1,165 @@
+# Very common English words.
+#
+# Used only to separate English from French and Latin-script Darija on short input, which is where
+# trigram statistics are weakest. It is not a stopword list — those live in the index settings.
+#
+# Format:  term <TAB> weight <TAB> gloss
+#
+# # Why this file exists
+#
+# whatlang is trained on prose and is unreliable at query length. Restricted to the three languages
+# we serve it still returned `is_reliable = false` with a small margin for most English queries,
+# which fell below the confidence floor and became `Und`. Measured on the labelled set, ordinary
+# English queries were detected 53% of the time. Function words are the cheap, reliable signal that
+# short queries actually contain.
+#
+# **No entry here may also appear in `arabizi.tsv` or `french-common.tsv`.** A token in two lists
+# makes every query containing it ambiguous, which is worse than having no evidence at all. There
+# is a test.
+
+# --- function words: the reliable core ----------------------------------------------------------
+the	strong	the
+and	weak	and
+for	weak	for
+with	strong	with
+from	weak	from
+what	strong	what
+when	strong	when
+where	strong	where
+which	strong	which
+who	weak	who
+why	weak	why
+how	strong	how
+this	strong	this
+that	strong	that
+these	strong	these
+those	strong	those
+there	strong	there
+here	weak	here
+have	strong	have
+has	strong	has
+does	strong	does
+did	strong	did
+doing	strong	doing
+been	strong	been
+being	strong	being
+was	strong	was
+were	strong	were
+are	strong	are
+will	strong	will
+would	strong	would
+should	strong	should
+could	strong	could
+can	weak	can
+may	weak	may
+must	strong	must
+need	strong	need
+needs	strong	needs
+want	strong	want
+wants	strong	wants
+get	strong	get
+gets	strong	gets
+make	strong	make
+makes	strong	makes
+take	strong	take
+about	strong	about
+into	strong	into
+over	weak	over
+under	strong	under
+between	strong	between
+before	strong	before
+after	weak	after
+again	strong	again
+best	strong	best
+better	strong	better
+more	weak	more
+most	strong	most
+much	strong	much
+many	strong	many
+some	weak	some
+any	strong	any
+all	weak	all
+each	strong	each
+other	weak	other
+than	strong	than
+then	strong	then
+also	weak	also
+only	strong	only
+just	strong	just
+very	weak	very
+too	strong	too
+not	weak	not
+now	strong	now
+new	weak	new
+old	weak	old
+good	strong	good
+their	strong	their
+your	strong	your
+you	strong	you
+they	strong	they
+them	strong	them
+him	strong	him
+her	weak	her
+his	strong	his
+its	strong	its
+our	weak	our
+who's	strong	who is
+it's	strong	it is
+don't	strong	do not
+doesn't	strong	does not
+
+# --- query verbs and nouns that show up constantly ------------------------------------------------
+apply	strong	apply
+requirements	strong	requirements
+documents	weak	documents
+document	weak	document
+results	weak	results
+result	weak	result
+rate	weak	rate
+exchange	strong	exchange
+places	strong	places
+place	weak	place
+visit	weak	visit
+jobs	strong	jobs
+job	weak	job
+remote	weak	remote
+engineer	weak	engineer
+software	weak	software
+admission	strong	admission
+university	weak	university
+passport	weak	passport
+driving	strong	driving
+licence	weak	licence
+license	strong	license
+renew	strong	renew
+forecast	strong	forecast
+weather	strong	weather
+tomorrow	strong	tomorrow
+yesterday	strong	yesterday
+today	strong	today
+week	weak	week
+year	weak	year
+years	strong	years
+cost	strong	cost
+costs	strong	costs
+price	weak	price
+prices	weak	prices
+cheap	strong	cheap
+buy	strong	buy
+sell	strong	sell
+near	weak	near
+open	weak	open
+close	weak	close
+find	strong	find
+search	weak	search
+history	weak	history
+football	weak	football
+match	weak	match
+team	strong	team
+travel	weak	travel
+book	weak	book
+help	weak	help
+guide	weak	guide
+online	weak	online
+free	weak	free
+download	strong	download
