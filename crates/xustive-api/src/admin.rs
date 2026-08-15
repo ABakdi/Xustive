@@ -381,11 +381,11 @@ pub async fn page(State(state): State<AppState>, Peer(peer): Peer, headers: Head
         )
     };
 
+    // No header and no <main> of its own: the console shell provides both, and the first version
+    // of this page kept its pre-console wrapper — which nested a second <main> inside the shell's
+    // and painted the wordmark twice, once in the banner and once at the top of the content.
     let body = format!(
-        r#"<header class="site-header"><a class="wordmark" href="/">XUSTIVE</a>
-  <span class="muted">admin</span></header>
-<main id="results">
-  {bypass_banner}
+        r#"{bypass_banner}
   {bypass_control}
 
   <h1>Compute device</h1>
@@ -421,7 +421,7 @@ pub async fn page(State(state): State<AppState>, Peer(peer): Peer, headers: Head
   </table>
   <p class="muted">Models live in <code>{dir}</code>. A device change takes effect on the next
   model load.</p>
-</main>"#,
+"#,
         state_class = if r.fell_back { "warn" } else { "ok" },
         active = r.active.as_str(),
         reason = escape_html(&r.reason),
