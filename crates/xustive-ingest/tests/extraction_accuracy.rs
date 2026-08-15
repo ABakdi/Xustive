@@ -336,3 +336,113 @@ fn no_boilerplate_reaches_the_body() {
         }
     }
 }
+
+/// The extracted body — and therefore the content hash — must be identical across two fetches of
+/// the same article that differ only in furniture (M2-T15.9).
+///
+/// This is the property the whole freshness scheduler rests on. [[ADR-0011]] schedules recrawls by
+/// comparing `content_hash` across visits, and `content_hash` is BLAKE3 over the extracted body.
+/// If a rotating "most read" sidebar, a re-rendered relative timestamp, or a fresh ad slot leaked
+/// into the body, every revisit of a page whose article never changed would read as a change — and
+/// the scheduler would pin it at its floor, chasing furniture forever. That is exactly the churn
+/// ADR-0011 exists to avoid, and the only thing standing between the design and that failure is
+/// that extraction ignores everything outside the article.
+#[test]
+fn the_same_article_hashes_identically_despite_changing_furniture() {
+    let parser = Parser::new(ParseConfig::default());
+    let url = "https://example.dz/article";
+
+    // Monday's fetch: one set of "most read" links, one timestamp, one ad.
+    let monday = page_with_furniture(
+        AR_BODY,
+        &["الجزائر تفوز", "ارتفاع الأسعار", "قرار جديد"],
+        "الإثنين 04 أوت 2026 09:12",
+        "ad-slot-morning",
+    );
+    // Tuesday's fetch: the article is byte-for-byte the same; everything around it moved.
+    // The publication timestamp is stable — a real one does not change between fetches of the same
+    // article — so the only things that move are the genuinely rotating furniture: the most-read
+    // sidebar (which changes as other stories are read) and the ad slot.
+    let tuesday = page_with_furniture(
+        AR_BODY,
+        &["مباراة الليلة", "طقس غدا", "إضراب", "تعيينات"],
+        "الإثنين 04 أوت 2026 09:12",
+        "ad-slot-evening",
+    );
+    assert_ne!(
+        monday, tuesday,
+        "the two pages must actually differ, or the test proves nothing"
+    );
+
+    let a = parser
+        .parse(&monday, url, "test", SourceType::Web)
+        .expect("monday");
+    let b = parser
+        .parse(&tuesday, url, "test", SourceType::Web)
+        .expect("tuesday");
+
+    assert_eq!(
+        a.document.body, b.document.body,
+        "the article text moved between fetches even though only the furniture changed"
+    );
+    assert_eq!(
+        a.document.content_hash, b.document.content_hash,
+        "content_hash differs across furniture-only fetches; the scheduler would read this as a \
+         change and pin the page at its floor forever"
+    );
+    assert!(a.document.content_hash.starts_with("b3:"));
+}
+
+/// An article wrapped in furniture the caller can vary: a rotating most-read list, a rendered
+/// timestamp, and an ad slot with a changing id.
+fn page_with_furniture(article: &str, most_read: &[&str], stamp: &str, ad_id: &str) -> String {
+    let items: String = most_read
+        .iter()
+        .map(|t| format!("<li><a href=\"/x\">{t}</a></li>"))
+        .collect();
+    format!(
+        r#"<!doctype html><html><head><meta charset="utf-8">
+        <title>خبر</title><meta property="og:title" content="بيان الوزارة">
+        <meta property="article:published_time" content="2026-08-05T09:00:00Z"></head><body>
+        <nav class="nav"><a href="/">الرئيسية</a></nav>
+        <aside><h3>الأكثر قراءة</h3><ul>{items}</ul></aside>
+        <div class="ad" id="{ad_id}">إعلان</div>
+        <main><article>
+          <span class="published">{stamp}</span>
+          <p>{article}</p>
+        </article></main>
+        <footer><p>جميع الحقوق محفوظة {stamp}</p></footer>
+        </body></html>"#
+    )
+}
+
+/// Known gap: a relative/updated timestamp *inside* the article still leaks (M2-T15.9).
+///
+/// ADR-0011 lists "rendered timestamps" among the furniture that churns. A publication date is
+/// stable and handled — the test above proves it — but a site that renders "آخر تحديث: منذ ساعتين"
+/// (updated 2 hours ago) inside the article element changes it on every fetch while the article
+/// itself does not, and density extraction keeps it because it is genuinely inside the content.
+///
+/// Fixing it well needs either a per-domain rule (the reliable route — the timestamp's selector is
+/// known per publisher) or a language-aware relative-time detector (general but fragile). Both are
+/// more than a heuristic, so this is left `#[ignore]`d and documented rather than papered over.
+/// Un-ignore it when the fix lands.
+#[test]
+#[ignore = "relative in-article timestamps not yet stripped; needs a per-domain rule (M2-T15.9)"]
+fn a_relative_timestamp_inside_the_article_should_not_cause_churn() {
+    let parser = Parser::new(ParseConfig::default());
+    let url = "https://example.dz/live";
+    let earlier = page_with_furniture(AR_BODY, &["أ"], "آخر تحديث: منذ ساعتين", "ad");
+    let later = page_with_furniture(AR_BODY, &["أ"], "آخر تحديث: منذ 3 ساعات", "ad");
+
+    let a = parser
+        .parse(&earlier, url, "test", SourceType::Web)
+        .expect("earlier");
+    let b = parser
+        .parse(&later, url, "test", SourceType::Web)
+        .expect("later");
+    assert_eq!(
+        a.document.content_hash, b.document.content_hash,
+        "a relative timestamp changed the hash while the article did not"
+    );
+}
