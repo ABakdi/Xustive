@@ -239,8 +239,67 @@ const en: Messages = {
  * Darija reads Arabic, and sending them to English would be a strictly worse guess. Writing Darija
  * UI copy well is harder than translating it and needs a native speaker (blocker B7).
  */
-const catalogues: Record<Locale, Messages> = { ar, ary: ar, fr, en }
+/**
+ * Algerian Darija.
+ *
+ * A distinct catalogue rather than an alias for `ar`. Darija was falling back to Arabic wholesale,
+ * which is the *right* fallback — MSA is readable to every Darija speaker, and English is not — but
+ * a fallback is not a translation. Choosing Darija and getting formal newsreader Arabic tells the
+ * user the option was decorative.
+ *
+ * # What is and is not translated here
+ *
+ * Only the strings a person would actually say differently. Darija has no settled written
+ * standard, so inventing spellings for institutional vocabulary — `الإعدادات`, `الولاية`,
+ * `إيجابي` — would produce something no Algerian writes and every Algerian reads more slowly than
+ * the MSA they already know from every form and news bulletin. Those rows deliberately keep the
+ * Arabic wording.
+ *
+ * What changes is the conversational register: prompts, empty states, errors, and anything phrased
+ * as the site talking to you.
+ *
+ * MACHINE-GENERATED, UNREVIEWED — blocker B7. Spelling is the part most likely to be wrong: Darija
+ * is written by ear and regional habits differ. A reviewer should treat every value here as a
+ * proposal.
+ */
+const ary: Messages = {
+  ...ar,
+  tagline: 'محرك البحث تاع الجزائر',
+  searchPlaceholder: 'قلب على…',
+  searchLabel: 'قلب',
+  privacyLine: 'ما نسجلوش واش تقلب عليه',
+  resultsCount: 'نتيجة',
+  resultsApprox: 'تقريبا',
+  noResults: 'ما لقينا والو',
+  noResultsHint: 'جرب كلمات أخرى ولا قلل فيهم',
+  filters: 'نقّي',
+  clearFilters: 'امسح التنقية',
+  previous: 'اللي قبل',
+  next: 'اللي بعد',
+  summaryNote: 'هاد الملخص مولّد من النتائج اللي تحت. شوف المصادر.',
+  dateUnknown: 'ما نعرفوش التاريخ',
+  theme: 'الشكل',
+  themeSystem: 'كيما الجهاز',
+  errorTitle: 'كاين مشكل',
+  copy: 'انسخ',
+  copied: 'تنسخ',
+  asOf: 'محسوب في',
+  hideTool: 'خبّي هاد الأداة',
+  translating: 'راه يترجم…',
+  translateAuto: 'يكشفها وحدو',
+  translateLocal: 'الترجمة تتدار هنا. النص ما يخرجش من السيرفور.',
+  translateApprox: 'ترجمة آلية، تقريبية',
+  translateTruncated: 'حبست الترجمة كي وصلت للحد.',
+  translateFailed: 'ما نجحتش الترجمة.',
+  stop: 'حبس',
+  toolsNote: 'الأدوات المطفية ما تبانش فوق النتائج. هاد الإعداد يتسجل غير في هاد المتصفح.',
+  enable: 'شعّل',
+  disable: 'طفّي',
+}
+
+const catalogues: Record<Locale, Messages> = { ar, ary, fr, en }
 
 export function messages(locale: Locale): Messages {
   return catalogues[locale]
 }
+
