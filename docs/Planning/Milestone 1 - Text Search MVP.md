@@ -152,9 +152,10 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [x] M1-T08.6 Bounded queue; shed rather than queue under load
 - [x] M1-T08.7 Injection fixture — one hostile-passage case runs against the real model. Not yet
       a *suite*, and it is skipped when the weights are absent, so it does not gate CI
-- [~] M1-T08.8 **Faithfulness evaluation: 95.8 % over 30 cases**, against the ≥ 95 % gate. Run
-      against the real 3B model, 407 s on CPU: `cargo test -p xustive-ml --test faithfulness --
-      --ignored`. Thirty cases, not the hundred asked for — reusing passages under reworded queries
+- [~] M1-T08.8 **Faithfulness evaluation: 95.5 % on GPU (156 s), 95.8 % on CPU (407 s)** against
+      the ≥ 95 % gate — the Quadro T1000 holds the whole 3B model and runs it 2.6× faster (build
+      with `--features cuda`). The GPU run's one failure was a *real* fabrication the harness
+      caught: the model wrote 900 000 where the source said 90000. Thirty cases, not the hundred asked for — reusing passages under reworded queries
       would inflate the denominator without testing anything new, making the percentage look better
       by making it mean less. ← *the remaining 70 want a person with real crawled documents*; B7.
       Graded mechanically rather than by asking a model whether its own summary was faithful: that
