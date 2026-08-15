@@ -588,8 +588,32 @@ fn is_hidden(el: &scraper::ElementRef) -> bool {
 }
 
 fn densest_block(doc: &Html) -> Option<String> {
-    let sel = Selector::parse("article, main, [role=main], .article-content, .post-content, .entry-content, #content, .content, div")
-        .ok()?;
+    // `<article>` first, and only then density.
+    //
+    // Density compares whole containers by length, so a `<main>` holding both a related-articles
+    // block and the article itself outscores the `<article>` inside it: the extra block adds length
+    // while its links stay a small share of the combined total, so the link-density guard never
+    // fires. The observed result was bodies beginning "مواضيع ذات صلة خبر أول خبر ثان" — the
+    // related-links strip, prepended to every article on the site.
+    //
+    // A publisher who writes `<article>` has already answered the question density is guessing at.
+    // Trusting that is not a heuristic tweak: it is using the markup for what it means.
+    //
+    // This matters beyond tidiness now. M2-T15 schedules recrawls by comparing content hashes, and
+    // a related-articles strip changes whenever anything else on the site is published — so a body
+    // containing one would register as changed on every visit and hold the page at its floor
+    // interval forever, which is precisely the churn-chasing ADR-0011 exists to avoid.
+    if let Some(text) = densest_matching(doc, "article") {
+        return Some(text);
+    }
+    densest_matching(
+        doc,
+        "main, [role=main], .article-content, .post-content, .entry-content, #content, .content, div",
+    )
+}
+
+fn densest_matching(doc: &Html, selector: &str) -> Option<String> {
+    let sel = Selector::parse(selector).ok()?;
     let link_sel = Selector::parse("a").ok()?;
 
     let mut best: Option<(f32, String)> = None;
