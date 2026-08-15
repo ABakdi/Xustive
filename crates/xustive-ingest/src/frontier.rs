@@ -81,6 +81,43 @@ pub fn priority_for(depth: u32, trust: u8, looks_like_article: bool) -> i64 {
     depth_cost - trust_credit - article_credit
 }
 
+/// Priority for a page we are scheduling to see again.
+///
+/// M2-T15.7. Discovery priority answers "which unseen URL first"; this answers a different
+/// question — "which page we already hold is most worth re-reading" — and the inputs differ
+/// accordingly. Depth and trust still set the base, and two revisit-only signals adjust it:
+///
+/// - **How often it changes**, read off the interval the scheduler has converged on. A page held
+///   near its floor is one we have *measured* as changing, which is better evidence than any
+///   guess from its URL.
+/// - **How overdue it is.** Being late is the part that actually costs freshness, and without it a
+///   trusted page could sit behind a stream of new discoveries indefinitely.
+///
+/// Both credits are capped, deliberately. Uncapped, a volatile page would outrank everything on
+/// its host forever — and a page that changes on every visit is precisely the one the Cho result
+/// says not to chase. The caps keep the two signals as adjustments to an ordering rather than as
+/// an ordering of their own, which is also what keeps this function predictable enough to debug
+/// from a document count that stopped rising.
+pub fn priority_for_revisit(depth: u32, trust: u8, interval_secs: u64, overdue_secs: i64) -> i64 {
+    let base = priority_for(depth, trust, false);
+
+    // Bands rather than a curve. A continuous function of the interval reads better and is far
+    // harder to reason about at 2am; the bands are hours, a day, a week, and beyond.
+    let change_credit = match interval_secs {
+        0..=7_200 => 400,
+        7_201..=86_400 => 200,
+        86_401..=604_800 => 50,
+        _ => 0,
+    };
+
+    // An hour late is worth little, a week late is worth a lot, and beyond twelve days more
+    // lateness buys nothing — past that the page is not competing with anything, it is simply
+    // waiting for its host.
+    let overdue_credit = (overdue_secs / 3_600).clamp(0, 300);
+
+    base - change_credit - overdue_credit
+}
+
 /// Whether a path looks like an article rather than a listing or a control page.
 ///
 /// A heuristic, and only ever used to break ties. Being wrong costs ordering, not correctness.
@@ -867,5 +904,59 @@ impl Frontier {
         ] {
             let _: Result<(), _> = redis::cmd("DEL").arg(k).query_async::<()>(&mut conn).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod revisit_priority {
+    use super::*;
+
+    const HOUR: i64 = 3_600;
+
+    #[test]
+    fn a_page_that_changes_often_is_re_read_sooner() {
+        let volatile = priority_for_revisit(1, 50, 3_600, 0);
+        let stable = priority_for_revisit(1, 50, 30 * 24 * 3_600, 0);
+        assert!(
+            volatile < stable,
+            "a page on a one-hour interval should sort ahead of one on a monthly interval"
+        );
+    }
+
+    #[test]
+    fn being_overdue_moves_a_page_up() {
+        let punctual = priority_for_revisit(1, 50, 86_400, 0);
+        let late = priority_for_revisit(1, 50, 86_400, 48 * HOUR);
+        assert!(late < punctual, "lateness is what actually costs freshness");
+    }
+
+    #[test]
+    fn trust_still_matters_between_pages_that_change_alike() {
+        let ministry = priority_for_revisit(1, 95, 86_400, 0);
+        let stray = priority_for_revisit(1, 10, 86_400, 0);
+        assert!(ministry < stray);
+    }
+
+    /// The credits are adjustments, not an ordering of their own.
+    ///
+    /// Uncapped, a page changing every hour would outrank everything on its host forever — and
+    /// that is exactly the page the Cho result says not to chase. Depth must still dominate.
+    #[test]
+    fn a_volatile_deep_page_does_not_outrank_a_shallow_stable_one() {
+        let deep_volatile = priority_for_revisit(4, 50, 3_600, 365 * 24 * HOUR);
+        let shallow_stable = priority_for_revisit(0, 50, 30 * 24 * 3_600, 0);
+        assert!(
+            shallow_stable < deep_volatile,
+            "depth must still dominate, or one churning archive page swallows the crawl"
+        );
+    }
+
+    /// Lateness beyond the cap buys nothing, so a page abandoned for a year cannot accumulate
+    /// unbounded priority and jump the queue when it is finally promoted.
+    #[test]
+    fn overdue_credit_is_bounded() {
+        let a = priority_for_revisit(1, 50, 86_400, 20 * 24 * HOUR);
+        let b = priority_for_revisit(1, 50, 86_400, 3650 * 24 * HOUR);
+        assert_eq!(a, b);
     }
 }

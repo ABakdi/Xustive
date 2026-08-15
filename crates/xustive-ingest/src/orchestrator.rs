@@ -378,18 +378,29 @@ impl Orchestrator {
             self.stats.skip("volatile");
         }
 
-        // Priority is recomputed rather than carried over: a revisit competes with fresh discovery
-        // for the same host slot, and a page we already hold is worth less than one we do not.
+        // Scored as a revisit, not as a discovery. The scheduler has measured how often this page
+        // changes, and that measurement is better evidence than anything its URL suggests — so the
+        // interval it converged on, and how overdue the page is, both feed the priority.
+        //
+        // Computed here because this is the only place both are known: the frontier sees a
+        // `Pending` and has no history, and the discovery path has no interval at all.
+        let due_at = visit.due_at();
+        let overdue = now.saturating_sub(due_at).max(0);
         let pending = Pending {
             url: claim.url.clone(),
             host: claim.host.clone(),
             source_id: claim.source_id.clone(),
             depth: claim.depth,
             trust: claim.trust,
-            priority: frontier::priority_for(claim.depth, claim.trust, false),
+            priority: frontier::priority_for_revisit(
+                claim.depth,
+                claim.trust,
+                visit.interval_secs,
+                overdue,
+            ),
         };
         self.frontier
-            .defer(&pending, visit.due_at().saturating_mul(1_000))
+            .defer(&pending, due_at.saturating_mul(1_000))
             .await;
     }
 
