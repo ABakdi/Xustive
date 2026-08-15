@@ -114,12 +114,18 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
         OrchestratorConfig {
             max_documents: opts.max_documents,
             discover_new_hosts: opts.discover_new_hosts,
+            // The daemon runs indefinitely, so it is the one that keeps the corpus fresh.
+            // `crawl --max N` stays bounded and does not schedule anything.
+            revisit: true,
             ..OrchestratorConfig::default()
         },
     );
     if let Some(s) = shared.clone() {
         s.set_state("running").await;
         orchestrator = orchestrator.with_shared_stats(s);
+    }
+    if let Some(v) = xustive_ingest::revisit::Visits::connect_in(&config.queue.url, "frontier") {
+        orchestrator = orchestrator.with_visits(v);
     }
 
     // Seeded every start, not only the first. `add` is idempotent, so a seed already known is a
@@ -189,11 +195,15 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                     // sixteen times what was asked for.
                     max_documents: None,
                     discover_new_hosts: discover,
+                    revisit: true,
                     ..OrchestratorConfig::default()
                 },
             );
             if let Some(s) = shared.clone() {
                 orch = orch.with_shared_stats(s);
+            }
+            if let Some(v) = xustive_ingest::revisit::Visits::connect_in(&redis_url, "frontier") {
+                orch = orch.with_visits(v);
             }
 
             loop {

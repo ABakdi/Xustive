@@ -23,6 +23,7 @@ use crate::crawl_stats::{CrawlStats, RecentUrl};
 use crate::fetch::{FetchError, Fetcher};
 use crate::frontier::{self, Frontier, Pending};
 use crate::parse::{ParseConfig, ParseError, Parsed, Parser};
+use crate::revisit::{Observation, Visits};
 
 /// How long to wait when the frontier has nothing due.
 ///
@@ -33,6 +34,15 @@ const IDLE_SLEEP: Duration = Duration::from_millis(500);
 
 /// How often expired claims are swept.
 const RECLAIM_EVERY: Duration = Duration::from_secs(30);
+
+/// How often due pages are moved back into their host queues.
+const PROMOTE_EVERY: Duration = Duration::from_secs(30);
+
+/// Most pages promoted in one sweep.
+///
+/// Bounded because a corpus seeded in one run comes due in one run: without a cap, the first sweep
+/// after a day's quiet would move a million URLs in a single call and stall every worker behind it.
+const PROMOTE_BATCH: usize = 500;
 
 #[derive(Debug, Default, Clone)]
 pub struct Stats {
@@ -65,6 +75,11 @@ pub struct OrchestratorConfig {
     /// Off by default. Turning it on is the difference between crawling twenty known sources and
     /// crawling the web, and that is a decision worth making explicitly rather than inheriting.
     pub discover_new_hosts: bool,
+    /// Schedule each fetched page to be visited again ([[ADR-0011]]).
+    ///
+    /// Off by default so a bounded one-shot crawl stays bounded: `crawl --max 50` should fetch
+    /// fifty pages and stop, not fifty and then whatever came due while it ran.
+    pub revisit: bool,
 }
 
 impl Default for OrchestratorConfig {
@@ -74,6 +89,7 @@ impl Default for OrchestratorConfig {
             default_delay: Duration::from_millis(1500),
             max_documents: None,
             discover_new_hosts: false,
+            revisit: false,
         }
     }
 }
@@ -103,6 +119,10 @@ pub struct Orchestrator {
     /// is fully functional and merely unobservable, which is the right way round — observability
     /// must not be able to stop the crawl.
     shared: Option<CrawlStats>,
+    /// Revisit state, when scheduling is on. Optional for the same reason as `shared`: a crawl
+    /// that cannot reach it should still crawl.
+    visits: Option<Visits>,
+    last_promote: std::time::Instant,
 }
 
 impl Orchestrator {
@@ -117,12 +137,23 @@ impl Orchestrator {
             documents: 0,
             last_reclaim: std::time::Instant::now(),
             shared: None,
+            visits: None,
+            last_promote: std::time::Instant::now(),
         }
     }
 
     /// Publish counters where the admin console can read them.
     pub fn with_shared_stats(mut self, shared: CrawlStats) -> Self {
         self.shared = Some(shared);
+        self
+    }
+
+    /// Give the loop somewhere to record what it learned about each page.
+    ///
+    /// Without this, `revisit` has nowhere to store an interval and scheduling silently does
+    /// nothing — so the two are set together or not at all.
+    pub fn with_visits(mut self, visits: Visits) -> Self {
+        self.visits = Some(visits);
         self
     }
 
@@ -202,6 +233,18 @@ impl Orchestrator {
                 tracing::info!(reclaimed = n, "returned claims from workers that went away");
             }
             self.last_reclaim = std::time::Instant::now();
+        }
+
+        // Pages that have come due rejoin their host queue. On the same cadence as reclamation and
+        // for the same reason: a page due a second ago is not urgent, and a range query on the hot
+        // path would cost more than the second it saves. Bounded per sweep so a corpus that all
+        // comes due at once cannot stall the loop.
+        if self.config.revisit && self.last_promote.elapsed() > PROMOTE_EVERY {
+            let n = self.frontier.promote_due(now_ms, PROMOTE_BATCH).await;
+            if n > 0 {
+                tracing::info!(promoted = n, "pages came due for a revisit");
+            }
+            self.last_promote = std::time::Instant::now();
         }
 
         let Some(claim) = self.frontier.claim(now_ms, self.config.default_delay).await else {
@@ -302,7 +345,52 @@ impl Orchestrator {
         let words = parsed.document.body.split_whitespace().count();
         self.publish_recent(&fetched.final_url, host, "indexed", words)
             .await;
+        self.schedule_revisit(claim, &parsed.document.content_hash)
+            .await;
         Outcome::Document(Box::new(parsed))
+    }
+
+    /// Record what this fetch told us and book the next visit ([[ADR-0011]]).
+    ///
+    /// Keyed on `content_hash`, which is BLAKE3 over the *extracted* body — so a page whose
+    /// sidebars and view counters changed while its article did not reads as unchanged and backs
+    /// off, which is the entire point of scheduling on longevity rather than on byte difference.
+    ///
+    /// Silent when there is no store, and silent on a write failure. A crawl that cannot reach
+    /// Redis should still crawl; the cost of losing this is that the page looks unvisited next time
+    /// and is fetched at its floor, which is the safe direction.
+    async fn schedule_revisit(&mut self, claim: &frontier::Claim, content_hash: &str) {
+        if !self.config.revisit {
+            return;
+        }
+        let Some(visits) = &self.visits else {
+            return;
+        };
+
+        let mut visit = visits.get(&claim.url).await.unwrap_or_default();
+        let observation = Observation::from_hashes(&visit.content_hash, content_hash);
+        let now = xustive_core::now_unix();
+        let decision = visit.record(observation, claim.trust, content_hash, now);
+
+        visits.put(&claim.url, &visit).await;
+
+        if decision.is_volatile() {
+            self.stats.skip("volatile");
+        }
+
+        // Priority is recomputed rather than carried over: a revisit competes with fresh discovery
+        // for the same host slot, and a page we already hold is worth less than one we do not.
+        let pending = Pending {
+            url: claim.url.clone(),
+            host: claim.host.clone(),
+            source_id: claim.source_id.clone(),
+            depth: claim.depth,
+            trust: claim.trust,
+            priority: frontier::priority_for(claim.depth, claim.trust, false),
+        };
+        self.frontier
+            .defer(&pending, visit.due_at().saturating_mul(1_000))
+            .await;
     }
 
     async fn enqueue_outlinks(
