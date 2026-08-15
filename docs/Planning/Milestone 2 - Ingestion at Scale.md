@@ -144,7 +144,11 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
       round trips, two workers routinely pick the same host between the read and the write and
       both fetch it. Asserted with 16 concurrent workers, zero duplicate claims. **Leader election
       still open**, though atomic claiming makes it an optimisation rather than a correctness need
-- [ ] M2-T03.2 Scheduling loop with per-host due-times
+- [x] M2-T03.2 Scheduling loop with per-host due-times, **plus per-URL due times**. Deferred URLs
+      wait in their own sorted set keyed by due time rather than carrying one on the queue entry:
+      the host queue is scored by priority, and priority is an ordering, not a time, so overloading
+      it would sort a page due next month ahead of one due now whenever its trust was higher.
+      Promotion is bounded per sweep — a corpus seeded in one run comes due in one run
 - [x] M2-T03.3 Priority computation — depth dominates; trust and article-shape only break ties, or
       one trusted source swallows the crawl. Reopened once: `orchestrator.rs` pinned `depth = 1`
       and compared it against a limit of 3, so `max_depth` could never fire and every URL scored
@@ -153,7 +157,8 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
       hand back a URL with no depth. Trust is inherited from the linking page rather than a flat
       50. Asserted from a depth-2 seed, because from the root the old constant and the correct
       arithmetic agree and a test starting there passes either way
-- [ ] M2-T03.4 Adaptive revisit intervals (changed / unchanged / 304) → **specified in M2-T15**
+- [x] M2-T03.4 Adaptive revisit intervals (changed / unchanged / 304) — specified in M2-T15 and
+      now wired: every indexed page records its observation and books its next visit
 - [ ] M2-T03.5 Sitemap and feed discovery with caps — also the highest-yield freshness signal, see
       M2-T15.6
 - [ ] M2-T03.6 Outlink filtering and `SafeUrl` validation
@@ -338,9 +343,9 @@ Order matters here. T15.1 and T15.2 are the substrate; nothing above them works 
       One fetch reports on hundreds of URLs; for news sources this is the highest-yield signal
       available and it should be preferred over polling pages directly
 - [~] M2-T15.7 **Frontier priority becomes `trust × change_probability × age`**, replacing
-      `depth × 1000`. Depth tracking and trust inheritance are **done** (M2-T03.3); the remaining
-      half is `change_probability` and `age`, which cannot be computed until the change history in
-      M2-T15.2 exists. Blocked on it rather than forgotten
+      `depth × 1000`. Depth tracking and trust inheritance are done (M2-T03.3), and the change
+      history now exists and is populated (M2-T15.2). What remains is folding `change_probability`
+      and `age` into `priority_for`, which is now unblocked
 - [ ] M2-T15.8 **Recrawl budget is separate from discovery budget**, so freshness and coverage
       cannot starve each other. Split visible in the console and in `/metrics`
 - [ ] M2-T15.9 **Boilerplate-stripping quality tests.** T15.1 gives bad stripping a second failure
@@ -514,24 +519,24 @@ proxy and fingerprint machinery, bound by the same pinning invariant.
 
 ## Risks
 
-| Risk | Mitigation |
-|:---|:---|
-| **Identity pool burns faster than it can be replaced** | conservative budgets, warm-up discipline, pinning invariant; `IdentityLifespanDrop` is the leading indicator ([[Session Manager]] §9) |
-| Warm-up wall-clock not started early enough | M2-T01a.11 explicitly starts in M1 |
-| Signer rotation halts a platform | path ladders demote to unsigned paths; [[Signature Service]] §4.6 |
-| **Silent cloaking reported as success** | canaries are ground truth; this is an exit-gate item, not a nice-to-have |
-| Residential bandwidth cost runs away | per-source cost metric + 80 % budget alert; prefer light paths (`mbasic`, embedded JSON) |
-| Platform stance leaks into open-web crawling | crawl profiles are config-driven and CI-asserted ([[Politeness and Robots]] §4.0) |
-| A crawler bug harms a real site | unchanged: politeness config guard, per-host concurrency 1, staged rollout, `/bot` contact monitored |
-| Parser rules rot as sites redesign | `parser_rule_miss_total` alerting from day one; each rule ships with a fixture |
-| Redis memory exhausted by raw blobs | monitor early; the object-storage decision is pre-identified ([[Task Queue]] §12) |
-| Real content breaks M1's ranking assumptions | re-run the full relevance evaluation at the end of this milestone |
-| **Boilerplate stripping mistakes churn for content** | M2-T15.1 gives bad stripping a second failure mode — the crawler chases furniture forever. M2-T15.9 asserts extracted text is stable across fetches that differ only in furniture |
-| Common Crawl bootstrap floods the frontier with dead URLs | discovered-tier trust, ordinary dedup and `SafeUrl`; per-channel yield (M2-T16.8) makes a bad channel visible rather than merely expensive |
-| **SERP collection is silently degraded rather than blocked** | canary queries with known-stable results (M2-T16.14). Without them a neutered channel reports itself healthy and T16.8's yield numbers measure nothing |
-| SERP channel competes with social for the identity pool | it is last in the ladder, off by default, and M2-T01a.12 already halts rather than degrading to unpinned identities |
-| SERP maintenance tail is underestimated | fixtures plus `serp_parse_miss_total` from day one (M2-T16.15); the tail is real and permanent, as with the social connectors |
-| Query-driven discovery reintroduces query logging | aggregate counts over normalised terms with a frequency floor, never a stored log ([[ADR-0008 - No Query Logging]]); the privacy constraint is the design constraint |
+| Risk                                                         | Mitigation                                                                                                                                                                        |
+| :----------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Identity pool burns faster than it can be replaced**       | conservative budgets, warm-up discipline, pinning invariant; `IdentityLifespanDrop` is the leading indicator ([[Session Manager]] §9)                                             |
+| Warm-up wall-clock not started early enough                  | M2-T01a.11 explicitly starts in M1                                                                                                                                                |
+| Signer rotation halts a platform                             | path ladders demote to unsigned paths; [[Signature Service]] §4.6                                                                                                                 |
+| **Silent cloaking reported as success**                      | canaries are ground truth; this is an exit-gate item, not a nice-to-have                                                                                                          |
+| Residential bandwidth cost runs away                         | per-source cost metric + 80 % budget alert; prefer light paths (`mbasic`, embedded JSON)                                                                                          |
+| Platform stance leaks into open-web crawling                 | crawl profiles are config-driven and CI-asserted ([[Politeness and Robots]] §4.0)                                                                                                 |
+| A crawler bug harms a real site                              | unchanged: politeness config guard, per-host concurrency 1, staged rollout, `/bot` contact monitored                                                                              |
+| Parser rules rot as sites redesign                           | `parser_rule_miss_total` alerting from day one; each rule ships with a fixture                                                                                                    |
+| Redis memory exhausted by raw blobs                          | monitor early; the object-storage decision is pre-identified ([[Task Queue]] §12)                                                                                                 |
+| Real content breaks M1's ranking assumptions                 | re-run the full relevance evaluation at the end of this milestone                                                                                                                 |
+| **Boilerplate stripping mistakes churn for content**         | M2-T15.1 gives bad stripping a second failure mode — the crawler chases furniture forever. M2-T15.9 asserts extracted text is stable across fetches that differ only in furniture |
+| Common Crawl bootstrap floods the frontier with dead URLs    | discovered-tier trust, ordinary dedup and `SafeUrl`; per-channel yield (M2-T16.8) makes a bad channel visible rather than merely expensive                                        |
+| **SERP collection is silently degraded rather than blocked** | canary queries with known-stable results (M2-T16.14). Without them a neutered channel reports itself healthy and T16.8's yield numbers measure nothing                            |
+| SERP channel competes with social for the identity pool      | it is last in the ladder, off by default, and M2-T01a.12 already halts rather than degrading to unpinned identities                                                               |
+| SERP maintenance tail is underestimated                      | fixtures plus `serp_parse_miss_total` from day one (M2-T16.15); the tail is real and permanent, as with the social connectors                                                     |
+| Query-driven discovery reintroduces query logging            | aggregate counts over normalised terms with a frequency floor, never a stored log ([[ADR-0008 - No Query Logging]]); the privacy constraint is the design constraint              |
 
 ## Related
 
