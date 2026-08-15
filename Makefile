@@ -158,6 +158,7 @@ ui-gates: ## Client asset budgets and the no-JavaScript path (needs web running 
 	./scripts/bundle-budget.sh
 	./scripts/no-js-check.sh
 	./scripts/rtl-icons.sh
+	node scripts/contrast-audit.mjs
 
 .PHONY: scan-logs
 scan-logs: ## Scan a log file for leaked query text: make scan-logs LOG=/tmp/api.log

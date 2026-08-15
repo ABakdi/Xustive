@@ -48,9 +48,12 @@
   --bg-sunk: oklch(96% 0.006 275);
   --fg: oklch(17% 0.008 250);
   --fg-muted: oklch(52% 0.008 250);
-  --fg-faint: oklch(68% 0.006 250);
+  --fg-faint: oklch(65% 0.006 250);
   --line: oklch(90.5% 0.004 250);
-  --line-strong: oklch(80% 0.006 250);
+  /* Darker than a hairline `--line`: it borders controls (the search box, the language switch),
+   * which WCAG treats as UI components needing 3:1 against the page. At the old 80% it was 1.8:1 —
+   * a search-box edge a low-vision reader could not find. `scripts/contrast-audit.mjs` holds it. */
+  --line-strong: oklch(65% 0.006 250);
 
   /* A vibrant indigo-violet, replacing the muted green.
    *
@@ -125,7 +128,7 @@
   --fg-muted: oklch(66% 0.007 250);
   --fg-faint: oklch(50% 0.007 250);
   --line: oklch(26% 0.008 250);
-  --line-strong: oklch(36% 0.01 250);
+  --line-strong: oklch(48% 0.01 250);
 
   /* Lifted for contrast against a dark ground. Same hue, more lightness and less chroma —
    * saturated colour on dark vibrates. */
