@@ -61,6 +61,126 @@ pub fn extract_urls(xml: &str, max: usize) -> Vec<String> {
     out
 }
 
+/// A sitemap entry, with the modification time the publisher stated (M2-T15.6).
+///
+/// `lastmod` is the highest-yield freshness signal there is: one fetch of a sitemap reports on
+/// hundreds of URLs at once, and a page whose `lastmod` is no newer than our last fetch has not
+/// changed — so it can be skipped entirely, which is cheaper even than a 304, because it is no
+/// request at all.
+///
+/// It is a *hint*, not proof: plenty of sites stamp `lastmod` with the build time and move it on
+/// every page nightly whether the content changed or not. So a newer `lastmod` schedules a visit;
+/// it does not replace the content-hash comparison that decides whether anything actually moved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Entry {
+    pub url: String,
+    /// Unix seconds, when a parseable `<lastmod>` was present.
+    pub lastmod: Option<i64>,
+}
+
+/// Extract `<url><loc>/<lastmod>` pairs from a sitemap.
+///
+/// Sitemaps only — `lastmod` is a sitemap element, and RSS/Atom carry their own date fields that
+/// mean something subtly different (publication, not modification). Feeds still go through
+/// [`extract_urls`], which is unchanged.
+pub fn extract_entries(xml: &str, max: usize) -> Vec<Entry> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+
+    let mut out: Vec<Entry> = Vec::new();
+    let mut buf = Vec::new();
+    let mut loc: Option<String> = None;
+    let mut lastmod: Option<i64> = None;
+    let mut field: Field = Field::None;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                field = match local_name(e.name().as_ref()).as_str() {
+                    "loc" => Field::Loc,
+                    "lastmod" => Field::Lastmod,
+                    _ => Field::None,
+                };
+            }
+            Ok(Event::Text(e)) => {
+                let Ok(t) = e.unescape() else { continue };
+                let t = t.trim();
+                match field {
+                    Field::Loc if t.starts_with("http") => loc = Some(t.to_string()),
+                    Field::Lastmod => lastmod = parse_w3c_date(t),
+                    _ => {}
+                }
+            }
+            // `</url>` closes one entry. Emitting on the closing `<url>` rather than on the next
+            // `<loc>` keeps a `lastmod` bound to the URL it belongs to even when the two are
+            // separated by other elements.
+            Ok(Event::End(e)) => {
+                if local_name(e.name().as_ref()) == "url" {
+                    if let Some(url) = loc.take() {
+                        out.push(Entry { url, lastmod });
+                    }
+                    lastmod = None;
+                }
+                field = Field::None;
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+        if out.len() >= max {
+            break;
+        }
+        buf.clear();
+    }
+    out
+}
+
+enum Field {
+    None,
+    Loc,
+    Lastmod,
+}
+
+/// Parse a W3C datetime (the sitemap date format) to unix seconds.
+///
+/// Accepts the two forms sitemaps actually use: a bare date `2026-08-15`, and a full timestamp
+/// `2026-08-15T09:30:00+01:00`. A bare date is read as midnight UTC — good enough for "is this
+/// newer than our last fetch", which is the only question asked of it.
+fn parse_w3c_date(s: &str) -> Option<i64> {
+    let date = s.get(0..10)?;
+    let mut parts = date.split('-');
+    let y: i64 = parts.next()?.parse().ok()?;
+    let m: i64 = parts.next()?.parse().ok()?;
+    let d: i64 = parts.next()?.parse().ok()?;
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+
+    // Days since the epoch by the civil-from-days algorithm (Howard Hinnant). No chrono dependency
+    // for one conversion, and it is exact for any Gregorian date.
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = (if y >= 0 { y } else { y - 399 }) / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+
+    let secs = days * 86_400;
+
+    // Add the time of day when present, ignoring the zone offset — a few hours cannot change the
+    // "newer than last fetch" answer, and parsing offsets by hand invites the bugs this avoids.
+    if let Some(time) = s.get(11..19) {
+        let mut t = time.split(':');
+        let (Some(hh), Some(mm), Some(ss)) = (t.next(), t.next(), t.next()) else {
+            return Some(secs);
+        };
+        if let (Ok(hh), Ok(mm), Ok(ss)) = (hh.parse::<i64>(), mm.parse::<i64>(), ss.parse::<i64>())
+        {
+            return Some(secs + hh * 3600 + mm * 60 + ss);
+        }
+    }
+    Some(secs)
+}
+
 /// True when the document is a sitemap index (a list of other sitemaps) rather than of pages.
 pub fn is_index(xml: &str) -> bool {
     xml.contains("<sitemapindex") || xml.contains(":sitemapindex")
@@ -162,5 +282,56 @@ mod tests {
     fn malformed_xml_returns_what_it_could_read() {
         let xml = "<urlset><url><loc>https://a.dz/1</loc></url><url><loc>unclosed";
         let _ = extract_urls(xml, 10);
+    }
+}
+
+#[cfg(test)]
+mod lastmod_tests {
+    use super::*;
+
+    #[test]
+    fn entries_pair_each_url_with_its_lastmod() {
+        let xml = r#"<?xml version="1.0"?>
+        <urlset>
+          <url><loc>https://example.dz/a</loc><lastmod>2026-08-10</lastmod></url>
+          <url><loc>https://example.dz/b</loc><lastmod>2026-08-15T09:30:00+01:00</lastmod></url>
+          <url><loc>https://example.dz/c</loc></url>
+        </urlset>"#;
+        let e = extract_entries(xml, 100);
+        assert_eq!(e.len(), 3);
+        assert_eq!(e[0].url, "https://example.dz/a");
+        assert!(e[0].lastmod.is_some());
+        assert!(
+            e[1].lastmod.unwrap() > e[0].lastmod.unwrap(),
+            "later date sorts later"
+        );
+        assert_eq!(
+            e[2].lastmod, None,
+            "a URL with no lastmod is None, not zero"
+        );
+    }
+
+    /// A `lastmod` between the loc and the closing tag, or reordered, still binds correctly.
+    #[test]
+    fn lastmod_does_not_leak_between_entries() {
+        let xml = r#"<urlset>
+          <url><lastmod>2026-01-01</lastmod><loc>https://example.dz/dated</loc></url>
+          <url><loc>https://example.dz/undated</loc></url>
+        </urlset>"#;
+        let e = extract_entries(xml, 100);
+        assert_eq!(e[0].lastmod, Some(1_767_225_600));
+        assert_eq!(
+            e[1].lastmod, None,
+            "the previous entry's date must not carry over"
+        );
+    }
+
+    #[test]
+    fn the_date_epoch_is_correct() {
+        // 1970-01-01 is 0; 2026-08-15 is a value cross-checkable against `date -d`.
+        assert_eq!(parse_w3c_date("1970-01-01"), Some(0));
+        assert_eq!(parse_w3c_date("2000-03-01"), Some(951_868_800));
+        assert_eq!(parse_w3c_date("not-a-date"), None);
+        assert_eq!(parse_w3c_date("2026-13-01"), None, "month 13 is rejected");
     }
 }
