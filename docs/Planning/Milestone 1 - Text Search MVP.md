@@ -122,10 +122,21 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [x] M1-T07.1 VADER-style scorer with negation, intensifiers, diminishers, emoji, elongation
 - [x] M1-T07.2 Lexicon files ×4 with loader and hot-reload
 - [x] M1-T07.3 Confidence from lexicon coverage; force `neutral` below threshold
-- [~] M1-T07.4 Darija sentiment lexicon at ~50 terms (target 2 000) ← **blocked on native
-      speakers**, two reviewers required; B7
-- [ ] M1-T07.5 Labelled set of 1 000 items ← **blocked on annotators**; B7
-- [ ] M1-T07.6 Calibration check — blocked on M1-T07.5
+- [~] M1-T07.4 Darija sentiment lexicon at **158 terms** (target 2 000), machine-generated and
+      unreviewed. Arabic-script Darija now lives in `ar.tsv` as its header always said it should —
+      without those rows a Darija comment written in Arabic scored as unremarkable MSA, so مليح,
+      واعر, خايب and حقرة carried no weight at all. The politically-charged rows are flagged for a
+      reviewer to check first. ← *still wants native speakers*, two reviewers; B7
+- [~] M1-T07.5 Labelled set at **65 items** (target 1 000), machine-generated. Neutral rows are
+      over-represented relative to a real corpus on purpose: a lexicon scorer's characteristic
+      failure is finding sentiment in ordinary factual text, and a set of clearly-polar sentences
+      cannot detect that at all. 86.2 % accuracy, neutral held 100 %, polarity never inverted —
+      every remaining miss is polar → neutral, which declines to judge rather than judging wrong.
+      ← *still wants annotators*; B7
+- [x] M1-T07.6 Calibration check. Asserts **ordering**, not probability — a set this size cannot
+      support a probability claim, and asserting one would measure noise. If confidence is no
+      higher when right than when wrong, every downstream filter on it is decorative. Currently
+      0.436 against 0.248
 
 ## M1-T08 — [[Summarizer]]
 

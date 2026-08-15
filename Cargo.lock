@@ -3175,6 +3175,7 @@ dependencies = [
  "xustive-ingest",
  "xustive-lang",
  "xustive-ml",
+ "xustive-queue",
  "xustive-search",
  "xustive-text",
  "xustive-toold",
