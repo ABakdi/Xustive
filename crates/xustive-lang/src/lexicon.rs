@@ -210,6 +210,18 @@ pub fn french_common() -> Lexicon {
     Lexicon::from_tsv("french-common", FRENCH_STOP_TSV)
 }
 
+const ENGLISH_COMMON_TSV: &str = include_str!("../../../data/lang/english-common.tsv");
+
+/// Very common English words.
+///
+/// Exists because trigram statistics fail at query length: restricted to the three languages we
+/// serve, whatlang still reported an unreliable, narrow margin for most English queries, which
+/// fell below the confidence floor and became `Und`. Function words are what short queries
+/// actually contain.
+pub fn english_common() -> Lexicon {
+    Lexicon::from_tsv("english-common", ENGLISH_COMMON_TSV)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,5 +351,53 @@ mod tests {
             overlap.is_empty(),
             "tokens present in both arabizi and french lexicons: {overlap:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod disjointness {
+    use super::*;
+
+    fn terms(lex: &Lexicon) -> std::collections::HashSet<String> {
+        lex.unigrams.keys().cloned().collect()
+    }
+
+    /// The Latin-script lexicons must not share a token.
+    ///
+    /// Arabizi, French and English are all matched against the same Latin text, and the detector
+    /// picks whichever has more hits. A token in two lists therefore contributes to both sides of
+    /// that comparison and cancels out, which is strictly worse than not listing it at all: it
+    /// costs a marker and buys nothing.
+    ///
+    /// Caught two real collisions when it was written — `had` (English past tense, and Darija
+    /// "this") and `nous` (French "we", and a transliteration of Darija "half").
+    #[test]
+    fn the_latin_script_lexicons_share_no_tokens() {
+        let (ara, fre, eng) = (arabizi(), french_common(), english_common());
+        for (a_name, a, b_name, b) in [
+            ("arabizi", &ara, "french", &fre),
+            ("arabizi", &ara, "english", &eng),
+            ("french", &fre, "english", &eng),
+        ] {
+            let shared: Vec<_> = terms(a).intersection(&terms(b)).cloned().collect();
+            assert!(
+                shared.is_empty(),
+                "{a_name} and {b_name} both list {shared:?}; a shared token cancels out in the \
+                 hit comparison and is worse than being listed in neither"
+            );
+        }
+    }
+
+    /// Every lexicon must actually load. An empty one degrades detection silently.
+    #[test]
+    fn no_lexicon_is_empty() {
+        for lex in [
+            darija_arabic(),
+            arabizi(),
+            french_common(),
+            english_common(),
+        ] {
+            assert!(!lex.is_empty(), "{} is empty", lex.name());
+        }
     }
 }
