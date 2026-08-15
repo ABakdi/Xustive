@@ -47,11 +47,30 @@ use std::time::Duration;
 /// abandoning after the first burst would drop breaking news exactly when it matters.
 pub const VOLATILE_AFTER: u32 = 4;
 
-/// How aggressively the interval shrinks when content changed.
+/// How aggressively the interval shrinks when content changed: halve it.
+///
+/// Multiplicative *decrease* — the reactive half of AIMD. When a page changes we may have just
+/// missed several changes, so cutting the interval sharply is the right response.
 const SHRINK: f64 = 0.5;
-/// How aggressively it grows when it did not. Deliberately gentler than the shrink: being too slow
-/// to notice a change costs freshness, while being too eager costs someone else's bandwidth.
-const GROW: f64 = 1.5;
+
+/// How the interval grows when nothing changed: add one floor-step, not multiply.
+///
+/// # Why additive, learned from the freshness evaluation
+///
+/// The first version multiplied by 1.5 on every quiet visit. That overshoots: a page that changes
+/// weekly would grow past a week's interval in a few visits, miss the next change, then halve —
+/// oscillating between far-too-slow and too-fast with large amplitude, and never settling near the
+/// true period. `freshness_eval.rs` measured the result as *worse* than both a fixed interval and
+/// the proportional policy ADR-0011 exists to reject: 45 h mean staleness where proportional got
+/// 14.5 h, and at higher cost.
+///
+/// Additive increase with multiplicative decrease is the same discipline TCP uses for the same
+/// reason — it converges on the largest interval that still catches the change, rather than
+/// leaping past it. Growth is in units of the tier's floor so a trusted source (short floor) probes
+/// back more finely than a stray one.
+fn grow(current: Duration, floor: Duration) -> Duration {
+    current + floor
+}
 
 /// The bounds a page's interval is held within, chosen by how much we trust the source.
 ///
@@ -190,13 +209,15 @@ impl Schedule {
         };
 
         let was_at_floor = current <= bounds.floor;
-        let factor = if observation.is_change() {
-            SHRINK
+        // Multiplicative decrease on a change, additive increase on a quiet visit — AIMD. The
+        // asymmetry is the point: react sharply to a change we may have been late for, approach the
+        // idle ceiling gently so we settle near the true period instead of leaping past it.
+        let next = if observation.is_change() {
+            Duration::from_secs_f64(current.as_secs_f64() * SHRINK)
         } else {
-            GROW
-        };
-        let next = Duration::from_secs_f64(current.as_secs_f64() * factor)
-            .clamp(bounds.floor, bounds.ceiling);
+            grow(current, bounds.floor)
+        }
+        .clamp(bounds.floor, bounds.ceiling);
 
         if observation.is_change() && was_at_floor {
             self.changes_at_floor = self.changes_at_floor.saturating_add(1);
