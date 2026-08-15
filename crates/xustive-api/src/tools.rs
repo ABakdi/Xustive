@@ -122,6 +122,54 @@ mod tests {
         );
     }
 
+    /// Darija must be a translation, not an alias.
+    ///
+    /// `ary` was `ary: ar` — the right *fallback*, since MSA is readable to every Darija speaker
+    /// and English is not, but a fallback is not a translation. Choosing Darija and being handed
+    /// formal newsreader Arabic tells the user the option was decorative.
+    ///
+    /// Asserted by counting overrides rather than by checking specific strings. A catalogue built
+    /// by spreading another satisfies the type checker however little it changes, so the type
+    /// system cannot tell a translation from an alias; and pinning particular keys would break
+    /// every time a reviewer improves one, which is the edit we most want to encourage.
+    ///
+    /// Institutional vocabulary is deliberately *not* translated — Darija has no settled written
+    /// standard, so invented spellings for `الإعدادات` or `الولاية` read more slowly than the MSA
+    /// every Algerian already knows from forms and bulletins. So this is a floor, not a target.
+    #[test]
+    fn the_darija_catalogue_is_not_an_alias_for_arabic() {
+        let catalogue = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/lib/i18n/messages.ts"),
+        )
+        .expect("message catalogue");
+
+        assert!(
+            !catalogue.contains("ary: ar,"),
+            "ary is aliased to ar; Darija speakers get formal Arabic and the language switch does \
+             nothing visible"
+        );
+
+        let start = catalogue
+            .find("const ary: Messages = {")
+            .expect("a distinct ary catalogue");
+        let block = &catalogue[start..];
+        let block = &block[..block.find("\n}").expect("ary block is terminated")];
+
+        let overrides = block
+            .lines()
+            .filter(|l| {
+                let l = l.trim();
+                l.ends_with(',') && l.contains(": '") && !l.starts_with("...")
+            })
+            .count();
+
+        assert!(
+            overrides >= 25,
+            "the ary catalogue overrides only {overrides} keys, which is close enough to an alias \
+             that the language switch would look broken"
+        );
+    }
+
     #[test]
     fn identifiers_are_unique() {
         // Two tools sharing an id would make one impossible to switch off independently.
