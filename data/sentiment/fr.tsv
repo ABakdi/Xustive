@@ -87,3 +87,45 @@ non	0.0	negator
 jamais	0.0	negator
 aucun	0.0	negator
 sans	0.0	negator
+
+# --- machine-generated expansion, unreviewed (B7) ------------------------------------------------
+recommande	2.4	recommends
+recommander	2.2	to recommend
+vivement	1.6	strongly
+parfaite	3.0	perfect (f)
+impeccable	2.8	flawless
+agreable	2.2	pleasant
+desagreable	-2.4	unpleasant
+satisfaisant	2.0	satisfactory
+insatisfait	-2.2	dissatisfied
+lente	-1.4	slow (f)
+propre	1.4	clean
+sale	-1.8	dirty
+serieux	1.8	serious / reliable
+professionnel	1.8	professional
+competent	2.0	competent
+incompetent	-2.4	incompetent
+aimable	2.0	kind
+poli	1.6	polite
+impoli	-2.0	rude
+honnete	2.2	honest
+malhonnete	-2.6	dishonest
+arnaque	-3.0	scam
+escroquerie	-3.0	fraud
+vol	-2.6	theft
+honteux	-2.6	shameful
+inadmissible	-2.6	unacceptable
+inacceptable	-2.6	unacceptable
+decevant	-2.2	disappointing
+decu	-2.2	disappointed
+deception	-2.2	disappointment
+mediocre	-2.0	mediocre
+nul	-2.4	rubbish
+genial	2.6	brilliant
+super	2.2	great
+inutile	-1.8	useless
+inefficace	-2.0	ineffective
+attente	-1.2	waiting
+abordable	1.6	affordable
+raisonnable	1.6	reasonable
+excessif	-1.8	excessive

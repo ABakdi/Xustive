@@ -133,3 +133,59 @@
 ليس	0.0	negator
 غير	0.0	negator / only
 لا	0.0	negator
+
+# --- machine-generated expansion, unreviewed (B7) ------------------------------------------------
+ممتازة	2.8	excellent (f)
+رائعة	2.8	wonderful (f)
+جيدة	1.8	good (f)
+ناجحة	2.2	successful (f)
+إيجابي	2.0	positive
+إيجابية	2.0	positive (f)
+تدهور	-2.6	deterioration
+متدهور	-2.6	deteriorating
+خسائر	-2.4	losses
+فادحة	-2.2	severe
+خطير	-2.4	serious / grave
+مقلق	-2.2	worrying
+ذريع	-2.4	utter (of failure)
+حاد	-1.4	acute
+سلبي	-2.0	negative
+سيئة	-2.4	bad (f)
+رديء	-2.4	poor quality
+إخفاق	-2.4	failure
+عجز	-2.0	deficit / inability
+استياء	-2.2	discontent
+تزوير	-2.8	forgery
+مهين	-2.4	humiliating
+فضيحة	-2.8	scandal
+مخيب	-2.2	disappointing
+تحسين	2.0	improvement
+مشكور	2.0	thanked
+تهنئة	2.2	congratulation
+مبارك	2.0	blessed
+
+# --- Arabic-script Darija ------------------------------------------------------------------------
+# ary.tsv is Latin script only; Arabic-script Darija shares this file with MSA, as its header says.
+# Without these rows a Darija comment written in Arabic scored as unremarkable MSA.
+واعرة	2.2	impressive (f, Darija)
+صحا	1.8	cheers (Darija)
+تبارك	2.2	well done
+لاباس	1.4	fine
+شباب	2.0	beautiful
+فرحان	2.4	happy
+مبسوط	2.2	pleased
+مرتاح	2.0	at ease
+شين	-2.2	ugly
+موسخ	-2.0	dirty
+محقور	-2.6	humiliated
+عيان	-1.6	worn out / ill
+ساخط	-2.4	fed up
+كذاب	-2.6	liar
+سراق	-2.8	thief
+غشاش	-2.6	cheat
+مشكل	-1.8	problem
+صداع	-1.8	hassle
+تسويل	-1.8	stalling
+تعطيلة	-1.8	obstruction
+والو	-1.2	nothing
+بيروقراطية	-2.0	bureaucracy

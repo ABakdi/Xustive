@@ -49,3 +49,139 @@ chwiya	0.0	diminisher
 machi	0.0	negator
 manich	0.0	negator
 ma	0.0	negator
+
+# ==============================================================================================
+# MACHINE-GENERATED EXPANSION — unreviewed, blocker B7.
+#
+# Magnitudes are held deliberately modest. On this scale a wrong sign mislabels one comment; a
+# wrong magnitude of 3.5 drags a whole thread's average, and these are dialect terms whose force
+# varies by region and by speaker's age. Where intensity is genuinely uncertain the value sits
+# near 2.0 rather than being guessed high.
+#
+# The politically- and socially-charged rows (hogra, mahgour, tahgir, fassad) are the ones a
+# reviewer should check first: they carry real weight in Algerian usage and scoring them casually
+# mislabels the people who use them.
+# ==============================================================================================
+
+# --- positive: quality and approval ---------------------------------------------------------
+mezyan	2.4	good
+mezyana	2.4	good (f)
+chbab	2.2	beautiful
+chbaba	2.2	beautiful (f)
+tayeb	1.8	fine / ok
+top	2.2	top
+nadi	2.2	great
+ndif	1.8	clean
+ndifa	1.8	clean (f)
+jdid	0.8	new
+rkhis	1.6	cheap
+sahel	1.4	easy
+srii3	1.4	fast
+mrigel	2.2	solid / decent (of a person)
+gadd	2.0	capable
+choukran	1.8	thank you
+merci	1.4	thanks
+barakallah	2.0	God bless
+tbarkallah	2.2	well done
+rabi ykhalik	2.4	God keep you
+sahha	1.8	cheers / well done
+sahit khouya	2.4	thanks brother
+yaatik saha	2.4	thank you
+allah ybarek	2.2	God bless
+nchallah khir	1.6	hopefully good
+farhan	2.4	happy
+ferhana	2.4	happy (f)
+mabsout	2.2	pleased
+mrtah	2.0	comfortable
+mortah	2.0	at ease
+raheb	1.8	welcoming
+karim	1.6	generous
+sahbi	1.2	my friend
+khouya	1.0	my brother
+tahya	2.0	long live
+bravo	2.0	bravo
+parfait	2.2	perfect
+nichan	1.6	straight / honest
+sarih	1.6	honest
+amin	1.8	trustworthy
+mohtaram	2.0	respectable
+
+# --- negative: quality and complaint ---------------------------------------------------------
+khayeba	-2.4	bad (f)
+qbih	-2.4	ugly / nasty
+chin	-2.2	ugly
+china	-2.2	ugly (f)
+mousekh	-2.0	dirty
+mwessekh	-2.0	dirty
+s3ib	-1.2	difficult
+t9il	-1.2	heavy / tedious
+batel	-1.6	useless
+bayet	-1.6	stale
+kadhab	-2.6	liar
+kaddab	-2.6	liar
+sarraq	-2.8	thief
+nassab	-2.8	swindler
+ghachach	-2.6	cheat
+khayen	-2.8	traitor
+mhagar	-2.4	humiliated
+mahgour	-2.8	wronged / humiliated
+tahgir	-3.0	systematic humiliation
+hagar	-2.8	he wronged
+fassad	-3.0	corruption
+fassed	-2.8	corrupt
+rachwa	-2.8	bribery
+biroqratia	-2.0	bureaucracy
+tsawil	-1.8	stalling
+ta3tila	-1.8	delay / obstruction
+ma3lich	0.4	never mind
+mochkil	-1.8	problem
+machakel	-2.0	problems
+karitha	-3.2	disaster
+karta	-1.4	mess
+fadiha	-3.0	scandal
+3ar	-2.6	shame
+7chouma	-2.2	shame
+hchouma	-2.2	shame
+za3ma	-0.6	supposedly
+khawi	-1.4	empty
+ghalat	-1.8	wrong
+ghalta	-1.8	mistake
+tebreq	-1.2	fuss
+tfou	-2.8	disgust
+sakhet	-2.4	fed up
+mkhankar	-2.2	fed up
+mkelekh	-2.0	confused / annoyed
+ta3ban	-1.8	worn out
+3ayan	-1.6	tired
+mrid	-1.6	ill
+z3af	-2.2	anger
+z3afni	-2.4	it angered me
+qahrni	-2.6	it crushed me
+maqhoura	-2.6	wronged (f)
+dlam	-2.8	injustice
+dalem	-2.6	unjust
+hgra	-2.8	injustice / abuse of power
+
+# --- negation and hedges: sign flippers rather than sentiment -----------------------------------
+mahouch	-0.8	he is not
+mahiych	-0.8	she is not
+makanch	-0.8	there is not
+gaa	-0.4	at all
+bark	-0.4	only
+belkri	0.0	early
+yemken	0.0	maybe
+balak	0.0	maybe
+
+# --- second pass: single-marker phrases that were reading as neutral -------------------------------
+lprojet	0.0	the project
+khedma	0.0	work
+nadia	2.0	clean / tidy (of work)
+majhoud	1.4	effort
+ykhalik	2.0	may God keep you
+rabi	0.8	God
+lidara	0.0	the administration
+ttanzim	0.0	the organisation
+dossier	0.0	file
+kbira	0.0	big
+kbir	0.0	big
+ma39oul	1.4	reasonable
