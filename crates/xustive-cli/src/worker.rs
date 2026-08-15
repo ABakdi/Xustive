@@ -62,9 +62,13 @@ impl Sink for MeiliSink {
 }
 
 pub async fn run(config: &Config, client: &MeiliClient, once: bool) -> Result<()> {
-    let queue = Queue::connect(&config.queue.url, &config.queue.index_stream, "indexers")
-        .await
-        .with_context(|| format!("connecting to {}", config.queue.url))?;
+    let queue = Queue::connect(
+        &config.queue.url,
+        &config.queue.index_stream,
+        xustive_queue::INDEXER_GROUP,
+    )
+    .await
+    .with_context(|| format!("connecting to {}", config.queue.url))?;
 
     let consumer = format!("{}-{}", hostname(), std::process::id());
     let index = client.resolve(&config.search.documents_index).await?;
@@ -102,7 +106,12 @@ pub async fn run(config: &Config, client: &MeiliClient, once: bool) -> Result<()
 
 /// Dead-letter inspection and replay.
 pub async fn dlq(config: &Config, action: &str, limit: usize) -> Result<()> {
-    let queue = Queue::connect(&config.queue.url, &config.queue.index_stream, "indexers").await?;
+    let queue = Queue::connect(
+        &config.queue.url,
+        &config.queue.index_stream,
+        xustive_queue::INDEXER_GROUP,
+    )
+    .await?;
 
     match action {
         "stats" => {

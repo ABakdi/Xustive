@@ -59,6 +59,15 @@ pub const RECLAIM_AFTER: Duration = Duration::from_secs(300);
 /// the crawler breaking for no reason.
 pub const MAX_LEN: usize = 100_000;
 
+/// The consumer group the indexer worker drains the stream with.
+///
+/// Named as a constant, and shared, because more than one component needs to name it: the worker
+/// creates it, and the crawler's backpressure must read *its* lag rather than its own. When the
+/// crawler measured its own producer group instead, that group's lag only ever grew — nothing
+/// consumes it — and the crawler paused permanently the moment it passed the threshold while the
+/// indexer was in fact keeping up perfectly.
+pub const INDEXER_GROUP: &str = "indexers";
+
 /// A job as delivered to a consumer.
 #[derive(Debug, Clone)]
 pub struct Delivery<T> {
@@ -294,6 +303,17 @@ impl Queue {
 
     /// Entries in the stream, acknowledged or not.
     pub async fn depth(&self) -> Result<usize, QueueError> {
+        self.depth_of(&self.group).await
+    }
+
+    /// The outstanding lag of a *named* consumer group, whichever group it is.
+    ///
+    /// A producer that measures its own group's lag learns nothing about the backlog — its group
+    /// never consumes, so the lag is every message ever added. Backpressure has to ask about the
+    /// group that actually drains the stream, which is a different group from the one the producer
+    /// created. This lets it name that group without joining it (`XINFO GROUPS` reads any group; it
+    /// does not enlist the caller as a consumer, which would steal messages from the real worker).
+    pub async fn depth_of(&self, group: &str) -> Result<usize, QueueError> {
         let mut conn = self.conn().await?;
 
         // The group's **lag**, not the stream length.
@@ -313,7 +333,7 @@ impl Queue {
             .await
             .unwrap_or(redis::Value::Nil);
 
-        if let Some(lag) = group_lag(&groups, &self.group) {
+        if let Some(lag) = group_lag(&groups, group) {
             return Ok(lag);
         }
 

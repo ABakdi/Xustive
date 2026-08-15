@@ -218,7 +218,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                 // Fails **open** — a crawler that stops on a Redis blip is worse than one that
                 // briefly runs ahead — but the failure is logged, because a backpressure check
                 // that silently never fires is indistinguishable from one that is not there.
-                match queue.depth().await {
+                match queue.depth_of(xustive_queue::INDEXER_GROUP).await {
                     Ok(backlog) if backlog >= BACKPRESSURE_AT => {
                         tracing::debug!(worker = id, backlog, "indexer behind; pausing");
                         tokio::time::sleep(BACKPRESSURE_PAUSE).await;
@@ -281,7 +281,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             }
             _ = ticker.tick() => {
                 let (waiting, inflight) = orchestrator.frontier().depth().await;
-                let backlog = queue.depth().await.unwrap_or(0);
+                let backlog = queue.depth_of(xustive_queue::INDEXER_GROUP).await.unwrap_or(0);
                 tracing::info!(
                     queued = produced.load(std::sync::atomic::Ordering::Relaxed),
                     waiting,

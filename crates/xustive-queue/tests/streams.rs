@@ -370,3 +370,64 @@ async fn redis_refuses_to_evict_rather_than_dropping_queued_work() {
          than the crawl claims"
     );
 }
+
+/// Backpressure must measure the *consumer's* lag, not the producer's own group.
+///
+/// The crawler froze at ~5000 documents indexed: it published through a group nobody consumes, then
+/// read that group's lag for backpressure. A producer group's lag is every message ever added and
+/// only grows, so once it crossed the threshold the crawler paused every iteration forever — while
+/// the indexer, on its own group, was fully keeping up.
+///
+/// This asserts the two lags diverge exactly as they did in production: the producer's grows with
+/// what it writes, the consumer's falls as it acknowledges.
+#[tokio::test]
+async fn depth_reads_the_named_consumers_lag_not_the_producers() {
+    let producer = require!("backpressure");
+    let stream = producer.stream.clone();
+
+    // A separate handle on the same stream, in the consumer group — the worker.
+    let Some(consumer) = Queue::connect(&url(), &stream, xustive_queue::INDEXER_GROUP)
+        .await
+        .ok()
+    else {
+        return;
+    };
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct Job {
+        n: u32,
+    }
+
+    for n in 0..10 {
+        producer.produce(&Job { n }).await.expect("produce");
+    }
+
+    // The producer's own group ("workers") has never consumed, so its lag is everything.
+    let producer_lag = producer.depth().await.expect("producer depth");
+    assert_eq!(
+        producer_lag, 10,
+        "the producer group sees the whole stream as outstanding"
+    );
+
+    // The consumer drains and acknowledges half.
+    let batch = consumer
+        .consume::<Job>("w1", 5, std::time::Duration::from_millis(100))
+        .await
+        .expect("consume");
+    assert_eq!(batch.len(), 5);
+    for d in &batch {
+        consumer.ack(&d.id).await.expect("ack");
+    }
+
+    // Backpressure asking about the *consumer* group sees the real backlog fall; asking about the
+    // producer group would still see 10 and pause needlessly.
+    let real_backlog = producer
+        .depth_of(xustive_queue::INDEXER_GROUP)
+        .await
+        .expect("consumer lag");
+    assert!(
+        real_backlog < producer_lag,
+        "the consumer group's lag ({real_backlog}) must fall below the producer's ({producer_lag}); \
+         reading the producer's own group is what froze the crawler"
+    );
+}
