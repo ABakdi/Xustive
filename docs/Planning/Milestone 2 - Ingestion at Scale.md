@@ -144,21 +144,11 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
       round trips, two workers routinely pick the same host between the read and the write and
       both fetch it. Asserted with 16 concurrent workers, zero duplicate claims. **Leader election
       still open**, though atomic claiming makes it an optimisation rather than a correctness need
-- [x] M2-T03.2 Scheduling loop with per-host due-times, **plus per-URL due times**. Deferred URLs
-      wait in their own sorted set keyed by due time rather than carrying one on the queue entry:
-      the host queue is scored by priority, and priority is an ordering, not a time, so overloading
-      it would sort a page due next month ahead of one due now whenever its trust was higher.
-      Promotion is bounded per sweep — a corpus seeded in one run comes due in one run
-- [x] M2-T03.3 Priority computation — depth dominates; trust and article-shape only break ties, or
-      one trusted source swallows the crawl. Reopened once: `orchestrator.rs` pinned `depth = 1`
-      and compared it against a limit of 3, so `max_depth` could never fire and every URL scored
-      identically — the crawl had no breadth-first ordering at all. Depth now travels through the
-      frontier in a metadata hash, read inside the claim script so a concurrent `complete` cannot
-      hand back a URL with no depth. Trust is inherited from the linking page rather than a flat
-      50. Asserted from a depth-2 seed, because from the root the old constant and the correct
-      arithmetic agree and a test starting there passes either way
-- [x] M2-T03.4 Adaptive revisit intervals (changed / unchanged / 304) — specified in M2-T15 and
-      now wired: every indexed page records its observation and books its next visit
+- [ ] M2-T03.2 Scheduling loop with per-host due-times
+- [~] M2-T03.3 Priority computation — depth dominates; trust and article-shape only break ties, or
+      one trusted source swallows the crawl. **Reopened**: `orchestrator.rs` pins `depth = 1`, so
+      every URL scores identically and `max_depth` never fires. Superseded by M2-T15.7
+- [ ] M2-T03.4 Adaptive revisit intervals (changed / unchanged / 304) → **specified in M2-T15**
 - [ ] M2-T03.5 Sitemap and feed discovery with caps — also the highest-yield freshness signal, see
       M2-T15.6
 - [ ] M2-T03.6 Outlink filtering and `SafeUrl` validation
@@ -259,11 +249,8 @@ also the fastest option — no bundle to download, parse and hydrate.
 ## M2-T04 — [[Web Fetcher]]
 
 - [ ] M2-T04.1 `reqwest` client with timeouts, redirect revalidation, streamed body cap
-- [x] M2-T04.2 Conditional requests (`If-None-Match` / `If-Modified-Since`) and 304 short-circuit.
-      A 304 is `Ok` with an empty body, not an error — it is the best possible answer. Validators
-      are overwritten only when the server sends new ones: a 304 sends none, and clearing them on
-      it would make the *next* request unconditional, paying full price precisely because the last
-      visit was free. Proven over real HTTP against the fixture server
+- [ ] M2-T04.2 Conditional requests (`If-None-Match` / `If-Modified-Since`) and 304 short-circuit
+      — **blocks M2-T15**: adaptive recrawl is unaffordable without cheap revisits
 - [ ] M2-T04.3 Charset detection cascade including `windows-1256`
 - [ ] M2-T04.4 Honest user-agent; per-host connection cap of 1
 - [ ] M2-T04.5 Outcome classification table
@@ -317,52 +304,43 @@ signal that matters is **whether a change persisted**, not whether bytes differe
 
 Order matters here. T15.1 and T15.2 are the substrate; nothing above them works without both.
 
-- [~] M2-T15.1 **Dual content hash.** One over the raw body, one over extracted article text after
+- [ ] M2-T15.1 **Dual content hash.** One over the raw body, one over extracted article text after
       boilerplate stripping. Only the second counts as a change. This is longevity scoring at the
       cost of a second hash, and it is what stops the crawler chasing view counters and "most read"
-      sidebars on every Algerian news page it holds. **Half of this already existed**: `content_hash`
-      is BLAKE3 over the *extracted, normalised* body, so comparing it across fetches already
-      ignores everything outside the article. Remaining: a raw-body hash, useful only to tell
-      "nothing moved" apart from "only the furniture moved" when diagnosing a channel
-- [x] M2-T15.2 **Change history**: `last_fetched`, `last_modified`, `etag`, the content hash, the
-      current interval and the volatility count. **Stored in Redis beside the frontier, not on the
-      indexed document** as ADR-0011's consequences assumed — it is written on every fetch
-      including unchanged ones, and Meilisearch takes writes as queued tasks, so a million-page
-      corpus revisiting daily would enqueue a million bookkeeping tasks a day that change nothing
-      searchable. Losing Redis costs intervals, not documents
-- [x] M2-T15.3 **Adaptive interval, multiplicative.** Changed → × 0.5, unchanged → × 1.5, clamped
+      sidebars on every Algerian news page it holds
+- [ ] M2-T15.2 **Change history on the document**: `last_fetched`, `last_modified`, `etag`, both
+      hashes, current interval, and a bounded ring of `(when, content_changed)`. Schema change plus
+      migration; everything below reads from this
+- [ ] M2-T15.3 **Adaptive interval, multiplicative.** Changed → × 0.5, unchanged → × 1.5, clamped
       per trust tier. Chosen over the formal estimators because we never observe *how many* times a
       page changed — only whether it differs from our copy — so the obvious estimator is biased low
-      exactly where it costs most. Bounds are per trust tier, or a large quiet corpus drags every
-      interval to the ceiling and the sources that matter go stale with the rest
-- [x] M2-T15.4 **Volatile-page abandonment.** Changes on every visit even at its floor → slow lane.
+      exactly where it costs most
+- [ ] M2-T15.4 **Volatile-page abandonment.** Changes on every visit even at its floor → slow lane.
       The Cho result applied directly: a page that cannot be kept fresh should not be chased.
-      Shares its mechanism with M2-T05.8. Parked at the ceiling rather than dropped, so a ticker
-      that becomes an archive is eventually noticed; four consecutive changes rather than one, so a
-      burst of breaking news is not mistaken for a page that never settles
-- [x] M2-T15.5 **Conditional requests wired into scheduling.** The revisit path replays stored
-      validators and a 304 reaches the scheduler as a `NotModified` observation — otherwise free
-      revisits would look like silence and the interval would stop adapting. Discovery sends no
-      validators and is untouched
+      Shares its mechanism with M2-T05.8
+- [ ] M2-T15.5 **Conditional requests wired into scheduling** — depends on M2-T04.2. A 304 is
+      "unchanged" at a few hundred bytes. Without this the whole task group costs more than it saves
 - [ ] M2-T15.6 **Sitemap `lastmod` and feed polling as freshness signals** — depends on M2-T03.5.
       One fetch reports on hundreds of URLs; for news sources this is the highest-yield signal
       available and it should be preferred over polling pages directly
-- [x] M2-T15.7 **Revisit priority folds in measured change rate and lateness**, alongside the depth
-      and trust base. Not the literal `trust × change_probability × age` product: a page held near
-      its floor is one we have *measured* as changing, so the converged interval is the signal, and
-      both it and overdueness are capped. Uncapped, a page changing every hour would outrank
-      everything on its host forever — precisely the page the Cho result says not to chase. Bands
-      rather than a curve, because a continuous function is much harder to reason about from a
-      document count that stopped rising
+- [ ] M2-T15.7 **Frontier priority becomes `trust × change_probability × age`**, replacing
+      `depth × 1000`. Folds into the depth-tracking fix — `orchestrator.rs` pins `depth = 1`, so
+      every URL currently has identical priority and `max_depth` is dead code. Same edit, do them
+      together
 - [ ] M2-T15.8 **Recrawl budget is separate from discovery budget**, so freshness and coverage
       cannot starve each other. Split visible in the console and in `/metrics`
 - [ ] M2-T15.9 **Boilerplate-stripping quality tests.** T15.1 gives bad stripping a second failure
       mode: churn that reads as content, and a crawler that chases it forever. Fixtures from real
       Algerian news pages, asserting the extracted text is byte-identical across two fetches that
       differ only in furniture
-- [ ] M2-T15.10 **Freshness evaluation**: sample 200 known-changed and 200 known-static URLs, report
-      mean staleness and fetches-per-real-change against a fixed-interval baseline. The claim this
-      task group makes is "better freshness at lower cost" — measure both halves or it is unproven
+- [x] M2-T15.10 **Freshness evaluation** — simulates a population of known change periods and runs
+      the real scheduler against two fixed intervals and the proportional policy, measuring mean
+      staleness and fetches against exact ground truth. It earned its place immediately: it caught
+      that the scheduler's multiplicative growth was **worse** than both a fixed interval and
+      proportional (45 h staleness vs 14.5 h), which forced the AIMD fix that brought it to 8.8 h.
+      Asserts the defensible claims — fresher than the cheap fixed policy, not dominated by
+      proportional, abandons the untrackable — not strict domination, which the literature does not
+      support
 
 ## M2-T16 — Corpus Bootstrap and Discovery Aggregation
 
@@ -527,24 +505,24 @@ proxy and fingerprint machinery, bound by the same pinning invariant.
 
 ## Risks
 
-| Risk                                                         | Mitigation                                                                                                                                                                        |
-| :----------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Identity pool burns faster than it can be replaced**       | conservative budgets, warm-up discipline, pinning invariant; `IdentityLifespanDrop` is the leading indicator ([[Session Manager]] §9)                                             |
-| Warm-up wall-clock not started early enough                  | M2-T01a.11 explicitly starts in M1                                                                                                                                                |
-| Signer rotation halts a platform                             | path ladders demote to unsigned paths; [[Signature Service]] §4.6                                                                                                                 |
-| **Silent cloaking reported as success**                      | canaries are ground truth; this is an exit-gate item, not a nice-to-have                                                                                                          |
-| Residential bandwidth cost runs away                         | per-source cost metric + 80 % budget alert; prefer light paths (`mbasic`, embedded JSON)                                                                                          |
-| Platform stance leaks into open-web crawling                 | crawl profiles are config-driven and CI-asserted ([[Politeness and Robots]] §4.0)                                                                                                 |
-| A crawler bug harms a real site                              | unchanged: politeness config guard, per-host concurrency 1, staged rollout, `/bot` contact monitored                                                                              |
-| Parser rules rot as sites redesign                           | `parser_rule_miss_total` alerting from day one; each rule ships with a fixture                                                                                                    |
-| Redis memory exhausted by raw blobs                          | monitor early; the object-storage decision is pre-identified ([[Task Queue]] §12)                                                                                                 |
-| Real content breaks M1's ranking assumptions                 | re-run the full relevance evaluation at the end of this milestone                                                                                                                 |
-| **Boilerplate stripping mistakes churn for content**         | M2-T15.1 gives bad stripping a second failure mode — the crawler chases furniture forever. M2-T15.9 asserts extracted text is stable across fetches that differ only in furniture |
-| Common Crawl bootstrap floods the frontier with dead URLs    | discovered-tier trust, ordinary dedup and `SafeUrl`; per-channel yield (M2-T16.8) makes a bad channel visible rather than merely expensive                                        |
-| **SERP collection is silently degraded rather than blocked** | canary queries with known-stable results (M2-T16.14). Without them a neutered channel reports itself healthy and T16.8's yield numbers measure nothing                            |
-| SERP channel competes with social for the identity pool      | it is last in the ladder, off by default, and M2-T01a.12 already halts rather than degrading to unpinned identities                                                               |
-| SERP maintenance tail is underestimated                      | fixtures plus `serp_parse_miss_total` from day one (M2-T16.15); the tail is real and permanent, as with the social connectors                                                     |
-| Query-driven discovery reintroduces query logging            | aggregate counts over normalised terms with a frequency floor, never a stored log ([[ADR-0008 - No Query Logging]]); the privacy constraint is the design constraint              |
+| Risk | Mitigation |
+|:---|:---|
+| **Identity pool burns faster than it can be replaced** | conservative budgets, warm-up discipline, pinning invariant; `IdentityLifespanDrop` is the leading indicator ([[Session Manager]] §9) |
+| Warm-up wall-clock not started early enough | M2-T01a.11 explicitly starts in M1 |
+| Signer rotation halts a platform | path ladders demote to unsigned paths; [[Signature Service]] §4.6 |
+| **Silent cloaking reported as success** | canaries are ground truth; this is an exit-gate item, not a nice-to-have |
+| Residential bandwidth cost runs away | per-source cost metric + 80 % budget alert; prefer light paths (`mbasic`, embedded JSON) |
+| Platform stance leaks into open-web crawling | crawl profiles are config-driven and CI-asserted ([[Politeness and Robots]] §4.0) |
+| A crawler bug harms a real site | unchanged: politeness config guard, per-host concurrency 1, staged rollout, `/bot` contact monitored |
+| Parser rules rot as sites redesign | `parser_rule_miss_total` alerting from day one; each rule ships with a fixture |
+| Redis memory exhausted by raw blobs | monitor early; the object-storage decision is pre-identified ([[Task Queue]] §12) |
+| Real content breaks M1's ranking assumptions | re-run the full relevance evaluation at the end of this milestone |
+| **Boilerplate stripping mistakes churn for content** | M2-T15.1 gives bad stripping a second failure mode — the crawler chases furniture forever. M2-T15.9 asserts extracted text is stable across fetches that differ only in furniture |
+| Common Crawl bootstrap floods the frontier with dead URLs | discovered-tier trust, ordinary dedup and `SafeUrl`; per-channel yield (M2-T16.8) makes a bad channel visible rather than merely expensive |
+| **SERP collection is silently degraded rather than blocked** | canary queries with known-stable results (M2-T16.14). Without them a neutered channel reports itself healthy and T16.8's yield numbers measure nothing |
+| SERP channel competes with social for the identity pool | it is last in the ladder, off by default, and M2-T01a.12 already halts rather than degrading to unpinned identities |
+| SERP maintenance tail is underestimated | fixtures plus `serp_parse_miss_total` from day one (M2-T16.15); the tail is real and permanent, as with the social connectors |
+| Query-driven discovery reintroduces query logging | aggregate counts over normalised terms with a frequency floor, never a stored log ([[ADR-0008 - No Query Logging]]); the privacy constraint is the design constraint |
 
 ## Related
 
