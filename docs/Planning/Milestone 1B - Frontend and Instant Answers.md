@@ -183,7 +183,10 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
       never applied silently: Arabizi is ambiguous, so the card shows a second reading alongside
       the first rather than presenting one guess as settled
 - [ ] M1B-T07.5 Sports fixtures and results
-- [ ] M1B-T07.6 Exam results — links to official portals only, never mirrored
+- [x] M1B-T07.6 Exam results — links to official ONEC portals only, never mirrored. Recognises
+      BAC / BEM / cinquième results queries in ar/fr/en; requires a results word so the bare exam
+      name does not trigger; renders the portal as a link (`rel=noopener`, no referrer) gated on an
+      `official` flag. It never fetches, stores or shows a result — the restraint is the feature
 - [~] M1B-T07.7 Utility tools ([[Instant Answers]] §5.3) — 13 built: Base64, URL encoding, TVA at
       19 %/9 %, percentage change, Roman numerals, hex→RGB, case conversion, word and character
       counts, SHA-256, JSON formatter, tip split, loan repayment, BMI. All pure, offline and
