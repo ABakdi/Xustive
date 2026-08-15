@@ -511,6 +511,9 @@ impl Frontier {
     fn k_meta(&self) -> String {
         format!("{}:meta", self.namespace)
     }
+    fn k_due(&self) -> String {
+        format!("{}:due", self.namespace)
+    }
     fn host_queue(&self, host: &str) -> String {
         format!("{}:q:{host}", self.namespace)
     }
@@ -605,6 +608,132 @@ impl Frontier {
             return Err(Rejected::Full);
         }
         Ok(true)
+    }
+
+    /// Schedule a URL to be crawled again at a given time.
+    ///
+    /// # Why this is not just `add`
+    ///
+    /// `add` refuses anything already in `seen`, which is exactly right for discovery — a link
+    /// found on forty listing pages must be queued once. A revisit is the opposite case: the URL is
+    /// in `seen` *because* we crawled it, and that is the precondition rather than the objection.
+    ///
+    /// # Why a separate set rather than a due-time on the queue entry
+    ///
+    /// The host queue is scored by priority, and priority is an ordering, not a time; overloading
+    /// it would mean a page due next month sorting ahead of one due now whenever its trust was
+    /// higher. Deferred URLs therefore wait in their own sorted set keyed by due time, and
+    /// [`Frontier::promote_due`] moves them into the host queue when they come round.
+    ///
+    /// That keeps the claim path unchanged and O(1)-ish: no per-URL time check on the hot path,
+    /// which at five million URLs is the difference between a range query and a scan.
+    pub async fn defer(&self, pending: &Pending, due_ms: i64) {
+        let Some(mut conn) = self.conn().await else {
+            return;
+        };
+        // Metadata is rewritten, not assumed to survive: `complete` clears it when the previous
+        // visit finished, so a deferred URL with no metadata would come back at depth 0 and be
+        // treated as a seed.
+        let _: Result<(), _> = redis::cmd("HSET")
+            .arg(self.k_meta())
+            .arg(&pending.url)
+            .arg(encode_meta(
+                pending.depth,
+                pending.trust,
+                &pending.source_id,
+            ))
+            .query_async::<()>(&mut conn)
+            .await;
+        let _: Result<(), _> = redis::cmd("ZADD")
+            .arg(self.k_due())
+            .arg(due_ms)
+            .arg(format!(
+                "{}\t{}\t{}",
+                pending.host, pending.priority, pending.url
+            ))
+            .query_async::<()>(&mut conn)
+            .await;
+    }
+
+    /// Move every URL whose due time has passed into its host queue.
+    ///
+    /// Called on the same cadence as claim reclamation rather than per step. A page due a second
+    /// ago is not urgent, and putting a range query on the hot path to find out would cost more
+    /// than the second it saves.
+    ///
+    /// Returns how many were promoted.
+    pub async fn promote_due(&self, now_ms: i64, limit: usize) -> usize {
+        let Some(mut conn) = self.conn().await else {
+            return 0;
+        };
+        let entries: Vec<String> = redis::cmd("ZRANGEBYSCORE")
+            .arg(self.k_due())
+            .arg("-inf")
+            .arg(now_ms)
+            .arg("LIMIT")
+            .arg(0)
+            .arg(limit)
+            .query_async(&mut conn)
+            .await
+            .unwrap_or_default();
+
+        let mut promoted = 0usize;
+        for entry in entries {
+            let mut parts = entry.splitn(3, '\t');
+            let (Some(host), Some(priority), Some(url)) =
+                (parts.next(), parts.next(), parts.next())
+            else {
+                // Unparsable, so it can never be promoted. Drop it rather than leave it to be
+                // re-read on every sweep forever.
+                let _: Result<(), _> = redis::cmd("ZREM")
+                    .arg(self.k_due())
+                    .arg(&entry)
+                    .query_async::<()>(&mut conn)
+                    .await;
+                continue;
+            };
+            let priority: i64 = priority.parse().unwrap_or(0);
+
+            let queued: Result<(), _> = redis::cmd("ZADD")
+                .arg(self.host_queue(host))
+                .arg(priority)
+                .arg(url)
+                .query_async::<()>(&mut conn)
+                .await;
+            // `NX` so a host that is already due stays due. Without it, every promotion would push
+            // the host's next slot forward and a busy host would starve itself.
+            let host_added: Result<(), _> = redis::cmd("ZADD")
+                .arg(self.k_hosts())
+                .arg("NX")
+                .arg(0)
+                .arg(host)
+                .query_async::<()>(&mut conn)
+                .await;
+
+            // Removed only once it is queued. A crash between the two costs a duplicate fetch,
+            // which is a request; the other order costs the URL, which is a document forever.
+            if queued.and(host_added).is_ok() {
+                let _: Result<(), _> = redis::cmd("ZREM")
+                    .arg(self.k_due())
+                    .arg(&entry)
+                    .query_async::<()>(&mut conn)
+                    .await;
+                promoted += 1;
+            }
+        }
+        promoted
+    }
+
+    /// How many URLs are waiting for their due time.
+    pub async fn deferred(&self) -> usize {
+        let Some(mut conn) = self.conn().await else {
+            return 0;
+        };
+        redis::cmd("ZCARD")
+            .arg(self.k_due())
+            .query_async(&mut conn)
+            .await
+            .unwrap_or(0)
     }
 
     /// Move a URL to the head of its host's queue.
@@ -729,7 +858,13 @@ impl Frontier {
                 .query_async::<()>(&mut conn)
                 .await;
         }
-        for k in [self.k_hosts(), self.k_seen(), self.k_inflight()] {
+        for k in [
+            self.k_hosts(),
+            self.k_seen(),
+            self.k_inflight(),
+            self.k_meta(),
+            self.k_due(),
+        ] {
             let _: Result<(), _> = redis::cmd("DEL").arg(k).query_async::<()>(&mut conn).await;
         }
     }

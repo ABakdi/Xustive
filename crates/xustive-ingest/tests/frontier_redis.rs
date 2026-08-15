@@ -311,3 +311,80 @@ async fn completing_a_claim_clears_its_metadata() {
         "a completed URL should not be claimable again"
     );
 }
+
+/// A deferred URL must not be claimable before its due time, and must be after it.
+///
+/// The property the whole revisit design rests on. Without it the scheduler computes intervals
+/// nothing honours, which is worse than not scheduling at all: the numbers look right in the
+/// console while the crawler ignores them.
+#[tokio::test]
+async fn a_deferred_url_waits_for_its_due_time() {
+    let f = require_redis!("defer_due");
+
+    let mut p = pending("example.dz", "https://example.dz/later", 10);
+    p.depth = 2;
+    p.trust = 77;
+    f.defer(&p, 10_000).await;
+
+    assert_eq!(f.deferred().await, 1);
+    assert_eq!(
+        f.promote_due(9_999, 100).await,
+        0,
+        "a page due at 10s must not be promoted at 9.999s"
+    );
+    assert!(
+        f.claim(9_999, Duration::from_millis(0)).await.is_none(),
+        "nothing should be claimable while it is still deferred"
+    );
+
+    assert_eq!(f.promote_due(10_000, 100).await, 1);
+    assert_eq!(f.deferred().await, 0, "a promoted URL leaves the due set");
+
+    let claim = f
+        .claim(10_001, Duration::from_millis(0))
+        .await
+        .expect("due, so claimable");
+    assert_eq!(claim.url, "https://example.dz/later");
+    // Depth and trust must survive the deferral, or a revisited page comes back looking like a
+    // seed and its links restart the depth count from zero.
+    assert_eq!(claim.depth, 2);
+    assert_eq!(claim.trust, 77);
+}
+
+/// `defer` must work on a URL already in `seen`, which is every revisit.
+///
+/// `add` refuses those deliberately — a link found on forty listing pages is queued once. Applying
+/// the same rule to revisits would make the frontier refuse to re-crawl anything it had ever
+/// crawled, and the symptom would be an index that silently never refreshes.
+#[tokio::test]
+async fn a_url_already_crawled_can_be_deferred_again() {
+    let f = require_redis!("defer_seen");
+
+    let p = pending("example.dz", "https://example.dz/known", 5);
+    assert_eq!(f.add(&p).await, Ok(true));
+    let claim = f.claim(1_000, Duration::from_millis(0)).await.unwrap();
+    f.complete(&claim.url).await;
+
+    // Now in `seen`, so `add` refuses it — as it should.
+    assert_eq!(f.add(&p).await, Ok(false));
+
+    // Deferring is the revisit path and must not care.
+    f.defer(&p, 2_000).await;
+    assert_eq!(f.promote_due(2_000, 100).await, 1);
+    assert!(
+        f.claim(2_001, Duration::from_millis(0)).await.is_some(),
+        "a previously crawled URL must be re-claimable once due"
+    );
+}
+
+/// A sweep is bounded, so a corpus that all comes due at once cannot stall the loop.
+#[tokio::test]
+async fn promotion_is_bounded_per_sweep() {
+    let f = require_redis!("defer_batch");
+    for i in 0..10 {
+        let p = pending("example.dz", &format!("https://example.dz/{i}"), 1);
+        f.defer(&p, 1_000).await;
+    }
+    assert_eq!(f.promote_due(5_000, 4).await, 4);
+    assert_eq!(f.deferred().await, 6, "the rest wait for the next sweep");
+}
