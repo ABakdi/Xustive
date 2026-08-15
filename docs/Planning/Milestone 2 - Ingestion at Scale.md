@@ -259,8 +259,11 @@ also the fastest option — no bundle to download, parse and hydrate.
 ## M2-T04 — [[Web Fetcher]]
 
 - [ ] M2-T04.1 `reqwest` client with timeouts, redirect revalidation, streamed body cap
-- [ ] M2-T04.2 Conditional requests (`If-None-Match` / `If-Modified-Since`) and 304 short-circuit
-      — **blocks M2-T15**: adaptive recrawl is unaffordable without cheap revisits
+- [x] M2-T04.2 Conditional requests (`If-None-Match` / `If-Modified-Since`) and 304 short-circuit.
+      A 304 is `Ok` with an empty body, not an error — it is the best possible answer. Validators
+      are overwritten only when the server sends new ones: a 304 sends none, and clearing them on
+      it would make the *next* request unconditional, paying full price precisely because the last
+      visit was free. Proven over real HTTP against the fixture server
 - [ ] M2-T04.3 Charset detection cascade including `windows-1256`
 - [ ] M2-T04.4 Honest user-agent; per-host connection cap of 1
 - [ ] M2-T04.5 Outcome classification table
@@ -337,8 +340,10 @@ Order matters here. T15.1 and T15.2 are the substrate; nothing above them works 
       Shares its mechanism with M2-T05.8. Parked at the ceiling rather than dropped, so a ticker
       that becomes an archive is eventually noticed; four consecutive changes rather than one, so a
       burst of breaking news is not mistaken for a page that never settles
-- [ ] M2-T15.5 **Conditional requests wired into scheduling** — depends on M2-T04.2. A 304 is
-      "unchanged" at a few hundred bytes. Without this the whole task group costs more than it saves
+- [x] M2-T15.5 **Conditional requests wired into scheduling.** The revisit path replays stored
+      validators and a 304 reaches the scheduler as a `NotModified` observation — otherwise free
+      revisits would look like silence and the interval would stop adapting. Discovery sends no
+      validators and is untouched
 - [ ] M2-T15.6 **Sitemap `lastmod` and feed polling as freshness signals** — depends on M2-T03.5.
       One fetch reports on hundreds of URLs; for news sources this is the highest-yield signal
       available and it should be preferred over polling pages directly
