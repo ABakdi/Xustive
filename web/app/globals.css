@@ -228,6 +228,26 @@ a {
   padding-inline-start: 1.25rem;
 }
 
+/* --- directional icons --------------------------------------------------------------
+ *
+ * A glyph that points — an arrow, a chevron, a reply hook — means "forward" or "back", and in an
+ * RTL layout forward is leftward. Logical CSS properties move boxes for us, but they cannot flip
+ * the *inside* of an SVG, so a directional icon has to be mirrored by hand under `dir="rtl"`.
+ *
+ * The convention: any directional icon carries `class="rtl-flip"`, and nothing else does. That
+ * keeps the set of mirrored things small and greppable — `scripts/rtl-icons.sh` fails the build if
+ * a known directional icon is used without it, so the day someone adds a "next" arrow it cannot
+ * ship pointing the wrong way in Arabic.
+ *
+ * The logo is deliberately excluded: the wordmark is `dir="ltr"` and never gets this class, because
+ * a brand name is the one element that must read identically to an Arabic and a French reader. A
+ * magnifying glass is *not* directional — its handle is decorative, not a pointer — so the search
+ * icon is not flipped either. */
+:root[dir='rtl'] .rtl-flip,
+[dir='rtl'] .rtl-flip {
+  transform: scaleX(-1);
+}
+
 /* --- controls -----------------------------------------------------------------------
  *
  * A pill search field, lifted off the page. This is the element the whole look hangs on — it is

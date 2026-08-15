@@ -157,6 +157,7 @@ golden: ## Regenerate the machine-judged golden set from the live index
 ui-gates: ## Client asset budgets and the no-JavaScript path (needs web running on :3000)
 	./scripts/bundle-budget.sh
 	./scripts/no-js-check.sh
+	./scripts/rtl-icons.sh
 
 .PHONY: scan-logs
 scan-logs: ## Scan a log file for leaked query text: make scan-logs LOG=/tmp/api.log
