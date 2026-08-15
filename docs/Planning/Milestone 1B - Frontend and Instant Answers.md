@@ -67,7 +67,11 @@ are the reason to exist; the search is the foundation under them.
       is worse than either behaviour alone. Compact is not cosmetic here: Arabic sets taller than
       Latin at the same point size, so a list that fits one screen in French runs onto two in
       Arabic, and much of the traffic is on small phones
-- [ ] M1B-T02.6 Contrast audit of both themes at AA ([[UI - Accessibility]])
+- [x] M1B-T02.6 Contrast audit of both themes at AA. `scripts/contrast-audit.mjs` reads the oklch
+      tokens from globals.css, converts to linear sRGB and checks every text/control pair against
+      4.5:1 (body) or 3:1 (large/control edges) in both themes; in `make ui-gates`. Caught two real
+      failures — `--fg-faint` at 2.78:1 on rendered hint text and `--line-strong` at 1.8:1 on the
+      search-box border — both fixed
 - [ ] M1B-T02.7 Native-speaker read on the Arabic face and numeral system ← *B7*
 
 ## M1B-T03 — Port the existing UI
