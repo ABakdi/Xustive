@@ -288,7 +288,11 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
       extracted to files, and `Intl.PluralRules` is not used
 - [x] M1-T14.4 Algerian month names in both directions: parsed by `xustive-ingest::date` and
       rendered by `xustive-tools::datetime`
-- [ ] M1-T14.5 Directional icon mirroring, logo exclusion
+- [x] M1-T14.5 Directional icon mirroring, logo exclusion. The convention: directional icons carry
+      `rtl-flip` (`scaleX(-1)` under `dir=rtl`), the logo never does (the wordmark is `dir=ltr`),
+      and the magnifying glass is not directional. There are no directional icons today -- pagination
+      uses words -- so `scripts/rtl-icons.sh` (in `make ui-gates`) fails the build if one is ever
+      added without the class, which is verified to catch a bare `ChevronRight`
 - [ ] M1-T14.6 Visual regression snapshots: 4 languages × 2 directions × 2 themes
 - [ ] M1-T14.7 Native-speaker review of `ar` and `ary` strings ← *B7*
 
