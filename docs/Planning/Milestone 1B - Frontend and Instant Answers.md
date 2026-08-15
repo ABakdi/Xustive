@@ -61,7 +61,12 @@ are the reason to exist; the search is the foundation under them.
       result page. Zero dependencies, zero client components, and `no-js-check.sh` now fails if a
       primitive ever declares one. Bundle unchanged at 175/176 KB
 - [x] M1B-T02.4 The qalam rule as a shared primitive, used only by summary and tool cards
-- [~] M1B-T02.5 Density tokens exist and are cookie-driven; the toggle control is not built
+- [x] M1B-T02.5 Density tokens are cookie-driven **and the toggle is built**. Mirrors
+      `ThemeToggle` exactly — same shape, same optimistic write, same `aria-label` naming the
+      current state rather than the action, because two adjacent controls that behave differently
+      is worse than either behaviour alone. Compact is not cosmetic here: Arabic sets taller than
+      Latin at the same point size, so a list that fits one screen in French runs onto two in
+      Arabic, and much of the traffic is on small phones
 - [ ] M1B-T02.6 Contrast audit of both themes at AA ([[UI - Accessibility]])
 - [ ] M1B-T02.7 Native-speaker read on the Arabic face and numeral system ← *B7*
 
