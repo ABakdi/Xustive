@@ -259,7 +259,11 @@ also the fastest option — no bundle to download, parse and hydrate.
       (chardetng). The middle step is the browser order and the one that matters for older Algerian
       sites serving windows-1256 with a bare Content-Type; a declared charset is never counted as a
       guess. Both meta forms tested against real windows-1256 Arabic
-- [ ] M2-T04.4 Honest user-agent; per-host connection cap of 1
+- [x] M2-T04.4 Honest user-agent; per-host connection cap of 1. The UA is `XustiveBot/1.0
+      (+https://xustive.dz/bot; …)`, published at `/bot`. The cap is now real: `reserve` advances the
+      host's next-allowed slot under the lock at claim time, so two callers sharing a fetcher cannot
+      both fetch one host at once — the second waits a full delay behind the first. Monotonic;
+      record_fetch cannot pull a reserved slot back. Tested that reservations stack in order
 - [x] M2-T04.5 Outcome classification table — `FetchError::outcome` returns the stable §4.4 label
       (gone, throttled, transient, permanent, timeout, too_large, redirect_loop, …), finer than the
       retry-or-not class, and the orchestrator records it so failures break down by cause instead of
@@ -277,7 +281,9 @@ also the fastest option — no bundle to download, parse and hydrate.
       of loopback, credentials hiding the real host, non-HTTP schemes, resolved addresses (one bad
       entry in a round-robin sinks the set), and a redirect from a public host to a private one.
       All passed — the guard was already sound
-- [ ] M2-T04.9 Politeness assertion under 50 concurrent workers: one in-flight request per host
+- [~] M2-T04.9 Politeness assertion — the per-host serialisation is now enforced by `reserve`
+      (M2-T04.4) and unit-tested (reservations stack, a slot is never shortened). The full
+      50-concurrent-worker integration assertion against a real server is still owed
 
 ## M2-T05 — [[Deduplication Service]]
 
