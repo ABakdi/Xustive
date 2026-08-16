@@ -26,6 +26,10 @@ const K_SKIPS: &str = "crawl:skips";
 const K_RECENT: &str = "crawl:recent";
 const K_HOSTS: &str = "crawl:hosts";
 const K_STATE: &str = "crawl:state";
+/// Per-source counters live in one hash, field `"<source_id>:<metric>"`. One hash rather than a key
+/// per source keeps reset a single `DEL` and the dashboard read a single `HGETALL` — the same shape
+/// as every other counter here. Source ids are slugs (`[a-z0-9-]`) so `:` never collides.
+const K_SOURCE: &str = "crawl:source";
 
 /// How many recent URLs to keep.
 ///
@@ -77,6 +81,74 @@ pub struct Snapshot {
     pub unavailable: bool,
 }
 
+/// Per-source quality counters (§7 of [[Data Sources Registry]]), accumulated by the crawler and
+/// read by the console. Cumulative and read whole, like every other counter here.
+///
+/// `spam_sum` is the sum of per-document spam scores ×1000 (spam is `0.0..=1.0`; Redis counts
+/// integers), so the mean is `spam_sum / indexed / 1000`. Keeping the sum rather than the mean is
+/// what lets the mean stay correct as documents accrue without re-reading them.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SourceMetrics {
+    pub fetched: u64,
+    pub failed: u64,
+    pub indexed: u64,
+    /// Parsed but too thin to index — the extraction-quality signal.
+    pub thin: u64,
+    /// Dropped as a duplicate of something already held.
+    pub duplicate: u64,
+    /// Indexed documents whose publication date we could not determine.
+    pub date_unknown: u64,
+    /// Σ(spam_score × 1000) over indexed documents.
+    pub spam_sum: u64,
+}
+
+impl SourceMetrics {
+    /// Fetches that succeeded, in `0.0..=1.0`. `None` until anything was attempted, so the console
+    /// shows "—" rather than a misleading 100 % or 0 % for a source that has not run.
+    pub fn fetch_success_rate(&self) -> Option<f32> {
+        let attempts = self.fetched + self.failed;
+        (attempts > 0).then(|| self.fetched as f32 / attempts as f32)
+    }
+
+    /// Of fetched pages, the fraction that yielded an indexable document rather than being too thin.
+    /// The silent-failure signal: a redesign that breaks extraction shows here before anywhere else.
+    pub fn extraction_success_rate(&self) -> Option<f32> {
+        let seen = self.indexed + self.thin;
+        (seen > 0).then(|| self.indexed as f32 / seen as f32)
+    }
+
+    /// Fraction of indexed-or-duplicate documents that were duplicates — high means mostly
+    /// republished content, a demotion signal.
+    pub fn duplicate_ratio(&self) -> Option<f32> {
+        let total = self.indexed + self.duplicate;
+        (total > 0).then(|| self.duplicate as f32 / total as f32)
+    }
+
+    /// Mean spam score over indexed documents, in `0.0..=1.0`.
+    pub fn spam_mean(&self) -> Option<f32> {
+        (self.indexed > 0).then(|| self.spam_sum as f32 / self.indexed as f32 / 1000.0)
+    }
+
+    /// Fraction of indexed documents with no determinable date — high means the parser needs a date
+    /// selector for this domain.
+    pub fn date_unknown_ratio(&self) -> Option<f32> {
+        (self.indexed > 0).then(|| self.date_unknown as f32 / self.indexed as f32)
+    }
+
+    /// Map the accumulated counters to the health signal the lifecycle automation consumes
+    /// ([`xustive_core::model::SourceHealth`] via the caller). `error_rate_24h` is approximated by
+    /// the lifetime failure rate — these counters are cumulative, not windowed, so this is the
+    /// coarse form; a windowed source can refine it later without changing the consumer.
+    pub fn error_rate(&self) -> f32 {
+        let attempts = self.fetched + self.failed;
+        if attempts == 0 {
+            0.0
+        } else {
+            self.failed as f32 / attempts as f32
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct CrawlStats {
     client: redis::Client,
@@ -114,6 +186,55 @@ impl CrawlStats {
             .arg(by as i64)
             .query_async::<()>(&mut c)
             .await;
+    }
+
+    /// Bump one per-source counter (§7). `source_id` is a registry slug; `metric` is one of the
+    /// `SourceMetrics` field names. Best-effort like the rest — a lost counter is a slightly wrong
+    /// dashboard, never a lost document.
+    pub async fn incr_source(&self, source_id: &str, metric: &str, by: u64) {
+        if source_id.is_empty() || by == 0 {
+            return;
+        }
+        let Some(mut c) = self.conn().await else {
+            return;
+        };
+        let _: Result<(), _> = redis::cmd("HINCRBY")
+            .arg(K_SOURCE)
+            .arg(format!("{source_id}:{metric}"))
+            .arg(by as i64)
+            .query_async::<()>(&mut c)
+            .await;
+    }
+
+    /// Read every source's counters, keyed by source id. One `HGETALL`, reassembled by splitting
+    /// each field on its last `:` into `<source_id>:<metric>`.
+    pub async fn source_metrics(&self) -> HashMap<String, SourceMetrics> {
+        let Some(mut c) = self.conn().await else {
+            return HashMap::new();
+        };
+        let flat: HashMap<String, u64> = redis::cmd("HGETALL")
+            .arg(K_SOURCE)
+            .query_async(&mut c)
+            .await
+            .unwrap_or_default();
+        let mut out: HashMap<String, SourceMetrics> = HashMap::new();
+        for (field, value) in flat {
+            let Some((id, metric)) = field.rsplit_once(':') else {
+                continue;
+            };
+            let m = out.entry(id.to_string()).or_default();
+            match metric {
+                "fetched" => m.fetched = value,
+                "failed" => m.failed = value,
+                "indexed" => m.indexed = value,
+                "thin" => m.thin = value,
+                "duplicate" => m.duplicate = value,
+                "date_unknown" => m.date_unknown = value,
+                "spam_sum" => m.spam_sum = value,
+                _ => {}
+            }
+        }
+        out
     }
 
     pub async fn incr_skip(&self, reason: &str) {
@@ -223,7 +344,7 @@ impl CrawlStats {
         let Some(mut c) = self.conn().await else {
             return;
         };
-        for k in [K_COUNTERS, K_SKIPS, K_RECENT, K_HOSTS] {
+        for k in [K_COUNTERS, K_SKIPS, K_RECENT, K_HOSTS, K_SOURCE] {
             let _: Result<(), _> = redis::cmd("DEL").arg(k).query_async::<()>(&mut c).await;
         }
     }
@@ -252,6 +373,37 @@ mod tests {
         let fresh = Snapshot::default();
         assert_eq!(fresh.state, "");
         assert!(!fresh.unavailable);
+    }
+
+    #[test]
+    fn source_metrics_compute_the_section_7_ratios() {
+        let m = SourceMetrics {
+            fetched: 90,
+            failed: 10,
+            indexed: 60,
+            thin: 20,
+            duplicate: 20,
+            date_unknown: 6,
+            // mean spam 0.15 over 60 indexed → sum = 0.15*60*1000 = 9000
+            spam_sum: 9_000,
+        };
+        assert!((m.fetch_success_rate().unwrap() - 0.90).abs() < 1e-6);
+        assert!((m.extraction_success_rate().unwrap() - 0.75).abs() < 1e-6); // 60/(60+20)
+        assert!((m.duplicate_ratio().unwrap() - 0.25).abs() < 1e-6); // 20/(60+20)
+        assert!((m.spam_mean().unwrap() - 0.15).abs() < 1e-6);
+        assert!((m.date_unknown_ratio().unwrap() - 0.10).abs() < 1e-6); // 6/60
+        assert!((m.error_rate() - 0.10).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_source_that_never_ran_reports_none_not_a_misleading_zero() {
+        // A blank source must read as "—" on the dashboard, not "0% fetch success" (which looks
+        // like a broken source) nor "100%" (which looks healthy). None is the honest answer.
+        let m = SourceMetrics::default();
+        assert!(m.fetch_success_rate().is_none());
+        assert!(m.extraction_success_rate().is_none());
+        assert!(m.spam_mean().is_none());
+        assert_eq!(m.error_rate(), 0.0, "no attempts is not an error");
     }
 
     #[test]

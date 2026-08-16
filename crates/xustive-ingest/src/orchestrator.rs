@@ -195,6 +195,12 @@ impl Orchestrator {
         }
     }
 
+    async fn publish_source(&self, source_id: &str, metric: &str, by: u64) {
+        if let Some(s) = &self.shared {
+            s.incr_source(source_id, metric, by).await;
+        }
+    }
+
     pub fn stats(&self) -> &Stats {
         &self.stats
     }
@@ -304,12 +310,14 @@ impl Orchestrator {
                 tracing::debug!(%url, outcome, error = %e, "fetch failed");
                 self.publish("failed").await;
                 self.publish_skip(outcome).await;
+                self.publish_source(&claim.source_id, "failed", 1).await;
                 self.publish_recent(url, host, outcome, 0).await;
                 return Outcome::Idle;
             }
         };
         self.stats.fetched += 1;
         self.publish("fetched").await;
+        self.publish_source(&claim.source_id, "fetched", 1).await;
         // A claim with prior visit state is a revisit; without, it is fresh discovery. This is the
         // same signal the conditional request used above, reused so the two can never disagree.
         if prior.is_some() {
@@ -361,6 +369,7 @@ impl Orchestrator {
                 // crawler refuse to follow precisely the pages that exist to be followed.
                 self.stats.skip("thin");
                 self.publish_skip("thin").await;
+                self.publish_source(&claim.source_id, "thin", 1).await;
                 self.publish_recent(url, host, "thin", 0).await;
                 if !fetched.exclusion.is_some_and(|e| e.blocks_links()) {
                     self.enqueue_outlinks(&outlinks, &claim.source_id, claim)

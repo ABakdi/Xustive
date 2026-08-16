@@ -309,6 +309,8 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                             if !d.is_new(&parsed.document.content_hash).await {
                                 if let Some(s) = &shared {
                                     s.incr_skip("duplicate").await;
+                                    s.incr_source(&parsed.document.source_id, "duplicate", 1)
+                                        .await;
                                 }
                                 continue;
                             }
@@ -327,7 +329,19 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                         } else {
                             produced.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                             if let Some(s) = &shared {
+                                let doc = &parsed.document;
                                 s.incr("indexed", 1).await;
+                                s.incr_source(&doc.source_id, "indexed", 1).await;
+                                // spam is 0.0..=1.0; store ×1000 so the integer counter keeps a mean.
+                                s.incr_source(
+                                    &doc.source_id,
+                                    "spam_sum",
+                                    (doc.spam_score.clamp(0.0, 1.0) * 1000.0) as u64,
+                                )
+                                .await;
+                                if !doc.is_date_trustworthy() {
+                                    s.incr_source(&doc.source_id, "date_unknown", 1).await;
+                                }
                             }
                         }
                     }
