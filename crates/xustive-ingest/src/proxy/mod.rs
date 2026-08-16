@@ -15,14 +15,18 @@
 //! one dead host quarantines a whole pool (§4.5).
 
 mod attribution;
+mod breaker;
 mod health;
 mod ladder;
 mod placement;
+mod pool;
 
 pub use attribution::{attribute, Blame, FailureEvent};
+pub use breaker::{cooldown_for, Breakers, Scope};
 pub use health::{Health, ProxyState, MIN_LATENCY_MS};
 pub use ladder::{on_blocked, Action, BlockSignal};
 pub use placement::{PlacementError, PlacementLedger};
+pub use pool::{Pool, PoolError, Proxy, DIRECT};
 
 use serde::{Deserialize, Serialize};
 
