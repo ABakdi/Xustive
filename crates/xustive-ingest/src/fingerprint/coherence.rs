@@ -5,7 +5,7 @@
 //! so an incoherent profile cannot reach an identity — incoherence is the bug class that matters,
 //! and it is checked mechanically rather than by eye.
 
-use super::{Browser, Profile};
+use super::Profile;
 
 /// One way a profile fails to hang together. Each carries a message naming the mismatch.
 #[derive(Debug, Clone, PartialEq, Eq)]
