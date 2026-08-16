@@ -254,7 +254,11 @@ also the fastest option — no bundle to download, parse and hydrate.
       are overwritten only when the server sends new ones: a 304 sends none, and clearing them on
       it would make the *next* request unconditional, paying full price precisely because the last
       visit was free. Proven over real HTTP against the fixture server
-- [ ] M2-T04.3 Charset detection cascade including `windows-1256`
+- [x] M2-T04.3 Charset detection cascade including `windows-1256` — header charset, then the
+      `<meta charset>` / `<meta http-equiv>` declared in the document head, then byte sniffing
+      (chardetng). The middle step is the browser order and the one that matters for older Algerian
+      sites serving windows-1256 with a bare Content-Type; a declared charset is never counted as a
+      guess. Both meta forms tested against real windows-1256 Arabic
 - [ ] M2-T04.4 Honest user-agent; per-host connection cap of 1
 - [ ] M2-T04.5 Outcome classification table
 - [ ] M2-T04.6 Headless escalation rules + ratio cap; sandboxed browser container
