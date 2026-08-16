@@ -540,7 +540,30 @@ pub struct Source {
     pub last_run_at: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_status: Option<String>,
+    /// Unix seconds when the source entered `Disabled`. Set on the transition, cleared on recovery.
+    /// The archival clock (§6, disabled → archived after 90 days) runs from here, not from the last
+    /// crawl — a source that failed and stopped being crawled would otherwise never age out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled_at: Option<i64>,
 }
+
+/// Observed health of one source over the recent window, from the crawler's per-source metrics
+/// (§7 of [[Data Sources Registry]]). The inputs the lifecycle automation switches on.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SourceHealth {
+    /// Fetch + extraction errors as a fraction of attempts over the last 24 h, in `[0, 1]`.
+    pub error_rate_24h: f32,
+    /// Consecutive crawl runs that indexed zero documents. The classic silent failure — the site
+    /// redesigned and extraction fell back to nothing, without a single hard error.
+    pub consecutive_zero_runs: u32,
+}
+
+/// active → degraded when the 24 h error rate exceeds this (§6).
+const DEGRADE_ERROR_RATE: f32 = 0.40;
+/// active → degraded when this many runs in a row index nothing (§7, "zero for 3 runs → degraded").
+const DEGRADE_ZERO_RUNS: u32 = 3;
+/// disabled → archived after this long (§6, "after 90 days").
+const ARCHIVE_AFTER_SECS: i64 = 90 * 86_400;
 
 impl Source {
     /// The single predicate the crawler asks before injecting a source's entry points. True only
@@ -557,11 +580,61 @@ impl Source {
     /// only on a real transition. Auto-disable, not a flag: a lapsed basis is not a source we are
     /// allowed to keep crawling while someone decides.
     pub fn disable_for_lapsed_basis(&mut self) -> bool {
+        self.disable_at("auto-disabled: legal basis lapsed", 0)
+    }
+
+    /// Apply the lifecycle automation for one health observation at time `now` (§6). Returns the new
+    /// state if it transitioned, so a caller exports and alerts only on a real change:
+    ///
+    /// - **active → degraded** when the source fails sustainedly (error rate > 40 %, or three runs
+    ///   in a row indexing nothing). Still crawled — `Degraded` is a flag, not an off switch — so an
+    ///   operator can see it and decide before budget is wasted.
+    /// - **degraded → active** when it recovers, so a transient outage self-heals without a human.
+    /// - **disabled → archived** once it has been disabled for 90 days; its documents are then
+    ///   removed from the index by the caller.
+    ///
+    /// Unapproved or `proposed`/`reviewed` sources are left alone: automation acts only on sources
+    /// a human already put into service.
+    pub fn apply_health(&mut self, health: SourceHealth, now: i64) -> Option<Lifecycle> {
+        let failing = health.error_rate_24h > DEGRADE_ERROR_RATE
+            || health.consecutive_zero_runs >= DEGRADE_ZERO_RUNS;
+        match self.lifecycle {
+            Lifecycle::Active if failing => {
+                self.lifecycle = Lifecycle::Degraded;
+                self.append_note("auto-degraded: sustained failure");
+                Some(Lifecycle::Degraded)
+            }
+            Lifecycle::Degraded if !failing => {
+                self.lifecycle = Lifecycle::Active;
+                self.append_note("auto-recovered");
+                Some(Lifecycle::Active)
+            }
+            Lifecycle::Disabled
+                if self
+                    .disabled_at
+                    .is_some_and(|since| now - since >= ARCHIVE_AFTER_SECS) =>
+            {
+                self.lifecycle = Lifecycle::Archived;
+                self.append_note("auto-archived: 90 days disabled");
+                Some(Lifecycle::Archived)
+            }
+            _ => None,
+        }
+    }
+
+    /// Disable the source, stamping `disabled_at` so the archival clock starts. Shared by the
+    /// legal-basis path and any operator/persistent-failure disable. `now` may be `0` when a
+    /// timestamp is not to hand — the source is still disabled, it just will not auto-archive until
+    /// a later call supplies a real time.
+    pub fn disable_at(&mut self, reason: &str, now: i64) -> bool {
         if self.lifecycle == Lifecycle::Disabled || self.lifecycle == Lifecycle::Archived {
             return false;
         }
         self.lifecycle = Lifecycle::Disabled;
-        self.append_note("auto-disabled: legal basis lapsed");
+        // `0` means "time unknown" — leave the archival clock unset rather than start it at the
+        // epoch, which would archive the source 90 days after 1970 (i.e. instantly).
+        self.disabled_at = (now != 0).then_some(now);
+        self.append_note(reason);
         true
     }
 
@@ -587,6 +660,96 @@ pub fn domain_of(url: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn active_source() -> Source {
+        Source {
+            id: "s".into(),
+            kind: SourceType::Web,
+            display_name: "S".into(),
+            entry_points: vec!["https://s.dz/".into()],
+            languages: vec![],
+            crawl_policy: CrawlPolicy::default(),
+            trust_tier: TrustTier::A,
+            legal_basis: LegalBasis::PublicWebRobotsOk,
+            approved: true,
+            lifecycle: Lifecycle::Active,
+            notes: None,
+            last_run_at: 0,
+            last_status: None,
+            disabled_at: None,
+        }
+    }
+
+    #[test]
+    fn sustained_failure_degrades_then_recovery_reactivates() {
+        let mut s = active_source();
+        // A high error rate degrades it, but it stays crawlable (degraded is a flag, not off).
+        let bad = SourceHealth {
+            error_rate_24h: 0.55,
+            consecutive_zero_runs: 0,
+        };
+        assert_eq!(s.apply_health(bad, 1000), Some(Lifecycle::Degraded));
+        assert!(s.is_crawlable(), "a degraded source is still crawled");
+        // Same input again is idempotent — no repeated transition, no note spam.
+        assert_eq!(s.apply_health(bad, 1001), None);
+        // Recovery brings it back to active on its own.
+        let good = SourceHealth::default();
+        assert_eq!(s.apply_health(good, 1002), Some(Lifecycle::Active));
+    }
+
+    #[test]
+    fn three_empty_runs_degrade_even_with_no_errors() {
+        // The silent failure: fetches succeed, extraction yields nothing.
+        let mut s = active_source();
+        let empty = SourceHealth {
+            error_rate_24h: 0.0,
+            consecutive_zero_runs: 3,
+        };
+        assert_eq!(s.apply_health(empty, 0), Some(Lifecycle::Degraded));
+    }
+
+    #[test]
+    fn a_disabled_source_archives_only_after_ninety_days() {
+        let mut s = active_source();
+        assert!(s.disable_at("operator disabled", 1_000_000));
+        assert_eq!(s.lifecycle, Lifecycle::Disabled);
+        // A day later: not yet.
+        assert_eq!(
+            s.apply_health(SourceHealth::default(), 1_000_000 + 86_400),
+            None
+        );
+        // Past 90 days: archived.
+        let past = 1_000_000 + ARCHIVE_AFTER_SECS;
+        assert_eq!(
+            s.apply_health(SourceHealth::default(), past),
+            Some(Lifecycle::Archived)
+        );
+    }
+
+    #[test]
+    fn a_lapsed_basis_disable_without_a_clock_never_auto_archives() {
+        // disable_for_lapsed_basis passes now=0 (time unknown): disabled_at stays None, so the
+        // archival clock never starts and the source will not vanish on its own.
+        let mut s = active_source();
+        assert!(s.disable_for_lapsed_basis());
+        assert_eq!(s.disabled_at, None);
+        assert_eq!(s.apply_health(SourceHealth::default(), i64::MAX / 2), None);
+    }
+
+    #[test]
+    fn automation_leaves_unreviewed_sources_alone() {
+        let mut s = active_source();
+        s.lifecycle = Lifecycle::Proposed;
+        let bad = SourceHealth {
+            error_rate_24h: 0.9,
+            consecutive_zero_runs: 9,
+        };
+        assert_eq!(
+            s.apply_health(bad, 1000),
+            None,
+            "a proposed source is not in service yet"
+        );
+    }
 
     #[test]
     fn document_round_trips_through_json() {

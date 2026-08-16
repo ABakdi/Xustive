@@ -22,7 +22,7 @@
 //!    [`Source::is_crawlable`] is the single predicate the crawler asks; an un-reviewed submission
 //!    cannot be crawled by forgetting a check at some call site.
 
-use crate::model::Source;
+use crate::model::{Lifecycle, Source, SourceHealth};
 
 /// Why loading or saving a registry file failed.
 #[derive(Debug, thiserror::Error)]
@@ -152,6 +152,33 @@ impl Registry {
         }
         changed
     }
+
+    /// Apply the lifecycle automation (§6) to every source for which the crawler reported health
+    /// this cycle, plus the archival sweep to any long-disabled source. `health` maps source id →
+    /// its recent metrics; a source absent from the map is still checked for archival. Returns the
+    /// list of `(id, new_state)` transitions, so the caller exports once and can alert on each.
+    pub fn apply_health(
+        &mut self,
+        health: &std::collections::HashMap<String, SourceHealth>,
+        now: i64,
+    ) -> Vec<(String, Lifecycle)> {
+        let mut transitions = Vec::new();
+        for s in &mut self.sources {
+            // A source we have no metrics for this cycle is not evidence of health — skip its
+            // degrade/recover check so a missing report can't silently recover a degraded source.
+            // Archival is time-based, not health-based, so it still runs (default health is inert
+            // for a disabled source).
+            let observed = match health.get(&s.id) {
+                Some(h) => *h,
+                None if s.lifecycle == Lifecycle::Disabled => SourceHealth::default(),
+                None => continue,
+            };
+            if let Some(state) = s.apply_health(observed, now) {
+                transitions.push((s.id.clone(), state));
+            }
+        }
+        transitions
+    }
 }
 
 #[cfg(test)]
@@ -175,6 +202,7 @@ mod tests {
             notes: None,
             last_run_at: 0,
             last_status: None,
+            disabled_at: None,
         }
     }
 
@@ -277,6 +305,34 @@ mod tests {
             serde_json::to_string(&sample("b", true, Lifecycle::Active)).unwrap(),
         );
         assert_eq!(Registry::parse(&text).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn apply_health_degrades_reported_sources_but_not_absent_ones() {
+        use crate::model::SourceHealth;
+        use std::collections::HashMap;
+
+        let mut r = Registry::default();
+        r.upsert(sample("failing", true, Lifecycle::Active));
+        r.upsert(sample("degraded_no_data", true, Lifecycle::Degraded));
+
+        let mut health = HashMap::new();
+        health.insert(
+            "failing".to_string(),
+            SourceHealth {
+                error_rate_24h: 0.9,
+                consecutive_zero_runs: 0,
+            },
+        );
+        // "degraded_no_data" is absent from the report this cycle.
+        let t = r.apply_health(&health, 1000);
+
+        assert_eq!(t, vec![("failing".to_string(), Lifecycle::Degraded)]);
+        assert_eq!(
+            r.get("degraded_no_data").unwrap().lifecycle,
+            Lifecycle::Degraded,
+            "a missing report must not silently recover a degraded source"
+        );
     }
 
     #[test]
