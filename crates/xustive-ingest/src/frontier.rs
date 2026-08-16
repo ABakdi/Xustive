@@ -368,6 +368,38 @@ mod tests {
     }
 
     #[test]
+    fn host_case_and_default_ports_are_normalised() {
+        // Host and scheme are case-insensitive, and :443/:80 are the defaults — three spellings of
+        // one resource that would otherwise be crawled three times. url::Url folds these on parse;
+        // this pins that we rely on it, so a parser swap cannot silently reintroduce the duplicates.
+        assert_eq!(
+            canonical(&u("https://Example.DZ/Article")),
+            canonical(&u("https://example.dz/Article"))
+        );
+        assert_eq!(
+            canonical(&u("https://e.dz:443/x")),
+            canonical(&u("https://e.dz/x"))
+        );
+        assert_eq!(
+            canonical(&u("http://e.dz:80/x")),
+            canonical(&u("http://e.dz/x"))
+        );
+        // Path case is preserved — servers may treat /Article and /article as different resources.
+        assert_ne!(
+            canonical(&u("https://e.dz/Article")),
+            canonical(&u("https://e.dz/article"))
+        );
+    }
+
+    #[test]
+    fn query_order_does_not_make_a_new_url() {
+        assert_eq!(
+            canonical(&u("https://e.dz/a?b=2&a=1")),
+            canonical(&u("https://e.dz/a?a=1&b=2"))
+        );
+    }
+
+    #[test]
     fn meaningful_parameters_are_kept() {
         // `?page=2` is a different page. Stripping it silently loses everything after the first.
         assert_ne!(
