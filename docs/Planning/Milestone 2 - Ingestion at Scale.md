@@ -295,7 +295,11 @@ also the fastest option — no bundle to download, parse and hydrate.
       `is_new = true`, so a Redis wobble lets documents through rather than dropping them —
       indexing a duplicate is a no-op, a lost document is permanent. Proven against a dead Redis
 - [ ] M2-T05.8 Volatile-page detection (revision loop guard) — shares its mechanism with M2-T15.4
-- [ ] M2-T05.9 Quality evaluation: 500 dup + 500 distinct pairs, precision ≥ 0.95, recall ≥ 0.85
+- [~] M2-T05.9 Quality evaluation — the real classifier over 500 duplicate and 500 distinct
+      generated pairs: **precision 1.000, recall 0.866** against the 0.95/0.85 gate. Deterministic
+      and generated, so it is a regression guard and a check on the distance threshold, not a
+      production claim; the real labelled set the exit gate names is still owed. Surfaced that
+      SimHash shingling puts multi-edit rewrites in the 4-8 cluster band, not the duplicate band
 
 ## M2-T06 — [[Enrichment Pipeline]]
 
