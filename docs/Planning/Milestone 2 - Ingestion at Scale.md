@@ -39,19 +39,27 @@ notice. Budget for it as ongoing work, not a project that finishes.
 
 ## M2-T01a — [[Session Manager]] ★ *start during M1 — warm-up is wall-clock*
 
-- [ ] M2-T01a.1 Identity record; encrypted credential/cookie storage (XChaCha20-Poly1305)
-- [ ] M2-T01a.2 **Pinning invariant** — `account ↔ proxy ↔ fingerprint ↔ device`, with the test
-      proving no code path can break it
-- [ ] M2-T01a.3 Lifecycle: fresh → warming → mature → quarantined → burned
-- [ ] M2-T01a.4 Warm-up scheduler with human-shaped browsing patterns
-- [ ] M2-T01a.5 Per-identity budgets with jitter and diurnal shaping
-- [ ] M2-T01a.6 Login flows + TOTP; operator queue for anything needing a human
-- [ ] M2-T01a.7 Challenge detection (captcha, checkpoint, login wall, rate limit)
-- [ ] M2-T01a.8 **Silent-cloaking detection**: canaries + `consecutive_empty` thresholds
-- [ ] M2-T01a.9 Quarantine/recovery with doubling cooldown; burn after 3
-- [ ] M2-T01a.10 Fail-closed budget accounting across Redis restarts
+- [x] M2-T01a.1 Identity record; encrypted credential/cookie storage (XChaCha20-Poly1305) —
+      `session::crypto`, `session::Identity`; nonce-per-seal, plaintext zeroised on drop
+- [x] M2-T01a.2 **Pinning invariant** — `SessionLease` carries the pinned proxy+fingerprint with no
+      setter, so no code path can rotate within an identity (`session::pool`)
+- [x] M2-T01a.3 Lifecycle: fresh → warming → mature → quarantined → burned (`session::lifecycle`)
+- [ ] M2-T01a.4 Warm-up scheduler with human-shaped browsing patterns — needs real accounts + browsing
+- [x] M2-T01a.5 Per-identity budgets with jitter and diurnal shaping (`session::budget`; window offset
+      per identity)
+- [ ] M2-T01a.6 Login flows + TOTP; operator queue for anything needing a human — needs real accounts
+- [x] M2-T01a.7 Challenge detection (captcha, checkpoint, login wall, rate limit) (`session::detection`)
+- [x] M2-T01a.8 **Silent-cloaking detection**: canaries + `consecutive_empty` thresholds — canary
+      disagreement separates soft-ban from a platform change (`session::detection`)
+- [x] M2-T01a.9 Quarantine/recovery with doubling cooldown; burn after 3 (`session::lifecycle`)
+- [ ] M2-T01a.10 Fail-closed budget accounting across Redis restarts — needs the Redis counter layer
+      (pure budget logic done; the fail-closed store is the remaining piece)
 - [ ] M2-T01a.11 **Account acquisition and pool sizing** ← procurement; start in M1
-- [ ] M2-T01a.12 Pool exhaustion halts the platform (never degrade to unpinned identities)
+- [x] M2-T01a.12 Pool exhaustion halts the platform (never degrade to unpinned identities) —
+      `Exhausted` vs `NoneAvailableNow` distinguished (`session::pool`)
+
+*Decision logic done and unit-tested; the open items (.4, .6, .10, .11) need real accounts, live
+browsing, or the Redis budget-counter layer, not more pure logic.*
 
 ## M2-T01b — [[Fingerprint Engine]]
 
