@@ -496,6 +496,25 @@ impl Default for CrawlPolicy {
     }
 }
 
+/// Where a source sits in its lifecycle (§6 of [[Data Sources Registry]]).
+///
+/// `Proposed → Reviewed → Approved → Active → (Degraded) → Disabled → Archived`. Only `Active` and
+/// `Degraded` are crawled — `Degraded` is still active but flagged, so it keeps being crawled while
+/// an operator decides. `Disabled` and everything after it is off. A source can drop to `Disabled`
+/// from *any* state (legal-basis lapse, opt-out, takedown, persistent failure).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Lifecycle {
+    #[default]
+    Proposed,
+    Reviewed,
+    Approved,
+    Active,
+    Degraded,
+    Disabled,
+    Archived,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Source {
     pub id: String,
@@ -511,12 +530,51 @@ pub struct Source {
     pub legal_basis: LegalBasis,
     #[serde(default)]
     pub approved: bool,
+    /// Defaults to `Proposed` so a record hand-added without the field is *not* crawlable until it
+    /// is explicitly moved to `Active` — the safe default for a submission.
+    #[serde(default)]
+    pub lifecycle: Lifecycle,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
     #[serde(default)]
     pub last_run_at: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_status: Option<String>,
+}
+
+impl Source {
+    /// The single predicate the crawler asks before injecting a source's entry points. True only
+    /// for an approved source in an active state whose crawl policy is enabled — so no call site
+    /// can crawl an un-reviewed, disabled, or paused source by forgetting one of the checks.
+    pub fn is_crawlable(&self) -> bool {
+        self.approved
+            && self.crawl_policy.enabled
+            && matches!(self.lifecycle, Lifecycle::Active | Lifecycle::Degraded)
+    }
+
+    /// Move to `Disabled` because the legal basis lapsed (§5) — a token revoked, an app removed,
+    /// `robots.txt` changed to forbid us. Returns whether anything changed, so a caller exports
+    /// only on a real transition. Auto-disable, not a flag: a lapsed basis is not a source we are
+    /// allowed to keep crawling while someone decides.
+    pub fn disable_for_lapsed_basis(&mut self) -> bool {
+        if self.lifecycle == Lifecycle::Disabled || self.lifecycle == Lifecycle::Archived {
+            return false;
+        }
+        self.lifecycle = Lifecycle::Disabled;
+        self.append_note("auto-disabled: legal basis lapsed");
+        true
+    }
+
+    fn append_note(&mut self, msg: &str) {
+        let note = format!("[{msg}]");
+        match &mut self.notes {
+            Some(n) if !n.is_empty() => {
+                n.push(' ');
+                n.push_str(&note);
+            }
+            _ => self.notes = Some(note),
+        }
+    }
 }
 
 /// Registrable domain of a URL, lowercased, `www.` stripped.

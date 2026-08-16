@@ -11,15 +11,17 @@ pub mod config;
 pub mod error;
 pub mod hash;
 pub mod model;
+pub mod registry;
 pub mod safe_url;
 
 pub use config::Config;
 pub use error::{Classify, ErrorClass};
 pub use model::{
     Author, BodySource, Comment, CrawlFrequency, CrawlPolicy, DatePrecision, Document, Engagement,
-    Geo, Lang, LegalBasis, Media, MediaKind, Script, Sentiment, SentimentLabel, Source, SourceType,
-    TrustTier, SCHEMA_VERSION,
+    Geo, Lang, LegalBasis, Lifecycle, Media, MediaKind, Script, Sentiment, SentimentLabel, Source,
+    SourceType, TrustTier, SCHEMA_VERSION,
 };
+pub use registry::{Registry, RegistryError};
 pub use safe_url::{SafeUrl, UrlError};
 
 /// Generate a new time-sortable identifier.
