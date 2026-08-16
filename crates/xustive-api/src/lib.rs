@@ -407,6 +407,7 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
         .metrics
         .set_gauge(metrics::BUILD_INFO, metrics::BUILD_INFO_HELP, 1);
     sample_queue_gauges(&state).await;
+    sample_crawl_gauges(&state).await;
     (
         StatusCode::OK,
         [(
@@ -429,6 +430,33 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
 /// benefit of a metrics endpoint. **Every failure here is silent on purpose:** `/metrics` must
 /// answer even when Redis does not, or the monitoring goes dark at the same moment as the thing it
 /// monitors — and a liveness probe shares this port.
+/// Read the crawler's fetched/revisited split at scrape time.
+///
+/// Sampled from the shared crawl counters rather than pushed, for the same reason as the queue
+/// gauges: the crawler is a separate process that restarts, and a gauge that only updates while it
+/// is alive goes dark exactly when an operator is asking why. Silent on any failure — /metrics
+/// shares a port with the liveness probe.
+async fn sample_crawl_gauges(state: &AppState) {
+    let Some(stats) = xustive_ingest::crawl_stats::CrawlStats::connect(&state.config.queue.url)
+    else {
+        return;
+    };
+    let snap = stats.snapshot().await;
+    if snap.unavailable {
+        return;
+    }
+    state.metrics.set_gauge(
+        metrics::CRAWL_FETCHED,
+        metrics::CRAWL_FETCHED_HELP,
+        snap.fetched,
+    );
+    state.metrics.set_gauge(
+        metrics::CRAWL_REVISITED,
+        metrics::CRAWL_REVISITED_HELP,
+        snap.revisited,
+    );
+}
+
 async fn sample_queue_gauges(state: &AppState) {
     let cfg = &state.config.queue;
     let Ok(queue) = xustive_queue::Queue::connect(&cfg.url, &cfg.index_stream, "indexers").await

@@ -258,6 +258,7 @@ pub fn section_live() -> String {
 <div class="tiles" id="crawl-tiles">
   <div class="tile"><span class="tile-n" id="c-indexed">–</span><span class="tile-l">indexed</span></div>
   <div class="tile"><span class="tile-n" id="c-fetched">–</span><span class="tile-l">fetched</span></div>
+  <div class="tile"><span class="tile-n" id="c-revisited">–</span><span class="tile-l">of them revisits</span></div>
   <div class="tile"><span class="tile-n" id="c-discovered">–</span><span class="tile-l">discovered</span></div>
   <div class="tile"><span class="tile-n" id="c-waiting">–</span><span class="tile-l">queued</span></div>
   <div class="tile"><span class="tile-n" id="c-deferred">–</span><span class="tile-l">revisits booked</span></div>

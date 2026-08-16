@@ -580,3 +580,81 @@ async fn a_conditional_refetch_of_an_unchanged_page_costs_no_body() {
     assert_eq!(third.status, 200);
     assert!(!third.body.is_empty());
 }
+
+/// The fetched split: a first fetch is discovery, a re-fetch of the same page is a revisit (M2-T15.8).
+///
+/// Freshness (revisits) and coverage (discovery) share one fetch budget, and a single `fetched`
+/// total hides which is happening. This proves the two are counted apart: the same URL fetched
+/// twice registers as one discovery and one revisit, because the second fetch finds prior visit
+/// state and the first does not.
+#[tokio::test]
+async fn a_refetch_counts_as_a_revisit_not_a_discovery() {
+    let Some(f) = depth_frontier("split") else {
+        eprintln!("skipping: no Redis");
+        return;
+    };
+    if port() == 0 {
+        return;
+    }
+    f.clear().await;
+    let visits = xustive_ingest::revisit::Visits::connect_in(
+        &std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6390".into()),
+        "test:split",
+    )
+    .unwrap();
+
+    let Ok(fetcher) = Fetcher::new(FetchConfig {
+        ignore_politeness: true,
+        ..FetchConfig::default()
+    }) else {
+        return;
+    };
+    let mut orch = xustive_ingest::orchestrator::Orchestrator::new(
+        fetcher,
+        f.clone(),
+        xustive_ingest::orchestrator::OrchestratorConfig {
+            revisit: true,
+            default_delay: Duration::from_millis(0),
+            ..Default::default()
+        },
+    )
+    .with_visits(visits);
+
+    let url = format!("{}/articles/normal.html", base());
+    let host = url::Url::parse(&url)
+        .unwrap()
+        .host_str()
+        .unwrap()
+        .to_string();
+    let pending = xustive_ingest::frontier::Pending {
+        url: url.clone(),
+        host: host.clone(),
+        source_id: "fixture".into(),
+        depth: 0,
+        trust: 60,
+        priority: 0,
+    };
+
+    // First fetch: fresh discovery.
+    assert_eq!(f.add(&pending).await, Ok(true));
+    let _ = orch.step(1_000).await;
+    assert_eq!(orch.stats().fetched, 1);
+    assert_eq!(
+        orch.stats().revisited,
+        0,
+        "a first fetch is discovery, not a revisit"
+    );
+
+    // Second fetch of the same URL: the page is now in `seen`, so re-queue it the way a revisit
+    // does — through `defer`, which bypasses `seen` — then promote it due and step again.
+    f.defer(&pending, 2_000).await;
+    assert_eq!(f.promote_due(2_000, 10).await, 1);
+    let _ = orch.step(3_000).await;
+
+    assert_eq!(orch.stats().fetched, 2);
+    assert_eq!(
+        orch.stats().revisited,
+        1,
+        "the second fetch of a known page is a revisit; fetched - revisited is discovery"
+    );
+}

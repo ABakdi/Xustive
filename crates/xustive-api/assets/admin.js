@@ -112,6 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!live) return;
     text('c-indexed', s.indexed);
     text('c-fetched', s.fetched);
+    text('c-revisited', s.revisited);
     text('c-discovered', s.discovered);
     text('c-waiting', s.waiting);
     text('c-deferred', s.deferred);

@@ -51,6 +51,10 @@ pub struct RecentUrl {
 pub struct Snapshot {
     pub state: String,
     pub fetched: u64,
+    /// Of `fetched`, the revisits. `fetched - revisited` is fresh discovery — the two halves of the
+    /// crawl budget, so the console can show whether it is keeping the corpus current or growing it.
+    #[serde(default)]
+    pub revisited: u64,
     pub parsed: u64,
     pub indexed: u64,
     pub discovered: u64,
@@ -197,6 +201,7 @@ impl CrawlStats {
             // the due set and should not — it would be a second reader disagreeing with the first.
             deferred: 0,
             fetched: counters.get("fetched").copied().unwrap_or(0),
+            revisited: counters.get("revisited").copied().unwrap_or(0),
             parsed: counters.get("parsed").copied().unwrap_or(0),
             indexed: counters.get("indexed").copied().unwrap_or(0),
             discovered: counters.get("discovered").copied().unwrap_or(0),

@@ -343,6 +343,12 @@ pub const QUEUE_DEAD: &str = "xustive_queue_dead_letters";
 pub const QUEUE_DEAD_HELP: &str =
     "Documents the indexer gave up on. Any sustained rise is data loss; replay is deliberate and manual, so nothing clears this on its own.";
 
+pub const CRAWL_FETCHED: &str = "xustive_crawl_fetched_total";
+pub const CRAWL_FETCHED_HELP: &str = "Pages fetched by the crawler since it started.";
+pub const CRAWL_REVISITED: &str = "xustive_crawl_revisited_total";
+pub const CRAWL_REVISITED_HELP: &str =
+    "Of the fetches, how many were revisits of pages already held. fetched minus this is fresh discovery — the two halves of the crawl budget, separated so freshness and coverage cannot starve each other unseen.";
+
 #[cfg(test)]
 mod tests {
     use super::*;

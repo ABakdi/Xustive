@@ -47,6 +47,11 @@ const PROMOTE_BATCH: usize = 500;
 #[derive(Debug, Default, Clone)]
 pub struct Stats {
     pub fetched: usize,
+    /// Of `fetched`, how many were revisits of pages already held. `fetched - revisited` is fresh
+    /// discovery. Split out so freshness and coverage are separately visible: a crawl whose fetches
+    /// are almost all revisits is keeping its corpus current but not growing it, and one with almost
+    /// none is the reverse. A single total hides which is happening (M2-T15.8).
+    pub revisited: usize,
     pub parsed: usize,
     pub discovered: usize,
     pub failed: usize,
@@ -291,6 +296,12 @@ impl Orchestrator {
         };
         self.stats.fetched += 1;
         self.publish("fetched").await;
+        // A claim with prior visit state is a revisit; without, it is fresh discovery. This is the
+        // same signal the conditional request used above, reused so the two can never disagree.
+        if prior.is_some() {
+            self.stats.revisited += 1;
+            self.publish("revisited").await;
+        }
 
         if fetched.status == 304 {
             // The best possible outcome of a revisit: the page is exactly what we hold, learned
