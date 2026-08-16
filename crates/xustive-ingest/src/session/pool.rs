@@ -26,6 +26,9 @@ pub struct Identity {
     pub lifecycle: Lifecycle,
     pub spend: BudgetSpend,
     pub capabilities: Vec<Capability>,
+    /// The start hour (local, Africa/Algiers) of this identity's daily active window. Per identity,
+    /// so the pool is not uniformly busy — the window *length* is the platform's (`BudgetLimits`).
+    pub active_start_hour: u8,
 }
 
 impl Identity {
@@ -119,7 +122,7 @@ impl SessionPool {
             .iter()
             .filter(|i| i.platform == platform && i.lifecycle.tier().is_collectable())
             .filter(|i| i.can(cap))
-            .filter(|i| self.limits.is_active_hour(local_hour))
+            .filter(|i| self.limits.is_active_hour(i.active_start_hour, local_hour))
             .filter(|i| {
                 let ratio = i.lifecycle.tier().budget_ratio(self.warming_ratio);
                 let (h, d) = self.limits.scaled(ratio);
@@ -167,13 +170,13 @@ mod tests {
             lifecycle: life,
             spend: BudgetSpend::default(),
             capabilities: vec![Capability::LoggedIn],
+            active_start_hour: 0,
         }
     }
 
     fn pool() -> SessionPool {
         // A window covering the whole day so tests are not hour-sensitive unless they mean to be.
         let limits = BudgetLimits {
-            active_start_hour: 0,
             active_len_hours: 24,
             ..BudgetLimits::instagram()
         };
@@ -254,6 +257,28 @@ mod tests {
             Err(SessionPoolError::NoneAvailableNow(Platform::Instagram))
         );
         // But it can serve an anonymous request.
+        assert!(p
+            .acquire(Platform::Instagram, &Capability::Anonymous, 12, 0.5)
+            .is_ok());
+    }
+
+    #[test]
+    fn an_identity_outside_its_active_window_is_not_leased_now() {
+        // A 10-hour window; the identity's offset makes it active 8–17. At 03:00 it must not lease,
+        // and since it is the only (collectable) identity, the result is "none now", not exhaustion.
+        let limits = BudgetLimits {
+            active_len_hours: 10,
+            ..BudgetLimits::instagram()
+        };
+        let mut p = SessionPool::new(limits, 0.25);
+        let mut i = mature("ig-1");
+        i.active_start_hour = 8;
+        p.add(i);
+        assert_eq!(
+            p.acquire(Platform::Instagram, &Capability::Anonymous, 3, 0.5),
+            Err(SessionPoolError::NoneAvailableNow(Platform::Instagram))
+        );
+        // Inside its window it leases fine.
         assert!(p
             .acquire(Platform::Instagram, &Capability::Anonymous, 12, 0.5)
             .is_ok());

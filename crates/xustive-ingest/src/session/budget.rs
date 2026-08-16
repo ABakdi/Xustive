@@ -17,8 +17,8 @@ pub struct BudgetLimits {
     pub min_gap_ms: u64,
     /// Jitter as a fraction of the gap, e.g. `0.4` for ±40 %.
     pub jitter_frac_pct: u32,
-    /// The identity's daily active window, in local (Africa/Algiers) hours: `[start, start+len)`.
-    pub active_start_hour: u8,
+    /// The length of the daily active window, in hours. Platform-wide; the *offset* is per identity
+    /// (each identity carries its own `active_start_hour`) so they are not all busy at the same time.
     pub active_len_hours: u8,
 }
 
@@ -37,7 +37,6 @@ impl BudgetLimits {
             daily: 400,
             min_gap_ms: 2_500,
             jitter_frac_pct: 40,
-            active_start_hour: 8,
             active_len_hours: 10,
         }
     }
@@ -52,11 +51,11 @@ impl BudgetLimits {
         )
     }
 
-    /// Whether the identity's active window covers `local_hour` (0–23). A window that wraps past
-    /// midnight (e.g. start 22, len 6 → 22,23,0..4) is handled.
-    pub fn is_active_hour(&self, local_hour: u8) -> bool {
+    /// Whether an identity whose window starts at `start_hour` is active at `local_hour` (both
+    /// 0–23). A window that wraps past midnight (e.g. start 22, len 6 → 22,23,0..4) is handled.
+    pub fn is_active_hour(&self, start_hour: u8, local_hour: u8) -> bool {
         let len = self.active_len_hours.min(24);
-        let start = self.active_start_hour % 24;
+        let start = start_hour % 24;
         let h = local_hour % 24;
         // Distance forward from start to h, modulo 24, is within the window length.
         let dist = (24 + h as i32 - start as i32) % 24;
@@ -107,28 +106,30 @@ mod tests {
 
     #[test]
     fn the_active_window_is_a_per_identity_slice_of_the_day() {
+        // Window length 10; the identity's offset (start hour 8) is passed in per identity.
         let l = BudgetLimits {
-            active_start_hour: 8,
             active_len_hours: 10,
             ..BudgetLimits::instagram()
         };
-        assert!(l.is_active_hour(8));
-        assert!(l.is_active_hour(17));
-        assert!(!l.is_active_hour(18), "the window ends before hour 18");
-        assert!(!l.is_active_hour(4), "and an identity is idle at 04:00");
+        assert!(l.is_active_hour(8, 8));
+        assert!(l.is_active_hour(8, 17));
+        assert!(!l.is_active_hour(8, 18), "the window ends before hour 18");
+        assert!(!l.is_active_hour(8, 4), "and an identity is idle at 04:00");
+        // A different identity with a later offset is active at a different time.
+        assert!(l.is_active_hour(14, 20));
+        assert!(!l.is_active_hour(14, 8));
     }
 
     #[test]
     fn a_window_wrapping_past_midnight_is_handled() {
         let l = BudgetLimits {
-            active_start_hour: 22,
-            active_len_hours: 6, // 22,23,0,1,2,3
+            active_len_hours: 6,
             ..BudgetLimits::instagram()
-        };
-        assert!(l.is_active_hour(23));
-        assert!(l.is_active_hour(2));
-        assert!(!l.is_active_hour(4));
-        assert!(!l.is_active_hour(21));
+        }; // start 22 → 22,23,0..3
+        assert!(l.is_active_hour(22, 23));
+        assert!(l.is_active_hour(22, 2));
+        assert!(!l.is_active_hour(22, 4));
+        assert!(!l.is_active_hour(22, 21));
     }
 
     #[test]
