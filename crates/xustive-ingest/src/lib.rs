@@ -16,6 +16,7 @@ pub mod dedup;
 pub mod exclusion;
 pub mod fetch;
 pub mod frontier;
+pub mod gazetteer;
 pub mod orchestrator;
 pub mod parse;
 pub mod revisit;

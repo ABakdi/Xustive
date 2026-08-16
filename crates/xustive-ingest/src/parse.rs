@@ -348,6 +348,14 @@ impl Parser {
         document.indexed_at = now;
         document.media = media;
         document.entities = self.extract_entities(&document.title, &document.body);
+        // Geo hint (M2-T06.5): which wilaya the story is about, from the title and body. The title
+        // is weighted by being scanned alongside the body — a wilaya in the headline counts too.
+        if let Some(hint) =
+            crate::gazetteer::detect_wilaya(&format!("{} {}", document.title, document.body))
+        {
+            document.geo.wilaya = Some(hint.code.to_string());
+            document.geo.wilaya_name = Some(hint.name.to_string());
+        }
         document.http_status = 200;
         document.fetch_method = Some("static".into());
         document.access_path = Some(method.as_str().into());
@@ -1073,6 +1081,23 @@ mod tests {
             .parse(&html, "https://example.dz/a", "t", SourceType::Web)
             .unwrap();
         assert_eq!(r.document.language, Lang::Ary);
+    }
+
+    #[test]
+    fn a_wilaya_named_in_the_article_becomes_a_geo_hint() {
+        // A body that clearly names one wilaya should populate the document's geo, so an
+        // Algeria-first search can rank a Béchar story for a Béchar reader (M2-T06.5).
+        let body = "وقعت فيضانات كبيرة في ولاية بشار هذا الأسبوع، وأكدت السلطات المحلية في بشار أن الأضرار جسيمة في المنطقة بأكملها، ودعت السكان إلى الحذر الشديد ومتابعة تعليمات الحماية المدنية في بشار خلال الأيام القادمة.";
+        let html = format!("<html><body><article><p>{body}</p></article></body></html>");
+        let r = p()
+            .parse(&html, "https://example.dz/a", "t", SourceType::Web)
+            .unwrap();
+        assert_eq!(
+            r.document.geo.wilaya.as_deref(),
+            Some("8"),
+            "Béchar is wilaya 08"
+        );
+        assert_eq!(r.document.geo.wilaya_name.as_deref(), Some("بشار"));
     }
 
     #[test]
