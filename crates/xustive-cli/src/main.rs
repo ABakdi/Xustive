@@ -4,6 +4,7 @@
 //! normaliser actually does to a string. That last one exists because "why does this query match
 //! nothing" is almost always a normalisation question.
 
+mod commoncrawl;
 mod crawl;
 mod crawld;
 mod eval;
@@ -82,6 +83,27 @@ enum Command {
         /// Fetch only listed entry points; do not follow homepage links.
         #[arg(long)]
         no_discover: bool,
+    },
+    /// Bootstrap the frontier from a Common Crawl snapshot's index (M2-T16.1).
+    CommonCrawl {
+        /// Snapshot id, e.g. `CC-MAIN-2026-05`.
+        #[arg(long)]
+        index: String,
+        /// CDX URL pattern to scan. `*.dz` is every `.dz` host.
+        #[arg(long, default_value = "*.dz")]
+        pattern: String,
+        /// Registry file, for the known Algerian hosts on generic TLDs.
+        #[arg(long, default_value = "data/sources/registry.jsonl")]
+        registry: PathBuf,
+        /// Stop after this many index pages. Omit to ingest the whole snapshot.
+        #[arg(long)]
+        max_pages: Option<usize>,
+        /// Ignore saved progress and start from page 0.
+        #[arg(long)]
+        restart: bool,
+        /// Seconds between index pages — politeness to the CDX server.
+        #[arg(long, default_value_t = 1)]
+        page_delay: u64,
     },
     /// Fetch a URL and show what the parser extracts — for authoring per-domain rules.
     ParseCheck {
@@ -174,6 +196,30 @@ async fn main() -> Result<()> {
     // `registry` curates a git-versioned file and needs no backend either.
     if let Command::Registry { path, action } = &args.command {
         return registry::run(path, action);
+    }
+
+    // `commoncrawl` reads the CDX index and seeds the frontier; no Meili involved.
+    if let Command::CommonCrawl {
+        index,
+        pattern,
+        registry,
+        max_pages,
+        restart,
+        page_delay,
+    } = &args.command
+    {
+        return commoncrawl::run(
+            &config,
+            &commoncrawl::Options {
+                index: index.clone(),
+                pattern: pattern.clone(),
+                registry_path: registry.display().to_string(),
+                max_pages: *max_pages,
+                restart: *restart,
+                page_delay_secs: *page_delay,
+            },
+        )
+        .await;
     }
 
     // `parse-check` fetches a URL and runs the parser; no index or queue involved.
@@ -275,7 +321,10 @@ async fn main() -> Result<()> {
             limit,
             explain,
         } => cmd_search(&client, &config, &query, limit, explain).await,
-        Command::Text { .. } | Command::Registry { .. } | Command::ParseCheck { .. } => {
+        Command::Text { .. }
+        | Command::Registry { .. }
+        | Command::ParseCheck { .. }
+        | Command::CommonCrawl { .. } => {
             unreachable!("handled above")
         }
     }
