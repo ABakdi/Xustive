@@ -306,7 +306,11 @@ also the fastest option — no bundle to download, parse and hydrate.
 - [ ] M2-T06.1 `EnrichmentStep` trait and ordered executor
 - [ ] M2-T06.2 Required vs optional steps; skip-under-pressure with `enrichment_level = "partial"`
 - [ ] M2-T06.3 Quality scoring
-- [ ] M2-T06.4 Spam scoring + phrase list; suppression at 0.8 (not deletion)
+- [x] M2-T06.4 Spam scoring + phrase list; suppression at 0.8 (not deletion) — `spam::spam_score`
+      populates `spam_score` from two signals, stronger wins: distinct spam phrases present (a
+      data-file list in ar/fr/en, so one phrase repeated is one signal) and keyword stuffing (the
+      most common content word's share of the body). Conservative by design — a false positive
+      buries a real document. Wired into parse; search already suppresses at 0.8
 - [x] M2-T06.5 Geo/wilaya gazetteer hinting — `gazetteer::detect_wilaya` scans title and body for
       the 58 wilaya names (ar + fr), folded and whole-token, and hints the one named most; a lone
       tied mention is left unhinted. The name table is generated from xustive-tools so the two do
