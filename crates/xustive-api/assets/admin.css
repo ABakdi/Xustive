@@ -147,6 +147,9 @@ form.admin button {
 .state-warn { color: var(--amber-600); }
 .state-missing { color: var(--color-text-muted); }
 
+/* A table cell whose value is outside its healthy band (source-health dashboard, §7). */
+td.warn { color: var(--amber-600); font-weight: 600; }
+
 /* --- console shell ------------------------------------------------------------------------ */
 /* A two-column grid, not a framework. The whole admin is ~6 KB of CSS; a component library
    would be that before the first rule. */

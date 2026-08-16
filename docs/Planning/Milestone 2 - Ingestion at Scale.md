@@ -550,7 +550,7 @@ proxy and fingerprint machinery, bound by the same pinning invariant.
   seeded (`data/sources/registry.jsonl`); ~400 left for human curation, all as `proposed`
 - [ ] M2-T11.4 Per-domain parser rules for the top 50 ([[Content Parser]])
 - [ ] M2-T11.5 Per-source quality dashboards (fetch, extraction, dedup, spam, date precision)
-- [ ] M2-T11.6 Lifecycle automation: degrade on sustained failure
+- [x] M2-T11.6 Lifecycle automation: degrade on sustained failure
 - [ ] M2-T11.7 Name a curation owner ← *B5*
 
 ## M2-T12 — [[Admin and Source Submission]] (admin half)

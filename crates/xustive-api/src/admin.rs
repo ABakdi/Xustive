@@ -482,6 +482,7 @@ pub const SECTIONS: &[(&str, &str, &str)] = &[
     ("CRAWLER", "Live", "/admin/crawler"),
     ("CRAWLER", "Documents", "/admin/documents"),
     ("CRAWLER", "Sources", "/admin/sources"),
+    ("CRAWLER", "Source health", "/admin/sources/health"),
     ("SYSTEM", "Compute", "/admin/compute"),
 ];
 

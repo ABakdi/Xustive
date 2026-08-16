@@ -161,6 +161,10 @@ pub struct CrawlConfig {
     pub ignore_politeness: bool,
     /// The seed list. Read and written by the admin console, read by the crawler.
     pub seeds_path: String,
+    /// The data sources registry (JSON-Lines). Read by the crawler for its approved, active
+    /// sources, and by the admin console's per-source quality dashboard (M2-T11.5).
+    #[serde(default = "default_registry_path")]
+    pub registry_path: String,
     /// Rows per page in the admin document list.
     ///
     /// Paged rather than "all": a list that loads everything is fine at a thousand documents and
@@ -173,6 +177,10 @@ pub struct CrawlConfig {
     pub raw_ttl_days: u64,
 }
 
+fn default_registry_path() -> String {
+    "data/sources/registry.jsonl".into()
+}
+
 impl Default for CrawlConfig {
     fn default() -> Self {
         Self {
@@ -181,6 +189,7 @@ impl Default for CrawlConfig {
             // Off. The only safe default for a flag whose failure mode is being reported for abuse.
             ignore_politeness: false,
             seeds_path: "data/sources/seeds.tsv".into(),
+            registry_path: default_registry_path(),
             documents_page_size: 50,
             raw_ttl_days: 0,
         }

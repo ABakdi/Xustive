@@ -474,6 +474,84 @@ pub async fn sources(
     Ok(Json(json!({ "seeds": seeds })))
 }
 
+/// Build the per-source quality rows (M2-T11.5): each registry source joined to its crawl counters,
+/// with the §7 ratios computed. A ratio is `null` when the source has no data yet, so the console
+/// shows "—" rather than a misleading 0 %. Sources with no registry entry but with counters (e.g.
+/// TSV-only seeds) are included too, so the dashboard never hides work the crawler actually did.
+async fn source_health_rows(state: &AppState) -> Vec<serde_json::Value> {
+    let metrics = match stats(state) {
+        Some(s) => s.source_metrics().await,
+        None => std::collections::HashMap::new(),
+    };
+    let registry = xustive_core::Registry::load(&state.config.crawl.registry_path).ok();
+
+    let mut rows = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    // Registry sources first, in id order, each with whatever counters it has accrued.
+    if let Some(reg) = &registry {
+        let mut sources: Vec<&xustive_core::Source> = reg.sources().iter().collect();
+        sources.sort_by(|a, b| a.id.cmp(&b.id));
+        for s in sources {
+            seen.insert(s.id.clone());
+            let m = metrics.get(&s.id).cloned().unwrap_or_default();
+            rows.push(row_json(&s.id, Some(s), &m));
+        }
+    }
+    // Then any source with counters but no registry record.
+    let mut orphans: Vec<(&String, &xustive_ingest::crawl_stats::SourceMetrics)> = metrics
+        .iter()
+        .filter(|(id, _)| !seen.contains(*id))
+        .collect();
+    orphans.sort_by(|a, b| a.0.cmp(b.0));
+    for (id, m) in orphans {
+        rows.push(row_json(id, None, m));
+    }
+    rows
+}
+
+fn row_json(
+    id: &str,
+    source: Option<&xustive_core::Source>,
+    m: &xustive_ingest::crawl_stats::SourceMetrics,
+) -> serde_json::Value {
+    // A ratio is emitted only when it is defined; `null` reads as "—" on the page.
+    let ratio = |v: Option<f32>| v.map(|x| (x * 1000.0).round() / 1000.0);
+    json!({
+        "id": id,
+        "display_name": source.map(|s| s.display_name.clone()),
+        "lifecycle": source.map(|s| format!("{:?}", s.lifecycle).to_lowercase()),
+        "trust_tier": source.map(|s| format!("{:?}", s.trust_tier)),
+        "approved": source.map(|s| s.approved),
+        "crawlable": source.map(|s| s.is_crawlable()),
+        "counts": {
+            "fetched": m.fetched,
+            "failed": m.failed,
+            "indexed": m.indexed,
+            "thin": m.thin,
+            "duplicate": m.duplicate,
+        },
+        "quality": {
+            "fetch_success_rate": ratio(m.fetch_success_rate()),
+            "extraction_success_rate": ratio(m.extraction_success_rate()),
+            "duplicate_ratio": ratio(m.duplicate_ratio()),
+            "spam_mean": ratio(m.spam_mean()),
+            "date_unknown_ratio": ratio(m.date_unknown_ratio()),
+        },
+    })
+}
+
+/// `GET /admin/crawler/sources/health` — per-source quality metrics as JSON (M2-T11.5).
+pub async fn sources_health(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
+    let rows = source_health_rows(&state).await;
+    Ok(Json(json!({ "sources": rows })))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AddSeed {
     pub url: String,
@@ -685,4 +763,71 @@ in the index — those are separate actions, and conflating them would make "sto
 silently delete part of the index.</p>
 "#;
     axum::response::Html(crate::admin::console("/admin/sources", body)).into_response()
+}
+
+/// `GET /admin/sources/health` — the per-source quality dashboard (M2-T11.5).
+///
+/// Rendered client-side from `/admin/crawler/sources/health` so the page loads instantly and the
+/// numbers refresh without a full reload. The thresholds coloured here are the §7 healthy bands, so
+/// a cell that turns amber is the same signal the lifecycle automation degrades on.
+pub async fn page_source_health(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    if let Err(d) = crate::admin::authorise(&state, peer, &headers) {
+        return d.json().into_response();
+    }
+    let body = r#"<h1>Source health</h1>
+<p class="lede">Per-source quality, joined from the registry and the live crawl counters. A cell
+reads <span class="muted">—</span> until the source has data. Amber marks a value outside its
+healthy band (§7) — the same signal the lifecycle automation degrades on.</p>
+<p class="muted" id="sh-msg">Loading…</p>
+<table class="admin wide"><thead>
+  <tr>
+    <th>source</th><th>state</th><th>tier</th>
+    <th>fetched</th><th>indexed</th>
+    <th>fetch ok</th><th>extraction</th><th>duplicate</th><th>spam</th><th>date&nbsp;?</th>
+  </tr>
+</thead><tbody id="sh-rows"></tbody></table>
+
+<script>
+const pct = (v) => v === null || v === undefined ? '<span class="muted">—</span>'
+  : (v * 100).toFixed(0) + '%';
+// Healthy bands from §7: fetch >95%, extraction >90%, duplicate <30%, spam <0.2, date-unknown <10%.
+const band = (v, ok) => v === null || v === undefined ? '' : (ok(v) ? '' : ' class="warn"');
+async function load() {
+  const msg = document.getElementById('sh-msg');
+  try {
+    const r = await fetch('/admin/crawler/sources/health', { headers: { 'accept': 'application/json' } });
+    if (!r.ok) { msg.textContent = 'Could not load source health (' + r.status + ').'; return; }
+    const data = await r.json();
+    const rows = data.sources || [];
+    const tbody = document.getElementById('sh-rows');
+    tbody.innerHTML = '';
+    for (const s of rows) {
+      const q = s.quality, c = s.counts;
+      const name = s.display_name || s.id;
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + name + ' <span class="muted">' + s.id + '</span></td>' +
+        '<td>' + (s.lifecycle || '<span class="muted">—</span>') + '</td>' +
+        '<td>' + (s.trust_tier || '—') + '</td>' +
+        '<td>' + c.fetched + '</td>' +
+        '<td>' + c.indexed + '</td>' +
+        '<td' + band(q.fetch_success_rate, v => v > 0.95) + '>' + pct(q.fetch_success_rate) + '</td>' +
+        '<td' + band(q.extraction_success_rate, v => v > 0.90) + '>' + pct(q.extraction_success_rate) + '</td>' +
+        '<td' + band(q.duplicate_ratio, v => v < 0.30) + '>' + pct(q.duplicate_ratio) + '</td>' +
+        '<td' + band(q.spam_mean, v => v < 0.20) + '>' + pct(q.spam_mean) + '</td>' +
+        '<td' + band(q.date_unknown_ratio, v => v < 0.10) + '>' + pct(q.date_unknown_ratio) + '</td>';
+      tbody.appendChild(tr);
+    }
+    msg.textContent = rows.length + ' source(s). Refreshing every 10s.';
+  } catch (e) { msg.textContent = 'Could not load source health.'; }
+}
+load();
+setInterval(load, 10000);
+</script>
+"#;
+    axum::response::Html(crate::admin::console("/admin/sources/health", body)).into_response()
 }
