@@ -553,6 +553,46 @@ pub async fn sources_health(
     Ok(Json(json!({ "sources": rows })))
 }
 
+/// `GET /admin/crawler/channels` — per-channel discovery yield as JSON (M2-T16.8).
+///
+/// The funnel per discovery channel: discovered → fetched → indexed → survived dedup, plus the
+/// yield and unique rates. This is the number that decides whether an expensive channel earns its
+/// place. Rows are ordered by indexed descending, so the channels doing the work sort to the top.
+pub async fn channels(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
+    let metrics = match stats(&state) {
+        Some(s) => s.channel_metrics().await,
+        None => std::collections::HashMap::new(),
+    };
+    let ratio = |v: Option<f32>| v.map(|x| (x * 1000.0).round() / 1000.0);
+    let mut rows: Vec<serde_json::Value> = metrics
+        .into_iter()
+        .map(|(channel, m)| {
+            json!({
+                "channel": channel,
+                "discovered": m.discovered,
+                "fetched": m.fetched,
+                "indexed": m.indexed,
+                "duplicate": m.duplicate,
+                "yield_rate": ratio(m.yield_rate()),
+                "unique_rate": ratio(m.unique_rate()),
+            })
+        })
+        .collect();
+    // Ordered by indexed desc; the channel doing the most work is what an operator looks at first.
+    rows.sort_by(|a, b| {
+        b["indexed"]
+            .as_u64()
+            .cmp(&a["indexed"].as_u64())
+            .then_with(|| a["channel"].as_str().cmp(&b["channel"].as_str()))
+    });
+    Ok(Json(json!({ "channels": rows })))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AddSeed {
     pub url: String,
@@ -832,4 +872,62 @@ setInterval(load, 10000);
 </script>
 "#;
     axum::response::Html(crate::admin::console("/admin/sources/health", body)).into_response()
+}
+
+/// `GET /admin/discovery` — the per-channel yield dashboard (M2-T16.8).
+pub async fn page_channels(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    if let Err(d) = crate::admin::authorise(&state, peer, &headers) {
+        return d.json().into_response();
+    }
+    let body = r#"<h1>Discovery yield</h1>
+<p class="lede">The funnel per discovery channel: how many URLs each introduced, how many were
+fetched, and how many survived to an indexed document. <strong>Yield</strong> is indexed ÷
+discovered; <strong>unique</strong> is the share of a channel's documents that were not duplicates
+of something a cheaper channel already found. This is the number that decides whether an expensive
+channel earns its place (M2-T16.8).</p>
+<p class="muted" id="ch-msg">Loading…</p>
+<table class="admin wide"><thead>
+  <tr>
+    <th>channel</th><th>discovered</th><th>fetched</th><th>indexed</th>
+    <th>duplicate</th><th>yield</th><th>unique</th>
+  </tr>
+</thead><tbody id="ch-rows"></tbody></table>
+
+<script>
+const pct = (v) => v === null || v === undefined ? '<span class="muted">—</span>'
+  : (v * 100).toFixed(0) + '%';
+async function load() {
+  const msg = document.getElementById('ch-msg');
+  try {
+    const r = await fetch('/admin/crawler/channels', { headers: { 'accept': 'application/json' } });
+    if (!r.ok) { msg.textContent = 'Could not load discovery yield (' + r.status + ').'; return; }
+    const rows = (await r.json()).channels || [];
+    const tbody = document.getElementById('ch-rows');
+    tbody.innerHTML = '';
+    for (const c of rows) {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + c.channel + '</td>' +
+        '<td>' + c.discovered + '</td>' +
+        '<td>' + c.fetched + '</td>' +
+        '<td>' + c.indexed + '</td>' +
+        '<td>' + c.duplicate + '</td>' +
+        '<td>' + pct(c.yield_rate) + '</td>' +
+        '<td>' + pct(c.unique_rate) + '</td>';
+      tbody.appendChild(tr);
+    }
+    msg.textContent = rows.length
+      ? rows.length + ' channel(s). Refreshing every 10s.'
+      : 'No discovery activity recorded yet.';
+  } catch (e) { msg.textContent = 'Could not load discovery yield.'; }
+}
+load();
+setInterval(load, 10000);
+</script>
+"#;
+    axum::response::Html(crate::admin::console("/admin/discovery", body)).into_response()
 }

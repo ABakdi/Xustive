@@ -201,6 +201,12 @@ impl Orchestrator {
         }
     }
 
+    async fn publish_channel(&self, channel: xustive_core::DiscoveryChannel, metric: &str) {
+        if let Some(s) = &self.shared {
+            s.incr_channel(channel.token(), metric, 1).await;
+        }
+    }
+
     pub fn stats(&self) -> &Stats {
         &self.stats
     }
@@ -229,7 +235,12 @@ impl Orchestrator {
             channel: xustive_core::DiscoveryChannel::Seed,
             priority: frontier::priority_for(0, trust, false),
         };
-        matches!(self.frontier.add(&pending).await, Ok(true))
+        let added = matches!(self.frontier.add(&pending).await, Ok(true));
+        if added {
+            self.publish_channel(xustive_core::DiscoveryChannel::Seed, "discovered")
+                .await;
+        }
+        added
     }
 
     /// One turn of the loop.
@@ -319,6 +330,7 @@ impl Orchestrator {
         self.stats.fetched += 1;
         self.publish("fetched").await;
         self.publish_source(&claim.source_id, "fetched", 1).await;
+        self.publish_channel(claim.channel, "fetched").await;
         // A claim with prior visit state is a revisit; without, it is fresh discovery. This is the
         // same signal the conditional request used above, reused so the two can never disagree.
         if prior.is_some() {
@@ -565,6 +577,8 @@ impl Orchestrator {
                 Ok(true) => {
                     self.stats.discovered += 1;
                     self.publish("discovered").await;
+                    self.publish_channel(xustive_core::DiscoveryChannel::Link, "discovered")
+                        .await;
                 }
                 Ok(false) => self.stats.skip("seen"),
                 Err(r) => self.stats.skip(r.as_str()),

@@ -132,6 +132,8 @@ pub fn app(state: AppState) -> Router {
             "/admin/crawler/sources/health",
             get(admin_crawler::sources_health),
         )
+        .route("/admin/discovery", get(admin_crawler::page_channels))
+        .route("/admin/crawler/channels", get(admin_crawler::channels))
         .route("/admin/crawler/sources", get(admin_crawler::sources))
         .route(
             "/admin/crawler/sources",

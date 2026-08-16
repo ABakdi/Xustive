@@ -30,6 +30,9 @@ const K_STATE: &str = "crawl:state";
 /// per source keeps reset a single `DEL` and the dashboard read a single `HGETALL` — the same shape
 /// as every other counter here. Source ids are slugs (`[a-z0-9-]`) so `:` never collides.
 const K_SOURCE: &str = "crawl:source";
+/// Per-channel yield counters (M2-T16.8), one hash, field `"<channel>:<metric>"`. Same one-hash
+/// shape as the per-source counters. Channel tokens are a fixed closed set, so `:` never collides.
+const K_CHANNEL: &str = "crawl:channel";
 
 /// How many recent URLs to keep.
 ///
@@ -149,6 +152,36 @@ impl SourceMetrics {
     }
 }
 
+/// Per-channel discovery yield (§M2-T16.8): the funnel from URLs a channel introduced to documents
+/// that survived dedup. This is the number that decides whether an expensive channel (SERP, Brave)
+/// earns its place — measured, not assumed.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ChannelMetrics {
+    /// URLs this channel introduced to the frontier.
+    pub discovered: u64,
+    /// Of those, the ones actually fetched (some are dropped as duplicates or traps first).
+    pub fetched: u64,
+    /// Documents indexed from this channel's URLs.
+    pub indexed: u64,
+    /// Documents dropped as duplicates of something already held — the same URL reached by a
+    /// cheaper channel, typically. A high ratio means the channel is mostly rediscovering.
+    pub duplicate: u64,
+}
+
+impl ChannelMetrics {
+    /// Documents that survived to the index as a fraction of URLs discovered — the channel's yield.
+    /// `None` until the channel has discovered anything, so the console shows "—" not a false 0%.
+    pub fn yield_rate(&self) -> Option<f32> {
+        (self.discovered > 0).then(|| self.indexed as f32 / self.discovered as f32)
+    }
+
+    /// Of documents this channel produced, the fraction that were fresh rather than duplicates.
+    pub fn unique_rate(&self) -> Option<f32> {
+        let total = self.indexed + self.duplicate;
+        (total > 0).then(|| self.indexed as f32 / total as f32)
+    }
+}
+
 #[derive(Clone)]
 pub struct CrawlStats {
     client: redis::Client,
@@ -231,6 +264,51 @@ impl CrawlStats {
                 "duplicate" => m.duplicate = value,
                 "date_unknown" => m.date_unknown = value,
                 "spam_sum" => m.spam_sum = value,
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// Bump one per-channel yield counter (M2-T16.8). `channel` is a
+    /// [`xustive_core::DiscoveryChannel::token`]; `metric` is a `ChannelMetrics` field name.
+    pub async fn incr_channel(&self, channel: &str, metric: &str, by: u64) {
+        if channel.is_empty() || by == 0 {
+            return;
+        }
+        let Some(mut c) = self.conn().await else {
+            return;
+        };
+        let _: Result<(), _> = redis::cmd("HINCRBY")
+            .arg(K_CHANNEL)
+            .arg(format!("{channel}:{metric}"))
+            .arg(by as i64)
+            .query_async::<()>(&mut c)
+            .await;
+    }
+
+    /// Read every channel's yield counters, keyed by channel token. One `HGETALL`, split on the
+    /// last `:` into `<channel>:<metric>`.
+    pub async fn channel_metrics(&self) -> HashMap<String, ChannelMetrics> {
+        let Some(mut c) = self.conn().await else {
+            return HashMap::new();
+        };
+        let flat: HashMap<String, u64> = redis::cmd("HGETALL")
+            .arg(K_CHANNEL)
+            .query_async(&mut c)
+            .await
+            .unwrap_or_default();
+        let mut out: HashMap<String, ChannelMetrics> = HashMap::new();
+        for (field, value) in flat {
+            let Some((chan, metric)) = field.rsplit_once(':') else {
+                continue;
+            };
+            let m = out.entry(chan.to_string()).or_default();
+            match metric {
+                "discovered" => m.discovered = value,
+                "fetched" => m.fetched = value,
+                "indexed" => m.indexed = value,
+                "duplicate" => m.duplicate = value,
                 _ => {}
             }
         }
@@ -344,7 +422,7 @@ impl CrawlStats {
         let Some(mut c) = self.conn().await else {
             return;
         };
-        for k in [K_COUNTERS, K_SKIPS, K_RECENT, K_HOSTS, K_SOURCE] {
+        for k in [K_COUNTERS, K_SKIPS, K_RECENT, K_HOSTS, K_SOURCE, K_CHANNEL] {
             let _: Result<(), _> = redis::cmd("DEL").arg(k).query_async::<()>(&mut c).await;
         }
     }
@@ -393,6 +471,21 @@ mod tests {
         assert!((m.spam_mean().unwrap() - 0.15).abs() < 1e-6);
         assert!((m.date_unknown_ratio().unwrap() - 0.10).abs() < 1e-6); // 6/60
         assert!((m.error_rate() - 0.10).abs() < 1e-6);
+    }
+
+    #[test]
+    fn channel_metrics_compute_yield_and_unique_rate() {
+        let m = ChannelMetrics {
+            discovered: 1000,
+            fetched: 800,
+            indexed: 200,
+            duplicate: 50,
+        };
+        assert!((m.yield_rate().unwrap() - 0.20).abs() < 1e-6); // 200/1000
+        assert!((m.unique_rate().unwrap() - 0.80).abs() < 1e-6); // 200/(200+50)
+                                                                 // A channel that discovered nothing yet reports None, not a misleading 0%.
+        assert!(ChannelMetrics::default().yield_rate().is_none());
+        assert!(ChannelMetrics::default().unique_rate().is_none());
     }
 
     #[test]

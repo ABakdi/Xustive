@@ -311,6 +311,12 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                                     s.incr_skip("duplicate").await;
                                     s.incr_source(&parsed.document.source_id, "duplicate", 1)
                                         .await;
+                                    s.incr_channel(
+                                        parsed.document.discovery.token(),
+                                        "duplicate",
+                                        1,
+                                    )
+                                    .await;
                                 }
                                 continue;
                             }
@@ -332,6 +338,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                                 let doc = &parsed.document;
                                 s.incr("indexed", 1).await;
                                 s.incr_source(&doc.source_id, "indexed", 1).await;
+                                s.incr_channel(doc.discovery.token(), "indexed", 1).await;
                                 // spam is 0.0..=1.0; store ×1000 so the integer counter keeps a mean.
                                 s.incr_source(
                                     &doc.source_id,
