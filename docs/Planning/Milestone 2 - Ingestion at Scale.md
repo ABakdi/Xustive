@@ -282,8 +282,13 @@ also the fastest option — no bundle to download, parse and hydrate.
       story) which canonicalisation cannot, and skips re-queuing an unchanged revisit for free. The
       Bloom pre-filter (a latency optimisation for the negative path) is deferred — the exact check
       is one atomic round trip and sufficient
-- [ ] M2-T05.3 SimHash banding index and distance verdicts
-- [ ] M2-T05.4 Winner selection (earliest, then trust, then length) + engagement aggregation
+- [x] M2-T05.3 SimHash banding index and distance verdicts — four 16-bit bands, so any two hashes
+      within Hamming distance 3 share a band (pigeonhole, no false negatives), confirmed by full
+      distance. Fail-open. Pigeonhole guarantee checked across every ≤3-bit flip; near-duplicate
+      detection proven end to end on raw hashes and reworded text
+- [~] M2-T05.4 Winner selection (trusted-date, then earliest, then trust, then length) + engagement
+      aggregation — pure decision logic done and tested; a guessed date cannot beat a real one on
+      'earliest'. Remaining: wiring it to collect the candidate set behind a SimHash match
 - [ ] M2-T05.5 pHash image dedup and embedding reuse
 - [ ] M2-T05.6 Cluster ids for the 4–8 distance band
 - [x] M2-T05.7 **Fail-open on Redis unavailability**, with a test. An unreachable dedup store yields
