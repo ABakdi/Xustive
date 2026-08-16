@@ -202,6 +202,22 @@ pub struct DiscoveryConfig {
     /// is forgotten — which bounds retention and stops a rare query slowly accreting to the floor.
     #[serde(default = "default_weak_window_days")]
     pub weak_coverage_window_days: u64,
+
+    /// The Brave Search API connector (M2-T16.6): resolve weak-coverage terms to URLs. **Off by
+    /// default** and inert without a key — it is the one paid discovery route whose terms permit
+    /// this, tried before direct SERP collection.
+    #[serde(default)]
+    pub brave_enabled: bool,
+    /// Brave subscription token. Empty disables the connector even if `brave_enabled` is set.
+    #[serde(default)]
+    pub brave_api_key: String,
+    /// Hard cap on Brave queries per resolver run — the budget. Brave is paid per query, so this is
+    /// the spend ceiling, not a nicety.
+    #[serde(default = "default_brave_max_queries")]
+    pub brave_max_queries_per_run: usize,
+    /// Results to request per query. Discovery wants a handful of good URLs, not a full page.
+    #[serde(default = "default_brave_results")]
+    pub brave_results_per_query: usize,
 }
 
 fn default_weak_floor() -> usize {
@@ -213,6 +229,12 @@ fn default_k_anonymity() -> u32 {
 fn default_weak_window_days() -> u64 {
     30
 }
+fn default_brave_max_queries() -> usize {
+    50
+}
+fn default_brave_results() -> usize {
+    10
+}
 
 impl Default for DiscoveryConfig {
     fn default() -> Self {
@@ -221,6 +243,10 @@ impl Default for DiscoveryConfig {
             weak_coverage_result_floor: default_weak_floor(),
             k_anonymity: default_k_anonymity(),
             weak_coverage_window_days: default_weak_window_days(),
+            brave_enabled: false,
+            brave_api_key: String::new(),
+            brave_max_queries_per_run: default_brave_max_queries(),
+            brave_results_per_query: default_brave_results(),
         }
     }
 }
@@ -229,6 +255,12 @@ impl DiscoveryConfig {
     /// The k-anonymity floor the ADR requires, never below 20 whatever the config says.
     pub fn effective_k(&self) -> u32 {
         self.k_anonymity.max(20)
+    }
+
+    /// Whether the Brave connector is actually usable: switched on *and* holding a key. Both are
+    /// required — a flag with no key is a misconfiguration that should stay inert, not error.
+    pub fn brave_usable(&self) -> bool {
+        self.brave_enabled && !self.brave_api_key.trim().is_empty()
     }
 }
 

@@ -7,6 +7,7 @@
 mod commoncrawl;
 mod crawl;
 mod crawld;
+mod discover;
 mod eval;
 mod parsecheck;
 mod registry;
@@ -105,6 +106,8 @@ enum Command {
         #[arg(long, default_value_t = 1)]
         page_delay: u64,
     },
+    /// Resolve weak-coverage search terms to URLs via Brave, seeding them for crawl (M2-T16.4/.6).
+    Discover,
     /// Fetch a URL and show what the parser extracts — for authoring per-domain rules.
     ParseCheck {
         url: String,
@@ -222,6 +225,11 @@ async fn main() -> Result<()> {
         .await;
     }
 
+    // `discover` reads weak terms and resolves them via Brave; no Meili involved.
+    if let Command::Discover = &args.command {
+        return discover::run(&config).await;
+    }
+
     // `parse-check` fetches a URL and runs the parser; no index or queue involved.
     if let Command::ParseCheck {
         url,
@@ -324,7 +332,8 @@ async fn main() -> Result<()> {
         Command::Text { .. }
         | Command::Registry { .. }
         | Command::ParseCheck { .. }
-        | Command::CommonCrawl { .. } => {
+        | Command::CommonCrawl { .. }
+        | Command::Discover => {
             unreachable!("handled above")
         }
     }
