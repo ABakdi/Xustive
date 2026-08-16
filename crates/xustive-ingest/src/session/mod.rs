@@ -17,13 +17,17 @@
 //! "build the engine, defer the fuel" split as the [[proxy]] manager. Account acquisition, real
 //! login flows, and warm-up browsing need real accounts and are out of scope here.
 
+mod budget;
 mod crypto;
 mod detection;
 mod lifecycle;
+mod pool;
 
+pub use budget::{BudgetLimits, BudgetSpend};
 pub use crypto::{CookieCrypto, CryptoError};
 pub use detection::{classify, Detection};
-pub use lifecycle::{Lifecycle, Tier};
+pub use lifecycle::{quarantine_cooldown, Lifecycle, Tier};
+pub use pool::{Identity, SessionLease, SessionPool, SessionPoolError};
 
 use serde::{Deserialize, Serialize};
 
