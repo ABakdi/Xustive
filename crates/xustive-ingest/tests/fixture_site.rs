@@ -658,3 +658,86 @@ async fn a_refetch_counts_as_a_revisit_not_a_discovery() {
         "the second fetch of a known page is a revisit; fetched - revisited is discovery"
     );
 }
+
+/// Polling a host's sitemap keeps held pages fresh: changed pages are deferred for refetch,
+/// unchanged ones extend without a request (M2-T15.6).
+#[tokio::test]
+async fn a_sitemap_poll_refreshes_changed_pages_and_skips_unchanged() {
+    let Some(f) = depth_frontier("sitemap_poll") else {
+        eprintln!("skipping: no Redis");
+        return;
+    };
+    if port() == 0 {
+        return;
+    }
+    f.clear().await;
+    let redis = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6390".into());
+    let visits = xustive_ingest::revisit::Visits::connect_in(&redis, "test:sitemap_poll").unwrap();
+    if visits.get("__probe__").await.is_none() {
+        // Confirm Redis actually answers before asserting.
+        visits
+            .put("__probe__", &xustive_ingest::revisit::Visit::default())
+            .await;
+        if visits.get("__probe__").await.is_none() {
+            eprintln!("skipping: Redis not reachable");
+            return;
+        }
+        visits.forget("__probe__").await;
+    }
+
+    let Ok(fetcher) = Fetcher::new(FetchConfig {
+        ignore_politeness: true,
+        ..FetchConfig::default()
+    }) else {
+        return;
+    };
+
+    // The fixture sitemap dates normal.html at 2026-08-05. Seed a prior fetch of it: one *before*
+    // that date (so the sitemap reports it changed) and, for a second URL, one *after*.
+    let base = base();
+    // The fixture sitemap hardcodes localhost:8099 URLs, so seed the held pages under those, not
+    // the test server's dynamic port. We are testing the lastmod verdict against stored state, not
+    // fetching the entry pages themselves.
+    let changed_url = "http://localhost:8099/articles/normal.html".to_string();
+    let unchanged_url = "http://localhost:8099/articles/malformed.html".to_string();
+
+    // 2026-08-05 is 1786060800; 2026-08-04 is 1785974400.
+    let mut before = xustive_ingest::revisit::Visit {
+        last_fetched: 1_785_000_000, // well before both lastmods → both look changed unless...
+        interval_secs: 7200,
+        content_hash: "b3:x".into(),
+        ..Default::default()
+    };
+    visits.put(&changed_url, &before).await;
+
+    // For the "unchanged" URL, fetch it *after* its lastmod so the sitemap adds nothing.
+    before.last_fetched = 1_790_000_000; // after 2026-08-04
+    visits.put(&unchanged_url, &before).await;
+
+    let sitemap = format!("{base}/sitemap.xml");
+    let out = xustive_ingest::sitemap_poll::poll_sitemap(
+        &fetcher,
+        &visits,
+        &f,
+        &sitemap,
+        60,
+        1_791_000_000,
+        100,
+    )
+    .await;
+
+    assert!(
+        out.changed >= 1,
+        "normal.html was fetched before its lastmod, so it changed"
+    );
+    assert!(
+        out.unchanged >= 1,
+        "malformed.html was fetched after its lastmod, so it did not"
+    );
+
+    // The changed page must be in the due set, ready for a prompt refetch.
+    assert!(
+        f.deferred().await >= 1,
+        "a changed page should be deferred for refetch"
+    );
+}

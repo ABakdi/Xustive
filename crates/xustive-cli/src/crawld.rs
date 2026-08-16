@@ -43,6 +43,14 @@ use crate::crawl::parse_seeds;
 /// thing anybody does is check whether it is still alive.
 const HEARTBEAT: Duration = Duration::from_secs(60);
 
+/// How often each host's sitemap is polled for freshness (M2-T15.6).
+///
+/// Hours, not minutes. A sitemap's `lastmod` changes at the pace of publishing, and polling it
+/// faster than that spends requests to learn nothing — the same waste the whole freshness design
+/// avoids. Six hours keeps a news site's new articles found within a fraction of a day while
+/// costing one request per host per poll.
+const SITEMAP_POLL_EVERY: Duration = Duration::from_secs(6 * 3600);
+
 /// Queue depth above which the crawler slows down.
 ///
 /// The crawler now outpaces the indexer by a wide margin — sixteen concurrent fetchers fill the
@@ -260,6 +268,80 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                     }
                     Outcome::Idle => tokio::time::sleep(orch.idle_sleep()).await,
                     Outcome::Finished => return,
+                }
+            }
+        });
+    }
+
+    // A sitemap poller runs alongside the workers (M2-T15.6).
+    //
+    // One sitemap fetch reports on hundreds of URLs, so it is the cheapest freshness signal there
+    // is: a page a sitemap says is unchanged need not be revisited at all, and one it says changed
+    // is pulled forward. Separate task rather than folded into a worker, because its cadence is
+    // hours, not the sub-second loop of a fetch worker, and it must not hold a worker slot idle
+    // between polls.
+    {
+        let frontier = orchestrator.frontier().clone();
+        let stop = stop.clone();
+        let redis_url = config.queue.url.clone();
+        let ignore_politeness = config.crawl.ignore_politeness;
+        // Sitemap URL and trust per host, derived from the seeds. The convention `/sitemap.xml`
+        // covers most publishers; robots-declared sitemaps are a refinement for later.
+        let targets: Vec<(String, u8)> = seeds
+            .iter()
+            .filter_map(|s| {
+                let u = url::Url::parse(&s.url).ok()?;
+                let sitemap = format!("{}://{}/sitemap.xml", u.scheme(), u.host_str()?);
+                let trust = match s.trust {
+                    xustive_core::TrustTier::A => 100,
+                    xustive_core::TrustTier::B => 60,
+                    xustive_core::TrustTier::C => 30,
+                };
+                Some((sitemap, trust))
+            })
+            .collect::<std::collections::BTreeSet<_>>() // dedupe hosts sharing a sitemap
+            .into_iter()
+            .collect();
+
+        tasks.spawn(async move {
+            let Some(visits) = xustive_ingest::revisit::Visits::connect_in(&redis_url, "frontier")
+            else {
+                return;
+            };
+            let Ok(fetcher) = Fetcher::new(FetchConfig {
+                ignore_politeness,
+                ..FetchConfig::default()
+            }) else {
+                return;
+            };
+            let fetcher = match RobotsCache::connect(&redis_url) {
+                Some(cache) => fetcher.with_shared_cache(cache),
+                None => fetcher,
+            };
+
+            let mut ticker = tokio::time::interval(SITEMAP_POLL_EVERY);
+            loop {
+                ticker.tick().await;
+                if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                let now = xustive_core::now_unix();
+                for (sitemap, trust) in &targets {
+                    if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                        return;
+                    }
+                    let out = xustive_ingest::sitemap_poll::poll_sitemap(
+                        &fetcher, &visits, &frontier, sitemap, *trust, now, 5_000,
+                    )
+                    .await;
+                    if out.changed > 0 || out.unchanged > 0 {
+                        tracing::info!(
+                            %sitemap,
+                            changed = out.changed,
+                            unchanged = out.unchanged,
+                            "sitemap poll"
+                        );
+                    }
                 }
             }
         });

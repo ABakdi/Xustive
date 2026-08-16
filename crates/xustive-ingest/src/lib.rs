@@ -22,6 +22,7 @@ pub mod robots;
 pub mod robots_cache;
 pub mod rules;
 pub mod sitemap;
+pub mod sitemap_poll;
 
 pub use fetch::{FetchConfig, FetchError, Fetched, Fetcher};
 pub use parse::{ParseConfig, ParseError, Parsed, Parser};
