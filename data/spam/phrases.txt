@@ -1,0 +1,79 @@
+# Spam phrase list for content scoring (M2-T06.4).
+#
+# One phrase per line, folded on load, matched as a whole token sequence. Blank lines and lines
+# starting with # are ignored. Keep phrases specific: a phrase common in legitimate news is a false
+# positive that suppresses real content, and suppression is the point of the score.
+#
+# Grouped by the spam this engine actually meets on the Algerian web: betting, loan and money
+# scams, fake pharma, adult, crypto, and SEO filler. Arabic, French and English, since spam sites
+# mix all three.
+#
+# NEEDS REVIEW. Machine-assembled; a native speaker should prune false positives, especially in the
+# Arabic list where a betting or loan term can overlap ordinary financial news.
+
+# --- betting / gambling ------------------------------------------------------------------------
+paris sportifs
+pari en ligne
+casino en ligne
+machine a sous
+bonus de bienvenue
+code promo 1xbet
+1xbet
+melbet
+betwinner
+مراهنات
+الرهان الرياضي
+كازينو
+كازينو اون لاين
+مراهنات رياضية
+
+# --- money / loan scams ------------------------------------------------------------------------
+gagnez de l argent
+gagner de l argent facilement
+argent facile
+credit sans justificatif
+pret rapide sans document
+travaillez depuis chez vous
+devenez riche
+revenu garanti
+ربح المال
+اربح المال بسهولة
+المال السريع
+قرض بدون ضمانات
+اربح من الانترنت
+اكسب المال
+
+# --- fake pharma / health quackery -------------------------------------------------------------
+perte de poids rapide
+brule graisse miracle
+agrandissement penis
+viagra sans ordonnance
+remede miracle
+تكبير الذكر
+علاج نهائي مضمون
+انقاص الوزن بسرعة
+حبوب التخسيس
+
+# --- crypto scams ------------------------------------------------------------------------------
+investissement crypto garanti
+doublez votre bitcoin
+trading automatique gagnant
+signal crypto gratuit
+استثمار مضمون في العملات
+ضاعف أموالك
+
+# --- adult -------------------------------------------------------------------------------------
+rencontre coquine
+video xxx
+sexe gratuit
+
+# --- generic seo filler / clickbait ------------------------------------------------------------
+cliquez ici maintenant
+achetez maintenant
+offre limitee dans le temps
+meilleur prix garanti
+telecharger gratuitement crack
+اضغط هنا الان
+اشتري الان
+تحميل مجاني
+افضل سعر مضمون

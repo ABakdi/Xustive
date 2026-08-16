@@ -360,6 +360,10 @@ impl Parser {
         document.fetch_method = Some("static".into());
         document.access_path = Some(method.as_str().into());
         document.quality_score = quality_score(&document, method);
+        // Spam score (M2-T06.4). Populated here; search suppresses at 0.8 — the document stays in
+        // the index and out of default results, never deleted, so a later threshold change or a
+        // manual review can still reach it.
+        document.spam_score = crate::spam::spam_score(&document.title, &document.body);
 
         Ok(Parsed {
             outlinks: extract_outlinks(&doc, url, self.config.max_outlinks),
