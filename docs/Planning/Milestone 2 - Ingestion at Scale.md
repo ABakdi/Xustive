@@ -494,17 +494,27 @@ proxy and fingerprint machinery, bound by the same pinning invariant.
 
 ## M2-T07 — [[Proxy Manager]] *(now required)*
 
-- [ ] M2-T07.1 Pool kinds: `direct`, `datacenter`, `residential`, `mobile`; per-source-class policy
-- [ ] M2-T07.2 Provider selection and contracts ← *decide with M2-T01d.4*
-- [ ] M2-T07.3 Health EWMA, quarantine, probing, selection weighting
-- [ ] M2-T07.4 **`acquire_pinned`** honouring the identity pinning invariant
-- [ ] M2-T07.5 Geo/ASN targeting: ≥ 4 ASNs, ≤ 3 identities per /24
-- [ ] M2-T07.6 Failure attribution (proxy vs host vs identity vs ASN)
-- [ ] M2-T07.7 Shared circuit breakers in Redis (host, platform, ASN)
-- [ ] M2-T07.8 **Graded `on_blocked` ladder** — with the test that `open_web` still halts-and-flags
-- [ ] M2-T07.9 Egress-IP assertion; lease-leak detection; credential rotation
-- [ ] M2-T07.10 **Bandwidth accounting and cost-per-1k-docs**; 80 % budget alert
-- [ ] M2-T07.11 Guard test: platform collection **halts** rather than falling back to `direct`
+- [x] M2-T07.1 Pool kinds: `direct`, `datacenter`, `residential`, `mobile`; per-source-class policy
+      (`PoolKind`, `PoolPolicy` in `xustive-ingest::proxy`)
+- [ ] M2-T07.2 Provider selection and contracts ← *decide with M2-T01d.4* — procurement, external
+- [x] M2-T07.3 Health EWMA, quarantine, probing, selection weighting (`proxy::health`, `proxy::pool`)
+- [x] M2-T07.4 **`acquire_pinned`** honouring the identity pinning invariant — same proxy every time,
+      a dead pin errors for reassignment rather than silently swapping
+- [x] M2-T07.5 Geo/ASN targeting: ≥ 4 ASNs, ≤ 3 identities per /24 (`proxy::placement`)
+- [x] M2-T07.6 Failure attribution (proxy vs host vs identity vs ASN) — host/ASN win over proxy so an
+      outage never quarantines the pool (`proxy::attribution`)
+- [x] M2-T07.7 Shared circuit breakers in Redis (host, platform, ASN) — doubling cooldown, verified
+      shared across replicas (`proxy::breaker`)
+- [x] M2-T07.8 **Graded `on_blocked` ladder** — with the test that `open_web` still halts-and-flags
+      (`proxy::ladder`)
+- [ ] M2-T07.9 Egress-IP assertion; lease-leak detection; credential rotation — needs real proxy egress
+- [ ] M2-T07.10 **Bandwidth accounting and cost-per-1k-docs**; 80 % budget alert — needs real transfer
+      measurement, wires to T16.8's cost-per-document
+- [x] M2-T07.11 Guard test: platform collection **halts** rather than falling back to `direct`
+      (`proxy::pool`)
+
+*Decision logic done and unit-/Redis-tested; the three open items (.2, .9, .10) need a real proxy
+provider and live egress to build against, not more code.*
 
 ## M2-T08 — [[Social Connector - Facebook]] *(gated on M2-T01a/b/c)*
 
