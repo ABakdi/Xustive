@@ -21,6 +21,7 @@ pub mod frontier;
 pub mod gazetteer;
 pub mod orchestrator;
 pub mod parse;
+pub mod proxy;
 pub mod raw_store;
 pub mod revisit;
 pub mod robots;
