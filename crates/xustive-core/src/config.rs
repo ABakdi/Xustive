@@ -166,6 +166,11 @@ pub struct CrawlConfig {
     /// Paged rather than "all": a list that loads everything is fine at a thousand documents and
     /// unusable at a million, and that failure arrives exactly when the crawler starts working.
     pub documents_page_size: usize,
+    /// Keep the raw fetched body for this many days, so extraction can be re-run without a
+    /// re-fetch (M2-T04.7). **Zero disables it** — the default, because blanket storage would
+    /// overwhelm the small development Redis, and the real home is object storage.
+    #[serde(default)]
+    pub raw_ttl_days: u64,
 }
 
 impl Default for CrawlConfig {
@@ -177,6 +182,7 @@ impl Default for CrawlConfig {
             ignore_politeness: false,
             seeds_path: "data/sources/seeds.tsv".into(),
             documents_page_size: 50,
+            raw_ttl_days: 0,
         }
     }
 }

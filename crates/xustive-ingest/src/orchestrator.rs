@@ -127,6 +127,7 @@ pub struct Orchestrator {
     /// Revisit state, when scheduling is on. Optional for the same reason as `shared`: a crawl
     /// that cannot reach it should still crawl.
     visits: Option<Visits>,
+    raw_store: Option<crate::raw_store::RawStore>,
     last_promote: std::time::Instant,
 }
 
@@ -143,6 +144,7 @@ impl Orchestrator {
             last_reclaim: std::time::Instant::now(),
             shared: None,
             visits: None,
+            raw_store: None,
             last_promote: std::time::Instant::now(),
         }
     }
@@ -159,6 +161,12 @@ impl Orchestrator {
     /// nothing — so the two are set together or not at all.
     pub fn with_visits(mut self, visits: Visits) -> Self {
         self.visits = Some(visits);
+        self
+    }
+
+    /// Keep the raw fetched body for later reindexing (M2-T04.7). Off unless set.
+    pub fn with_raw_store(mut self, store: crate::raw_store::RawStore) -> Self {
+        self.raw_store = Some(store);
         self
     }
 
@@ -307,6 +315,15 @@ impl Orchestrator {
         if prior.is_some() {
             self.stats.revisited += 1;
             self.publish("revisited").await;
+        }
+
+        // Keep the raw body for later reindexing, when a store is attached (M2-T04.7). A 304 has no
+        // body, so only a real 200 is stored. Best-effort — losing it costs a reindex convenience,
+        // never a document.
+        if fetched.status != 304 {
+            if let Some(store) = &self.raw_store {
+                store.put(&fetched.final_url, &fetched.body).await;
+            }
         }
 
         if fetched.status == 304 {

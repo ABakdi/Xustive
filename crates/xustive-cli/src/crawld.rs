@@ -135,6 +135,15 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
     if let Some(v) = xustive_ingest::revisit::Visits::connect_in(&config.queue.url, "frontier") {
         orchestrator = orchestrator.with_visits(v);
     }
+    if config.crawl.raw_ttl_days > 0 {
+        if let Some(r) = xustive_ingest::raw_store::RawStore::connect_in(
+            &config.queue.url,
+            "frontier",
+            std::time::Duration::from_secs(config.crawl.raw_ttl_days * 86_400),
+        ) {
+            orchestrator = orchestrator.with_raw_store(r);
+        }
+    }
 
     // Seeded every start, not only the first. `add` is idempotent, so a seed already known is a
     // no-op — and a seed added to the file since the last start would otherwise never be picked up
@@ -182,6 +191,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
         let discover = opts.discover_new_hosts;
         let ignore_politeness = config.crawl.ignore_politeness;
         let redis_url = config.queue.url.clone();
+        let raw_ttl_days = config.crawl.raw_ttl_days;
 
         tasks.spawn(async move {
             let Ok(fetcher) = Fetcher::new(FetchConfig {
@@ -212,6 +222,15 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             }
             if let Some(v) = xustive_ingest::revisit::Visits::connect_in(&redis_url, "frontier") {
                 orch = orch.with_visits(v);
+            }
+            if raw_ttl_days > 0 {
+                if let Some(r) = xustive_ingest::raw_store::RawStore::connect_in(
+                    &redis_url,
+                    "frontier",
+                    std::time::Duration::from_secs(raw_ttl_days * 86_400),
+                ) {
+                    orch = orch.with_raw_store(r);
+                }
             }
             let dedup = xustive_ingest::dedup::Dedup::connect_in(&redis_url, "frontier");
 
