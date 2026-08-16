@@ -333,12 +333,12 @@ Order matters here. T15.1 and T15.2 are the substrate; nothing above them works 
       validators and a 304 reaches the scheduler as a `NotModified` observation — otherwise free
       revisits would look like silence and the interval would stop adapting. Discovery sends no
       validators and is untouched
-- [~] M2-T15.6 **Sitemap `lastmod` and feed polling as freshness signals.** Parser done
-      (`extract_entries`), and the **decision core** is done and tested: `sitemap_verdict` compares a
-      `lastmod` against our last fetch (Changed / Unchanged / conservative Unknown), and
-      `Visits::apply_sitemap` acts on it — an unchanged entry grows the interval with no fetch (a
-      free 304), a changed one resets the page to due-now. Remaining: the daemon poll that fetches
-      each host sitemap on a cadence and feeds entries through this
+- [x] M2-T15.6 **Sitemap `lastmod` polling as a freshness signal.** `extract_entries` parses the
+      `loc`/`lastmod` pairs, `sitemap_verdict` compares each against our last fetch, and
+      `poll_sitemap` acts: a changed page is deferred into the frontier as due-now, an unchanged one
+      grows its interval with no request. The daemon runs it as its own 6-hour task beside the
+      workers. Proven against the fixture sitemap and the daemon starts it cleanly. One sitemap fetch
+      stands in for hundreds of revisits that would each cost a request to learn nothing
 - [x] M2-T15.7 **Revisit priority folds in measured change rate and lateness**, alongside the depth
       and trust base. Not the literal `trust × change_probability × age` product: a page held near
       its floor is one we have *measured* as changing, so the converged interval is the signal, and
