@@ -445,15 +445,16 @@ points at.
       otherwise deferred to the crawl-time detector. `select_urls` filters + dedups per page
 - [x] M2-T16.3 **Incremental snapshot tracking**: last-page-per-`(snapshot,pattern)` in Redis,
       written after each page's URLs are queued. Resumable — verified live resuming at page 1
-- [~] M2-T16.4 **Query-driven discovery.** Weak searches recorded as k-anonymous (k ≥ 20), windowed,
+- [x] M2-T16.4 **Query-driven discovery.** Weak searches recorded as k-anonymous (k ≥ 20), windowed,
       off-by-default counters over normalised terms — no query log, nothing surfaced below the floor
-      ([[ADR-0008 - No Query Logging]]). Detection + queue are in; **resolving a term to URLs waits
-      on a discovery source** (Brave/SERP/Common Crawl), so the enqueue-to-frontier half is deferred
+      ([[ADR-0008 - No Query Logging]]). `xustive-cli discover` resolves the surfaced terms to URLs
+      via Brave (T16.6), seeds them at discovered trust (channel `brave`), and forgets each once
+      actioned so a run does not re-pay for it
 - [x] M2-T16.5 **Weak-coverage queue in the console**: the "Weak coverage" page (`/admin/weak-coverage`)
       lists the k-anonymous gaps; "disabled" is shown distinctly from "no gaps"
-- [ ] M2-T16.6 **Brave Search API connector** for the residual — weak queries T16.1–T16.4 did not
-      resolve. Rate-limited, budgeted, **off by default**, key in config. The one paid route whose
-      terms permit this, so it is tried before T16.9
+- [x] M2-T16.6 **Brave Search API connector** for the residual — `xustive-ingest::brave`, budgeted
+      (`brave_max_queries_per_run`), **off by default**, inert without a key. Pure result-parsing is
+      unit-tested; the live call is key-gated. Only URLs are taken, never Brave's titles/snippets
 - [x] M2-T16.7 **Provenance on every document**: seed, link, sitemap, Common Crawl, query-driven,
       Brave, or SERP. `DiscoveryChannel` on the frontier `Pending`/`Claim` and stamped onto every
       `Document`; the channels not yet built (cc/query/brave/serp) exist in the enum ready to be set
