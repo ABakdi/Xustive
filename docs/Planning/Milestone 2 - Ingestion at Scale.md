@@ -305,7 +305,9 @@ also the fastest option — no bundle to download, parse and hydrate.
 
 - [ ] M2-T06.1 `EnrichmentStep` trait and ordered executor
 - [ ] M2-T06.2 Required vs optional steps; skip-under-pressure with `enrichment_level = "partial"`
-- [ ] M2-T06.3 Quality scoring
+- [x] M2-T06.3 Quality scoring — `quality_score` combines body length, date precision, extraction
+      method, a real title, author, media and detected language into a bounded 0-1 signal that
+      feeds ranking and spam suppression. Tested for bounds, and that a trusted date raises it
 - [x] M2-T06.4 Spam scoring + phrase list; suppression at 0.8 (not deletion) — `spam::spam_score`
       populates `spam_score` from two signals, stronger wins: distinct spam phrases present (a
       data-file list in ar/fr/en, so one phrase repeated is one signal) and keyword stuffing (the
@@ -315,7 +317,9 @@ also the fastest option — no bundle to download, parse and hydrate.
       the 58 wilaya names (ar + fr), folded and whole-token, and hints the one named most; a lone
       tied mention is left unhinted. The name table is generated from xustive-tools so the two do
       not drift. Wired into parse, populating `geo.wilaya`
-- [ ] M2-T06.6 Topic labelling
+- [x] M2-T06.6 Topic labelling — `topics::label` assigns a coarse subject (politics, economy,
+      sport, culture, health, education, technology, society) from the document's vocabulary in
+      ar/fr/en; two-hit minimum, at most three labels, empty when unclear. Wired into parse
 - [ ] M2-T06.7 Comment enrichment with caps
 - [ ] M2-T06.8 Per-step watchdog timeouts
 - [ ] M2-T06.9 Repass job for partial documents
