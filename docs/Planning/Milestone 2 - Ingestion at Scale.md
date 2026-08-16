@@ -437,14 +437,14 @@ politeness, `SafeUrl`, dedup, trust tiering. **An externally discovered URL gets
 disregard the search engine's terms by my direction; we do not disregard the terms of the sites it
 points at.
 
-- [ ] M2-T16.1 **Common Crawl index ingestion.** Read the columnar/CDX index, filter by host and
-      domain, emit URLs into the frontier at a discovered-tier trust. 250B+ pages, free, and it
-      costs the sites nothing because someone already fetched them
-- [ ] M2-T16.2 **Algeria filter**: `.dz` plus known Algerian hosts on generic TLDs, plus Arabic and
-      French content on those hosts. The filter is the whole value — unfiltered Common Crawl is
-      three orders of magnitude more data than we want
-- [ ] M2-T16.3 **Incremental snapshot tracking** so a monthly release is ingested once. Resumable:
-      this is a long batch job over remote Parquet and it will be interrupted
+- [x] M2-T16.1 **Common Crawl index ingestion.** `xustive-cli common-crawl` reads a snapshot's CDX
+      index, filters, and seeds URLs into the frontier at discovered-tier trust (channel `cc`).
+      Verified live: 14,467 `.dz` URLs queued from two pages of CC-MAIN-2026-30
+- [x] M2-T16.2 **Algeria filter**: `.dz` plus known Algerian hosts on generic TLDs (from the
+      registry); language dropped only when the index's own `languages` tag says non-ar/fr/en,
+      otherwise deferred to the crawl-time detector. `select_urls` filters + dedups per page
+- [x] M2-T16.3 **Incremental snapshot tracking**: last-page-per-`(snapshot,pattern)` in Redis,
+      written after each page's URLs are queued. Resumable — verified live resuming at page 1
 - [~] M2-T16.4 **Query-driven discovery.** Weak searches recorded as k-anonymous (k ≥ 20), windowed,
       off-by-default counters over normalised terms — no query log, nothing surfaced below the floor
       ([[ADR-0008 - No Query Logging]]). Detection + queue are in; **resolving a term to URLs waits
