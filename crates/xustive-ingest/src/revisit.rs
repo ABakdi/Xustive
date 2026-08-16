@@ -296,6 +296,29 @@ mod tests {
         }
     }
 
+    /// The revision-loop guard (M2-T05.8), which is the same mechanism as the freshness
+    /// abandonment (M2-T15.4) seen from the dedup side: a page that produces a different body on
+    /// every fetch would add a fresh content hash to the dedup set each visit forever. Parking it
+    /// at the ceiling caps how often it can do so — a revision loop cannot flood any index because
+    /// the page it belongs to is barely visited.
+    #[test]
+    fn a_revision_loop_is_parked_so_it_cannot_flood_the_dedup_index() {
+        let mut s = Schedule::default();
+        let mut d = Decision::Revisit(Duration::ZERO);
+        for _ in 0..VOLATILE_AFTER {
+            d = s.observe(Observation::Changed, 90);
+        }
+        assert!(
+            d.is_volatile(),
+            "a page changing every visit is a revision loop"
+        );
+        // Parked at the ceiling: at trust 90 that is days between visits, not the floor's hours.
+        assert!(
+            d.interval() >= Bounds::for_trust(90).ceiling,
+            "a revision loop must be visited rarely, not chased"
+        );
+    }
+
     /// The Cho result: a page we cannot keep fresh is parked rather than chased.
     #[test]
     fn a_page_changing_on_every_visit_is_eventually_abandoned() {
