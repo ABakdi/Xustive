@@ -63,16 +63,24 @@ browsing, or the Redis budget-counter layer, not more pure logic.*
 
 ## M2-T01b — [[Fingerprint Engine]]
 
-- [ ] M2-T01b.1 Select the impersonation library (`rquest` vs alternatives); validate JA4 accuracy
-- [ ] M2-T01b.2 Profile schema and catalogue (12–20 profiles)
-- [ ] M2-T01b.3 TLS + HTTP/2 + header-order profiles wired into the client
-- [ ] M2-T01b.4 **Coherence test suite** — every §4.2 invariant, checked mechanically
-- [ ] M2-T01b.5 Headless CDP patch scripts; real Chrome, persistent per-identity profile
-- [ ] M2-T01b.6 WebRTC forced through proxy; leak assertion
-- [ ] M2-T01b.7 Distribution weights matching the real Algerian browser mix
-- [ ] M2-T01b.8 Version ageing and successor migration
-- [ ] M2-T01b.9 `make fp-verify` self-validation against echo endpoints, nightly
-- [ ] M2-T01b.10 Dependency pinning so a library bump cannot silently change our fingerprint
+- [ ] M2-T01b.1 Select the impersonation library (`rquest` vs alternatives); validate JA4 accuracy —
+      needs the library + a JA4 echo endpoint
+- [~] M2-T01b.2 Profile schema and catalogue — schema done (`fingerprint::Profile`, TOML-loadable);
+      4 real coherent profiles seeded (`data/fingerprints/`), ~8–16 more for a human to add to hit 12–20
+- [ ] M2-T01b.3 TLS + HTTP/2 + header-order profiles wired into the client — needs the impersonation lib
+- [x] M2-T01b.4 **Coherence test suite** — every §4.2 invariant checked mechanically
+      (`fingerprint::coherence`), with a catalogue CI test asserting every shipped profile passes
+- [ ] M2-T01b.5 Headless CDP patch scripts; real Chrome, persistent per-identity profile — needs Chrome
+- [x] M2-T01b.6 WebRTC forced through proxy; leak assertion — `WebRtc` has no `Direct` variant, so a
+      profile can only disable or proxy WebRTC; the coherence model forbids a leaking configuration
+- [ ] M2-T01b.7 Distribution weights matching the real Algerian browser mix — needs market-share review
+- [x] M2-T01b.8 Version ageing and successor migration — `is_retired` + `can_migrate_to` (same
+      browser+OS, newer version only)
+- [ ] M2-T01b.9 `make fp-verify` self-validation against echo endpoints, nightly — needs live endpoints
+- [ ] M2-T01b.10 Dependency pinning so a library bump cannot silently change our fingerprint — with the lib
+
+*Coherence engine + schema + seed catalogue done and CI-tested; the open items need the impersonation
+library, a real headless Chrome, or live echo endpoints.*
 
 ## M2-T01c — [[Signature Service]]
 
