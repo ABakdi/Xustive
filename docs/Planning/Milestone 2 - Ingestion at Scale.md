@@ -346,8 +346,12 @@ Order matters here. T15.1 and T15.2 are the substrate; nothing above them works 
       everything on its host forever — precisely the page the Cho result says not to chase. Bands
       rather than a curve, because a continuous function is much harder to reason about from a
       document count that stopped rising
-- [ ] M2-T15.8 **Recrawl budget is separate from discovery budget**, so freshness and coverage
-      cannot starve each other. Split visible in the console and in `/metrics`
+- [~] M2-T15.8 **Recrawl and discovery budgets are counted apart, and the split is visible.** The
+      crawler tells a revisit from fresh discovery at fetch time (a claim with prior visit state),
+      so `revisited` is now counted alongside `fetched`; `fetched - revisited` is discovery. Shown
+      in the console and in `/metrics` (`xustive_crawl_fetched_total`, `xustive_crawl_revisited_total`).
+      What remains is *enforcement* — a reserved slice so one cannot starve the other — which needs
+      the frontier to tag entries by kind at claim time
 - [~] M2-T15.9 **Boilerplate-stripping stability tests.** Two fetches of the same article with a
       rotating most-read sidebar and a changed ad slot now assert an identical body **and content
       hash** — the property the freshness scheduler rests on, since a leak that rotates would make
