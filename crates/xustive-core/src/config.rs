@@ -181,6 +181,57 @@ fn default_registry_path() -> String {
     "data/sources/registry.jsonl".into()
 }
 
+/// Query-driven discovery (M2-T16.4). **Off by default**, and constrained by
+/// [[ADR-0008 - No Query Logging]]: a search that comes up short is a signal of weak coverage, but
+/// the query text is personal data. So this is opt-in, and what it records is k-anonymous — a term
+/// is only ever surfaced once at least `k_anonymity` searches have hit it, at which point it is
+/// demonstrably common rather than personal.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DiscoveryConfig {
+    /// Master switch. Off means nothing about a search is recorded, anywhere.
+    #[serde(default)]
+    pub weak_coverage_enabled: bool,
+    /// A search returning at most this many results is "weak coverage" worth noting.
+    #[serde(default = "default_weak_floor")]
+    pub weak_coverage_result_floor: usize,
+    /// k-anonymity threshold: a term is never surfaced until it has been seen at least this often.
+    /// The ADR mandates k ≥ 20; the loader clamps anything lower back up to 20.
+    #[serde(default = "default_k_anonymity")]
+    pub k_anonymity: u32,
+    /// Sliding window, in days. A term must reach `k_anonymity` within this window or it decays and
+    /// is forgotten — which bounds retention and stops a rare query slowly accreting to the floor.
+    #[serde(default = "default_weak_window_days")]
+    pub weak_coverage_window_days: u64,
+}
+
+fn default_weak_floor() -> usize {
+    3
+}
+fn default_k_anonymity() -> u32 {
+    20
+}
+fn default_weak_window_days() -> u64 {
+    30
+}
+
+impl Default for DiscoveryConfig {
+    fn default() -> Self {
+        Self {
+            weak_coverage_enabled: false,
+            weak_coverage_result_floor: default_weak_floor(),
+            k_anonymity: default_k_anonymity(),
+            weak_coverage_window_days: default_weak_window_days(),
+        }
+    }
+}
+
+impl DiscoveryConfig {
+    /// The k-anonymity floor the ADR requires, never below 20 whatever the config says.
+    pub fn effective_k(&self) -> u32 {
+        self.k_anonymity.max(20)
+    }
+}
+
 impl Default for CrawlConfig {
     fn default() -> Self {
         Self {
@@ -297,6 +348,8 @@ pub struct Config {
     pub suggest: SuggestConfig,
     pub queue: QueueConfig,
     pub crawl: CrawlConfig,
+    #[serde(default)]
+    pub discovery: DiscoveryConfig,
 }
 
 impl Default for Config {
@@ -310,6 +363,7 @@ impl Default for Config {
             suggest: SuggestConfig::default(),
             queue: QueueConfig::default(),
             crawl: CrawlConfig::default(),
+            discovery: DiscoveryConfig::default(),
         }
     }
 }

@@ -491,6 +491,23 @@ pub async fn handler(
             &[("lang", language.as_str())],
         );
     }
+
+    // Query-driven discovery (M2-T16.4). A search that came up short is a coverage gap worth
+    // finding sources for — but recording the query is only permissible under ADR-0008 when it is
+    // opt-in and k-anonymous, both of which live in `WeakCoverage`. Off by default: with the flag
+    // clear, nothing about this search is recorded anywhere. The normalised query, never the raw
+    // one, and never into a log.
+    let disc = &state.config.discovery;
+    if disc.weak_coverage_enabled && total_hits <= disc.weak_coverage_result_floor {
+        if let Some(w) = xustive_ingest::weak_coverage::WeakCoverage::connect_in(
+            &state.config.queue.url,
+            "discovery",
+            disc.effective_k(),
+            std::time::Duration::from_secs(disc.weak_coverage_window_days * 86_400),
+        ) {
+            w.record(&normalized).await;
+        }
+    }
     state.metrics.incr(
         metrics::SEARCH_RESULTS,
         metrics::SEARCH_RESULTS_HELP,

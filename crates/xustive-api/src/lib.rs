@@ -134,6 +134,14 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/admin/discovery", get(admin_crawler::page_channels))
         .route("/admin/crawler/channels", get(admin_crawler::channels))
+        .route(
+            "/admin/weak-coverage",
+            get(admin_crawler::page_weak_coverage),
+        )
+        .route(
+            "/admin/crawler/weak-coverage",
+            get(admin_crawler::weak_coverage),
+        )
         .route("/admin/crawler/sources", get(admin_crawler::sources))
         .route(
             "/admin/crawler/sources",

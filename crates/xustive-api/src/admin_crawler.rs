@@ -593,6 +593,47 @@ pub async fn channels(
     Ok(Json(json!({ "channels": rows })))
 }
 
+/// `GET /admin/crawler/weak-coverage` — the weak-coverage queue as JSON (M2-T16.5).
+///
+/// Surfaces only the terms `WeakCoverage` is willing to return, which are already k-anonymous
+/// (≥ 20 searches). When the feature is off — the default — it reports that plainly rather than an
+/// empty list, so an operator can tell "disabled" from "no gaps".
+pub async fn weak_coverage(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
+    let disc = &state.config.discovery;
+    if !disc.weak_coverage_enabled {
+        return Ok(Json(json!({
+            "enabled": false,
+            "k_anonymity": disc.effective_k(),
+            "terms": [],
+        })));
+    }
+    let terms = xustive_ingest::weak_coverage::WeakCoverage::connect_in(
+        &state.config.queue.url,
+        "discovery",
+        disc.effective_k(),
+        std::time::Duration::from_secs(disc.weak_coverage_window_days * 86_400),
+    );
+    let rows: Vec<serde_json::Value> = match terms {
+        Some(w) => w
+            .weak_terms(200)
+            .await
+            .into_iter()
+            .map(|t| json!({ "term": t.term, "count": t.count }))
+            .collect(),
+        None => Vec::new(),
+    };
+    Ok(Json(json!({
+        "enabled": true,
+        "k_anonymity": disc.effective_k(),
+        "terms": rows,
+    })))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AddSeed {
     pub url: String,
@@ -930,4 +971,61 @@ setInterval(load, 10000);
 </script>
 "#;
     axum::response::Html(crate::admin::console("/admin/discovery", body)).into_response()
+}
+
+/// `GET /admin/weak-coverage` — the query-driven discovery queue (M2-T16.5).
+pub async fn page_weak_coverage(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    if let Err(d) = crate::admin::authorise(&state, peer, &headers) {
+        return d.json().into_response();
+    }
+    let body = r#"<h1>Weak coverage</h1>
+<p class="lede">Searches the corpus could not answer — the precise gaps worth finding sources for
+(M2-T16.4). Under <a href="https://" onclick="return false">ADR-0008</a> this is <strong>off by
+default</strong> and <strong>k-anonymous</strong>: a term appears only once at least
+<span id="wc-k">20</span> searches have hit it, so nothing here identifies a query or a person.</p>
+<p class="muted" id="wc-msg">Loading…</p>
+<table class="admin wide"><thead>
+  <tr><th>term</th><th>searches</th></tr>
+</thead><tbody id="wc-rows"></tbody></table>
+<p class="muted">Resolving a gap to URLs needs an external discovery source (Brave, SERP, Common
+Crawl), which is a later task. For now these are the gaps, surfaced for a human to act on.</p>
+
+<script>
+async function load() {
+  const msg = document.getElementById('wc-msg');
+  try {
+    const r = await fetch('/admin/crawler/weak-coverage', { headers: { 'accept': 'application/json' } });
+    if (!r.ok) { msg.textContent = 'Could not load weak coverage (' + r.status + ').'; return; }
+    const data = await r.json();
+    document.getElementById('wc-k').textContent = data.k_anonymity;
+    const tbody = document.getElementById('wc-rows');
+    tbody.innerHTML = '';
+    if (!data.enabled) {
+      msg.textContent = 'Query-driven discovery is disabled (the default). Enable discovery.weak_coverage_enabled to collect coverage gaps.';
+      return;
+    }
+    const rows = data.terms || [];
+    for (const t of rows) {
+      const tr = document.createElement('tr');
+      const term = document.createElement('td');
+      term.textContent = t.term;   // textContent, never innerHTML — the term is user-derived text
+      const count = document.createElement('td');
+      count.textContent = t.count;
+      tr.appendChild(term); tr.appendChild(count);
+      tbody.appendChild(tr);
+    }
+    msg.textContent = rows.length
+      ? rows.length + ' coverage gap(s), each searched ≥ ' + data.k_anonymity + ' times.'
+      : 'No coverage gaps have crossed the k-anonymity floor yet.';
+  } catch (e) { msg.textContent = 'Could not load weak coverage.'; }
+}
+load();
+setInterval(load, 15000);
+</script>
+"#;
+    axum::response::Html(crate::admin::console("/admin/weak-coverage", body)).into_response()
 }
