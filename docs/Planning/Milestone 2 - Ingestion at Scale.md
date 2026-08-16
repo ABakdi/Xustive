@@ -260,7 +260,11 @@ also the fastest option — no bundle to download, parse and hydrate.
       sites serving windows-1256 with a bare Content-Type; a declared charset is never counted as a
       guess. Both meta forms tested against real windows-1256 Arabic
 - [ ] M2-T04.4 Honest user-agent; per-host connection cap of 1
-- [ ] M2-T04.5 Outcome classification table
+- [x] M2-T04.5 Outcome classification table — `FetchError::outcome` returns the stable §4.4 label
+      (gone, throttled, transient, permanent, timeout, too_large, redirect_loop, …), finer than the
+      retry-or-not class, and the orchestrator records it so failures break down by cause instead of
+      one 'failed'. `is_gone` (404/410) is called out as the one the orchestrator can act on. A test
+      pins the table and that a gone resource is never retryable
 - [ ] M2-T04.6 Headless escalation rules + ratio cap; sandboxed browser container
 - [ ] M2-T04.10 **Incomplete certificate chains.** Several `.gov.dz` hosts serve a valid Sectigo
       certificate without the intermediate, so every correctly-configured client fails —
