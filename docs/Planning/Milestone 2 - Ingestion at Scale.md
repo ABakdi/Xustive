@@ -454,13 +454,13 @@ points at.
 - [ ] M2-T16.6 **Brave Search API connector** for the residual — weak queries T16.1–T16.4 did not
       resolve. Rate-limited, budgeted, **off by default**, key in config. The one paid route whose
       terms permit this, so it is tried before T16.9
-- [ ] M2-T16.7 **Provenance on every document**: seed, link, sitemap, Common Crawl, query-driven,
-      Brave, or SERP. Without it we cannot tell which discovery channel earns its cost, and T16.8
-      cannot be answered at all
-- [ ] M2-T16.8 **Per-channel yield reporting**: URLs discovered, fetched, indexed, and surviving
-      dedup, per channel — and for the paid and collected channels, **cost per surviving document**.
-      Expected to show Common Crawl dominating volume and query-driven dominating relevance, but
-      measured, not assumed. This is the number that decides whether T16.9 keeps its place
+- [x] M2-T16.7 **Provenance on every document**: seed, link, sitemap, Common Crawl, query-driven,
+      Brave, or SERP. `DiscoveryChannel` on the frontier `Pending`/`Claim` and stamped onto every
+      `Document`; the channels not yet built (cc/query/brave/serp) exist in the enum ready to be set
+- [~] M2-T16.8 **Per-channel yield reporting**: URLs discovered, fetched, indexed, and surviving
+      dedup, per channel — the funnel + yield/unique rates on the "Discovery yield" console page
+      (`/admin/discovery`). **Cost per surviving document** waits on the paid/collected channels
+      (T16.6/.9) that have a cost to divide; the volume funnel is in place
 
 ### Direct SERP collection *(my direction — [[ADR-0013 - Direct SERP Collection for Discovery]])*
 
