@@ -25,6 +25,8 @@ encoding_rs = "0.8"
 chardetng = "0.1"
 quick-xml = "0.37"
 redis = { version = "0.27", default-features = false, features = ["script", "tokio-comp"] }
+chacha20poly1305.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
