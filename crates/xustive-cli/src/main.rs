@@ -49,6 +49,9 @@ enum Command {
     Crawld {
         #[arg(long, default_value = "data/sources/seeds.tsv")]
         seeds: PathBuf,
+        /// Registry file whose approved, active sources are also seeded. Missing file is fine.
+        #[arg(long, default_value = "data/sources/registry.jsonl")]
+        registry: PathBuf,
         /// Stop after this many documents. Omit to run until stopped.
         #[arg(long)]
         max: Option<usize>,
@@ -171,6 +174,7 @@ async fn main() -> Result<()> {
         Command::Seed { path, batch } => cmd_seed(&client, &config, &path, batch).await,
         Command::Crawld {
             seeds,
+            registry,
             max,
             discover,
             reset,
@@ -181,6 +185,7 @@ async fn main() -> Result<()> {
                 &crawld::Options {
                     workers,
                     seeds_path: seeds.display().to_string(),
+                    registry_path: Some(registry.display().to_string()),
                     max_documents: max,
                     discover_new_hosts: discover,
                     reset,

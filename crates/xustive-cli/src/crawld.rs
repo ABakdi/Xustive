@@ -88,6 +88,10 @@ pub const DEFAULT_WORKERS: usize = 16;
 pub struct Options {
     pub workers: usize,
     pub seeds_path: String,
+    /// The data sources registry. Its approved, active sources are seeded alongside the TSV — this
+    /// is what makes `registry activate <id>` take effect on the next start. Absent or missing file
+    /// is not an error: the registry is optional next to the always-present dev seed list.
+    pub registry_path: Option<String>,
     pub max_documents: Option<usize>,
     pub discover_new_hosts: bool,
     /// Start from an empty frontier rather than resuming.
@@ -163,9 +167,37 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             added += 1;
         }
     }
+
+    // Also seed the registry's approved, active sources. `is_crawlable` is the gate: a `proposed`
+    // or unapproved source is skipped, so nothing crawls until a human ran `registry activate`.
+    let mut registry_seeded = 0usize;
+    if let Some(reg_path) = &opts.registry_path {
+        match xustive_core::Registry::load(reg_path) {
+            Ok(reg) => {
+                for s in reg.crawlable() {
+                    let trust = match s.trust_tier {
+                        xustive_core::TrustTier::A => 100,
+                        xustive_core::TrustTier::B => 60,
+                        xustive_core::TrustTier::C => 30,
+                    };
+                    for url in &s.entry_points {
+                        if orchestrator.seed(url, &s.id, trust).await {
+                            added += 1;
+                            registry_seeded += 1;
+                        }
+                    }
+                }
+            }
+            // A missing registry file is fine (dev may run on the TSV alone); a malformed one is
+            // worth surfacing, but must not stop a crawl that the TSV can seed on its own.
+            Err(e) => tracing::warn!(path = %reg_path, error = %e, "skipping registry seeding"),
+        }
+    }
+
     let (waiting, inflight) = orchestrator.frontier().depth().await;
     tracing::info!(
         seeds = seeds.len(),
+        registry_seeded,
         newly_queued = added,
         waiting,
         inflight,
