@@ -226,6 +226,7 @@ impl Orchestrator {
             source_id: source_id.to_string(),
             depth: 0,
             trust,
+            channel: xustive_core::DiscoveryChannel::Seed,
             priority: frontier::priority_for(0, trust, false),
         };
         matches!(self.frontier.add(&pending).await, Ok(true))
@@ -355,7 +356,7 @@ impl Orchestrator {
             return Outcome::Idle;
         }
 
-        let parsed = match self.parser.parse(
+        let mut parsed = match self.parser.parse(
             &fetched.body,
             &fetched.final_url,
             "crawl",
@@ -393,6 +394,11 @@ impl Orchestrator {
         };
         self.stats.parsed += 1;
         self.publish("parsed").await;
+
+        // Stamp the document with the channel that discovered its URL (M2-T16.7). The parser does
+        // not know this — it is a property of how the URL reached the frontier, carried on the
+        // claim — so it is set here, the one place both the claim and the document are in hand.
+        parsed.document.discovery = claim.channel;
 
         // Links are followed unless the page asked otherwise. A `noindex` page is still worth
         // crawling *through* — that combination is how sites let a crawler reach content behind a
@@ -483,6 +489,8 @@ impl Orchestrator {
             source_id: claim.source_id.clone(),
             depth: claim.depth,
             trust: claim.trust,
+            // A revisit does not change how the URL was originally found.
+            channel: claim.channel,
             priority: frontier::priority_for_revisit(
                 claim.depth,
                 claim.trust,
@@ -545,6 +553,8 @@ impl Orchestrator {
                 source_id: source_id.to_string(),
                 depth,
                 trust: from.trust,
+                // Reached by following a link, whatever channel first found the parent.
+                channel: xustive_core::DiscoveryChannel::Link,
                 priority: frontier::priority_for(
                     depth,
                     from.trust,

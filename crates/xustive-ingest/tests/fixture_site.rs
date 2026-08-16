@@ -461,6 +461,7 @@ async fn discovered_links_are_one_hop_deeper_than_their_parent() {
         source_id: "fixture".into(),
         depth: 2,
         trust: 77,
+        channel: xustive_core::DiscoveryChannel::Seed,
         priority: 0,
     };
     assert_eq!(f.add(&pending).await, Ok(true));
@@ -522,6 +523,7 @@ async fn max_depth_stops_link_following() {
             source_id: "fixture".into(),
             depth: 2,
             trust: 50,
+            channel: xustive_core::DiscoveryChannel::Seed,
             priority: 0,
         })
         .await,
@@ -632,6 +634,7 @@ async fn a_refetch_counts_as_a_revisit_not_a_discovery() {
         source_id: "fixture".into(),
         depth: 0,
         trust: 60,
+        channel: xustive_core::DiscoveryChannel::Seed,
         priority: 0,
     };
 

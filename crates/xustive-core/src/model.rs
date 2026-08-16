@@ -238,6 +238,68 @@ pub enum BodySource {
     CaptionAsr,
 }
 
+/// How a URL entered the frontier — its discovery channel (M2-T16.7).
+///
+/// Carried onto every document so per-channel yield (M2-T16.8) can be answered at all: which
+/// channel found a URL, how many of its URLs survived to an indexed document, and — for the paid and
+/// collected channels — at what cost. Distinct from [`SourceType`] (what kind of thing it is) and
+/// `source_id` (which registry source it belongs to): a single source can be reached by several
+/// channels, and the channel is the axis a discovery investment is measured on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiscoveryChannel {
+    /// A curated seed or registry entry point.
+    Seed,
+    /// A link followed from an already-crawled page.
+    Link,
+    /// A URL listed in a site's sitemap.
+    Sitemap,
+    /// The Common Crawl index (M2-T16.1).
+    CommonCrawl,
+    /// Enqueued because a user search was under-served (M2-T16.4).
+    QueryDriven,
+    /// The Brave Search API connector (M2-T16.6).
+    Brave,
+    /// Direct SERP collection (M2-T16.9).
+    Serp,
+    /// Provenance not recorded — an older document, or a path that predates this field.
+    #[default]
+    Unknown,
+}
+
+impl DiscoveryChannel {
+    /// A stable short token for the frontier's compact meta encoding and for metrics field names.
+    /// Round-trips with [`DiscoveryChannel::parse`].
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::Seed => "seed",
+            Self::Link => "link",
+            Self::Sitemap => "sitemap",
+            Self::CommonCrawl => "cc",
+            Self::QueryDriven => "query",
+            Self::Brave => "brave",
+            Self::Serp => "serp",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    /// Parse a [`DiscoveryChannel::token`]. `None` for anything else, so a caller decides the
+    /// fallback rather than silently getting `Unknown`.
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "seed" => Self::Seed,
+            "link" => Self::Link,
+            "sitemap" => Self::Sitemap,
+            "cc" => Self::CommonCrawl,
+            "query" => Self::QueryDriven,
+            "brave" => Self::Brave,
+            "serp" => Self::Serp,
+            "unknown" => Self::Unknown,
+            _ => return None,
+        })
+    }
+}
+
 /// The primary indexed entity.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Document {
@@ -316,6 +378,10 @@ pub struct Document {
     /// Which collection path produced this, so a broken path can be re-collected selectively.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access_path: Option<String>,
+    /// The discovery channel that put this URL in the frontier (M2-T16.7). Defaults to `Unknown`
+    /// for documents written before the field existed.
+    #[serde(default)]
+    pub discovery: DiscoveryChannel,
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
 }
@@ -370,6 +436,7 @@ impl Document {
             http_status: 0,
             fetch_method: None,
             access_path: None,
+            discovery: DiscoveryChannel::Unknown,
             schema_version: SCHEMA_VERSION,
         }
     }
@@ -757,6 +824,30 @@ mod tests {
         let json = serde_json::to_string(&d).unwrap();
         let back: Document = serde_json::from_str(&json).unwrap();
         assert_eq!(d, back);
+    }
+
+    #[test]
+    fn every_discovery_channel_token_round_trips() {
+        // The token is the wire form in the frontier meta and in metrics field names, so a rename
+        // that breaks the round-trip silently mislabels provenance.
+        for ch in [
+            DiscoveryChannel::Seed,
+            DiscoveryChannel::Link,
+            DiscoveryChannel::Sitemap,
+            DiscoveryChannel::CommonCrawl,
+            DiscoveryChannel::QueryDriven,
+            DiscoveryChannel::Brave,
+            DiscoveryChannel::Serp,
+            DiscoveryChannel::Unknown,
+        ] {
+            assert_eq!(DiscoveryChannel::parse(ch.token()), Some(ch));
+        }
+        assert_eq!(
+            DiscoveryChannel::parse("aps-dz"),
+            None,
+            "a source_id is not a channel"
+        );
+        assert_eq!(DiscoveryChannel::default(), DiscoveryChannel::Unknown);
     }
 
     #[test]

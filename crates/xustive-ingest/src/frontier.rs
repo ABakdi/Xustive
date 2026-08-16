@@ -60,6 +60,10 @@ pub struct Pending {
     pub depth: u32,
     /// How much we rate the source, 0–100. Inherited by whatever this page links to.
     pub trust: u8,
+    /// The discovery channel that found this URL (M2-T16.7). Carried through the frontier so the
+    /// document it becomes records how it was found, for per-channel yield (M2-T16.8).
+    #[serde(default)]
+    pub channel: xustive_core::DiscoveryChannel,
     /// Lower is sooner. Not a timestamp — an ordering.
     pub priority: i64,
 }
@@ -530,6 +534,8 @@ pub struct Claim {
     /// Inherited from the parent. A link from a source we rate highly is worth reaching sooner
     /// than one from a source we do not.
     pub trust: u8,
+    /// The discovery channel that found this URL (M2-T16.7), recovered from the frontier meta.
+    pub channel: xustive_core::DiscoveryChannel,
 }
 
 /// Per-URL state the queue itself cannot hold.
@@ -538,9 +544,16 @@ pub struct Claim {
 /// depth. Encoded as one field rather than three keys because it is written on every discovery and
 /// read on every claim, and at five million URLs that ratio decides the cost.
 ///
-/// `source_id` is last so it may contain anything; the numbers before it are parsed positionally.
-fn encode_meta(depth: u32, trust: u8, source_id: &str) -> String {
-    format!("{depth}\t{trust}\t{source_id}")
+/// `source_id` is last so it may contain anything; the numbers and the channel token before it are
+/// parsed positionally. The channel was added after `source_id` (M2-T16.7), so the format now has
+/// four fields — see [`decode_meta`] for how an old three-field entry is still read.
+fn encode_meta(
+    depth: u32,
+    trust: u8,
+    channel: xustive_core::DiscoveryChannel,
+    source_id: &str,
+) -> String {
+    format!("{depth}\t{trust}\t{}\t{source_id}", channel.token())
 }
 
 /// Decode what `encode_meta` wrote, falling back to a root-level default.
@@ -548,12 +561,35 @@ fn encode_meta(depth: u32, trust: u8, source_id: &str) -> String {
 /// A missing or unparsable entry yields depth 0, which is the **conservative** direction: it makes
 /// the crawler treat the URL as a seed and keep going. Defaulting to `max_depth` instead would
 /// make one bad write look like a crawl that mysteriously stops following links.
-fn decode_meta(raw: &str) -> (u32, u8, String) {
-    let mut parts = raw.splitn(3, '\t');
-    let depth = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let trust = parts.next().and_then(|s| s.parse().ok()).unwrap_or(50);
-    let source_id = parts.next().unwrap_or_default().to_string();
-    (depth, trust, source_id)
+///
+/// `source_id` is the tail and **may itself contain tabs** — `encode_meta` writes it unescaped and
+/// always last, so it must not be split. Old entries are `depth\ttrust\tsource_id`; new ones insert
+/// a channel token as the third field: `depth\ttrust\tchannel\tsource_id`. The two are told apart by
+/// whether that third field parses as a known channel token — a real `source_id` (a registry slug)
+/// is not one of the eight tokens, so an old entry is read correctly and its channel is `Unknown`,
+/// the honest answer for a URL enqueued before provenance was tracked.
+fn decode_meta(raw: &str) -> (u32, u8, xustive_core::DiscoveryChannel, String) {
+    use xustive_core::DiscoveryChannel;
+    let mut head = raw.splitn(4, '\t');
+    let depth = head.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let trust = head.next().and_then(|s| s.parse().ok()).unwrap_or(50);
+    let third = head.next().unwrap_or_default();
+    let tail = head.next().unwrap_or_default();
+
+    match DiscoveryChannel::parse(third) {
+        // New layout: third field is a channel token, source_id is the (possibly tab-bearing) tail.
+        Some(channel) => (depth, trust, channel, tail.to_string()),
+        // Old layout: the third field onward is the source_id. Reassemble it, since splitn(4) may
+        // have cut a tab-bearing source_id in two.
+        None => {
+            let source_id = if tail.is_empty() {
+                third.to_string()
+            } else {
+                format!("{third}\t{tail}")
+            };
+            (depth, trust, DiscoveryChannel::Unknown, source_id)
+        }
+    }
 }
 
 impl Frontier {
@@ -643,6 +679,7 @@ impl Frontier {
             .arg(encode_meta(
                 pending.depth,
                 pending.trust,
+                pending.channel,
                 &pending.source_id,
             ))
             .query_async::<()>(&mut conn)
@@ -709,6 +746,7 @@ impl Frontier {
             .arg(encode_meta(
                 pending.depth,
                 pending.trust,
+                pending.channel,
                 &pending.source_id,
             ))
             .query_async::<()>(&mut conn)
@@ -837,13 +875,15 @@ impl Frontier {
             .await
             .ok()?;
         let parts = result?;
-        let (depth, trust, source_id) = decode_meta(parts.get(2).map(String::as_str).unwrap_or(""));
+        let (depth, trust, channel, source_id) =
+            decode_meta(parts.get(2).map(String::as_str).unwrap_or(""));
         Some(Claim {
             host: parts.first()?.clone(),
             url: parts.get(1)?.clone(),
             depth,
             trust,
             source_id,
+            channel,
         })
     }
 
@@ -990,5 +1030,31 @@ mod revisit_priority {
         let a = priority_for_revisit(1, 50, 86_400, 20 * 24 * HOUR);
         let b = priority_for_revisit(1, 50, 86_400, 3650 * 24 * HOUR);
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn meta_round_trips_the_channel_and_a_tab_bearing_source_id() {
+        use xustive_core::DiscoveryChannel;
+        // The channel survives, and a source_id that itself contains tabs is not split.
+        let raw = encode_meta(3, 77, DiscoveryChannel::Sitemap, "odd\tid\twith\tseps");
+        let (depth, trust, channel, source_id) = decode_meta(&raw);
+        assert_eq!(depth, 3);
+        assert_eq!(trust, 77);
+        assert_eq!(channel, DiscoveryChannel::Sitemap);
+        assert_eq!(source_id, "odd\tid\twith\tseps");
+    }
+
+    #[test]
+    fn an_old_three_field_meta_still_decodes_with_an_unknown_channel() {
+        use xustive_core::DiscoveryChannel;
+        // A frontier entry written before provenance existed: depth, trust, source_id — no channel.
+        let (depth, trust, channel, source_id) = decode_meta("2\t40\taps-dz");
+        assert_eq!((depth, trust), (2, 40));
+        assert_eq!(
+            channel,
+            DiscoveryChannel::Unknown,
+            "no channel was recorded"
+        );
+        assert_eq!(source_id, "aps-dz");
     }
 }

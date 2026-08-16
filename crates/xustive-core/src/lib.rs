@@ -17,9 +17,9 @@ pub mod safe_url;
 pub use config::Config;
 pub use error::{Classify, ErrorClass};
 pub use model::{
-    Author, BodySource, Comment, CrawlFrequency, CrawlPolicy, DatePrecision, Document, Engagement,
-    Geo, Lang, LegalBasis, Lifecycle, Media, MediaKind, Script, Sentiment, SentimentLabel, Source,
-    SourceType, TrustTier, SCHEMA_VERSION,
+    Author, BodySource, Comment, CrawlFrequency, CrawlPolicy, DatePrecision, DiscoveryChannel,
+    Document, Engagement, Geo, Lang, LegalBasis, Lifecycle, Media, MediaKind, Script, Sentiment,
+    SentimentLabel, Source, SourceType, TrustTier, SCHEMA_VERSION,
 };
 pub use registry::{Registry, RegistryError};
 pub use safe_url::{SafeUrl, UrlError};

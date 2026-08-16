@@ -77,6 +77,7 @@ pub async fn poll_sitemap(
                     source_id: "sitemap".into(),
                     depth: 1,
                     trust,
+                    channel: xustive_core::DiscoveryChannel::Sitemap,
                     priority: frontier::priority_for(1, trust, true),
                 };
                 frontier.defer(&pending, now.saturating_mul(1000)).await;

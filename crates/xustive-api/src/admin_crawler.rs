@@ -227,6 +227,7 @@ pub async fn enqueue(
         depth: 0,
         // A URL an operator typed is as trusted as a seed, and its outlinks inherit that.
         trust: 100,
+        channel: xustive_core::DiscoveryChannel::Seed,
         priority: xustive_ingest::frontier::priority_for(0, 100, true),
     };
 
@@ -650,6 +651,7 @@ pub async fn add_source(
             source_id: source_id.clone(),
             depth: 0,
             trust: 100,
+            channel: xustive_core::DiscoveryChannel::Seed,
             priority: i64::MIN / 2,
         };
         let added = f.add(&pending).await.unwrap_or(false);

@@ -48,6 +48,7 @@ fn pending(host: &str, url: &str, priority: i64) -> Pending {
         source_id: "test".into(),
         depth: 0,
         trust: 50,
+        channel: xustive_core::DiscoveryChannel::Seed,
         priority,
     }
 }
