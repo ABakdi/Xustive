@@ -277,12 +277,18 @@ also the fastest option — no bundle to download, parse and hydrate.
       the utm/fbclid/gclid family, sorts the query so order does not matter, drops the fragment,
       normalises host/scheme case and default ports, and the bare-root trailing slash. Path case is
       kept, since a server may distinguish it
-- [ ] M2-T05.2 Bloom + exact `content_hash` check
+- [~] M2-T05.2 Exact `content_hash` check — a persistent Redis set of indexed hashes, checked
+      before queueing, atomic via `SADD`. Catches the same body at two URLs (a syndicated wire
+      story) which canonicalisation cannot, and skips re-queuing an unchanged revisit for free. The
+      Bloom pre-filter (a latency optimisation for the negative path) is deferred — the exact check
+      is one atomic round trip and sufficient
 - [ ] M2-T05.3 SimHash banding index and distance verdicts
 - [ ] M2-T05.4 Winner selection (earliest, then trust, then length) + engagement aggregation
 - [ ] M2-T05.5 pHash image dedup and embedding reuse
 - [ ] M2-T05.6 Cluster ids for the 4–8 distance band
-- [ ] M2-T05.7 **Fail-open on Redis unavailability** + a test proving it
+- [x] M2-T05.7 **Fail-open on Redis unavailability**, with a test. An unreachable dedup store yields
+      `is_new = true`, so a Redis wobble lets documents through rather than dropping them —
+      indexing a duplicate is a no-op, a lost document is permanent. Proven against a dead Redis
 - [ ] M2-T05.8 Volatile-page detection (revision loop guard) — shares its mechanism with M2-T15.4
 - [ ] M2-T05.9 Quality evaluation: 500 dup + 500 distinct pairs, precision ≥ 0.95, recall ≥ 0.85
 
