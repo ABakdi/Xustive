@@ -400,9 +400,40 @@ impl Politeness {
     }
 
     /// Record that a request was made, and schedule the next permitted time.
+    /// Claim this host's next turn, atomically: return how long to wait *and* push the host's slot
+    /// forward so a concurrent caller cannot claim the same one.
+    ///
+    /// This is what makes the per-host cap real (M2-T04.4). `wait_for` only *read* the next-allowed
+    /// time, so two workers sharing a `Fetcher` could both see a host as due, both pass, and both
+    /// fetch it at once — the frontier prevents that in the main crawl by handing each worker a
+    /// different host, but a shared fetcher used by the sitemap poller and a worker had no such
+    /// guarantee. Reserving on claim closes the window: the second caller sees the advanced time and
+    /// waits out a full delay behind the first.
+    ///
+    /// Monotonic — `next_allowed` never moves backward, so an out-of-order claim cannot shorten the
+    /// pacing a host already earned.
+    pub fn reserve(&mut self, host: &str) -> Duration {
+        if self.bypass {
+            return Duration::ZERO;
+        }
+        let now = Instant::now();
+        match self.hosts.get_mut(host) {
+            Some(s) => {
+                let wait = s.next_allowed.saturating_duration_since(now);
+                s.next_allowed = s.next_allowed.max(now) + s.adaptive_delay;
+                wait
+            }
+            // A host with no state yet is due now, and there is nothing to advance until its
+            // robots.txt is fetched and its state created.
+            None => Duration::ZERO,
+        }
+    }
+
     pub fn record_fetch(&mut self, host: &str) {
         if let Some(s) = self.hosts.get_mut(host) {
-            s.next_allowed = Instant::now() + s.adaptive_delay;
+            // Never backward: `reserve` may already have pushed the slot past this, and a fetch
+            // that finished quickly must not let the next one start sooner than the delay allows.
+            s.next_allowed = s.next_allowed.max(Instant::now() + s.adaptive_delay);
         }
     }
 
@@ -543,6 +574,60 @@ mod tests {
         let p = Politeness::new();
         assert!(!p.allows("example.dz", "/"));
         assert!(p.rules_stale("example.dz", Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn reserving_a_turn_serialises_concurrent_callers() {
+        // The per-host cap (M2-T04.4): two callers claiming the same host in a row must not both be
+        // told to go now. The first reserves the slot; the second waits a full delay behind it.
+        let mut p = Politeness::new();
+        p.set_rules(
+            "a.dz",
+            Robots::parse(
+                "User-agent: *
+Crawl-delay: 2
+",
+            ),
+        );
+        let first = p.reserve("a.dz");
+        let second = p.reserve("a.dz");
+        assert_eq!(first, Duration::ZERO, "the first caller may go now");
+        assert!(
+            second >= Duration::from_millis(1900),
+            "the second caller must wait behind the first, got {second:?}"
+        );
+        // A third waits behind the second — reservations stack in order.
+        let third = p.reserve("a.dz");
+        assert!(
+            third > second,
+            "reservations must stack: {third:?} vs {second:?}"
+        );
+    }
+
+    #[test]
+    fn record_fetch_never_shortens_a_reserved_slot() {
+        // reserve() may already have pushed the slot forward; a fast fetch's record_fetch must not
+        // pull it back and let the next request start early.
+        let mut p = Politeness::new();
+        p.set_rules(
+            "a.dz",
+            Robots::parse(
+                "User-agent: *
+Crawl-delay: 2
+",
+            ),
+        );
+        let _ = p.reserve("a.dz"); // now
+        let _ = p.reserve("a.dz"); // pushes next_allowed to ~2s
+                                   // The second reserve pushed next_allowed to ~2 delays out. record_fetch (delay 2s) would
+                                   // set it to ~now+2s if it ran naively; the max() keeps the larger reserved value. Either
+                                   // way it must stay at least a full delay out — never reset toward zero.
+        p.record_fetch("a.dz");
+        let after = p.wait_for("a.dz");
+        assert!(
+            after >= Duration::from_millis(1900),
+            "record_fetch must not shorten a reserved slot below one delay, got {after:?}"
+        );
     }
 
     #[test]

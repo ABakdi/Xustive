@@ -519,9 +519,11 @@ impl Fetcher {
     /// The lock is released while sleeping so other hosts proceed in parallel; serialisation is
     /// per host, not global.
     async fn wait_turn(&self, host: &str) {
+        // Reserve, not just read: advancing the host's slot under the lock is what stops two
+        // concurrent callers sharing this fetcher from both fetching one host at once (M2-T04.4).
         let wait = {
-            let p = self.politeness.lock().await;
-            p.wait_for(host)
+            let mut p = self.politeness.lock().await;
+            p.reserve(host)
         };
         if !wait.is_zero() {
             tokio::time::sleep(wait + self.config.politeness_margin).await;
