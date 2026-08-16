@@ -549,7 +549,7 @@ proxy and fingerprint machinery, bound by the same pinning invariant.
 - [~] M2-T11.3 Seed ~500 web sources across the categories in its §4 — 96 real domains
   seeded (`data/sources/registry.jsonl`); ~400 left for human curation, all as `proposed`
 - [ ] M2-T11.4 Per-domain parser rules for the top 50 ([[Content Parser]])
-- [ ] M2-T11.5 Per-source quality dashboards (fetch, extraction, dedup, spam, date precision)
+- [x] M2-T11.5 Per-source quality dashboards (fetch, extraction, dedup, spam, date precision)
 - [x] M2-T11.6 Lifecycle automation: degrade on sustained failure
 - [ ] M2-T11.7 Name a curation owner ← *B5*
 
