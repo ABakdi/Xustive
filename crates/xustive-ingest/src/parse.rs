@@ -364,6 +364,9 @@ impl Parser {
         // the index and out of default results, never deleted, so a later threshold change or a
         // manual review can still reach it.
         document.spam_score = crate::spam::spam_score(&document.title, &document.body);
+        // Topic labels (M2-T06.6): a coarse subject from the document's own vocabulary, for
+        // grouping and vertical slicing. Empty when nothing is clear — a wrong label is worse.
+        document.topics = crate::topics::label(&document.title, &document.body);
 
         Ok(Parsed {
             outlinks: extract_outlinks(&doc, url, self.config.max_outlinks),
@@ -1167,6 +1170,34 @@ mod tests {
             r.document.canonical_url.as_deref(),
             Some("https://example.dz/canonical")
         );
+    }
+
+    #[test]
+    fn quality_score_stays_in_bounds_and_rewards_a_known_date() {
+        // Bounds: even a maximal document cannot exceed 1.0, and a minimal one cannot go negative.
+        let mut doc = Document::new(new_id(), "https://e.dz/a", SourceType::Web);
+        doc.body_len = 100_000;
+        doc.published_at_precision = DatePrecision::Second;
+        doc.title = "a sufficiently long and descriptive headline".into();
+        doc.language = Lang::Ar;
+        let high = quality_score(&doc, Method::JsonLd);
+        assert!((0.0..=1.0).contains(&high), "score {high} out of bounds");
+
+        // A known date is worth real points: the same document with an unknown date scores lower,
+        // because a date is what makes freshness ranking mean anything.
+        let mut undated = doc.clone();
+        undated.published_at_precision = DatePrecision::Unknown;
+        assert!(
+            quality_score(&doc, Method::JsonLd) > quality_score(&undated, Method::JsonLd),
+            "a trusted date should raise the quality score"
+        );
+
+        // The floor: an empty document is low but valid.
+        let low = quality_score(
+            &Document::new(new_id(), "https://e.dz/b", SourceType::Web),
+            Method::Fallback,
+        );
+        assert!((0.0..=0.3).contains(&low), "an empty document scored {low}");
     }
 
     #[test]

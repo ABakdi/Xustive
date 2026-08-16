@@ -27,6 +27,7 @@ pub mod simhash_index;
 pub mod sitemap;
 pub mod sitemap_poll;
 pub mod spam;
+pub mod topics;
 
 pub use fetch::{FetchConfig, FetchError, Fetched, Fetcher};
 pub use parse::{ParseConfig, ParseError, Parsed, Parser};
