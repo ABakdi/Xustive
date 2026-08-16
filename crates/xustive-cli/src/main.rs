@@ -7,6 +7,7 @@
 mod crawl;
 mod crawld;
 mod eval;
+mod registry;
 mod worker;
 
 use std::path::PathBuf;
@@ -78,6 +79,14 @@ enum Command {
         #[arg(long)]
         no_discover: bool,
     },
+    /// Curate the data sources registry: list, approve, activate, disable, lint.
+    Registry {
+        /// The JSON-Lines registry file, versioned in git.
+        #[arg(long, default_value = "data/sources/registry.jsonl")]
+        path: PathBuf,
+        #[command(subcommand)]
+        action: registry::RegistryAction,
+    },
     /// Create the scoped Meilisearch keys the running services use. Idempotent.
     Keys {
         /// Print the key values. Off by default so a routine run cannot leave credentials in a
@@ -143,6 +152,11 @@ async fn main() -> Result<()> {
     // `text` is pure and must work with no backend running.
     if let Command::Text { input } = &args.command {
         return cmd_text(input);
+    }
+
+    // `registry` curates a git-versioned file and needs no backend either.
+    if let Command::Registry { path, action } = &args.command {
+        return registry::run(path, action);
     }
 
     let client = MeiliClient::new(
@@ -223,7 +237,7 @@ async fn main() -> Result<()> {
             limit,
             explain,
         } => cmd_search(&client, &config, &query, limit, explain).await,
-        Command::Text { .. } => unreachable!("handled above"),
+        Command::Text { .. } | Command::Registry { .. } => unreachable!("handled above"),
     }
 }
 
