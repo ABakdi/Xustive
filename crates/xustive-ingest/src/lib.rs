@@ -22,6 +22,7 @@ pub mod revisit;
 pub mod robots;
 pub mod robots_cache;
 pub mod rules;
+pub mod simhash_index;
 pub mod sitemap;
 pub mod sitemap_poll;
 
