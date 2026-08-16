@@ -7,6 +7,7 @@
 mod crawl;
 mod crawld;
 mod eval;
+mod parsecheck;
 mod registry;
 mod worker;
 
@@ -81,6 +82,19 @@ enum Command {
         /// Fetch only listed entry points; do not follow homepage links.
         #[arg(long)]
         no_discover: bool,
+    },
+    /// Fetch a URL and show what the parser extracts — for authoring per-domain rules.
+    ParseCheck {
+        url: String,
+        #[arg(long, default_value = "data/parsers/domains.toml")]
+        rules: PathBuf,
+        /// Try a candidate `date` selector against the fetched page without writing a rule.
+        #[arg(long)]
+        date: Option<String>,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        body: Option<String>,
     },
     /// Curate the data sources registry: list, approve, activate, disable, lint.
     Registry {
@@ -160,6 +174,25 @@ async fn main() -> Result<()> {
     // `registry` curates a git-versioned file and needs no backend either.
     if let Command::Registry { path, action } = &args.command {
         return registry::run(path, action);
+    }
+
+    // `parse-check` fetches a URL and runs the parser; no index or queue involved.
+    if let Command::ParseCheck {
+        url,
+        rules,
+        date,
+        title,
+        body,
+    } = &args.command
+    {
+        return parsecheck::run(&parsecheck::CheckOptions {
+            url: url.clone(),
+            rules_path: rules.display().to_string(),
+            date: date.clone(),
+            title: title.clone(),
+            body: body.clone(),
+        })
+        .await;
     }
 
     let client = MeiliClient::new(
@@ -242,7 +275,9 @@ async fn main() -> Result<()> {
             limit,
             explain,
         } => cmd_search(&client, &config, &query, limit, explain).await,
-        Command::Text { .. } | Command::Registry { .. } => unreachable!("handled above"),
+        Command::Text { .. } | Command::Registry { .. } | Command::ParseCheck { .. } => {
+            unreachable!("handled above")
+        }
     }
 }
 

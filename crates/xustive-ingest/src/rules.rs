@@ -124,6 +124,24 @@ impl Rules {
     }
 }
 
+/// Text the first element matching `selector` would capture, collapsed to single spaces — the same
+/// shape a rule captures at extraction time. `None` for an invalid selector or no match. Exposed so
+/// the rule-authoring tool (`xustive-cli parse-check`) can verify a candidate selector against real
+/// HTML before it is written into a rule, rather than discovering it never matched at crawl time.
+pub fn capture_selector(html: &str, selector: &str) -> Option<String> {
+    let sel = scraper::Selector::parse(selector).ok()?;
+    let doc = scraper::Html::parse_document(html);
+    let el = doc.select(&sel).next()?;
+    let collapsed = el
+        .text()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!collapsed.is_empty()).then_some(collapsed)
+}
+
 fn normalise_host(host: &str) -> String {
     host.trim()
         .trim_start_matches("https://")
@@ -183,6 +201,23 @@ title = "h1.title"
         // One of the two would silently never apply, and which one would depend on file order.
         let dup = "[[domain]]\nhost = \"aps.dz\"\n\n[[domain]]\nhost = \"www.aps.dz\"\n";
         assert!(Rules::parse(dup).is_err());
+    }
+
+    #[test]
+    fn capture_selector_returns_collapsed_text_or_none() {
+        let html = r#"<html><body>
+            <h1>  البلاد   :  خبر  </h1>
+            <article><p>نص المقال.</p></article>
+        </body></html>"#;
+        // Whitespace collapsed to single spaces, like a rule captures at extraction time.
+        assert_eq!(capture_selector(html, "h1").as_deref(), Some("البلاد : خبر"));
+        assert_eq!(
+            capture_selector(html, "article").as_deref(),
+            Some("نص المقال.")
+        );
+        // No match and an invalid selector both yield None, not a panic.
+        assert!(capture_selector(html, ".nope").is_none());
+        assert!(capture_selector(html, ">>bad<<").is_none());
     }
 
     #[test]
