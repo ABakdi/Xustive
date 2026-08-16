@@ -275,7 +275,11 @@ also the fastest option — no bundle to download, parse and hydrate.
       `curl` included. Browsers hide this by chasing the Authority Information Access extension;
       rustls does not. Options are AIA chasing or bundling known intermediates. **Not** disabling
       verification. Until then these hosts are unreachable and the log says why
-- [ ] M2-T04.7 Raw blob storage with TTL
+- [x] M2-T04.7 Raw blob storage with TTL — `RawStore` keeps a fetched body under its URL with an
+      expiry, for reindexing without a re-fetch. Opt-in (`raw_ttl_days`, default 0): blanket storage
+      would fill the 1 GB Redis the frontier and queue depend on, so it waits for object storage
+      (the real home). Bounded by a per-blob cap and the TTL; best-effort. Store/retrieve/forget and
+      TTL expiry proven against real Redis
 - [x] M2-T04.8 **SSRF suite including redirects to private IPs** — 13 cases covering the bypasses
       that get past a guard checking only literals: IPv4-mapped IPv6, decimal and octal spellings
       of loopback, credentials hiding the real host, non-HTTP schemes, resolved addresses (one bad
