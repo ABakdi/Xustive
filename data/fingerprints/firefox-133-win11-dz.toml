@@ -1,0 +1,14 @@
+id = "firefox-133-win11-dz"
+browser = "Firefox"
+version = "133.0"
+os = "Windows11"
+geo = "DZ"
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0"
+header_order = ["user-agent","accept","accept-language","accept-encoding","upgrade-insecure-requests","sec-fetch-dest","sec-fetch-mode","sec-fetch-site","sec-fetch-user"]
+accept_language = "fr-FR,fr;q=0.8,ar;q=0.6,en-US;q=0.4,en;q=0.2"
+navigator_platform = "Win32"
+navigator_languages = ["fr-FR","fr","ar","en-US","en"]
+timezone = "Africa/Algiers"
+webgl_vendor = "Google Inc. (NVIDIA)"
+webgl_renderer = "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)"
+webrtc = "through_proxy"

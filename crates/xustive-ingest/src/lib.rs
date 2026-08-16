@@ -17,6 +17,7 @@ pub mod date;
 pub mod dedup;
 pub mod exclusion;
 pub mod fetch;
+pub mod fingerprint;
 pub mod frontier;
 pub mod gazetteer;
 pub mod orchestrator;

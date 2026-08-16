@@ -1,0 +1,14 @@
+id = "safari-18-ios-dz"
+browser = "Safari"
+version = "18.0"
+os = "IOS"
+geo = "DZ"
+user_agent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+header_order = ["user-agent","accept","accept-language","accept-encoding"]
+accept_language = "ar-DZ,ar;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5"
+navigator_platform = "iPhone"
+navigator_languages = ["ar-DZ","ar","fr-FR","fr","en-US","en"]
+timezone = "Africa/Algiers"
+webgl_vendor = "Apple Inc."
+webgl_renderer = "Apple GPU"
+webrtc = "disabled"
