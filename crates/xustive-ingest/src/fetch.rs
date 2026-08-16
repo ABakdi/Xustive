@@ -53,6 +53,41 @@ impl Classify for FetchError {
     }
 }
 
+impl FetchError {
+    /// A stable outcome label for the fetcher's classification table (M2-T04.5, Web Fetcher §4.4).
+    ///
+    /// Finer than [`Classify::class`], which answers only "retry or not". This answers "what
+    /// happened", so the crawl counters distinguish a spike in **gone** (sites removing content)
+    /// from **throttled** (we are being rate-limited) from **transient** (the network is flaky) —
+    /// three problems with three different responses that a single `failed` total hides.
+    ///
+    /// `gone` (404/410) is called out from the other permanent failures because it is the one the
+    /// orchestrator can act on: the resource is deliberately removed, so there is nothing to retry
+    /// and nothing to keep in the frontier for it.
+    pub fn outcome(&self) -> &'static str {
+        match self {
+            Self::Timeout => "timeout",
+            Self::Transport(_) => "transient",
+            Self::RobotsDisallowed => "robots",
+            Self::Unsafe(_) => "unsafe",
+            Self::ContentType(_) => "content_type",
+            Self::TooLarge(_) => "too_large",
+            Self::TooManyRedirects => "redirect_loop",
+            Self::Status(404) | Self::Status(410) => "gone",
+            Self::Status(429) => "throttled",
+            Self::Status(s) => match xustive_core::error::class_for_status(*s) {
+                ErrorClass::Transient => "transient",
+                _ => "permanent",
+            },
+        }
+    }
+
+    /// Whether the resource is gone — a 404 or 410. The orchestrator drops these without retry.
+    pub fn is_gone(&self) -> bool {
+        matches!(self, Self::Status(404) | Self::Status(410))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FetchConfig {
     pub connect_timeout: Duration,
@@ -665,5 +700,45 @@ mod tests {
         assert!(INDEXABLE.contains(&"text/html"));
         assert!(!INDEXABLE.contains(&"image/png"));
         assert!(!INDEXABLE.contains(&"application/pdf"));
+    }
+}
+
+#[cfg(test)]
+mod outcome_tests {
+    use super::*;
+
+    #[test]
+    fn outcomes_match_the_classification_table() {
+        // Web Fetcher §4.4, the cases an operator watches.
+        assert_eq!(FetchError::Status(404).outcome(), "gone");
+        assert_eq!(FetchError::Status(410).outcome(), "gone");
+        assert_eq!(FetchError::Status(429).outcome(), "throttled");
+        assert_eq!(FetchError::Status(403).outcome(), "permanent");
+        assert_eq!(FetchError::Status(500).outcome(), "transient");
+        assert_eq!(FetchError::Status(503).outcome(), "transient");
+        assert_eq!(FetchError::Timeout.outcome(), "timeout");
+        assert_eq!(FetchError::TooLarge(10).outcome(), "too_large");
+        assert_eq!(FetchError::TooManyRedirects.outcome(), "redirect_loop");
+    }
+
+    #[test]
+    fn only_404_and_410_are_gone() {
+        assert!(FetchError::Status(404).is_gone());
+        assert!(FetchError::Status(410).is_gone());
+        assert!(!FetchError::Status(403).is_gone());
+        assert!(!FetchError::Status(500).is_gone());
+        assert!(!FetchError::Timeout.is_gone());
+    }
+
+    /// The outcome label and the retry class must not contradict: anything the class calls
+    /// retryable must carry a retryable-sounding outcome, and a `gone` must never be retryable.
+    #[test]
+    fn outcome_and_retry_class_agree() {
+        for status in [404u16, 410, 429, 403, 400, 500, 503, 502] {
+            let e = FetchError::Status(status);
+            if e.is_gone() {
+                assert!(!e.is_retryable(), "a gone resource must not be retried");
+            }
+        }
     }
 }

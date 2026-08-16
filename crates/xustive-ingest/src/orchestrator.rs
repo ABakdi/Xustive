@@ -287,10 +287,16 @@ impl Orchestrator {
                 return Outcome::Idle;
             }
             Err(e) => {
+                // Record the specific outcome, not a lone "failed": a rise in `gone` means sites
+                // removing content, `throttled` means we are being rate-limited, `transient` means
+                // the network — three different problems the operator needs told apart (M2-T04.5).
                 self.stats.failed += 1;
-                tracing::debug!(%url, error = %e, "fetch failed");
+                let outcome = e.outcome();
+                self.stats.skip(outcome);
+                tracing::debug!(%url, outcome, error = %e, "fetch failed");
                 self.publish("failed").await;
-                self.publish_recent(url, host, "failed", 0).await;
+                self.publish_skip(outcome).await;
+                self.publish_recent(url, host, outcome, 0).await;
                 return Outcome::Idle;
             }
         };
