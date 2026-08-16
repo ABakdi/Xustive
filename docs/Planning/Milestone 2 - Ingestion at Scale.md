@@ -249,8 +249,11 @@ also the fastest option — no bundle to download, parse and hydrate.
 ## M2-T04 — [[Web Fetcher]]
 
 - [ ] M2-T04.1 `reqwest` client with timeouts, redirect revalidation, streamed body cap
-- [ ] M2-T04.2 Conditional requests (`If-None-Match` / `If-Modified-Since`) and 304 short-circuit
-      — **blocks M2-T15**: adaptive recrawl is unaffordable without cheap revisits
+- [x] M2-T04.2 Conditional requests (`If-None-Match` / `If-Modified-Since`) and 304 short-circuit.
+      A 304 is `Ok` with an empty body, not an error — it is the best possible answer. Validators
+      are overwritten only when the server sends new ones: a 304 sends none, and clearing them on
+      it would make the *next* request unconditional, paying full price precisely because the last
+      visit was free. Proven over real HTTP against the fixture server
 - [ ] M2-T04.3 Charset detection cascade including `windows-1256`
 - [ ] M2-T04.4 Honest user-agent; per-host connection cap of 1
 - [ ] M2-T04.5 Outcome classification table
@@ -270,7 +273,10 @@ also the fastest option — no bundle to download, parse and hydrate.
 
 ## M2-T05 — [[Deduplication Service]]
 
-- [ ] M2-T05.1 URL canonicalisation with tracking-param stripping
+- [x] M2-T05.1 URL canonicalisation with tracking-param stripping — `frontier::canonical`: strips
+      the utm/fbclid/gclid family, sorts the query so order does not matter, drops the fragment,
+      normalises host/scheme case and default ports, and the bare-root trailing slash. Path case is
+      kept, since a server may distinguish it
 - [ ] M2-T05.2 Bloom + exact `content_hash` check
 - [ ] M2-T05.3 SimHash banding index and distance verdicts
 - [ ] M2-T05.4 Winner selection (earliest, then trust, then length) + engagement aggregation
