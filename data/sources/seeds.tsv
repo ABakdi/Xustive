@@ -111,3 +111,5 @@ wikipedia-en	https://en.wikipedia.org/wiki/Portal:Algeria	B	English Wikipedia, A
 # Social content comes through **direct collection** instead — [[ADR-0009]], and M2-T01a/b/c plus
 # the per-platform connectors. That is a different pipeline with its own identity, fingerprint and
 # signature machinery, and it cannot be reached by adding a line to this file.
+wikipedia-org	https://www.wikipedia.org/	A	added from the admin console
+google-com	https://google.com/	A	added from the admin console

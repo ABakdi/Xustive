@@ -544,8 +544,8 @@ proxy and fingerprint machinery, bound by the same pinning invariant.
 
 ## M2-T11 — [[Data Sources Registry]] seeding
 
-- [ ] M2-T11.1 Registry schema, storage, and git export on change
-- [ ] M2-T11.2 `legal_basis` required on every record; auto-disable when it lapses
+- [x] M2-T11.1 Registry schema, storage, and git export on change
+- [x] M2-T11.2 `legal_basis` required on every record; auto-disable when it lapses
 - [ ] M2-T11.3 Seed ~500 web sources across the categories in its §4
 - [ ] M2-T11.4 Per-domain parser rules for the top 50 ([[Content Parser]])
 - [ ] M2-T11.5 Per-source quality dashboards (fetch, extraction, dedup, spam, date precision)
