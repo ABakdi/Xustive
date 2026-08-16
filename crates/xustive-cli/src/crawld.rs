@@ -213,6 +213,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             if let Some(v) = xustive_ingest::revisit::Visits::connect_in(&redis_url, "frontier") {
                 orch = orch.with_visits(v);
             }
+            let dedup = xustive_ingest::dedup::Dedup::connect_in(&redis_url, "frontier");
 
             loop {
                 if stop.load(std::sync::atomic::Ordering::Relaxed) {
@@ -248,6 +249,19 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
 
                 match orch.step(now_ms()).await {
                     Outcome::Document(parsed) => {
+                        // Cross-run dedup by content hash: the same article reached from a homepage
+                        // and a sitemap, or one wire story syndicated to two sites, is queued once.
+                        // Fails open — an unreachable dedup store lets the document through rather
+                        // than dropping it, since a duplicate write is a no-op and a lost document
+                        // is gone.
+                        if let Some(d) = &dedup {
+                            if !d.is_new(&parsed.document.content_hash).await {
+                                if let Some(s) = &shared {
+                                    s.incr_skip("duplicate").await;
+                                }
+                                continue;
+                            }
+                        }
                         let Ok(document) = serde_json::to_value(&parsed.document) else {
                             continue;
                         };

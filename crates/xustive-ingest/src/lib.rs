@@ -12,6 +12,7 @@
 
 pub mod crawl_stats;
 pub mod date;
+pub mod dedup;
 pub mod exclusion;
 pub mod fetch;
 pub mod frontier;
