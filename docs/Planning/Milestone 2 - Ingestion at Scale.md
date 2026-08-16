@@ -13,7 +13,7 @@ updated: 2026-08-06
 > we have actually been granted, and get to 1M documents.
 > **Exit gate:** 1M documents indexed; politeness verified under load; whatever social connectors are
 > authorised are live; takedown path works end to end.
-> Parent: [[TODO]] · Previous: [[Milestone 1 - Text Search MVP]] · Next: [[Milestone 4 - Quality and Operations]]
+> Parent: [[TODO]] · Previous: [[Milestone 1 - Text Search MVP]] · Next: [[Milestone 4 - Quality and Operations]].
 
 ---
 
@@ -445,12 +445,12 @@ points at.
       three orders of magnitude more data than we want
 - [ ] M2-T16.3 **Incremental snapshot tracking** so a monthly release is ingested once. Resumable:
       this is a long batch job over remote Parquet and it will be interrupted
-- [ ] M2-T16.4 **Query-driven discovery.** Searches returning zero or few results are a free, precise
-      signal of weak coverage. Must operate on aggregate counts over normalised terms with a
-      frequency floor — never a stored query log, never anything attributable to a person
-      ([[ADR-0008 - No Query Logging]]). The privacy constraint is the design constraint
-- [ ] M2-T16.5 **Weak-coverage queue in the console**: which queries are underserved, what was
-      enqueued for them, whether coverage improved. Otherwise T16.4 is a black box
+- [~] M2-T16.4 **Query-driven discovery.** Weak searches recorded as k-anonymous (k ≥ 20), windowed,
+      off-by-default counters over normalised terms — no query log, nothing surfaced below the floor
+      ([[ADR-0008 - No Query Logging]]). Detection + queue are in; **resolving a term to URLs waits
+      on a discovery source** (Brave/SERP/Common Crawl), so the enqueue-to-frontier half is deferred
+- [x] M2-T16.5 **Weak-coverage queue in the console**: the "Weak coverage" page (`/admin/weak-coverage`)
+      lists the k-anonymous gaps; "disabled" is shown distinctly from "no gaps"
 - [ ] M2-T16.6 **Brave Search API connector** for the residual — weak queries T16.1–T16.4 did not
       resolve. Rate-limited, budgeted, **off by default**, key in config. The one paid route whose
       terms permit this, so it is tried before T16.9
