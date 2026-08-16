@@ -522,13 +522,45 @@ fn decode(bytes: &[u8], content_type: &str) -> (String, bool) {
         }
     }
 
-    // Fall back to sniffing, which reads any `<meta charset>` in the head as a side effect of
-    // scanning the bytes.
+    // Then the charset declared in the document itself — `<meta charset=...>` or the older
+    // `<meta http-equiv="Content-Type" content="...; charset=...">`. A declaration is authoritative
+    // where the byte statistics only guess, and it is the common case for the Algerian sites that
+    // serve `windows-1256` without a Content-Type charset: the header is bare, the meta is not.
+    // Not counted as "guessed": a declared charset, wherever declared, is a statement not a sniff.
+    if let Some(enc) = charset_from_meta(bytes) {
+        let (text, _, had_errors) = enc.decode(bytes);
+        if !had_errors {
+            return (text.into_owned(), false);
+        }
+    }
+
+    // Last, byte-level sniffing. chardetng inspects the byte distribution; despite the previous
+    // comment it does not parse HTML, which is exactly why the meta step above had to be explicit.
     let mut detector = chardetng::EncodingDetector::new();
     detector.feed(bytes, true);
     let enc = detector.guess(None, true);
     let (text, _, _) = enc.decode(bytes);
     (text.into_owned(), true)
+}
+
+/// The charset declared inside the document, if any.
+///
+/// Scans only the head — a charset declaration past the first 2 KB is too late to matter to a
+/// browser and is not honoured here either. ASCII-lowercased for the search, which is safe because
+/// every charset label and the surrounding tag syntax are ASCII whatever the body encoding is.
+fn charset_from_meta(bytes: &[u8]) -> Option<&'static encoding_rs::Encoding> {
+    let head_len = bytes.len().min(2048);
+    let head = String::from_utf8_lossy(&bytes[..head_len]).to_ascii_lowercase();
+    // `<meta charset="...">`
+    let label = head.split("charset").nth(1).and_then(|after| {
+        let after = after.trim_start_matches([' ', '=', '"', '\'']);
+        let end = after
+            .find(['"', '\'', ' ', '>', ';', '/'])
+            .unwrap_or(after.len());
+        let label = &after[..end];
+        (!label.is_empty()).then_some(label)
+    })?;
+    encoding_rs::Encoding::for_label(label.as_bytes())
 }
 
 #[cfg(test)]
@@ -551,6 +583,35 @@ mod tests {
         let (s, guessed) = decode(&bytes, "text/html; charset=windows-1256");
         assert_eq!(s, "الجزائر");
         assert!(!guessed);
+    }
+
+    #[test]
+    fn charset_from_a_meta_tag_is_used_when_the_header_is_bare() {
+        // The common windows-1256 case: no charset in the Content-Type, but declared in the head.
+        // Byte sniffing can get short Arabic wrong; the meta declaration must win over the sniff.
+        let enc = encoding_rs::WINDOWS_1256;
+        let (arabic, _, _) = enc.encode("الجزائر تفوز في المباراة");
+        let mut page = br#"<html><head><meta charset="windows-1256"></head><body>"#.to_vec();
+        page.extend_from_slice(&arabic);
+        page.extend_from_slice(b"</body></html>");
+        let (s, guessed) = decode(&page, "text/html");
+        assert!(
+            s.contains("الجزائر"),
+            "meta charset should have been honoured: {s:?}"
+        );
+        assert!(!guessed, "a declared meta charset is not a sniff");
+    }
+
+    #[test]
+    fn a_meta_content_type_charset_is_also_read() {
+        let enc = encoding_rs::WINDOWS_1256;
+        let (arabic, _, _) = enc.encode("وهران");
+        let mut page =
+            br#"<html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1256"></head><body>"#.to_vec();
+        page.extend_from_slice(&arabic);
+        page.extend_from_slice(b"</body></html>");
+        let (s, _) = decode(&page, "text/html");
+        assert!(s.contains("وهران"));
     }
 
     #[test]
