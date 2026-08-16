@@ -489,6 +489,41 @@ impl Visit {
     }
 }
 
+/// What a sitemap `<lastmod>` tells us about a page we already hold (M2-T15.6).
+///
+/// A sitemap fetch reports on hundreds of URLs at once, so consulting it before scheduling a
+/// revisit is the cheapest freshness signal there is — cheaper than a 304, because it is no request
+/// against the page at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SitemapVerdict {
+    /// The sitemap's `lastmod` is newer than our last fetch: the page changed, fetch it now.
+    Changed,
+    /// `lastmod` is no newer than our last fetch: unchanged, and a scheduled revisit can be skipped.
+    Unchanged,
+    /// We have no `lastmod`, or have never fetched this URL. The sitemap tells us nothing useful —
+    /// fall back to the ordinary content-hash schedule and do not act on this.
+    Unknown,
+}
+
+/// Decide what a sitemap entry says about a page we may already hold.
+///
+/// Deliberately conservative in the `Unknown` direction. A missing `lastmod`, or a page we have
+/// never crawled, yields `Unknown` rather than a guess: acting on absent evidence is how a freshness
+/// optimisation turns into a page that silently never refreshes. Only a `lastmod` we can compare
+/// against a real prior fetch produces `Changed` or `Unchanged`.
+pub fn sitemap_verdict(lastmod: Option<i64>, visit: Option<&Visit>) -> SitemapVerdict {
+    match (lastmod, visit) {
+        (Some(lm), Some(v)) if v.last_fetched > 0 => {
+            if lm > v.last_fetched {
+                SitemapVerdict::Changed
+            } else {
+                SitemapVerdict::Unchanged
+            }
+        }
+        _ => SitemapVerdict::Unknown,
+    }
+}
+
 /// Revisit state for a crawl, in Redis beside the frontier.
 #[derive(Clone)]
 pub struct Visits {
@@ -572,6 +607,50 @@ impl Visits {
     pub async fn is_empty(&self) -> bool {
         self.len().await == 0
     }
+
+    /// Apply one sitemap entry to the page's schedule, and report what to do about it (M2-T15.6).
+    ///
+    /// - `Changed`: pull the due-time to `now` so the ordinary revisit path fetches it next. The
+    ///   caller promotes it into the frontier; this only records the urgency.
+    /// - `Unchanged`: the sitemap confirms no change, which is exactly a free 304 — so fold in an
+    ///   `Unchanged` observation, growing the interval, without spending a request. This is the
+    ///   whole saving: a page a sitemap says is stable is not fetched at all.
+    /// - `Unknown`: nothing to act on; the content-hash schedule stands.
+    ///
+    /// Returns the verdict so the caller can promote a `Changed` page. Silent when there is no
+    /// store, like every other write here.
+    pub async fn apply_sitemap(
+        &self,
+        url: &str,
+        lastmod: Option<i64>,
+        now: i64,
+        trust: u8,
+    ) -> SitemapVerdict {
+        let existing = self.get(url).await;
+        let verdict = sitemap_verdict(lastmod, existing.as_ref());
+        match verdict {
+            SitemapVerdict::Unchanged => {
+                // A free confirmation of no change. Fold it in as an unchanged observation so the
+                // interval grows, and stamp `last_fetched` to now — we have current evidence the
+                // held copy is good, which is what a successful revisit would have established.
+                if let Some(mut v) = existing {
+                    v.record(Observation::Unchanged, trust, "", now);
+                    self.put(url, &v).await;
+                }
+            }
+            SitemapVerdict::Changed => {
+                // Bring the due-time forward so the page is fetched next. We do not fetch here —
+                // the sitemap does not carry the body — only mark it overdue.
+                if let Some(mut v) = existing {
+                    v.interval_secs = 0;
+                    v.last_fetched = 0;
+                    self.put(url, &v).await;
+                }
+            }
+            SitemapVerdict::Unknown => {}
+        }
+        verdict
+    }
 }
 
 #[cfg(test)]
@@ -634,5 +713,56 @@ mod store_tests {
         let decoded: Visit = serde_json::from_str(&serde_json::to_string(&v).unwrap()).unwrap();
         assert!(decoded.volatile);
         assert_eq!(decoded.changes_at_floor, v.changes_at_floor);
+    }
+}
+
+#[cfg(test)]
+mod sitemap_tests {
+    use super::*;
+
+    fn visit_fetched_at(t: i64) -> Visit {
+        Visit {
+            last_fetched: t,
+            interval_secs: 7200,
+            content_hash: "b3:x".into(),
+            ..Visit::default()
+        }
+    }
+
+    #[test]
+    fn a_newer_lastmod_means_changed() {
+        let v = visit_fetched_at(1000);
+        assert_eq!(
+            sitemap_verdict(Some(2000), Some(&v)),
+            SitemapVerdict::Changed
+        );
+    }
+
+    #[test]
+    fn an_older_or_equal_lastmod_means_unchanged() {
+        let v = visit_fetched_at(2000);
+        assert_eq!(
+            sitemap_verdict(Some(1000), Some(&v)),
+            SitemapVerdict::Unchanged
+        );
+        assert_eq!(
+            sitemap_verdict(Some(2000), Some(&v)),
+            SitemapVerdict::Unchanged
+        );
+    }
+
+    /// Absent evidence is never a verdict. A missing lastmod, or a page we have never fetched,
+    /// must not be acted on — that is how a freshness optimisation becomes a page that never
+    /// refreshes.
+    #[test]
+    fn absent_evidence_is_unknown() {
+        let v = visit_fetched_at(1000);
+        assert_eq!(sitemap_verdict(None, Some(&v)), SitemapVerdict::Unknown);
+        assert_eq!(sitemap_verdict(Some(2000), None), SitemapVerdict::Unknown);
+        // A visit that was never actually fetched (last_fetched 0) is not a baseline.
+        assert_eq!(
+            sitemap_verdict(Some(2000), Some(&Visit::default())),
+            SitemapVerdict::Unknown
+        );
     }
 }

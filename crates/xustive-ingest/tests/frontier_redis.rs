@@ -388,3 +388,54 @@ async fn promotion_is_bounded_per_sweep() {
     assert_eq!(f.promote_due(5_000, 4).await, 4);
     assert_eq!(f.deferred().await, 6, "the rest wait for the next sweep");
 }
+
+/// `apply_sitemap` acts on real stored state: unchanged extends the interval without a fetch,
+/// changed resets the page to due-now (M2-T15.6).
+#[tokio::test]
+async fn a_sitemap_lastmod_updates_the_schedule_without_a_fetch() {
+    use xustive_ingest::revisit::{SitemapVerdict, Visit, Visits};
+    let url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6390".into());
+    let Some(visits) = Visits::connect_in(&url, "test:sitemap") else {
+        eprintln!("skipping: no Redis");
+        return;
+    };
+    // connect_in is lazy; prove Redis actually answers before asserting, so a machine with no
+    // infrastructure skips rather than failing on a store that silently no-ops.
+    if visits.len().await == 0 {
+        visits.put("__probe__", &Visit::default()).await;
+        if visits.get("__probe__").await.is_none() {
+            eprintln!("skipping: Redis not reachable");
+            return;
+        }
+        visits.forget("__probe__").await;
+    }
+
+    // A page last fetched at t=1000 with a two-hour interval.
+    let key = "https://example.dz/a";
+    let mut v = Visit {
+        last_fetched: 1000,
+        interval_secs: 7200,
+        content_hash: "b3:x".into(),
+        ..Visit::default()
+    };
+    visits.put(key, &v).await;
+
+    // Sitemap says it was modified *before* our fetch: unchanged. The interval grows, no fetch.
+    let verdict = visits.apply_sitemap(key, Some(500), 2000, 60).await;
+    assert_eq!(verdict, SitemapVerdict::Unchanged);
+    let after = visits.get(key).await.unwrap();
+    assert!(
+        after.interval_secs > 7200,
+        "an unchanged sitemap entry should back the page off"
+    );
+
+    // Now a newer lastmod: changed. The page is reset to due-now so the crawler fetches it next.
+    v = after;
+    let _ = v;
+    let verdict = visits.apply_sitemap(key, Some(9999), 3000, 60).await;
+    assert_eq!(verdict, SitemapVerdict::Changed);
+    let after = visits.get(key).await.unwrap();
+    assert_eq!(after.due_at(), 0, "a changed page is pulled to due-now");
+
+    visits.forget(key).await;
+}
