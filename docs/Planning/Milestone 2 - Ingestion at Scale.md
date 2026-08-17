@@ -340,8 +340,13 @@ also the fastest option — no bundle to download, parse and hydrate.
 
 ## M2-T06 — [[Enrichment Pipeline]]
 
-- [ ] M2-T06.1 `EnrichmentStep` trait and ordered executor
-- [ ] M2-T06.2 Required vs optional steps; skip-under-pressure with `enrichment_level = "partial"`
+- [x] M2-T06.1 `EnrichmentStep` trait and ordered executor — `enrichment::Pipeline` runs gazetteer,
+      topics, spam, quality as steps behind one `apply(&mut Document)` trait; the parser now calls
+      the pipeline instead of four inline calls
+- [~] M2-T06.2 Required vs optional steps; skip-under-pressure with `enrichment_level = "partial"` —
+      the mechanism is built and tested (`run(_, Partial)` runs only required steps and stamps the
+      document `Partial`; a `Full` repass clears it). Wiring the *decision* to live backpressure in
+      the daemon is the remaining half — the parser always runs `Full`
 - [x] M2-T06.3 Quality scoring — `quality_score` combines body length, date precision, extraction
       method, a real title, author, media and detected language into a bounded 0-1 signal that
       feeds ranking and spam suppression. Tested for bounds, and that a trusted date raises it
