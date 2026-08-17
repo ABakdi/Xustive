@@ -103,7 +103,7 @@ impl ApiError {
 impl From<SearchError> for ApiError {
     fn from(e: SearchError) -> Self {
         use xustive_core::ErrorClass;
-        match &e {
+        let mapped = match &e {
             SearchError::Timeout(_) => Self::UpstreamTimeout,
             SearchError::Unreachable(_) => Self::SearchUnavailable,
             SearchError::Backend { status, .. } if *status >= 500 => Self::SearchUnavailable,
@@ -111,7 +111,16 @@ impl From<SearchError> for ApiError {
                 ErrorClass::Transient | ErrorClass::Throttled => Self::SearchUnavailable,
                 _ => Self::Internal,
             },
+        };
+        // The client only ever sees the safe generic message (§2 of this module), but the operator
+        // needs the real cause. Without this line a Meilisearch "attribute X is not filterable"
+        // 400 was logged as a bare "internal error", which made a live search outage genuinely hard
+        // to diagnose. The underlying error is a backend detail, never a user's data, so it is safe
+        // to log.
+        if matches!(mapped, Self::Internal | Self::SearchUnavailable) {
+            tracing::warn!(cause = %e, "search backend error mapped to {}", mapped.code());
         }
+        mapped
     }
 }
 
