@@ -1,13 +1,14 @@
-//! The `discover` command: resolve weak-coverage terms to URLs via Brave (M2-T16.4 + M2-T16.6).
+//! The `discover` command: resolve weak-coverage terms to URLs (M2-T16.4/.6/.9).
 //!
 //! This is the actuator half of query-driven discovery. [[weak_coverage]] records which searches the
-//! corpus cannot answer, k-anonymously; this reads those terms and asks Brave for URLs that would
-//! answer them, seeding the results into the ordinary frontier at a discovered-tier trust tagged
-//! `DiscoveryChannel::Brave`. A resolved term is forgotten so the next run does not pay to search it
-//! again — if the gap persists, it re-accumulates on its own.
+//! corpus cannot answer, k-anonymously; this reads those terms, asks a search source for URLs that
+//! would answer them, and seeds the results into the ordinary frontier at a discovered-tier trust,
+//! tagged with the channel that found them. A resolved term is forgotten so the next run does not
+//! re-resolve it — if the gap persists, it re-accumulates on its own.
 //!
-//! Off unless Brave is both enabled and keyed, and every run is capped by the query budget: Brave
-//! charges per query, so the ceiling is spend, not politeness.
+//! Two sources, chosen by config: **direct SERP scraping** ([[serp]], `serp_enabled`) is preferred
+//! per ADR-0013, and **Brave** ([[brave]]) is the API fallback. Off unless one is enabled, and every
+//! run is capped by a query budget.
 
 use std::time::Duration;
 
@@ -104,7 +105,7 @@ pub async fn run(config: &Config) -> Result<()> {
         let urls = source.resolve(&term.term).await;
         queries += 1;
         for url in &urls {
-            if seed_url(&frontier, url).await {
+            if seed_url(&frontier, url, channel).await {
                 queued += 1;
                 if let Some(s) = &stats {
                     s.incr_channel(channel.token(), "discovered", 1).await;
@@ -129,9 +130,10 @@ pub async fn run(config: &Config) -> Result<()> {
     Ok(())
 }
 
-/// Seed one Brave-discovered URL into the frontier under the ordinary rules. Returns whether it was
-/// newly queued.
-async fn seed_url(frontier: &Frontier, url: &str) -> bool {
+/// Seed one discovered URL into the frontier under the ordinary rules, tagged with the channel that
+/// found it so the document it becomes carries the right provenance. Returns whether it was newly
+/// queued.
+async fn seed_url(frontier: &Frontier, url: &str, channel: DiscoveryChannel) -> bool {
     let Ok(safe) = xustive_core::SafeUrl::parse(url) else {
         return false;
     };
@@ -143,10 +145,10 @@ async fn seed_url(frontier: &Frontier, url: &str) -> bool {
     let pending = Pending {
         url: frontier::canonical(&parsed),
         host,
-        source_id: "brave".into(),
+        source_id: channel.token().into(),
         depth: 0,
         trust: DISCOVERED_TRUST,
-        channel: DiscoveryChannel::Brave,
+        channel,
         priority: frontier::priority_for(0, DISCOVERED_TRUST, false),
     };
     matches!(frontier.add(&pending).await, Ok(true))
