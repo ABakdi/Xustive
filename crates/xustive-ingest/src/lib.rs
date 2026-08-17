@@ -15,6 +15,7 @@ pub mod commoncrawl;
 pub mod crawl_stats;
 pub mod date;
 pub mod dedup;
+pub mod enrichment;
 pub mod exclusion;
 pub mod fetch;
 pub mod fingerprint;

@@ -300,6 +300,21 @@ impl DiscoveryChannel {
     }
 }
 
+/// How completely a document was enriched ([[Enrichment Pipeline]] §M2-T06.2).
+///
+/// Under load the pipeline runs only the required steps and marks the document `Partial`, so a
+/// repass job can find it and finish the optional enrichment later rather than the document being
+/// silently under-annotated forever.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EnrichmentLevel {
+    /// Every step ran.
+    #[default]
+    Full,
+    /// Only the required steps ran; the optional ones are owed a repass.
+    Partial,
+}
+
 /// The primary indexed entity.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Document {
@@ -382,6 +397,9 @@ pub struct Document {
     /// for documents written before the field existed.
     #[serde(default)]
     pub discovery: DiscoveryChannel,
+    /// How completely this document was enriched (M2-T06.2). `Partial` means a repass is owed.
+    #[serde(default)]
+    pub enrichment_level: EnrichmentLevel,
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
 }
@@ -437,6 +455,7 @@ impl Document {
             fetch_method: None,
             access_path: None,
             discovery: DiscoveryChannel::Unknown,
+            enrichment_level: EnrichmentLevel::Full,
             schema_version: SCHEMA_VERSION,
         }
     }

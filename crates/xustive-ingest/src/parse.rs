@@ -39,6 +39,17 @@ impl Method {
             Self::Fallback => "fallback",
         }
     }
+
+    /// Recover a `Method` from what `as_str` wrote (the document's `access_path`). Unknown maps to
+    /// `Fallback` — the most conservative markup score, so a stray value never inflates quality.
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "json-ld" => Self::JsonLd,
+            "opengraph" => Self::OpenGraph,
+            "density" => Self::Density,
+            _ => Self::Fallback,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -348,25 +359,16 @@ impl Parser {
         document.indexed_at = now;
         document.media = media;
         document.entities = self.extract_entities(&document.title, &document.body);
-        // Geo hint (M2-T06.5): which wilaya the story is about, from the title and body. The title
-        // is weighted by being scanned alongside the body — a wilaya in the headline counts too.
-        if let Some(hint) =
-            crate::gazetteer::detect_wilaya(&format!("{} {}", document.title, document.body))
-        {
-            document.geo.wilaya = Some(hint.code.to_string());
-            document.geo.wilaya_name = Some(hint.name.to_string());
-        }
         document.http_status = 200;
         document.fetch_method = Some("static".into());
         document.access_path = Some(method.as_str().into());
-        document.quality_score = quality_score(&document, method);
-        // Spam score (M2-T06.4). Populated here; search suppresses at 0.8 — the document stays in
-        // the index and out of default results, never deleted, so a later threshold change or a
-        // manual review can still reach it.
-        document.spam_score = crate::spam::spam_score(&document.title, &document.body);
-        // Topic labels (M2-T06.6): a coarse subject from the document's own vocabulary, for
-        // grouping and vertical slicing. Empty when nothing is clear — a wrong label is worse.
-        document.topics = crate::topics::label(&document.title, &document.body);
+
+        // Enrichment (M2-T06): wilaya, topics, spam and quality, run as an ordered pipeline rather
+        // than four inline calls, so the same code can degrade to required-only under load. The
+        // parser always runs the full pipeline — it has already paid for the DOM; the pressure
+        // decision belongs to the daemon (`enrichment_level`), which can call `run(_, Partial)`.
+        crate::enrichment::Pipeline::standard()
+            .run(&mut document, xustive_core::EnrichmentLevel::Full);
 
         Ok(Parsed {
             outlinks: extract_outlinks(&doc, url, self.config.max_outlinks),
@@ -839,7 +841,7 @@ fn first_non_empty<const N: usize>(candidates: [Option<String>; N]) -> Option<St
 }
 
 /// Cheap, explainable quality signal. Feeds ranking and spam suppression.
-fn quality_score(doc: &Document, method: Method) -> f32 {
+pub(crate) fn quality_score(doc: &Document, method: Method) -> f32 {
     let mut score: f32 = 0.0;
 
     // Longer is better, with sharply diminishing returns past a few thousand characters.
