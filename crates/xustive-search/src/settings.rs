@@ -42,7 +42,9 @@ pub fn documents_settings() -> Value {
         "filterableAttributes": [
             "source_type", "source_id", "domain", "language", "script",
             "sentiment.label", "published_at", "crawled_at", "is_nsfw",
-            "quality_score", "spam_score", "geo.wilaya", "topics", "robots_indexable"
+            "quality_score", "spam_score", "geo.wilaya", "topics", "robots_indexable",
+            // So the repass job (M2-T06.9) can find documents that were enriched under load.
+            "enrichment_level"
         ],
         "sortableAttributes": [
             "published_at", "crawled_at", "quality_score", "engagement.likes"
