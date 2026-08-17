@@ -18,12 +18,14 @@
 //! login flows, and warm-up browsing need real accounts and are out of scope here.
 
 mod budget;
+mod budget_store;
 mod crypto;
 mod detection;
 mod lifecycle;
 mod pool;
 
 pub use budget::{BudgetLimits, BudgetSpend};
+pub use budget_store::{BudgetStore, Decision};
 pub use crypto::{CookieCrypto, CryptoError};
 pub use detection::{classify, Detection};
 pub use lifecycle::{quarantine_cooldown, Lifecycle, Tier};
