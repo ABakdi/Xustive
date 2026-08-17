@@ -52,8 +52,9 @@ notice. Budget for it as ongoing work, not a project that finishes.
 - [x] M2-T01a.8 **Silent-cloaking detection**: canaries + `consecutive_empty` thresholds — canary
       disagreement separates soft-ban from a platform change (`session::detection`)
 - [x] M2-T01a.9 Quarantine/recovery with doubling cooldown; burn after 3 (`session::lifecycle`)
-- [ ] M2-T01a.10 Fail-closed budget accounting across Redis restarts — needs the Redis counter layer
-      (pure budget logic done; the fail-closed store is the remaining piece)
+- [x] M2-T01a.10 Fail-closed budget accounting across Redis restarts — `session::BudgetStore`:
+      per-period counters, denies on an unreachable Redis, and detects a flush via a durable
+      sentinel (absent sentinel → deny until an operator re-initialises). Verified against Redis
 - [ ] M2-T01a.11 **Account acquisition and pool sizing** ← procurement; start in M1
 - [x] M2-T01a.12 Pool exhaustion halts the platform (never degrade to unpinned identities) —
       `Exhausted` vs `NoneAvailableNow` distinguished (`session::pool`)
