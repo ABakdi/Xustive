@@ -97,6 +97,14 @@ pub async fn run(
         .resolve(&config.search.documents_index)
         .await
         .context("resolving the documents index")?;
+    // Configure the index before writing. Meilisearch auto-creates an index on first write with no
+    // settings, which `resolve` then prefers over the configured one — leaving search unable to
+    // filter. Idempotent, so it is a no-op on a healthy index.
+    client.ensure_index(&index, "id").await?;
+    client
+        .apply_settings(&index, &xustive_search::settings::documents_settings())
+        .await
+        .with_context(|| format!("configuring the write index {index}"))?;
 
     let fetcher = Fetcher::new(FetchConfig::default()).context("building the fetcher")?;
     // Per-domain rules, loaded once for the whole crawl. Without them, publishers that emit no

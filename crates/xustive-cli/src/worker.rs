@@ -72,6 +72,17 @@ pub async fn run(config: &Config, client: &MeiliClient, once: bool) -> Result<()
 
     let consumer = format!("{}-{}", hostname(), std::process::id());
     let index = client.resolve(&config.search.documents_index).await?;
+    // Ensure the write index is configured before indexing into it. Meilisearch auto-creates an
+    // index on first write with **no** settings, and `resolve` then prefers that bare index over
+    // the configured one — so a single premature write leaves search unable to filter, and every
+    // search 500s. Applying the settings here is idempotent and runs once per start, so it costs
+    // nothing on a healthy index and closes the door on the auto-created-unconfigured index for
+    // good (the recurrence this has bitten us with before).
+    client.ensure_index(&index, "id").await?;
+    client
+        .apply_settings(&index, &xustive_search::settings::documents_settings())
+        .await
+        .with_context(|| format!("configuring the write index {index}"))?;
     let indexer = Indexer::new(
         queue.clone(),
         MeiliSink {
