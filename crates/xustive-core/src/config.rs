@@ -218,6 +218,19 @@ pub struct DiscoveryConfig {
     /// Results to request per query. Discovery wants a handful of good URLs, not a full page.
     #[serde(default = "default_brave_results")]
     pub brave_results_per_query: usize,
+
+    /// Direct SERP scraping (M2-T16.9, [[ADR-0013]]): resolve weak terms by reading a general search
+    /// engine's results page rather than an API. **Off by default.** When on, this is preferred over
+    /// Brave. Google needs the residential-proxy/headless layer; Bing and DuckDuckGo's HTML endpoint
+    /// often work without it.
+    #[serde(default)]
+    pub serp_enabled: bool,
+    /// Engines to try, in order (`duckduckgo`, `bing`, `google`). Empty means the built-in ladder.
+    #[serde(default)]
+    pub serp_engines: Vec<String>,
+    /// Hard cap on SERP queries per resolver run.
+    #[serde(default = "default_brave_max_queries")]
+    pub serp_max_queries_per_run: usize,
 }
 
 fn default_weak_floor() -> usize {
@@ -247,6 +260,9 @@ impl Default for DiscoveryConfig {
             brave_api_key: String::new(),
             brave_max_queries_per_run: default_brave_max_queries(),
             brave_results_per_query: default_brave_results(),
+            serp_enabled: false,
+            serp_engines: Vec::new(),
+            serp_max_queries_per_run: default_brave_max_queries(),
         }
     }
 }

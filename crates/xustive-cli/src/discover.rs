@@ -23,23 +23,62 @@ use xustive_ingest::weak_coverage::WeakCoverage;
 /// query, but it is a third-party pick, not a source we vouch for.
 const DISCOVERED_TRUST: u8 = 20;
 
-pub async fn run(config: &Config) -> Result<()> {
-    let disc = &config.discovery;
-    if !disc.brave_usable() {
-        println!(
-            "brave is disabled (discovery.brave_enabled = {}, key {}). Nothing to do.",
-            disc.brave_enabled,
-            if disc.brave_api_key.trim().is_empty() {
-                "absent"
-            } else {
-                "present"
-            }
-        );
-        return Ok(());
+/// Where weak terms get resolved to URLs. Direct SERP scraping is preferred when enabled; Brave is
+/// the API fallback.
+enum Source {
+    Serp(xustive_ingest::serp::SerpClient),
+    Brave(BraveClient),
+}
+
+impl Source {
+    /// The discovery channel a URL from this source is tagged with.
+    fn channel(&self) -> DiscoveryChannel {
+        match self {
+            Source::Serp(_) => DiscoveryChannel::Serp,
+            Source::Brave(_) => DiscoveryChannel::Brave,
+        }
     }
 
-    let brave = BraveClient::new(&disc.brave_api_key, disc.brave_results_per_query)
-        .context("brave key present but client could not be built")?;
+    /// Resolve one term to result URLs.
+    async fn resolve(&self, term: &str) -> Vec<String> {
+        match self {
+            Source::Serp(c) => c.search(term).await,
+            Source::Brave(c) => match c.search(term).await {
+                Ok(rs) => rs.into_iter().map(|r| r.url).collect(),
+                Err(e) => {
+                    tracing::warn!(error = %e, "a brave query failed; skipping this term");
+                    Vec::new()
+                }
+            },
+        }
+    }
+}
+
+pub async fn run(config: &Config) -> Result<()> {
+    let disc = &config.discovery;
+
+    // Direct SERP scraping wins when enabled (my direction, ADR-0013); Brave is the API fallback.
+    let (source, budget) = if disc.serp_enabled {
+        let engines = disc
+            .serp_engines
+            .iter()
+            .filter_map(|s| xustive_ingest::serp::Engine::parse(s))
+            .collect();
+        let client = xustive_ingest::serp::SerpClient::new(engines)
+            .context("could not build the SERP client")?;
+        (Source::Serp(client), disc.serp_max_queries_per_run)
+    } else if disc.brave_usable() {
+        let client = BraveClient::new(&disc.brave_api_key, disc.brave_results_per_query)
+            .context("brave key present but client could not be built")?;
+        (Source::Brave(client), disc.brave_max_queries_per_run)
+    } else {
+        println!(
+            "discovery resolution is off. Enable direct SERP (discovery.serp_enabled = true) or \
+             Brave (discovery.brave_enabled + brave_api_key). Nothing to do."
+        );
+        return Ok(());
+    };
+
     let weak = WeakCoverage::connect_in(
         &config.queue.url,
         "discovery",
@@ -52,43 +91,41 @@ pub async fn run(config: &Config) -> Result<()> {
     let stats = CrawlStats::connect(&config.queue.url);
 
     // Only the k-anonymous terms, capped at the query budget — this is the spend ceiling.
-    let terms = weak.weak_terms(disc.brave_max_queries_per_run).await;
+    let terms = weak.weak_terms(budget).await;
     if terms.is_empty() {
         println!("no weak-coverage terms above the k-anonymity floor; nothing to resolve.");
         return Ok(());
     }
 
+    let channel = source.channel();
     let mut queries = 0usize;
     let mut queued = 0usize;
     for term in &terms {
-        let urls = match brave.search(&term.term).await {
-            Ok(u) => u,
-            Err(e) => {
-                // One failed query does not abort the run — the budget is precious and the other
-                // terms are independent. A persistent failure (bad key, quota) shows as every query
-                // failing, which the totals make obvious.
-                tracing::warn!(error = %e, "a brave query failed; skipping this term");
-                queries += 1;
-                continue;
-            }
-        };
+        let urls = source.resolve(&term.term).await;
         queries += 1;
-        for r in &urls {
-            if seed_url(&frontier, &r.url).await {
+        for url in &urls {
+            if seed_url(&frontier, url).await {
                 queued += 1;
                 if let Some(s) = &stats {
-                    s.incr_channel(DiscoveryChannel::Brave.token(), "discovered", 1)
-                        .await;
+                    s.incr_channel(channel.token(), "discovered", 1).await;
                 }
             }
         }
-        // Actioned: forget it so the next run does not pay to search it again. A gap that is still
-        // weak will re-accumulate past the floor on its own.
+        // Actioned: forget it so the next run does not resolve it again. A gap that is still weak
+        // re-accumulates past the floor on its own.
         weak.forget(&term.term).await;
     }
 
-    tracing::info!(queries, queued, "brave discovery finished");
-    println!("resolved {queries} weak term(s) via Brave, queued {queued} new URL(s)");
+    tracing::info!(
+        queries,
+        queued,
+        source = channel.token(),
+        "discovery finished"
+    );
+    println!(
+        "resolved {queries} weak term(s) via {}, queued {queued} new URL(s)",
+        channel.token()
+    );
     Ok(())
 }
 
