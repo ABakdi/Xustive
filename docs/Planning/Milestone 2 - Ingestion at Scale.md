@@ -525,13 +525,14 @@ proxy and fingerprint machinery, bound by the same pinning invariant.
 - [x] M2-T07.8 **Graded `on_blocked` ladder** — with the test that `open_web` still halts-and-flags
       (`proxy::ladder`)
 - [ ] M2-T07.9 Egress-IP assertion; lease-leak detection; credential rotation — needs real proxy egress
-- [ ] M2-T07.10 **Bandwidth accounting and cost-per-1k-docs**; 80 % budget alert — needs real transfer
-      measurement, wires to T16.8's cost-per-document
+- [x] M2-T07.10 **Bandwidth accounting and cost-per-1k-docs**; 80 % budget alert — `proxy::bandwidth`:
+      per-pool/per-source byte+doc counters in Redis, cost-per-1k-docs and bytes-per-doc math, and
+      the 80 % `BandwidthBudget80` predicate. The caller feeds real transferred bytes at fetch time
 - [x] M2-T07.11 Guard test: platform collection **halts** rather than falling back to `direct`
       (`proxy::pool`)
 
-*Decision logic done and unit-/Redis-tested; the three open items (.2, .9, .10) need a real proxy
-provider and live egress to build against, not more code.*
+*Decision logic done and unit-/Redis-tested; the two open items (.2 provider contracts, .9 egress
+assertion) need a real proxy provider and live egress to build against, not more code.*
 
 ## M2-T08 — [[Social Connector - Facebook]] *(gated on M2-T01a/b/c)*
 
