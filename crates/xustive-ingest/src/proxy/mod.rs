@@ -15,6 +15,7 @@
 //! one dead host quarantines a whole pool (§4.5).
 
 mod attribution;
+mod bandwidth;
 mod breaker;
 mod health;
 mod ladder;
@@ -22,6 +23,10 @@ mod placement;
 mod pool;
 
 pub use attribution::{attribute, Blame, FailureEvent};
+pub use bandwidth::{
+    budget_fraction, bytes_per_doc, cost_per_1k_docs, over_budget_alert, BandwidthMeter,
+    SourceUsage, ALERT_AT,
+};
 pub use breaker::{cooldown_for, Breakers, Scope};
 pub use health::{Health, ProxyState, MIN_LATENCY_MS};
 pub use ladder::{on_blocked, Action, BlockSignal};
