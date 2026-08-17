@@ -491,28 +491,29 @@ Last in the ladder and deliberately narrow. Reuses the collection layer built fo
 rather than growing a second evasion path — a SERP source is just another consumer of the identity,
 proxy and fingerprint machinery, bound by the same pinning invariant.
 
-- [ ] M2-T16.9 **SERP source behind the queue, never a call.** The serving plane publishes a
-      weak-coverage term to a stream; the ingestion plane consumes it and owns all egress. Keeps
-      `scripts/test-egress.sh` green and meaningful — the boundary is ours, not Google's, and
-      nothing about T16.9 requires giving it up
+- [~] M2-T16.9 **SERP source.** `xustive-ingest::serp` scrapes Google/Bing/DuckDuckGo result pages
+      for a weak term and seeds the URLs (channel `serp`); wired into `discover`, preferred over
+      Brave when `serp_enabled`. Verified live: Bing returns 10 unwrapped URLs. Running it *behind a
+      stream* (serving plane publishes, ingestion consumes) is the remaining structural half
 - [ ] M2-T16.10 **Wired into [[Proxy Manager]] / [[Session Manager]] / [[Fingerprint Engine]]**, with
-      residential egress **required** — datacenter ranges are classified almost immediately. Off by
-      default; it costs money to run
-- [ ] M2-T16.11 **Endpoint ladder**, lightest first, demoting on failure — the shape of
-      [[Signature Service]] §4.6. Most discovery only needs a list of URLs, which the plainest
-      endpoint gives at a fraction of the cost and exposure of a rendered browser
+      residential egress **required** — the `SerpClient` takes an injected HTTP client for exactly this
+      seam, but the residential-proxy wiring needs a real provider. Google needs it (returns an
+      "enable JS" page from a datacenter IP); Bing works without
+- [x] M2-T16.11 **Endpoint ladder**, lightest first, demoting on failure — `Engine::LADDER`
+      (DuckDuckGo → Bing → Google), each demoting to the next on a challenge or empty page
 - [ ] M2-T16.12 **Human-shaped pacing**: low volume, jitter, diurnal shaping ([[Session Manager]]
-      §4.5). The failure mode is never a single request; it is a regular pattern
-- [ ] M2-T16.13 **Challenge → quarantine and back off.** CAPTCHA, interstitial or consent wall
-      retires the identity per M2-T01a.7/.9. **Challenges are detected, not solved** — a challenge
-      means the identity is already classified, and pushing through burns it faster than resting it
+      §4.5) — a fixed between-engine delay is in; the diurnal/jitter shaping (`session::budget`)
+      is built but not yet wired to the SERP loop
+- [x] M2-T16.13 **Challenge → back off.** `is_challenge_page` spots captcha/`/sorry/`/consent
+      interstitials and the ladder moves to the next engine; challenges are **detected, not solved**
 - [ ] M2-T16.14 **Canary queries against silent degradation.** Suspected bots are served plausible
       but degraded results rather than an error, so a neutered channel reports itself healthy.
       Known-stable queries checked against expected URLs, borrowed from M2-T01a.8. Without this,
       T16.8's yield figures are measuring a lie
-- [ ] M2-T16.15 **Parser fixtures and a rot alarm.** SERP markup changes without notice and this
-      will break repeatedly — the maintenance tail [[ADR-0009 - Direct Collection for Social
-      Platforms]] names. Fixtures committed, `serp_parse_miss_total` alerting from day one
+- [~] M2-T16.15 **Parser fixtures and a rot alarm.** Per-engine parsers are pure and fixture-tested,
+      including a **real saved Bing page** whose parse is asserted (`tests/serp_fixtures.rs`); a
+      layout/redirector change turns the fixture red. The `serp_parse_miss_total` metric wiring is
+      the remaining half
 
 ## M2-T07 — [[Proxy Manager]] *(now required)*
 
