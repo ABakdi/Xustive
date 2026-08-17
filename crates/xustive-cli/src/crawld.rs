@@ -50,6 +50,8 @@ const HEARTBEAT: Duration = Duration::from_secs(60);
 /// avoids. Six hours keeps a news site's new articles found within a fraction of a day while
 /// costing one request per host per poll.
 const SITEMAP_POLL_EVERY: Duration = Duration::from_secs(6 * 3600);
+/// How often the background query-driven discovery run fires (M2-T16.4).
+const DISCOVER_EVERY: Duration = Duration::from_secs(5 * 60);
 
 /// Queue depth above which the crawler slows down.
 ///
@@ -431,6 +433,31 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                 }
             }
         });
+    }
+
+    // Query-driven discovery in the background (M2-T16.4): every few minutes, resolve the weak
+    // search terms users could not get answers for into URLs (via SERP or Brave) and seed them for
+    // crawl. Only spawned when a resolution source is configured, so it costs nothing when off.
+    if config.discovery.serp_enabled || config.discovery.brave_usable() {
+        let cfg = config.clone();
+        let stop = stop.clone();
+        tasks.spawn(async move {
+            let mut ticker = tokio::time::interval(DISCOVER_EVERY);
+            ticker.tick().await; // the first tick is immediate; skip it so startup is not a burst
+            loop {
+                ticker.tick().await;
+                if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                if let Err(e) = crate::discover::run(&cfg).await {
+                    tracing::warn!(error = %e, "background discovery run failed");
+                }
+            }
+        });
+        tracing::info!(
+            every_s = DISCOVER_EVERY.as_secs(),
+            "background discovery enabled"
+        );
     }
 
     tracing::info!(workers, "workers started");

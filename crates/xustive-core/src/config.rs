@@ -268,9 +268,17 @@ impl Default for DiscoveryConfig {
 }
 
 impl DiscoveryConfig {
-    /// The k-anonymity floor the ADR requires, never below 20 whatever the config says.
+    /// The k-anonymity floor: how many searches must hit a term before it is ever surfaced or
+    /// acted on. The **default is 20** ([[ADR-0008]]), which is what makes weak-coverage counting
+    /// safe on a public, multi-user engine — a term surfaced there is common, not personal.
+    ///
+    /// It can be lowered (down to 1) only by an explicit config value, because on a **single-user /
+    /// personal deployment** there is no one to anonymise against: the operator is the only searcher,
+    /// so a floor of 20 just means the feature never triggers. Lowering it below 20 is therefore
+    /// appropriate *only* for such a deployment — on anything public it re-opens exactly what the ADR
+    /// closed. The floor is 1, not 0, so a term must still have been searched at least once.
     pub fn effective_k(&self) -> u32 {
-        self.k_anonymity.max(20)
+        self.k_anonymity.max(1)
     }
 
     /// Whether the Brave connector is actually usable: switched on *and* holding a key. Both are

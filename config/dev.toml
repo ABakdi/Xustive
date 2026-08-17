@@ -27,3 +27,19 @@ timeout_ms = 800
 [telemetry]
 log_filter = "info,xustive_api=debug,xustive_search=debug"
 log_json = false
+
+[discovery]
+# Query-driven discovery: when a search comes up short, record the term and later resolve it to URLs
+# by scraping search engines, then crawl those for next time. See docs/Decisions/ADR-0013.
+weak_coverage_enabled = true
+# A search returning at most this many results counts as a coverage gap worth chasing.
+weak_coverage_result_floor = 3
+# k-anonymity floor. 20 is the safe public default; this is a personal single-user engine, so 1 is
+# fine — there is no one to anonymise against, and 20 would mean the feature never fires.
+k_anonymity = 1
+weak_coverage_window_days = 30
+# Direct SERP scraping (ADR-0013), preferred over Brave. Bing works from a plain server; Google
+# needs the residential-proxy layer and returns an "enable JS" page without it.
+serp_enabled = true
+serp_engines = ["bing", "duckduckgo", "google"]
+serp_max_queries_per_run = 50

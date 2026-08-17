@@ -20,11 +20,13 @@
 
 use std::time::Duration;
 
-/// Whether a term's count is high enough to surface without breaching k-anonymity. The single
-/// privacy-critical predicate, pulled out so it is trivially testable: a term below `k` is never
-/// returned to any caller, whatever else changes.
+/// Whether a term's count is high enough to surface. `k` is the anonymity floor the caller derived
+/// from config ([`xustive_core::config::DiscoveryConfig::effective_k`]) — 20 by default, lower only
+/// on a single-user deployment where there is no one to anonymise against. This predicate does not
+/// re-clamp: it trusts the floor the config already decided, so the policy lives in exactly one
+/// place. A `k` of 0 is treated as 1 — a term must have been searched at least once.
 pub fn surfaceable(count: u32, k: u32) -> bool {
-    count >= k.max(20)
+    count >= k.max(1)
 }
 
 /// A weak-coverage term and how many searches hit it, once past the k-anonymity floor.
@@ -44,13 +46,13 @@ pub struct WeakCoverage {
 }
 
 impl WeakCoverage {
-    /// Connect. `k` is clamped up to the ADR's floor of 20 here too, so a misconfiguration cannot
-    /// lower it. Lazy — no connection until first use.
+    /// Connect. `k` is the anonymity floor the caller derived from config (default 20; lower only for
+    /// a single-user deployment). Treated as at least 1. Lazy — no connection until first use.
     pub fn connect_in(url: &str, namespace: &str, k: u32, window: Duration) -> Option<Self> {
         Some(Self {
             client: redis::Client::open(url).ok()?,
             namespace: namespace.to_string(),
-            k: k.max(20),
+            k: k.max(1),
             window,
         })
     }
@@ -166,14 +168,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_term_below_k_is_never_surfaceable_even_if_k_is_misconfigured_low() {
-        // The ADR floor of 20 holds whatever the config says.
+    fn surfaceable_honours_the_configured_floor() {
+        // The public default of 20: nothing below it surfaces.
         assert!(!surfaceable(19, 20));
         assert!(surfaceable(20, 20));
-        // A config that tried to set k=5 is clamped: 19 still not surfaceable.
-        assert!(!surfaceable(19, 5));
-        assert!(surfaceable(20, 5));
-        assert!(surfaceable(1000, 20));
+        // A single-user deployment lowering the floor: a term surfaces at its configured count.
+        assert!(
+            surfaceable(1, 1),
+            "a personal engine can act on a single search"
+        );
+        assert!(
+            !surfaceable(0, 1),
+            "but a term must have been searched at least once"
+        );
+        assert!(surfaceable(3, 3));
+        assert!(!surfaceable(2, 3));
+        // k of 0 is treated as 1.
+        assert!(surfaceable(1, 0));
     }
 
     #[tokio::test]
