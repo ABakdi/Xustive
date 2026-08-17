@@ -98,6 +98,11 @@ export function SearchBox({
       action={`/${lang}/search`}
       method="get"
       className="relative w-full"
+      // Password-manager extensions (LastPass, 1Password, Dashlane…) inject `form_signature`
+      // and `alternative_form_signature` onto forms after the server HTML arrives but before
+      // React hydrates, which React reports as a hydration mismatch. It is not ours to fix —
+      // this suppresses the warning for the form's own attributes only, not its children.
+      suppressHydrationWarning
       onSubmit={(e) => {
         // Only intercept when JavaScript is running; without it the form submits normally.
         e.preventDefault()
