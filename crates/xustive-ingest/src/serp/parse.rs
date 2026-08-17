@@ -50,6 +50,17 @@ pub fn clean_result_url(href: &str) -> Option<String> {
         }
         return None;
     }
+    // Bing wraps every result as `bing.com/ck/a?…&u=a1<base64(real)>` — the real destination is
+    // base64 in the `u` parameter, after a two-character `a1` type prefix. Unwrap it, or the whole
+    // page reduces to Bing's own redirector host and yields nothing.
+    if href.contains("bing.com/ck/a") {
+        if let Some(u) = query_param(href, "u") {
+            if let Some(real) = decode_bing_u(&u) {
+                return clean_result_url(&real);
+            }
+        }
+        return None;
+    }
 
     // A bare `//host/path` protocol-relative link — treat as https.
     let normalised = if let Some(rest) = href.strip_prefix("//") {
@@ -74,6 +85,18 @@ pub fn clean_result_url(href: &str) -> Option<String> {
         return None;
     }
     Some(parsed.to_string())
+}
+
+/// Decode Bing's `u` redirect parameter: a two-char type prefix (`a1`) followed by the real URL in
+/// URL-safe base64, usually unpadded. `None` if it does not decode to valid UTF-8.
+fn decode_bing_u(u: &str) -> Option<String> {
+    use base64::Engine as _;
+    let payload = u.strip_prefix("a1").unwrap_or(u);
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(payload))
+        .ok()?;
+    String::from_utf8(bytes).ok()
 }
 
 /// Read a query-string parameter from a possibly-relative URL, percent-decoded.
