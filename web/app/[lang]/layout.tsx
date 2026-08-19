@@ -44,7 +44,16 @@ export default async function LocaleLayout({
   const t = messages(lang)
 
   return (
-    <html lang={lang} dir={dirOf(lang)} data-theme={theme} data-density={density}>
+    // The pre-paint script rewrites data-theme (`system` → the resolved `dark`/`light`) before
+    // React hydrates, so this element's attributes intentionally differ from the server HTML.
+    // suppressHydrationWarning silences the mismatch for this node's own attributes only.
+    <html
+      lang={lang}
+      dir={dirOf(lang)}
+      data-theme={theme}
+      data-density={density}
+      suppressHydrationWarning
+    >
       <head>
         {/* Preloaded per direction, not both. A reader on an Arabic page never needs the Latin
             file and vice versa, and preloading a font that is not used costs the bandwidth twice

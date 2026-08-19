@@ -20,7 +20,15 @@ export const metadata: Metadata = {
 export default async function OperatorLayout({ children }: { children: ReactNode }) {
   const [theme, density] = await Promise.all([readTheme(), readDensity()])
   return (
-    <html lang="en" dir="ltr" data-theme={theme} data-density={density}>
+    // The pre-paint script rewrites data-theme before hydration; suppress the expected mismatch
+    // on this node's own attributes (see [lang]/layout for the same reasoning).
+    <html
+      lang="en"
+      dir="ltr"
+      data-theme={theme}
+      data-density={density}
+      suppressHydrationWarning
+    >
       <head>
         {/* Set the theme before paint, not in an effect — an effect is what causes the flash. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
