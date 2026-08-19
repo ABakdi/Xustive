@@ -1,0 +1,152 @@
+/**
+ * Typed client for the operator API (`/api/v1/admin/*`).
+ *
+ * The admin console is part of this Next.js app now, not a set of pages the Rust process renders.
+ * It reaches the Rust API through the same `/api/v1/*` rewrite as the search UI, so every call here
+ * is a same-origin relative fetch — which is also what keeps the browser on one origin and the CSP
+ * simple. Auth is handled server-side: the rewrite proxies from the Next server (loopback to the
+ * API), which the API admits without a key in a local deployment.
+ */
+
+const BASE = '/api/v1/admin'
+
+export class AdminError extends Error {
+  constructor(readonly code: string, message: string, readonly status: number) {
+    super(message)
+  }
+}
+
+async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { accept: 'application/json' },
+    cache: 'no-store',
+    signal,
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: { code: string; message: string } } | null
+    throw new AdminError(body?.error?.code ?? 'unknown', body?.error?.message ?? `HTTP ${res.status}`, res.status)
+  }
+  return res.json() as Promise<T>
+}
+
+async function postJSON<T>(path: string, payload: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const body = (await res.json().catch(() => null)) as T & { error?: { code: string; message: string } }
+  if (!res.ok) {
+    throw new AdminError(body?.error?.code ?? 'unknown', body?.error?.message ?? `HTTP ${res.status}`, res.status)
+  }
+  return body
+}
+
+// --- discovery yield -------------------------------------------------------------------------
+export interface ChannelYield {
+  channel: string
+  discovered: number
+  fetched: number
+  indexed: number
+  duplicate: number
+  yield_rate: number | null
+  unique_rate: number | null
+}
+export const getChannels = (signal?: AbortSignal) =>
+  getJSON<{ channels: ChannelYield[] }>('/crawler/channels', signal).then((d) => d.channels)
+
+// --- source health ---------------------------------------------------------------------------
+export interface SourceHealthRow {
+  id: string
+  display_name: string | null
+  lifecycle: string | null
+  trust_tier: string | null
+  crawlable: boolean | null
+  counts: { fetched: number; failed: number; indexed: number; thin: number; duplicate: number }
+  quality: {
+    fetch_success_rate: number | null
+    extraction_success_rate: number | null
+    duplicate_ratio: number | null
+    spam_mean: number | null
+    date_unknown_ratio: number | null
+  }
+}
+export const getSourceHealth = (signal?: AbortSignal) =>
+  getJSON<{ sources: SourceHealthRow[] }>('/crawler/sources/health', signal).then((d) => d.sources)
+
+// --- weak coverage ---------------------------------------------------------------------------
+export interface WeakCoverage {
+  enabled: boolean
+  k_anonymity: number
+  terms: { term: string; count: number }[]
+}
+export const getWeakCoverage = (signal?: AbortSignal) =>
+  getJSON<WeakCoverage>('/crawler/weak-coverage', signal)
+
+// --- documents -------------------------------------------------------------------------------
+export interface DocHit {
+  id: string
+  title?: string
+  url: string
+  domain?: string
+  language?: string
+  body_len?: number
+  excerpt?: string
+  published_at?: number
+}
+export interface DocumentsPage {
+  hits: DocHit[]
+  estimated_total: number
+  page: number
+  per_page: number
+}
+export function getDocuments(
+  params: { q?: string; host?: string; lang?: string; page?: number },
+  signal?: AbortSignal,
+) {
+  const p = new URLSearchParams()
+  if (params.q) p.set('q', params.q)
+  if (params.host) p.set('host', params.host)
+  if (params.lang) p.set('lang', params.lang)
+  p.set('page', String(params.page ?? 1))
+  return getJSON<DocumentsPage>(`/crawler/documents?${p}`, signal)
+}
+
+// --- sources (seed list) ---------------------------------------------------------------------
+export interface Seed {
+  source_id: string
+  url: string
+  trust: string
+  note: string
+}
+export const getSources = (signal?: AbortSignal) =>
+  getJSON<{ seeds: Seed[] }>('/crawler/sources', signal).then((d) => d.seeds)
+export const addSource = (url: string, trust: string) =>
+  postJSON<{ ok?: boolean; already_listed?: boolean; source_id?: string }>('/crawler/sources', { url, trust })
+export const removeSource = (url: string) => postJSON<{ ok?: boolean }>('/crawler/sources/remove', { url })
+
+// --- live snapshot ---------------------------------------------------------------------------
+export interface Snapshot {
+  state: string
+  fetched: number
+  revisited: number
+  parsed: number
+  indexed: number
+  discovered: number
+  failed: number
+  skipped: Record<string, number>
+  recent: { url: string; host: string; outcome: string; at: number; words: number }[]
+  hosts: Record<string, number>
+  waiting: number
+  inflight: number
+  deferred: number
+  unavailable: boolean
+}
+export const getStatus = (signal?: AbortSignal) => getJSON<Snapshot>('/crawler/status', signal)
+
+// --- compute ---------------------------------------------------------------------------------
+export const getCompute = (signal?: AbortSignal) => getJSON<Record<string, unknown>>('/status', signal)
+export const setDevice = (preference: string, gpuLayers: number | null) =>
+  postJSON<Record<string, unknown>>('/device', { preference, gpu_layers: gpuLayers })
+export const setPoliteness = (ignore: boolean) =>
+  postJSON<Record<string, unknown>>('/politeness', { ignore_politeness: ignore })
