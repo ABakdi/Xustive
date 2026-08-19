@@ -43,21 +43,43 @@ pub struct SerpClient {
 impl SerpClient {
     /// Build a client for `engines` (in the given order), presenting a browser fingerprint. A bad
     /// or empty engine list falls back to the full ladder.
-    pub fn new(engines: Vec<Engine>) -> Option<Self> {
+    ///
+    /// `proxy` is the seam that actually unblocks results. Empty/`None` is a direct connection —
+    /// which a datacentre IP gets challenge pages on. A `http(s)://` or `socks5://` URL (credentials
+    /// allowed inline) routes every fetch through it; a residential/rotating proxy there is what gets
+    /// the engines to serve real pages. A malformed proxy URL fails the build rather than silently
+    /// falling back to a direct connection that would just get blocked.
+    pub fn new(engines: Vec<Engine>, proxy: Option<&str>) -> Option<Self> {
         let engines = if engines.is_empty() {
             Engine::LADDER.to_vec()
         } else {
             engines
         };
-        // A current, ordinary Chrome-on-Windows identity. Coherent enough to be served a normal
-        // page; a real deployment injects a full fingerprint profile ([[Fingerprint Engine]]).
+        // A current, ordinary Chrome-on-Windows identity, with headers a real browser sends. Coherent
+        // enough to be served a normal page; a full deployment injects a complete fingerprint profile
+        // ([[Fingerprint Engine]]). Algeria-shaped Accept-Language (Arabic/French/English).
         let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
                   (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-        let http = reqwest::Client::builder()
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::ACCEPT,
+            reqwest::header::HeaderValue::from_static(
+                "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            ),
+        );
+        headers.insert(
+            reqwest::header::ACCEPT_LANGUAGE,
+            reqwest::header::HeaderValue::from_static("ar,fr;q=0.9,en;q=0.8"),
+        );
+        let mut builder = reqwest::Client::builder()
             .user_agent(ua)
-            .timeout(Duration::from_secs(20))
-            .build()
-            .ok()?;
+            .default_headers(headers)
+            .timeout(Duration::from_secs(20));
+        // A configured proxy is the whole point on a datacentre host — route through it or fail loud.
+        if let Some(url) = proxy.map(str::trim).filter(|s| !s.is_empty()) {
+            builder = builder.proxy(reqwest::Proxy::all(url).ok()?);
+        }
+        let http = builder.build().ok()?;
         Some(Self {
             http,
             engines,
@@ -133,14 +155,29 @@ mod tests {
 
     #[test]
     fn an_empty_engine_list_falls_back_to_the_full_ladder() {
-        let c = SerpClient::new(vec![]).unwrap();
+        let c = SerpClient::new(vec![], None).unwrap();
         assert_eq!(c.engines, Engine::LADDER.to_vec());
     }
 
     #[test]
     fn a_custom_engine_order_is_respected() {
-        let c = SerpClient::new(vec![Engine::Google, Engine::Bing]).unwrap();
+        let c = SerpClient::new(vec![Engine::Google, Engine::Bing], None).unwrap();
         assert_eq!(c.engines, vec![Engine::Google, Engine::Bing]);
+    }
+
+    #[test]
+    fn a_proxy_url_is_accepted_and_an_empty_one_is_a_direct_connection() {
+        // No proxy and an empty/whitespace proxy both build a (direct) client.
+        assert!(SerpClient::new(vec![Engine::Bing], None).is_some());
+        assert!(SerpClient::new(vec![Engine::Bing], Some("")).is_some());
+        assert!(SerpClient::new(vec![Engine::Bing], Some("   ")).is_some());
+        // http and socks5 proxy URLs (with and without inline credentials) build.
+        assert!(SerpClient::new(
+            vec![Engine::Bing],
+            Some("http://user:pass@gate.example:7000")
+        )
+        .is_some());
+        assert!(SerpClient::new(vec![Engine::Bing], Some("socks5://gate.example:1080")).is_some());
     }
 
     #[tokio::test]
@@ -148,7 +185,7 @@ mod tests {
         // Network-tolerant: with no network every engine fails and this returns empty; with network
         // it may return real result URLs. Either way it must not panic, and any URL it does return
         // is a well-formed absolute http(s) URL (the cleaner's contract).
-        let c = SerpClient::new(vec![Engine::DuckDuckGo])
+        let c = SerpClient::new(vec![Engine::DuckDuckGo], None)
             .unwrap()
             .with_step_delay(Duration::ZERO);
         for url in c.search("قانون المالية الجزائر").await {
