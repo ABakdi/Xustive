@@ -231,6 +231,12 @@ pub struct DiscoveryConfig {
     /// Hard cap on SERP queries per resolver run.
     #[serde(default = "default_brave_max_queries")]
     pub serp_max_queries_per_run: usize,
+    /// Proxy the SERP fetches route through. Empty means a direct connection — which a datacentre IP
+    /// gets challenge pages on, so results stay empty until this points at a (typically rotating,
+    /// residential) proxy. Accepts `http://`, `https://`, or `socks5://` URLs, with optional
+    /// credentials inline (`http://user:pass@host:port`). Put real credentials here, not in code.
+    #[serde(default)]
+    pub serp_proxy: String,
 }
 
 fn default_weak_floor() -> usize {
@@ -265,6 +271,7 @@ impl Default for DiscoveryConfig {
             serp_enabled: false,
             serp_engines: Vec::new(),
             serp_max_queries_per_run: default_brave_max_queries(),
+            serp_proxy: String::new(),
         }
     }
 }

@@ -36,7 +36,7 @@ tower = { version = "0.5", features = ["timeout", "limit"] }
 tower-http = { version = "0.6", features = [
     "trace", "cors", "limit", "timeout", "compression-gzip", "set-header", "fs", "catch-panic", "request-id", "util",
 ] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip", "socks"] }
 http = "1"
 
 # --- observability ---
