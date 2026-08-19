@@ -38,10 +38,11 @@ weak_coverage_result_floor = 3
 # fine — there is no one to anonymise against, and 20 would mean the feature never fires.
 k_anonymity = 1
 weak_coverage_window_days = 30
-# Direct SERP scraping (ADR-0013), preferred over Brave. Bing works from a plain server; Google
-# needs the residential-proxy layer and returns an "enable JS" page without it.
+# Direct SERP scraping (ADR-0013), preferred over Brave. DuckDuckGo's lite endpoint answers a plain
+# residential IP with real results, so it goes FIRST — Bing hands this client cloaked decoy results
+# and Google an "enable JS" page, so putting either first would short-circuit the ladder on garbage.
 serp_enabled = true
-serp_engines = ["bing", "duckduckgo", "google"]
+serp_engines = ["duckduckgo", "bing", "google"]
 serp_max_queries_per_run = 50
 # Proxy the SERP fetches route through. Empty = direct, which this datacentre IP gets bot-challenge
 # pages on (so results stay empty). Point it at a rotating residential proxy to unblock: accepts
