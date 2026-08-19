@@ -139,11 +139,15 @@ async fn a_short_prefix_returns_an_empty_list_not_an_error() {
 }
 
 #[tokio::test]
-async fn the_admin_page_works_when_the_frontend_and_index_are_both_down() {
-    // The reason /admin stays on this process with its assets embedded: an operator tool has to
-    // work when the things it is used to fix are the things that are broken.
-    let (status, _) = get(crippled(), "/admin.css").await;
-    assert_eq!(status, StatusCode::OK);
+async fn the_admin_api_stays_reachable_when_the_frontend_and_index_are_both_down() {
+    // The admin console is now the Next.js app, but its data comes from this JSON API — and that
+    // API has to answer when the things it is used to fix are the things that are broken. Auth may
+    // refuse the call (the harness attaches no loopback address), but it must *respond*, never 5xx.
+    let (status, _) = get(crippled(), "/api/v1/admin/status").await;
+    assert!(
+        status == StatusCode::FORBIDDEN || status == StatusCode::OK,
+        "the admin API must respond during an outage, got {status}"
+    );
 }
 
 #[tokio::test]

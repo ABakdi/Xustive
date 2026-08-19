@@ -326,7 +326,7 @@ async fn readyz_reports_not_ready_when_the_index_is_unreachable() {
 async fn the_admin_surface_refuses_a_caller_with_no_address() {
     // `oneshot` attaches no connection info, which the guard treats as remote. That is the
     // intended direction to fail: an address the server cannot determine is not loopback.
-    let (status, _, body) = get("/admin/status").await;
+    let (status, _, body) = get("/api/v1/admin/status").await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(error_code(&body), Some("admin_local_only"));
 }
@@ -337,7 +337,7 @@ async fn setting_an_invalid_device_is_a_400_not_a_500() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/admin/device")
+                .uri("/api/v1/admin/device")
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"preference":"turbo"}"#))
                 .unwrap(),

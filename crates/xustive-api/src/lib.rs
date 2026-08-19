@@ -6,7 +6,6 @@
 
 pub mod admin;
 pub mod admin_crawler;
-pub mod bot;
 pub mod dataage;
 pub mod deadline;
 pub mod error;
@@ -117,59 +116,37 @@ pub fn app(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/metrics", get(metrics_handler))
-        // Operator surface. Read-mostly, and nothing here can stop the process starting.
-        .route("/bot", get(bot::page))
-        .route("/admin", get(admin_crawler::page_overview))
-        .route("/admin/compute", get(admin::page))
-        .route("/admin/crawler", get(admin_crawler::page_live))
-        .route("/admin/documents", get(admin_crawler::page_documents))
-        .route("/admin/sources", get(admin_crawler::page_sources))
+        .with_state(state.clone());
+
+    // The admin surface is **JSON only** now — the console itself is a set of pages in the Next.js
+    // app, which reaches these through the same `/api/v1/*` proxy as the search UI. Nothing here
+    // renders HTML; the frontend lives in one place ([[web]]), not split across two servers.
+    let admin_api = Router::new()
+        .route("/crawler/channels", get(admin_crawler::channels))
         .route(
-            "/admin/sources/health",
-            get(admin_crawler::page_source_health),
-        )
-        .route(
-            "/admin/crawler/sources/health",
+            "/crawler/sources/health",
             get(admin_crawler::sources_health),
         )
-        .route("/admin/discovery", get(admin_crawler::page_channels))
-        .route("/admin/crawler/channels", get(admin_crawler::channels))
+        .route("/crawler/weak-coverage", get(admin_crawler::weak_coverage))
         .route(
-            "/admin/weak-coverage",
-            get(admin_crawler::page_weak_coverage),
+            "/crawler/sources",
+            get(admin_crawler::sources).post(admin_crawler::add_source),
         )
         .route(
-            "/admin/crawler/weak-coverage",
-            get(admin_crawler::weak_coverage),
-        )
-        .route("/admin/crawler/sources", get(admin_crawler::sources))
-        .route(
-            "/admin/crawler/sources",
-            axum::routing::post(admin_crawler::add_source),
-        )
-        .route(
-            "/admin/crawler/sources/remove",
+            "/crawler/sources/remove",
             axum::routing::post(admin_crawler::remove_source),
         )
-        .route("/admin/crawler/status", get(admin_crawler::status))
-        .route("/admin/crawler/events", get(admin_crawler::events))
-        .route("/admin/crawler/documents", get(admin_crawler::documents))
+        .route("/crawler/status", get(admin_crawler::status))
+        .route("/crawler/events", get(admin_crawler::events))
+        .route("/crawler/documents", get(admin_crawler::documents))
         .route(
-            "/admin/crawler/enqueue",
+            "/crawler/enqueue",
             axum::routing::post(admin_crawler::enqueue),
         )
-        .route(
-            "/admin/politeness",
-            axum::routing::post(admin::set_politeness),
-        )
-        .route("/admin.css", get(admin::admin_css))
-        .route("/admin.js", get(admin::admin_js))
-        .route("/admin/status", get(admin::status))
-        .route("/admin/device", axum::routing::post(admin::set_device))
-        .route(
-            "/admin/log-level",
-            axum::routing::post(admin::set_log_level),
-        )
+        .route("/politeness", axum::routing::post(admin::set_politeness))
+        .route("/status", get(admin::status))
+        .route("/device", axum::routing::post(admin::set_device))
+        .route("/log-level", axum::routing::post(admin::set_log_level))
         .layer(search_budget)
         .with_state(state.clone());
 
@@ -178,6 +155,7 @@ pub fn app(state: AppState) -> Router {
             "/api/v1",
             api.merge(summary).merge(translate).merge(suggest_routes),
         )
+        .nest("/api/v1/admin", admin_api)
         .merge(ops)
         // Request ids, outermost after panic catching so even a shed or rejected request
         // carries one. A ULID rather than a UUID: it sorts by time, so grepping a log for ids

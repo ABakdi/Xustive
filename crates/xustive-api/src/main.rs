@@ -107,21 +107,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = listener.local_addr()?;
     tracing::info!(%addr, "xustive-api listening");
 
-    // The UI is served by this process from `static_dir`; there is no separate web server.
-    // Saying so here saves people looking for one that does not exist.
+    // This process is the **API only** — JSON, no HTML. The frontend (search *and* admin) is the
+    // Next.js app in `web/`, a separate server that proxies `/api/v1/*` here. There is no UI on this
+    // port; saying so plainly saves people looking for one.
     let host = if addr.ip().is_unspecified() {
         format!("localhost:{}", addr.port())
     } else {
         addr.to_string()
     };
     eprintln!();
-    eprintln!("  Xustive is running.");
+    eprintln!("  Xustive API is running.");
     eprintln!();
-    eprintln!("    Web UI    http://{host}");
     // Written without a literal query string on purpose. The nightly log scan flags any line
     // containing one, and a banner that trips it teaches people to ignore the check.
     eprintln!("    API       http://{host}/api/v1/search   (takes a \"q\" parameter)");
     eprintln!("    Health    http://{host}/readyz");
+    eprintln!("    Frontend  the Next.js app in web/  (npm run dev), which proxies to this API");
     eprintln!();
     eprintln!("  Ctrl-C to stop.");
     eprintln!();
