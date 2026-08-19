@@ -873,44 +873,6 @@ healthy band (§7) — the same signal the lifecycle automation degrades on.</p>
     <th>fetch ok</th><th>extraction</th><th>duplicate</th><th>spam</th><th>date&nbsp;?</th>
   </tr>
 </thead><tbody id="sh-rows"></tbody></table>
-
-<script>
-const pct = (v) => v === null || v === undefined ? '<span class="muted">—</span>'
-  : (v * 100).toFixed(0) + '%';
-// Healthy bands from §7: fetch >95%, extraction >90%, duplicate <30%, spam <0.2, date-unknown <10%.
-const band = (v, ok) => v === null || v === undefined ? '' : (ok(v) ? '' : ' class="warn"');
-async function load() {
-  const msg = document.getElementById('sh-msg');
-  try {
-    const r = await fetch('/admin/crawler/sources/health', { headers: { 'accept': 'application/json' } });
-    if (!r.ok) { msg.textContent = 'Could not load source health (' + r.status + ').'; return; }
-    const data = await r.json();
-    const rows = data.sources || [];
-    const tbody = document.getElementById('sh-rows');
-    tbody.innerHTML = '';
-    for (const s of rows) {
-      const q = s.quality, c = s.counts;
-      const name = s.display_name || s.id;
-      const tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td>' + name + ' <span class="muted">' + s.id + '</span></td>' +
-        '<td>' + (s.lifecycle || '<span class="muted">—</span>') + '</td>' +
-        '<td>' + (s.trust_tier || '—') + '</td>' +
-        '<td>' + c.fetched + '</td>' +
-        '<td>' + c.indexed + '</td>' +
-        '<td' + band(q.fetch_success_rate, v => v > 0.95) + '>' + pct(q.fetch_success_rate) + '</td>' +
-        '<td' + band(q.extraction_success_rate, v => v > 0.90) + '>' + pct(q.extraction_success_rate) + '</td>' +
-        '<td' + band(q.duplicate_ratio, v => v < 0.30) + '>' + pct(q.duplicate_ratio) + '</td>' +
-        '<td' + band(q.spam_mean, v => v < 0.20) + '>' + pct(q.spam_mean) + '</td>' +
-        '<td' + band(q.date_unknown_ratio, v => v < 0.10) + '>' + pct(q.date_unknown_ratio) + '</td>';
-      tbody.appendChild(tr);
-    }
-    msg.textContent = rows.length + ' source(s). Refreshing every 10s.';
-  } catch (e) { msg.textContent = 'Could not load source health.'; }
-}
-load();
-setInterval(load, 10000);
-</script>
 "#;
     axum::response::Html(crate::admin::console("/admin/sources/health", body)).into_response()
 }
@@ -937,38 +899,6 @@ channel earns its place (M2-T16.8).</p>
     <th>duplicate</th><th>yield</th><th>unique</th>
   </tr>
 </thead><tbody id="ch-rows"></tbody></table>
-
-<script>
-const pct = (v) => v === null || v === undefined ? '<span class="muted">—</span>'
-  : (v * 100).toFixed(0) + '%';
-async function load() {
-  const msg = document.getElementById('ch-msg');
-  try {
-    const r = await fetch('/admin/crawler/channels', { headers: { 'accept': 'application/json' } });
-    if (!r.ok) { msg.textContent = 'Could not load discovery yield (' + r.status + ').'; return; }
-    const rows = (await r.json()).channels || [];
-    const tbody = document.getElementById('ch-rows');
-    tbody.innerHTML = '';
-    for (const c of rows) {
-      const tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td>' + c.channel + '</td>' +
-        '<td>' + c.discovered + '</td>' +
-        '<td>' + c.fetched + '</td>' +
-        '<td>' + c.indexed + '</td>' +
-        '<td>' + c.duplicate + '</td>' +
-        '<td>' + pct(c.yield_rate) + '</td>' +
-        '<td>' + pct(c.unique_rate) + '</td>';
-      tbody.appendChild(tr);
-    }
-    msg.textContent = rows.length
-      ? rows.length + ' channel(s). Refreshing every 10s.'
-      : 'No discovery activity recorded yet.';
-  } catch (e) { msg.textContent = 'Could not load discovery yield.'; }
-}
-load();
-setInterval(load, 10000);
-</script>
 "#;
     axum::response::Html(crate::admin::console("/admin/discovery", body)).into_response()
 }
@@ -984,48 +914,13 @@ pub async fn page_weak_coverage(
     }
     let body = r#"<h1>Weak coverage</h1>
 <p class="lede">Searches the corpus could not answer — the precise gaps worth finding sources for
-(M2-T16.4). Under <a href="https://" onclick="return false">ADR-0008</a> this is <strong>off by
-default</strong> and <strong>k-anonymous</strong>: a term appears only once at least
-<span id="wc-k">20</span> searches have hit it, so nothing here identifies a query or a person.</p>
+(M2-T16.4). <strong>k-anonymous</strong>: a term appears only once at least
+<span id="wc-k">20</span> searches have hit it, so nothing here identifies a query or a person. When
+a resolution source is configured (SERP or Brave), the crawler chases these automatically.</p>
 <p class="muted" id="wc-msg">Loading…</p>
 <table class="admin wide"><thead>
   <tr><th>term</th><th>searches</th></tr>
 </thead><tbody id="wc-rows"></tbody></table>
-<p class="muted">Resolving a gap to URLs needs an external discovery source (Brave, SERP, Common
-Crawl), which is a later task. For now these are the gaps, surfaced for a human to act on.</p>
-
-<script>
-async function load() {
-  const msg = document.getElementById('wc-msg');
-  try {
-    const r = await fetch('/admin/crawler/weak-coverage', { headers: { 'accept': 'application/json' } });
-    if (!r.ok) { msg.textContent = 'Could not load weak coverage (' + r.status + ').'; return; }
-    const data = await r.json();
-    document.getElementById('wc-k').textContent = data.k_anonymity;
-    const tbody = document.getElementById('wc-rows');
-    tbody.innerHTML = '';
-    if (!data.enabled) {
-      msg.textContent = 'Query-driven discovery is disabled (the default). Enable discovery.weak_coverage_enabled to collect coverage gaps.';
-      return;
-    }
-    const rows = data.terms || [];
-    for (const t of rows) {
-      const tr = document.createElement('tr');
-      const term = document.createElement('td');
-      term.textContent = t.term;   // textContent, never innerHTML — the term is user-derived text
-      const count = document.createElement('td');
-      count.textContent = t.count;
-      tr.appendChild(term); tr.appendChild(count);
-      tbody.appendChild(tr);
-    }
-    msg.textContent = rows.length
-      ? rows.length + ' coverage gap(s), each searched ≥ ' + data.k_anonymity + ' times.'
-      : 'No coverage gaps have crossed the k-anonymity floor yet.';
-  } catch (e) { msg.textContent = 'Could not load weak coverage.'; }
-}
-load();
-setInterval(load, 15000);
-</script>
 "#;
     axum::response::Html(crate::admin::console("/admin/weak-coverage", body)).into_response()
 }

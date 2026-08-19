@@ -160,11 +160,28 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!form) return;
   var rows = document.getElementById('doc-rows');
   var count = document.getElementById('doc-count');
+  var pager = document.getElementById('doc-pager');
   var page = 1;
+  var totalPages = 1;
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' }[c];
   }); }
+
+  // Prev / page-of / Next. Built once; the handlers read the live `page`/`totalPages`.
+  function renderPager() {
+    if (!pager) return;
+    if (totalPages <= 1) { pager.innerHTML = ''; return; }
+    pager.className = 'pager';
+    pager.innerHTML =
+      '<button type="button" id="doc-prev"' + (page <= 1 ? ' disabled' : '') + '>← Prev</button>' +
+      '<span class="page-info">Page ' + page + ' of ' + totalPages + '</span>' +
+      '<button type="button" id="doc-next"' + (page >= totalPages ? ' disabled' : '') + '>Next →</button>';
+    var prev = document.getElementById('doc-prev');
+    var next = document.getElementById('doc-next');
+    if (prev) prev.onclick = function () { if (page > 1) { page--; load(); window.scrollTo(0, 0); } };
+    if (next) next.onclick = function () { if (page < totalPages) { page++; load(); window.scrollTo(0, 0); } };
+  }
 
   function load() {
     var p = new URLSearchParams({
@@ -175,7 +192,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     fetch('/admin/crawler/documents?' + p).then(function (r) { return r.json(); }).then(function (d) {
       if (d.error) { count.textContent = d.error.message; return; }
-      count.textContent = (d.estimated_total || 0) + ' documents';
+      var total = d.estimated_total || 0;
+      var perPage = d.per_page || 20;
+      totalPages = Math.max(1, Math.min(100, Math.ceil(total / perPage)));
+      count.textContent = total + ' document' + (total === 1 ? '' : 's') +
+        (total > perPage ? ' — showing ' + ((page - 1) * perPage + 1) + '–' + Math.min(page * perPage, total) : '');
       rows.innerHTML = (d.hits || []).map(function (h) {
         var when = h.published_at ? new Date(h.published_at * 1000).toISOString().slice(0, 16).replace('T', ' ') : '';
         // Titles come from crawled pages. Escaped, never rendered — an admin console that renders
@@ -188,6 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
           '<td>' + esc(h.domain || '') + '</td><td>' + esc(h.language || '') + '</td>' +
           '<td>' + words + '</td><td>' + when + '</td></tr>';
       }).join('');
+      renderPager();
     }).catch(function () { count.textContent = 'could not reach the index'; });
   }
 
@@ -263,4 +285,108 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   load();
+})();
+
+// --- shared helper for the fetch-and-render pages below --------------------------------------
+function xEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' }[c];
+  });
+}
+function xPct(v) { return v == null ? '<span class="muted">—</span>' : (v * 100).toFixed(0) + '%'; }
+
+// --- discovery yield (/admin/discovery) ------------------------------------------------------
+// These live in admin.js, not an inline <script>, because the console's CSP is `script-src 'self'`
+// — an inline script is blocked and the page would sit forever on "Loading…".
+(function () {
+  var rows = document.getElementById('ch-rows');
+  if (!rows) return;
+  var msg = document.getElementById('ch-msg');
+  function load() {
+    fetch('/admin/crawler/channels', { headers: { accept: 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) {
+        var cs = d.channels || [];
+        rows.innerHTML = cs.map(function (c) {
+          return '<tr><td>' + xEsc(c.channel) + '</td><td>' + c.discovered + '</td><td>' + c.fetched +
+            '</td><td>' + c.indexed + '</td><td>' + c.duplicate + '</td><td>' + xPct(c.yield_rate) +
+            '</td><td>' + xPct(c.unique_rate) + '</td></tr>';
+        }).join('');
+        msg.textContent = cs.length ? cs.length + ' channel(s). Refreshing every 10s.'
+          : 'No discovery activity recorded yet.';
+      })
+      .catch(function () { msg.textContent = 'Could not load discovery yield.'; });
+  }
+  load();
+  setInterval(load, 10000);
+})();
+
+// --- source health (/admin/sources/health) ---------------------------------------------------
+(function () {
+  var rows = document.getElementById('sh-rows');
+  if (!rows) return;
+  var msg = document.getElementById('sh-msg');
+  // A cell is amber when its value is outside the §7 healthy band.
+  function cell(v, ok) {
+    if (v == null) return '<td><span class="muted">—</span></td>';
+    var cls = ok(v) ? '' : ' class="warn"';
+    return '<td' + cls + '>' + (v * 100).toFixed(0) + '%</td>';
+  }
+  function load() {
+    fetch('/admin/crawler/sources/health', { headers: { accept: 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) {
+        var ss = d.sources || [];
+        rows.innerHTML = ss.map(function (s) {
+          var q = s.quality, c = s.counts;
+          return '<tr><td>' + xEsc(s.display_name || s.id) + ' <span class="muted">' + xEsc(s.id) +
+            '</span></td><td>' + xEsc(s.lifecycle || '—') + '</td><td>' + xEsc(s.trust_tier || '—') +
+            '</td><td>' + c.fetched + '</td><td>' + c.indexed + '</td>' +
+            cell(q.fetch_success_rate, function (v) { return v > 0.95; }) +
+            cell(q.extraction_success_rate, function (v) { return v > 0.90; }) +
+            cell(q.duplicate_ratio, function (v) { return v < 0.30; }) +
+            cell(q.spam_mean, function (v) { return v < 0.20; }) +
+            cell(q.date_unknown_ratio, function (v) { return v < 0.10; }) + '</tr>';
+        }).join('');
+        msg.textContent = ss.length + ' source(s). Refreshing every 10s.';
+      })
+      .catch(function () { msg.textContent = 'Could not load source health.'; });
+  }
+  load();
+  setInterval(load, 10000);
+})();
+
+// --- weak coverage (/admin/weak-coverage) ----------------------------------------------------
+(function () {
+  var rows = document.getElementById('wc-rows');
+  if (!rows) return;
+  var msg = document.getElementById('wc-msg');
+  var kEl = document.getElementById('wc-k');
+  function load() {
+    fetch('/admin/crawler/weak-coverage', { headers: { accept: 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) {
+        if (kEl) kEl.textContent = d.k_anonymity;
+        if (!d.enabled) {
+          rows.innerHTML = '';
+          msg.textContent = 'Query-driven discovery is off. Set discovery.weak_coverage_enabled to collect gaps.';
+          return;
+        }
+        var ts = d.terms || [];
+        // The term is a user's search text — build the cell with textContent, never innerHTML.
+        rows.innerHTML = '';
+        ts.forEach(function (t) {
+          var tr = document.createElement('tr');
+          var term = document.createElement('td'); term.textContent = t.term;
+          var count = document.createElement('td'); count.textContent = t.count;
+          tr.appendChild(term); tr.appendChild(count); rows.appendChild(tr);
+        });
+        msg.textContent = ts.length
+          ? ts.length + ' coverage gap(s), each searched ≥ ' + d.k_anonymity + ' times.'
+          : 'No coverage gaps yet — search for something the corpus does not have.';
+      })
+      .catch(function () { msg.textContent = 'Could not load weak coverage.'; });
+  }
+  load();
+  setInterval(load, 15000);
 })();

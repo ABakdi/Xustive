@@ -252,7 +252,9 @@ fn default_brave_results() -> usize {
 impl Default for DiscoveryConfig {
     fn default() -> Self {
         Self {
-            weak_coverage_enabled: false,
+            // On by default: recording which searches came up short is the signal the whole
+            // discovery loop runs on, it is k-anonymous, and it stores no query text below the floor.
+            weak_coverage_enabled: true,
             weak_coverage_result_floor: default_weak_floor(),
             k_anonymity: default_k_anonymity(),
             weak_coverage_window_days: default_weak_window_days(),

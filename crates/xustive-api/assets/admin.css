@@ -309,3 +309,49 @@ form.admin button { align-self: start; }
 .lede { font-size: var(--text-lg); }
 h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
 h2 { font-size: 1.05rem; font-weight: 600; margin-top: var(--space-8); }
+
+/* --- documents & dashboard tables (fixes: filter-bar alignment, wide-table width, pagination) --
+ * The generic `form.admin` above is a narrow *vertical* form (max 460px). The documents filter is a
+ * horizontal *toolbar*, so it overrides that here — id+class beats the bare class, no !important. */
+form.admin#doc-filters {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  max-inline-size: none;
+  gap: var(--space-3);
+  margin-block: var(--space-4) var(--space-3);
+}
+form.admin#doc-filters input,
+form.admin#doc-filters select {
+  min-block-size: 40px;
+  align-self: auto;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+}
+form.admin#doc-filters input[type='search'] { flex: 1 1 260px; }
+form.admin#doc-filters button { align-self: auto; min-block-size: 40px; }
+
+/* The 220px first-column width is for two-column key/value tables. A `wide` table (source health,
+ * discovery, documents) has many equal columns, so that width would crush the rest — reset it. */
+table.admin.wide th { inline-size: auto; }
+
+/* A wide table can be broader than the content column; let it scroll on its own axis rather than
+ * pushing the whole page sideways. The page still scrolls vertically as normal. */
+table.admin.wide { display: block; overflow-x: auto; }
+table.admin.wide thead,
+table.admin.wide tbody { display: table; inline-size: 100%; table-layout: fixed; }
+
+/* Pagination controls under the documents table. */
+.pager { display: flex; align-items: center; gap: var(--space-4); margin-block: var(--space-3) var(--space-8); }
+.pager button {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  min-block-size: 36px;
+}
+.pager button:hover:not(:disabled) { border-color: var(--accent); }
+.pager button:disabled { opacity: 0.4; cursor: default; }
+.pager .page-info { font-size: var(--text-sm); color: var(--fg-muted); font-variant-numeric: tabular-nums; }
