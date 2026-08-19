@@ -43,3 +43,8 @@ weak_coverage_window_days = 30
 serp_enabled = true
 serp_engines = ["bing", "duckduckgo", "google"]
 serp_max_queries_per_run = 50
+# Proxy the SERP fetches route through. Empty = direct, which this datacentre IP gets bot-challenge
+# pages on (so results stay empty). Point it at a rotating residential proxy to unblock: accepts
+# http://, https://, or socks5:// with optional inline credentials, e.g.
+#   serp_proxy = "http://USER:PASS@gate.provider.com:7000"
+serp_proxy = ""

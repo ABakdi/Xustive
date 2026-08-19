@@ -65,8 +65,11 @@ pub async fn run(config: &Config) -> Result<()> {
             .iter()
             .filter_map(|s| xustive_ingest::serp::Engine::parse(s))
             .collect();
-        let client = xustive_ingest::serp::SerpClient::new(engines)
-            .context("could not build the SERP client")?;
+        let proxy = Some(disc.serp_proxy.as_str()).filter(|s| !s.trim().is_empty());
+        let client = xustive_ingest::serp::SerpClient::new(engines, proxy).context(
+            "could not build the SERP client (check discovery.serp_proxy — a malformed proxy URL \
+             fails the build)",
+        )?;
         (Source::Serp(client), disc.serp_max_queries_per_run)
     } else if disc.brave_usable() {
         let client = BraveClient::new(&disc.brave_api_key, disc.brave_results_per_query)
