@@ -130,9 +130,11 @@ fn collect(html: &str, selector: &str) -> Vec<String> {
     out
 }
 
-/// DuckDuckGo HTML endpoint: results are `a.result__a`.
+/// DuckDuckGo: the lite endpoint's results are `a.result-link`; the older `html.` endpoint used
+/// `a.result__a`. Match both so either page parses. Both wrap the target in `//duckduckgo.com/l/`,
+/// which the central cleaner unwraps.
 pub fn duckduckgo(html: &str) -> Vec<String> {
-    collect(html, "a.result__a")
+    collect(html, "a.result-link, a.result__a")
 }
 
 /// Bing: organic results are the anchor inside `li.b_algo h2`.

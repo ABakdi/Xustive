@@ -35,7 +35,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Engine {
-    /// The most scraper-tolerant: a plain HTML endpoint, no JS. Tried first.
+    /// The most scraper-tolerant: the no-JS **lite** endpoint. Tried first. It answers a plain GET
+    /// from an ordinary residential IP with real results, where the heavier `html.` endpoint and Bing
+    /// hand a datacentre-ish client a challenge or a cloaked decoy page.
     DuckDuckGo,
     Bing,
     /// The most valuable and the most defended — needs residential egress to work at all. Last.
@@ -69,8 +71,9 @@ impl Engine {
     pub fn results_url(self, query: &str) -> String {
         let q = urlencode(query);
         match self {
-            // The no-JS HTML endpoint, not the JS app. Results are plain anchors.
-            Engine::DuckDuckGo => format!("https://html.duckduckgo.com/html/?q={q}"),
+            // The lite endpoint, not the JS app or the heavier `html.` one: a GET here returns real
+            // results to an ordinary IP, and the anchors are plain `a.result-link` redirectors.
+            Engine::DuckDuckGo => format!("https://lite.duckduckgo.com/lite/?q={q}"),
             Engine::Bing => format!("https://www.bing.com/search?q={q}&count=20"),
             Engine::Google => format!("https://www.google.com/search?q={q}&num=20"),
         }
