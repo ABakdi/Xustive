@@ -101,31 +101,57 @@ pub async fn run(config: &Config) -> Result<()> {
     let channel = source.channel();
     let mut queries = 0usize;
     let mut queued = 0usize;
+    let mut unresolved = 0usize;
     for term in &terms {
         let urls = source.resolve(&term.term).await;
         queries += 1;
+        let mut queued_here = 0usize;
         for url in &urls {
             if seed_url(&frontier, url, channel).await {
-                queued += 1;
+                queued_here += 1;
                 if let Some(s) = &stats {
                     s.incr_channel(channel.token(), "discovered", 1).await;
                 }
             }
         }
-        // Actioned: forget it so the next run does not resolve it again. A gap that is still weak
-        // re-accumulates past the floor on its own.
-        weak.forget(&term.term).await;
+        queued += queued_here;
+        if queued_here > 0 {
+            // Actioned: forget it so the next run does not resolve it again. A gap that is still
+            // weak re-accumulates past the floor on its own.
+            weak.forget(&term.term).await;
+        } else {
+            // The source gave us nothing crawlable — an engine challenge/anomaly page, or every
+            // result was a trap or already known. Keep the term weak so it stays visible on the
+            // dashboard and the next run retries it (e.g. once a proxy makes the engines answer).
+            // The coverage window expires it eventually if it is never satisfied.
+            unresolved += 1;
+        }
     }
 
     tracing::info!(
         queries,
         queued,
+        unresolved,
         source = channel.token(),
         "discovery finished"
     );
+    if unresolved > 0 {
+        tracing::warn!(
+            unresolved,
+            source = channel.token(),
+            "some weak terms resolved to no crawlable URL — likely the engine served a bot \
+             challenge page; direct SERP is being blocked from this IP (needs a proxy)"
+        );
+    }
     println!(
-        "resolved {queries} weak term(s) via {}, queued {queued} new URL(s)",
-        channel.token()
+        "resolved {} of {queries} weak term(s) via {}, queued {queued} new URL(s){}",
+        queries - unresolved,
+        channel.token(),
+        if unresolved > 0 {
+            format!(", {unresolved} left unresolved (engine returned no results)")
+        } else {
+            String::new()
+        }
     );
     Ok(())
 }
