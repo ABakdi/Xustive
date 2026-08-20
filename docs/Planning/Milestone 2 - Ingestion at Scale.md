@@ -3,8 +3,8 @@ tags:
   - planning
   - milestone
 milestone: 2
-status: not-started
-updated: 2026-08-06
+status: in-progress
+updated: 2026-08-21
 ---
 
 # Milestone 2 - Ingestion at Scale
@@ -34,6 +34,42 @@ Two things that have **not** changed:
 The honest framing: **web crawling is an engineering problem; social collection is an engineering
 problem with a permanent maintenance tail.** Platforms will break these paths repeatedly, without
 notice. Budget for it as ongoing work, not a project that finishes.
+
+---
+
+## Status as of 2026-08-21 — closing the web-ingestion track
+
+The **open-web ingestion engine is complete and running.** Crawl → fetch → parse → dedup → index →
+adaptive revisit → query-driven discovery all operate end to end; the crawler holds 900+ categorised
+sources and indexes continuously. Concretely done this cycle: politeness/robots in full (M2-T02, all
+`[x]`), the fetcher's conditional requests / charset cascade / outcome table (M2-T04.2–.5), the
+whole [[Crawler Console]] rebuilt in the Next.js app (Overview, **Live SSE at 1 Hz**, Documents with
+pagination + search, Sources categorised by topic/region, Source health, Discovery yield, Weak
+coverage, Compute — closing most of M2-T13), direct-SERP discovery + per-channel yield + a
+domain-authority/PageRank ranking signal (M2-T16.9–.15), and the **News vertical** (M2-T14.1/.2/.4).
+A Redis connection-churn bug that was throttling indexing was fixed (one shared `ConnectionManager`).
+
+**What the exit gate still needs, and why it is not a code task:**
+- *1M documents indexed* — a **runtime accrual**, not code. The engine indexes as fast as politeness
+  allows; reaching 1M is a matter of letting it run (and, for coverage breadth, a residential proxy so
+  SERP discovery answers — see [[ADR-0013 - Direct SERP Collection for Discovery]]).
+- *Social connectors live* — **deferred, blocked externally.** M2-T01a/b/c (Session Manager, Fingerprint
+  Engine, Signature Service) have their pure decision logic built and tested, but going live needs
+  **real platform accounts, a chosen browser-impersonation library, headless Chrome, and live echo
+  endpoints** — none of which are code I can produce. M2-T01d (legal entity, Law 18-07 / ANPDP, proxy
+  due-diligence) is legal/procurement. This is exactly the "whatever social access we have actually
+  been granted" clause: with none granted yet, the honest state is deferred, per the exit gate's own
+  wording. **Recommendation:** carry the social track (T01a–d, the connectors, T04.6 headless) into a
+  dedicated future milestone ("Social & Advanced Ingestion") rather than block M2 on it.
+
+**One completable code item remains** and is not blocked: **M2-T14.3 Files/PDF** — accept
+`application/pdf` in the fetcher and extract its text into the index (adds a PDF-text dependency and a
+parse branch). It is the natural next increment if the ingestion track is to be pushed further before
+moving on.
+
+**Verdict:** the web-ingestion track is code-complete to its achievable scope; the remaining exit-gate
+items are runtime (1M) or externally blocked (social/legal). It is reasonable to proceed to the next
+milestone and track the social track separately.
 
 ---
 
@@ -183,15 +219,18 @@ Tabs above the results: All, News, Images, Videos, Short videos, Files, Social. 
 their content does** — five of the seven have nothing behind them today, and a tab that returns
 "no results" is indistinguishable from a broken one.
 
-- [ ] M2-T14.1 Tab row, vertical in the URL (`?v=news`) so it is shareable and the back button
-      works, `role="tablist"` with arrow-key movement
-- [ ] M2-T14.2 **News** — a filter over what is already indexed: web source, has a date,
-      article-shaped. Real on day one
+- [x] M2-T14.1 Tab row, vertical in the URL (`?v=news`) so it is shareable and the back button
+      works — `Verticals` server component (link-only, no JS); only verticals that exist are shown.
+      *(arrow-key `tablist` roving is a small a11y follow-up)*
+- [x] M2-T14.2 **News** — a filter over what is already indexed: web source with a real publication
+      date (`source_type=web` + `published_at_precision != unknown`), applied server-side in
+      `parse_filters`; unknown `?v=` falls back to All rather than erroring. Tested.
 - [ ] M2-T14.3 **Files** — accept `application/pdf` in the fetcher (it refuses it today), extract
       text with a hard page cap, and a size limit well below the HTML one. A large share of
       `.gov.dz` PDFs are **scans**, which yield no text at all, so this covers the born-digital
       minority until OCR exists
-- [ ] M2-T14.4 An empty vertical names *which* vertical is empty and links back to All
+- [x] M2-T14.4 An empty vertical names *which* vertical is empty and links back to All — the News
+      tab with no dated results shows "No news for this search → See all results"
 - [ ] M2-T14.5 Social tab, arriving with the connectors
 - [ ] M2-T14.6 Images / Videos / Short videos, arriving with [[Milestone 3 - Multimodal Input]]
 
