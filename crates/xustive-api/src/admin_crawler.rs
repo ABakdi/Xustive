@@ -253,6 +253,11 @@ pub struct Seed {
     pub source_id: String,
     pub url: String,
     pub trust: String,
+    /// One of: news, government, education, health, science-tech, sport, culture, business,
+    /// reference. Empty for legacy rows or operator-added seeds without one.
+    pub category: String,
+    /// `dz` (Algerian) or `global`. Empty when unspecified.
+    pub region: String,
     pub note: String,
 }
 
@@ -273,6 +278,8 @@ fn read_seeds(path: &str) -> (Vec<Seed>, String) {
                 source_id: parts.next()?.trim().to_string(),
                 url: parts.next()?.trim().to_string(),
                 trust: parts.next().unwrap_or("B").trim().to_string(),
+                category: parts.next().unwrap_or("").trim().to_string(),
+                region: parts.next().unwrap_or("").trim().to_string(),
                 note: parts.next().unwrap_or("").trim().to_string(),
             })
         })
@@ -459,8 +466,25 @@ pub struct AddSeed {
     #[serde(default)]
     pub trust: Option<String>,
     #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
     pub note: Option<String>,
 }
+
+/// The known categories, in display order. An operator-supplied category outside this set is stored
+/// verbatim (the UI groups it under "other") rather than rejected — the list should not block a
+/// reasonable label it has not seen.
+pub const CATEGORIES: [&str; 9] = [
+    "news",
+    "government",
+    "education",
+    "health",
+    "science-tech",
+    "sport",
+    "culture",
+    "business",
+    "reference",
+];
 
 /// `POST /admin/crawler/sources` — add a seed and crawl it next.
 ///
@@ -523,7 +547,18 @@ pub async fn add_source(
             .note
             .as_deref()
             .unwrap_or("added from the admin console");
-        let line = format!("{source_id}\t{}\t{trust}\t{note}\n", safe.as_str());
+        // Category from the operator (else blank → "other" in the UI). Region is derived: a .dz host
+        // is Algerian, everything else global — the same split the catalog uses.
+        let category = req.category.as_deref().map(str::trim).unwrap_or("");
+        let region = if host.trim_end_matches('.').ends_with(".dz") || host == "dz" {
+            "dz"
+        } else {
+            "global"
+        };
+        let line = format!(
+            "{source_id}\t{}\t{trust}\t{category}\t{region}\t{note}\n",
+            safe.as_str()
+        );
         // Written whole through a temporary file. A partial write to the seed list would leave the
         // crawler reading a truncated file on its next start, and the failure would look like
         // sources vanishing.

@@ -117,12 +117,30 @@ export interface Seed {
   source_id: string
   url: string
   trust: string
+  category: string
+  region: string
   note: string
 }
+/** The catalog categories, in display order. Keep in sync with CATEGORIES in admin_crawler.rs. */
+export const CATEGORIES = [
+  'news',
+  'government',
+  'education',
+  'health',
+  'science-tech',
+  'sport',
+  'culture',
+  'business',
+  'reference',
+] as const
 export const getSources = (signal?: AbortSignal) =>
   getJSON<{ seeds: Seed[] }>('/crawler/sources', signal).then((d) => d.seeds)
-export const addSource = (url: string, trust: string) =>
-  postJSON<{ ok?: boolean; already_listed?: boolean; source_id?: string }>('/crawler/sources', { url, trust })
+export const addSource = (url: string, trust: string, category?: string) =>
+  postJSON<{ ok?: boolean; already_listed?: boolean; source_id?: string }>('/crawler/sources', {
+    url,
+    trust,
+    category,
+  })
 export const removeSource = (url: string) => postJSON<{ ok?: boolean }>('/crawler/sources/remove', { url })
 
 // --- live snapshot ---------------------------------------------------------------------------

@@ -1,164 +1,498 @@
-# Crawl seeds.
+# Crawl seeds — the categorized source catalog.
 #
-# Format:  source_id <TAB> url <TAB> trust <TAB> note
+# Format:  source_id <TAB> url <TAB> trust <TAB> category <TAB> region <TAB> note
 #
-# trust: A = established, edited, accountable
-#        B = credible but narrower or unedited
-#        C = user-generated or unverified
+# trust:    A = established, edited, accountable | B = credible but narrower | C = user-generated
+# category: news | government | education | health | science-tech | sport | culture | business | reference
+# region:   dz = Algerian | global = rest of the world
 #
-# Trust is about accountability, not agreement. A tier-A source can be wrong; the tier says
-# someone is answerable for it.
+# Trust is about accountability, not agreement or geography. Algeria-first is NOT enforced here — it
+# lives in the ranker (any .dz host gets an authority home floor above an unlisted global one), so the
+# global tier fills gaps and wins on relevance while a home site still takes a tie.
 #
-# Most entries are public Algerian sites; the "Global" section at the end adds a curated 2nd tier of
-# world sources in the languages Algerians read, so common non-local queries have real answers. All
-# are crawled under the open-web profile: robots.txt is obeyed, we identify ourselves as XustiveBot,
-# and there is one request per host at a time. If a site disallows us, it is not crawled — that is
-# enforced in code, not by convention.
-#
-# Algeria-first is not enforced here (trust is about accountability, not geography). It lives in the
-# ranker: any .dz host gets an authority home floor above an unlisted global one. So the global tier
-# fills gaps and wins on relevance, while a home site still takes a tie.
-#
-# Entry points are sitemaps and feeds where the publisher offers them, because a list the site
-# maintains itself beats guessing URLs by following links.
+# Every entry is crawled under the open-web profile: robots.txt is obeyed, we identify as XustiveBot,
+# one request per host at a time. A site that disallows us is simply not crawled — enforced in code.
+# The giant reference/UGC platforms (Wikipedia beyond the Algeria portals, GitHub, Reddit, IMDb) are
+# recognised by the authority list and pulled page-by-page by discovery, not bulk-seeded here.
 
-# --- national news agencies and dailies -------------------------------------------------
-aps-dz	https://www.aps.dz/sitemap.xml	A	Algérie Presse Service, state news agency
-aps-dz	https://www.aps.dz/	A	homepage, for links the sitemap lags on
-elkhabar	https://www.elkhabar.com/	A	El Khabar, major Arabic daily
-echorouk	https://www.echoroukonline.com/	A	Echorouk, major Arabic daily
-ennahar	https://www.ennaharonline.com/	B	Ennahar
-elwatan	https://elwatan-dz.com/	A	El Watan, French-language daily
-liberte	https://www.liberte-algerie.com/	B	Liberté
-lexpression	https://www.lexpressiondz.com/	B	L'Expression
-elmoudjahid	https://www.elmoudjahid.dz/	A	El Moudjahid, state daily
-horizons	https://www.horizons.dz/	B	Horizons
-tsa	https://www.tsa-algerie.com/	B	Tout Sur l'Algérie
-algerie360	https://www.algerie360.com/	B	Algérie 360
-observalgerie	https://www.observalgerie.com/	B	Observ'Algérie
+# ============================================================================================
+# NEWS
+# ============================================================================================
+# --- Algerian ---
+aps-dz	https://www.aps.dz/	A	news	dz	Algérie Presse Service, state agency
+elkhabar	https://www.elkhabar.com/	A	news	dz	El Khabar
+echorouk	https://www.echoroukonline.com/	A	news	dz	Echorouk
+ennahar	https://www.ennaharonline.com/	B	news	dz	Ennahar
+elwatan	https://elwatan-dz.com/	A	news	dz	El Watan
+liberte	https://www.liberte-algerie.com/	B	news	dz	Liberté
+lexpression	https://www.lexpressiondz.com/	B	news	dz	L'Expression
+elmoudjahid	https://www.elmoudjahid.dz/	A	news	dz	El Moudjahid, state daily
+horizons	https://www.horizons.dz/	B	news	dz	Horizons
+tsa	https://www.tsa-algerie.com/	B	news	dz	Tout Sur l'Algérie
+algerie360	https://www.algerie360.com/	B	news	dz	Algérie 360
+observalgerie	https://www.observalgerie.com/	B	news	dz	Observ'Algérie
+elbilad	https://www.elbilad.net/	B	news	dz	El Bilad
+echaab	https://www.ech-chaab.com/	B	news	dz	Ech-Chaab
+elheddaf	https://www.elheddaf.com/	B	news	dz	El Heddaf
+lesoirdalgerie	https://www.lesoirdalgerie.com/	B	news	dz	Le Soir d'Algérie
+reporters-dz	https://www.reporters.dz/	B	news	dz	Reporters
+algeriepatriotique	https://www.algeriepatriotique.com/	B	news	dz	Algérie Patriotique
+maghrebemergent	https://maghrebemergent.net/	B	news	dz	Maghreb Émergent
+algerie-eco	https://www.algerie-eco.com/	B	news	dz	Algérie Éco
+dknews	https://www.dknews-dz.com/	B	news	dz	DK News
+aujourdhui-dz	https://www.aujourdhuiledz.com/	B	news	dz	Aujourd'hui l'Algérie
+elhayat-dz	https://www.elhayat.dz/	B	news	dz	El Hayat
+# --- Global (Arabic) ---
+aljazeera-net	https://www.aljazeera.net/	A	news	global	Al Jazeera Arabic
+alarabiya	https://www.alarabiya.net/	A	news	global	Al Arabiya
+skynews-arabia	https://www.skynewsarabia.com/	B	news	global	Sky News Arabia
+bbc-arabic	https://www.bbc.com/arabic	A	news	global	BBC Arabic
+dw-arabic	https://www.dw.com/ar/	A	news	global	Deutsche Welle Arabic
+france24-ar	https://www.france24.com/ar/	A	news	global	France 24 Arabic
+alquds	https://www.alquds.co.uk/	B	news	global	Al-Quds Al-Arabi
+alaraby	https://www.alaraby.co.uk/	B	news	global	Al-Araby Al-Jadeed
+asharqalawsat	https://aawsat.com/	B	news	global	Asharq Al-Awsat
+aljazeera-mubasher	https://www.aljazeeramubasher.net/	B	news	global	Al Jazeera Mubasher
+almayadeen	https://www.almayadeen.net/	B	news	global	Al Mayadeen
+rt-arabic	https://arabic.rt.com/	B	news	global	RT Arabic
+youm7	https://www.youm7.com/	B	news	global	Youm7 (Egypt)
+almasryalyoum	https://www.almasryalyoum.com/	B	news	global	Al-Masry Al-Youm
+# --- Global (French) ---
+lemonde	https://www.lemonde.fr/	A	news	global	Le Monde
+lefigaro	https://www.lefigaro.fr/	A	news	global	Le Figaro
+liberation	https://www.liberation.fr/	A	news	global	Libération
+rfi-fr	https://www.rfi.fr/fr/	A	news	global	RFI
+france24-fr	https://www.france24.com/fr/	A	news	global	France 24 French
+leparisien	https://www.leparisien.fr/	B	news	global	Le Parisien
+lexpress-fr	https://www.lexpress.fr/	B	news	global	L'Express
+lepoint	https://www.lepoint.fr/	B	news	global	Le Point
+nouvelobs	https://www.nouvelobs.com/	B	news	global	L'Obs
+20minutes	https://www.20minutes.fr/	B	news	global	20 Minutes
+rtbf	https://www.rtbf.be/	B	news	global	RTBF (Belgium)
+lesoir-be	https://www.lesoir.be/	B	news	global	Le Soir (Belgium)
+# --- Global (English) ---
+bbc-news	https://www.bbc.com/news	A	news	global	BBC News
+reuters	https://www.reuters.com/	A	news	global	Reuters
+apnews	https://apnews.com/	A	news	global	Associated Press
+aljazeera-en	https://www.aljazeera.com/	A	news	global	Al Jazeera English
+theguardian	https://www.theguardian.com/	A	news	global	The Guardian
+nytimes	https://www.nytimes.com/	A	news	global	The New York Times
+washingtonpost	https://www.washingtonpost.com/	A	news	global	The Washington Post
+cnn	https://www.cnn.com/	A	news	global	CNN
+bloomberg-news	https://www.bloomberg.com/	A	news	global	Bloomberg
+wsj	https://www.wsj.com/	A	news	global	The Wall Street Journal
+ft	https://www.ft.com/	A	news	global	Financial Times
+economist	https://www.economist.com/	A	news	global	The Economist
+npr	https://www.npr.org/	A	news	global	NPR
+abcnews	https://abcnews.go.com/	A	news	global	ABC News
+cbsnews	https://www.cbsnews.com/	A	news	global	CBS News
+nbcnews	https://www.nbcnews.com/	A	news	global	NBC News
+politico	https://www.politico.com/	B	news	global	Politico
+thehill	https://thehill.com/	B	news	global	The Hill
+axios	https://www.axios.com/	B	news	global	Axios
+usatoday	https://www.usatoday.com/	B	news	global	USA Today
+latimes	https://www.latimes.com/	A	news	global	Los Angeles Times
+independent	https://www.independent.co.uk/	B	news	global	The Independent
+telegraph	https://www.telegraph.co.uk/	A	news	global	The Telegraph
+thetimes	https://www.thetimes.co.uk/	A	news	global	The Times (UK)
+dw-en	https://www.dw.com/en/	A	news	global	Deutsche Welle English
+euronews	https://www.euronews.com/	B	news	global	Euronews
+spiegel	https://www.spiegel.de/	A	news	global	Der Spiegel
+zeit	https://www.zeit.de/	A	news	global	Die Zeit
+elpais	https://elpais.com/	A	news	global	El País
+elmundo	https://www.elmundo.es/	A	news	global	El Mundo
+corriere	https://www.corriere.it/	A	news	global	Corriere della Sera
+repubblica	https://www.repubblica.it/	A	news	global	La Repubblica
+timesofindia	https://timesofindia.indiatimes.com/	B	news	global	Times of India
+thehindu	https://www.thehindu.com/	A	news	global	The Hindu
+dawn	https://www.dawn.com/	A	news	global	Dawn (Pakistan)
+scmp	https://www.scmp.com/	A	news	global	South China Morning Post
+japantimes	https://www.japantimes.co.jp/	A	news	global	The Japan Times
+nhk-world	https://www3.nhk.or.jp/nhkworld/	A	news	global	NHK World
+xinhua	https://english.news.cn/	B	news	global	Xinhua
+cgtn	https://www.cgtn.com/	B	news	global	CGTN
+abc-au	https://www.abc.net.au/news	A	news	global	ABC News (Australia)
+cbc	https://www.cbc.ca/news	A	news	global	CBC News (Canada)
+theconversation	https://theconversation.com/	B	news	global	The Conversation
+propublica	https://www.propublica.org/	A	news	global	ProPublica
+middleeasteye	https://www.middleeasteye.net/	B	news	global	Middle East Eye
+haaretz	https://www.haaretz.com/	A	news	global	Haaretz
 
-# --- government and administration ---------------------------------------------------------
-interieur-gov	https://www.interieur.gov.dz/	A	Ministry of the Interior
-mesrs-gov	https://www.mesrs.dz/	A	Higher education ministry
-education-gov	https://www.education.gov.dz/	A	National education ministry
-sante-gov	https://www.sante.gov.dz/	A	Health ministry
-travail-gov	https://www.mtess.gov.dz/	A	Labour and social security ministry
-premier-ministre	https://www.premier-ministre.gov.dz/	A	Prime Minister's office
-joradp	https://www.joradp.dz/	A	Official journal
+# ============================================================================================
+# GOVERNMENT
+# ============================================================================================
+# --- Algerian ---
+interieur-gov	https://www.interieur.gov.dz/	A	government	dz	Ministry of the Interior
+mesrs-gov	https://www.mesrs.dz/	A	government	dz	Higher Education ministry
+education-gov	https://www.education.gov.dz/	A	government	dz	National Education ministry
+sante-gov	https://www.sante.gov.dz/	A	government	dz	Health ministry
+travail-gov	https://www.mtess.gov.dz/	A	government	dz	Labour and Social Security
+premier-ministre	https://www.premier-ministre.gov.dz/	A	government	dz	Prime Minister's office
+joradp	https://www.joradp.dz/	A	government	dz	Official Journal
+presidence	https://www.el-mouradia.dz/	A	government	dz	Presidency
+gov-portal	https://www.gov.dz/	A	government	dz	Government portal
+apn	https://www.apn.dz/	A	government	dz	People's National Assembly
+conseil-nation	https://www.majliselouma.dz/	A	government	dz	Council of the Nation
+mae	https://www.mfa.gov.dz/	A	government	dz	Foreign Affairs
+mf	https://www.mf.gov.dz/	A	government	dz	Finance
+menergie	https://www.energy.gov.dz/	A	government	dz	Energy and Mines
+magri	https://madr.gov.dz/	A	government	dz	Agriculture
+mind	https://www.industrie.gov.dz/	A	government	dz	Industry
+mcom	https://www.commerce.gov.dz/	A	government	dz	Commerce
+mtp	https://www.mtp.gov.dz/	A	government	dz	Public Works
+mhabitat	https://www.mhuv.gov.dz/	A	government	dz	Housing and Urbanism
+mjustice	https://www.mjustice.dz/	A	government	dz	Justice
+mdn	https://www.mdn.dz/	A	government	dz	National Defence
+mformation	https://www.mfep.gov.dz/	A	government	dz	Vocational Training
+mculture	https://www.m-culture.gov.dz/	A	government	dz	Culture
+mjeunesse	https://www.mjs.gov.dz/	A	government	dz	Youth and Sports
+mtourisme	https://www.mta.gov.dz/	A	government	dz	Tourism
+mtransport	https://www.ministere-transports.gov.dz/	A	government	dz	Transport
+menv	https://www.meer.gov.dz/	A	government	dz	Environment
+mpeche	https://www.mpeche.gov.dz/	A	government	dz	Fisheries
+mrelig	https://www.marw.dz/	A	government	dz	Religious Affairs
+mnumerique	https://www.mpt.gov.dz/	A	government	dz	Post and Telecommunications
+ons	https://www.ons.dz/	A	government	dz	National Statistics Office
+cnas	https://www.cnas.dz/	A	government	dz	Social insurance
+casnos	https://www.casnos.com.dz/	A	government	dz	Self-employed social insurance
+douane	https://www.douane.gov.dz/	A	government	dz	Customs
+impots	https://www.mfdgi.gov.dz/	A	government	dz	Tax administration
+mspaff	https://www.msnfcf.gov.dz/	A	government	dz	Solidarity and Family
+mhydraulique	https://www.mre.gov.dz/	A	government	dz	Water Resources
+santepub	https://www.insp.dz/	A	government	dz	National Institute of Public Health
+andi	https://www.andi.dz/	A	government	dz	Investment agency
+cnrc	https://www.cnrc.dz/	A	government	dz	Trade register
+# --- Global (intergovernmental + national) ---
+un	https://www.un.org/	A	government	global	United Nations
+who-int	https://www.who.int/	A	government	global	World Health Organization
+worldbank	https://www.worldbank.org/	A	government	global	World Bank
+imf	https://www.imf.org/	A	government	global	IMF
+europa-eu	https://european-union.europa.eu/	A	government	global	European Union
+unesco	https://www.unesco.org/	A	government	global	UNESCO
+unicef	https://www.unicef.org/	A	government	global	UNICEF
+wto	https://www.wto.org/	A	government	global	World Trade Organization
+oecd	https://www.oecd.org/	A	government	global	OECD
+africanunion	https://au.int/	A	government	global	African Union
+arableague	http://www.leagueofarabstates.net/	B	government	global	Arab League
+gov-uk	https://www.gov.uk/	A	government	global	UK Government
+usa-gov	https://www.usa.gov/	A	government	global	US Government portal
+whitehouse	https://www.whitehouse.gov/	A	government	global	The White House
+state-gov	https://www.state.gov/	A	government	global	US State Department
+service-public-fr	https://www.service-public.fr/	A	government	global	French public services
+gouvernement-fr	https://www.gouvernement.fr/	A	government	global	French Government
+canada-ca	https://www.canada.ca/	A	government	global	Government of Canada
+australia-gov	https://www.australia.gov.au/	A	government	global	Australian Government
+bundesregierung	https://www.bundesregierung.de/	A	government	global	German Federal Government
+nasa	https://www.nasa.gov/	A	government	global	NASA
+esa	https://www.esa.int/	A	government	global	European Space Agency
+cdc	https://www.cdc.gov/	A	government	global	US CDC
+fda	https://www.fda.gov/	A	government	global	US FDA
+noaa	https://www.noaa.gov/	A	government	global	NOAA
+census-gov	https://www.census.gov/	A	government	global	US Census Bureau
+eurostat	https://ec.europa.eu/eurostat	A	government	global	Eurostat
+ilo	https://www.ilo.org/	A	government	global	International Labour Organization
+fao	https://www.fao.org/	A	government	global	FAO
+undp	https://www.undp.org/	A	government	global	UNDP
+unhcr	https://www.unhcr.org/	A	government	global	UNHCR
 
-# --- Government: ministries and institutions -------------------------------------------------
-#
-# Tier A throughout: these are the primary source for what they publish, and someone is
-# constitutionally answerable for it. Several serve an incomplete TLS chain and are unreachable
-# until M2-T04.10 — they are listed anyway, because the list should describe what we intend to
-# crawl rather than what happens to work this week.
-presidence	https://www.el-mouradia.dz/	A	Presidency
-gov-portal	https://www.gov.dz/	A	Government portal
-apn	https://www.apn.dz/	A	People's National Assembly
-conseil-nation	https://www.majliselouma.dz/	A	Council of the Nation
-mae	https://www.mfa.gov.dz/	A	Foreign Affairs
-mf	https://www.mf.gov.dz/	A	Finance
-menergie	https://www.energy.gov.dz/	A	Energy and Mines
-magri	https://madr.gov.dz/	A	Agriculture and Rural Development
-mind	https://www.industrie.gov.dz/	A	Industry
-mcom	https://www.commerce.gov.dz/	A	Commerce
-mtp	https://www.mtp.gov.dz/	A	Public Works
-mhabitat	https://www.mhuv.gov.dz/	A	Housing and Urbanism
-mjustice	https://www.mjustice.dz/	A	Justice
-mdn	https://www.mdn.dz/	A	National Defence
-mformation	https://www.mfep.gov.dz/	A	Vocational Training
-mculture	https://www.m-culture.gov.dz/	A	Culture
-mjeunesse	https://www.mjs.gov.dz/	A	Youth and Sports
-mtourisme	https://www.mta.gov.dz/	A	Tourism
-mtransport	https://www.ministere-transports.gov.dz/	A	Transport
-menv	https://www.meer.gov.dz/	A	Environment
-mpeche	https://www.mpeche.gov.dz/	A	Fisheries
-mrelig	https://www.marw.dz/	A	Religious Affairs
-mnumerique	https://www.mpt.gov.dz/	A	Post and Telecommunications
-ons	https://www.ons.dz/	A	National Statistics Office
-cnas	https://www.cnas.dz/	A	Social insurance
-casnos	https://www.casnos.com.dz/	A	Self-employed social insurance
-douane	https://www.douane.gov.dz/	A	Customs
-impots	https://www.mfdgi.gov.dz/	A	Tax administration
-onec	https://www.onec.dz/	A	Examinations board
-bac-results	https://bac.onec.dz/	A	Baccalaureate portal
-univ-alger	https://www.univ-alger.dz/	A	University of Algiers
-cerist	https://www.cerist.dz/	A	Research information centre
+# ============================================================================================
+# EDUCATION
+# ============================================================================================
+# --- Algerian universities and institutions ---
+onec	https://www.onec.dz/	A	education	dz	Examinations board
+bac-results	https://bac.onec.dz/	A	education	dz	Baccalaureate portal
+univ-alger	https://www.univ-alger.dz/	A	education	dz	University of Algiers
+usthb	https://www.usthb.dz/	A	education	dz	USTHB (science & technology)
+univ-oran1	https://www.univ-oran1.dz/	A	education	dz	University of Oran 1
+univ-constantine1	https://www.umc.edu.dz/	A	education	dz	University of Constantine 1
+univ-setif1	https://www.univ-setif.dz/	A	education	dz	University of Sétif 1
+univ-annaba	https://www.univ-annaba.dz/	A	education	dz	University of Annaba
+univ-tlemcen	https://www.univ-tlemcen.dz/	A	education	dz	University of Tlemcen
+univ-batna1	https://www.univ-batna.dz/	A	education	dz	University of Batna 1
+univ-blida1	https://www.univ-blida.dz/	A	education	dz	University of Blida 1
+univ-tiziouzou	https://www.ummto.dz/	A	education	dz	University of Tizi Ouzou
+univ-bejaia	https://www.univ-bejaia.dz/	A	education	dz	University of Béjaïa
+univ-biskra	https://www.univ-biskra.dz/	A	education	dz	University of Biskra
+univ-ouargla	https://www.univ-ouargla.dz/	A	education	dz	University of Ouargla
+univ-mostaganem	https://www.univ-mosta.dz/	A	education	dz	University of Mostaganem
+univ-sidibelabbes	https://www.univ-sba.dz/	A	education	dz	University of Sidi Bel Abbès
+univ-boumerdes	https://www.univ-boumerdes.dz/	A	education	dz	University of Boumerdès
+univ-msila	https://www.univ-msila.dz/	A	education	dz	University of M'Sila
+univ-djelfa	https://www.univ-djelfa.dz/	A	education	dz	University of Djelfa
+univ-medea	https://www.univ-medea.dz/	A	education	dz	University of Médéa
+univ-chlef	https://www.univ-chlef.dz/	A	education	dz	University of Chlef
+univ-jijel	https://www.univ-jijel.dz/	A	education	dz	University of Jijel
+univ-guelma	https://www.univ-guelma.dz/	A	education	dz	University of Guelma
+univ-skikda	https://www.univ-skikda.dz/	A	education	dz	University of Skikda
+univ-mascara	https://www.univ-mascara.dz/	A	education	dz	University of Mascara
+univ-eloued	https://www.univ-eloued.dz/	A	education	dz	University of El Oued
+univ-tebessa	https://www.univ-tebessa.dz/	A	education	dz	University of Tébessa
+univ-bouira	https://www.univ-bouira.dz/	A	education	dz	University of Bouira
+univ-khenchela	https://www.univ-khenchela.dz/	A	education	dz	University of Khenchela
+enp	https://www.enp.edu.dz/	A	education	dz	École Nationale Polytechnique
+esi	https://www.esi.dz/	A	education	dz	École Supérieure d'Informatique
+onefd	https://www.onefd.edu.dz/	A	education	dz	National distance-learning office
+cerist	https://www.cerist.dz/	A	education	dz	Research information centre
+# --- Global universities and learning ---
+mit	https://www.mit.edu/	A	education	global	MIT
+ocw-mit	https://ocw.mit.edu/	A	education	global	MIT OpenCourseWare
+stanford	https://www.stanford.edu/	A	education	global	Stanford University
+harvard	https://www.harvard.edu/	A	education	global	Harvard University
+berkeley	https://www.berkeley.edu/	A	education	global	UC Berkeley
+princeton	https://www.princeton.edu/	A	education	global	Princeton University
+yale	https://www.yale.edu/	A	education	global	Yale University
+caltech	https://www.caltech.edu/	A	education	global	Caltech
+columbia	https://www.columbia.edu/	A	education	global	Columbia University
+cornell	https://www.cornell.edu/	A	education	global	Cornell University
+oxford	https://www.ox.ac.uk/	A	education	global	University of Oxford
+cambridge	https://www.cam.ac.uk/	A	education	global	University of Cambridge
+imperial	https://www.imperial.ac.uk/	A	education	global	Imperial College London
+ucl	https://www.ucl.ac.uk/	A	education	global	University College London
+edinburgh	https://www.ed.ac.uk/	A	education	global	University of Edinburgh
+ethz	https://ethz.ch/	A	education	global	ETH Zurich
+epfl	https://www.epfl.ch/	A	education	global	EPFL
+sorbonne	https://www.sorbonne-universite.fr/	A	education	global	Sorbonne University
+psl	https://psl.eu/	A	education	global	Université PSL
+tum	https://www.tum.de/	A	education	global	Technical University of Munich
+nus	https://www.nus.edu.sg/	A	education	global	National University of Singapore
+tsinghua	https://www.tsinghua.edu.cn/	A	education	global	Tsinghua University
+utoronto	https://www.utoronto.ca/	A	education	global	University of Toronto
+mcgill	https://www.mcgill.ca/	A	education	global	McGill University
+kaust	https://www.kaust.edu.sa/	A	education	global	KAUST (Saudi Arabia)
+auc-egypt	https://www.aucegypt.edu/	A	education	global	American University in Cairo
+khanacademy	https://www.khanacademy.org/	A	education	global	Khan Academy
+coursera	https://www.coursera.org/	A	education	global	Coursera
+edx	https://www.edx.org/	A	education	global	edX
+udemy	https://www.udemy.com/	B	education	global	Udemy
+futurelearn	https://www.futurelearn.com/	B	education	global	FutureLearn
+openstax	https://openstax.org/	A	education	global	OpenStax
+mooc-fr	https://www.fun-mooc.fr/	A	education	global	France Université Numérique
+ocw-yale	https://oyc.yale.edu/	A	education	global	Open Yale Courses
+brilliant	https://brilliant.org/	B	education	global	Brilliant
+duolingo	https://www.duolingo.com/	B	education	global	Duolingo
 
-# --- Reference -------------------------------------------------------------------------------
-#
-# Wikipedia in the three languages Algerians read. Tier B rather than A: it is credible and
-# heavily used, and nobody is accountable for any single edit.
-#
-# Seeded at the Algeria portal rather than the front page. A crawler pointed at ar.wikipedia.org/
-# will happily spend a month indexing the encyclopaedia of everything, which is not what this
-# engine is for.
-wikipedia-ar	https://ar.wikipedia.org/wiki/بوابة:الجزائر	B	Arabic Wikipedia, Algeria portal
-wikipedia-fr	https://fr.wikipedia.org/wiki/Portail:Algérie	B	French Wikipedia, Algeria portal
-wikipedia-en	https://en.wikipedia.org/wiki/Portal:Algeria	B	English Wikipedia, Algeria portal
+# ============================================================================================
+# HEALTH
+# ============================================================================================
+# --- Algerian ---
+insp-dz	https://www.insp.dz/	A	health	dz	National Institute of Public Health
+ipa-dz	https://www.pasteur.dz/	A	health	dz	Institut Pasteur d'Algérie
+chu-alger	https://www.chu-alger.dz/	B	health	dz	CHU Mustapha (Algiers)
+ordre-medecins-dz	https://www.ordredesmedecins.dz/	B	health	dz	Order of Physicians
+santemaghreb	https://www.santemaghreb.com/	B	health	dz	Santé Maghreb
+# --- Global (Arabic health) ---
+altibbi	https://altibbi.com/	B	health	global	Altibbi (Arabic medical)
+webteb	https://www.webteb.com/	B	health	global	WebTeb (Arabic health)
+mawdoo3	https://mawdoo3.com/	B	health	global	Mawdoo3 (Arabic knowledge)
+eltibbi	https://eltibbi.com/	B	health	global	Eltibbi
+# --- Global (institutions & consumer health) ---
+nih	https://www.nih.gov/	A	health	global	US National Institutes of Health
+ncbi	https://www.ncbi.nlm.nih.gov/	A	health	global	NCBI / PubMed
+medlineplus	https://medlineplus.gov/	A	health	global	MedlinePlus
+mayoclinic	https://www.mayoclinic.org/	A	health	global	Mayo Clinic
+clevelandclinic	https://my.clevelandclinic.org/	A	health	global	Cleveland Clinic
+hopkinsmedicine	https://www.hopkinsmedicine.org/	A	health	global	Johns Hopkins Medicine
+nhs-uk	https://www.nhs.uk/	A	health	global	NHS (UK)
+healthline	https://www.healthline.com/	B	health	global	Healthline
+webmd	https://www.webmd.com/	B	health	global	WebMD
+drugs-com	https://www.drugs.com/	A	health	global	Drugs.com
+medscape	https://www.medscape.com/	A	health	global	Medscape
+who-int-health	https://www.who.int/health-topics	A	health	global	WHO health topics
+cdc-health	https://www.cdc.gov/health-topics.html	A	health	global	CDC health topics
+ecdc	https://www.ecdc.europa.eu/	A	health	global	European CDC
+uptodate	https://www.uptodate.com/	A	health	global	UpToDate
+bmj	https://www.bmj.com/	A	health	global	The BMJ
+thelancet	https://www.thelancet.com/	A	health	global	The Lancet
+nejm	https://www.nejm.org/	A	health	global	New England Journal of Medicine
+kidshealth	https://kidshealth.org/	B	health	global	KidsHealth
+verywellhealth	https://www.verywellhealth.com/	B	health	global	Verywell Health
+psychologytoday	https://www.psychologytoday.com/	B	health	global	Psychology Today
+vidal-fr	https://www.vidal.fr/	A	health	global	Vidal (French drug reference)
+ameli-fr	https://www.ameli.fr/	A	health	global	Ameli (French health insurance)
+doctissimo	https://www.doctissimo.fr/	B	health	global	Doctissimo
 
-# --- Social platforms ------------------------------------------------------------------------
-#
-# NOT LISTED HERE, deliberately, and not an oversight.
-#
-#   facebook.com    User-agent: *  Disallow: /     — a total block
-#   instagram.com   User-agent: *  Disallow: /     — a total block
-#
-# Seeding those would produce exactly zero documents: the crawler reads robots.txt, is refused,
-# and skips every URL. The list would look like it covered social media while collecting nothing,
-# which is worse than an honest gap.
-#
-#   youtube.com     allows watch pages, but they are rendered by JavaScript
-#   tiktok.com      allows /foryou, /discover, /about — likewise
-#
-# Those two are fetchable and would yield a page shell with no content until headless rendering
-# exists (M2-T04.6).
-#
-# Social content comes through **direct collection** instead — [[ADR-0009]], and M2-T01a/b/c plus
-# the per-platform connectors. That is a different pipeline with its own identity, fingerprint and
-# signature machinery, and it cannot be reached by adding a line to this file.
-wikipedia-org	https://www.wikipedia.org/	A	added from the admin console
-google-com	https://google.com/	A	added from the admin console
+# ============================================================================================
+# SCIENCE-TECH
+# ============================================================================================
+# --- Algerian ---
+atrst-dz	https://atrst.dz/	B	science-tech	dz	Thematic research agency
+crstra	https://www.crstra.dz/	B	science-tech	dz	Arid-regions research centre
+asal-dz	https://www.asal.dz/	A	science-tech	dz	Algerian Space Agency
+crti-dz	https://www.crti.dz/	B	science-tech	dz	Industrial technologies research centre
+# --- Global journals & institutions ---
+nature	https://www.nature.com/	A	science-tech	global	Nature
+science-org	https://www.science.org/	A	science-tech	global	Science (AAAS)
+arxiv	https://arxiv.org/	A	science-tech	global	arXiv
+sciencedirect	https://www.sciencedirect.com/	A	science-tech	global	ScienceDirect
+springer	https://www.springer.com/	A	science-tech	global	Springer
+ieee	https://www.ieee.org/	A	science-tech	global	IEEE
+acm	https://www.acm.org/	A	science-tech	global	ACM
+pnas	https://www.pnas.org/	A	science-tech	global	PNAS
+cell	https://www.cell.com/	A	science-tech	global	Cell Press
+plos	https://plos.org/	A	science-tech	global	PLOS
+frontiersin	https://www.frontiersin.org/	B	science-tech	global	Frontiers
+researchgate	https://www.researchgate.net/	B	science-tech	global	ResearchGate
+scientificamerican	https://www.scientificamerican.com/	A	science-tech	global	Scientific American
+newscientist	https://www.newscientist.com/	A	science-tech	global	New Scientist
+sciencenews	https://www.sciencenews.org/	A	science-tech	global	Science News
+quantamagazine	https://www.quantamagazine.org/	A	science-tech	global	Quanta Magazine
+livescience	https://www.livescience.com/	B	science-tech	global	Live Science
+space-com	https://www.space.com/	B	science-tech	global	Space.com
+phys-org	https://phys.org/	B	science-tech	global	Phys.org
+technologyreview	https://www.technologyreview.com/	A	science-tech	global	MIT Technology Review
+# --- Global technology / software ---
+arstechnica	https://arstechnica.com/	A	science-tech	global	Ars Technica
+theverge	https://www.theverge.com/	B	science-tech	global	The Verge
+wired	https://www.wired.com/	A	science-tech	global	Wired
+techcrunch	https://techcrunch.com/	B	science-tech	global	TechCrunch
+engadget	https://www.engadget.com/	B	science-tech	global	Engadget
+cnet	https://www.cnet.com/	B	science-tech	global	CNET
+zdnet	https://www.zdnet.com/	B	science-tech	global	ZDNET
+mdn	https://developer.mozilla.org/	A	science-tech	global	MDN Web Docs
+w3schools	https://www.w3schools.com/	B	science-tech	global	W3Schools
+freecodecamp	https://www.freecodecamp.org/	B	science-tech	global	freeCodeCamp
+digitalocean-tut	https://www.digitalocean.com/community/tutorials	B	science-tech	global	DigitalOcean tutorials
+geeksforgeeks	https://www.geeksforgeeks.org/	B	science-tech	global	GeeksforGeeks
+kaggle	https://www.kaggle.com/	B	science-tech	global	Kaggle
+gsmarena	https://www.gsmarena.com/	B	science-tech	global	GSMArena
+androidauthority	https://www.androidauthority.com/	B	science-tech	global	Android Authority
+tomshardware	https://www.tomshardware.com/	B	science-tech	global	Tom's Hardware
 
-# --- Global (2nd tier) -----------------------------------------------------------------------
-#
-# The world's most-used sources, in the languages Algerians actually search: Arabic first, then
-# French and English. Tier B: these are edited and accountable, but ranked a step below the home
-# A-tier here and below any .dz host on the authority signal, so they answer the queries the local
-# corpus cannot without displacing Algerian results on local ones. Seeded at the homepage or the
-# language section; the same-host crawl and the global depth limit bound each one.
-#
-# Deliberately NOT bulk-seeded: Wikipedia (seeded above at the Algeria portals only), and the
-# reference/UGC giants (github, stackoverflow, imdb, reddit) — those are pulled page-by-page by
-# query-driven discovery and recognised by the domain-authority list, which is the right tool for
-# "index the one relevant page", not "crawl the whole site".
+# ============================================================================================
+# SPORT
+# ============================================================================================
+# --- Algerian ---
+faf-dz	https://www.faf.dz/	A	sport	dz	Algerian Football Federation
+elheddaf-sport	https://www.elheddaf.com/	B	sport	dz	El Heddaf (sport daily)
+lebuteur	https://www.lebuteur.com/	B	sport	dz	Le Buteur
+competition-dz	https://www.competition.dz/	B	sport	dz	Compétition
+dzfoot	https://www.dzfoot.com/	B	sport	dz	DZfoot
+# --- Global ---
+fifa	https://www.fifa.com/	A	sport	global	FIFA
+uefa	https://www.uefa.com/	A	sport	global	UEFA
+olympics	https://www.olympics.com/	A	sport	global	Olympics
+cafonline	https://www.cafonline.com/	A	sport	global	CAF (African football)
+espn	https://www.espn.com/	A	sport	global	ESPN
+bbc-sport	https://www.bbc.com/sport	A	sport	global	BBC Sport
+skysports	https://www.skysports.com/	B	sport	global	Sky Sports
+goal	https://www.goal.com/	B	sport	global	Goal.com
+marca	https://www.marca.com/	B	sport	global	Marca
+as-com	https://as.com/	B	sport	global	AS (Spain)
+lequipe	https://www.lequipe.fr/	A	sport	global	L'Équipe
+gazzetta	https://www.gazzetta.it/	B	sport	global	La Gazzetta dello Sport
+kicker	https://www.kicker.de/	B	sport	global	Kicker
+eurosport	https://www.eurosport.com/	B	sport	global	Eurosport
+theathletic	https://theathletic.com/	A	sport	global	The Athletic
+transfermarkt	https://www.transfermarkt.com/	B	sport	global	Transfermarkt
+kooora	https://www.kooora.com/	B	sport	global	Kooora (Arabic)
+yallakora	https://www.yallakora.com/	B	sport	global	Yallakora (Arabic)
+beinsports	https://www.beinsports.com/	B	sport	global	beIN Sports
+nba	https://www.nba.com/	A	sport	global	NBA
+formula1	https://www.formula1.com/	A	sport	global	Formula 1
+atptour	https://www.atptour.com/	A	sport	global	ATP Tour
 
-# Global news — Arabic
-aljazeera-net	https://www.aljazeera.net/	B	Al Jazeera, Arabic
-france24-ar	https://www.france24.com/ar/	B	France 24, Arabic
-bbc-arabic	https://www.bbc.com/arabic	B	BBC Arabic
-dw-arabic	https://www.dw.com/ar/	B	Deutsche Welle, Arabic
-skynews-arabia	https://www.skynewsarabia.com/	B	Sky News Arabia
-alarabiya	https://www.alarabiya.net/	B	Al Arabiya
+# ============================================================================================
+# CULTURE (arts, film, TV, music, books, entertainment)
+# ============================================================================================
+# --- Algerian ---
+onci-dz	https://www.onci.dz/	B	culture	dz	National culture & arts office
+bibliotheque-nationale	https://www.biblionat.dz/	A	culture	dz	National Library of Algeria
+musee-antiquites	http://www.musee-antiquites.art.dz/	B	culture	dz	National Museum of Antiquities
+aarc-dz	https://www.aarcalgerie.org/	B	culture	dz	Arts & culture development agency
+# --- Global (film & TV) ---
+imdb	https://www.imdb.com/	A	culture	global	IMDb
+rottentomatoes	https://www.rottentomatoes.com/	B	culture	global	Rotten Tomatoes
+metacritic	https://www.metacritic.com/	B	culture	global	Metacritic
+themoviedb	https://www.themoviedb.org/	B	culture	global	The Movie Database
+letterboxd	https://letterboxd.com/	B	culture	global	Letterboxd
+variety	https://variety.com/	A	culture	global	Variety
+hollywoodreporter	https://www.hollywoodreporter.com/	A	culture	global	The Hollywood Reporter
+deadline	https://deadline.com/	B	culture	global	Deadline
+empireonline	https://www.empireonline.com/	B	culture	global	Empire
+allocine	https://www.allocine.fr/	B	culture	global	AlloCiné
+# --- Global (music) ---
+billboard	https://www.billboard.com/	A	culture	global	Billboard
+pitchfork	https://pitchfork.com/	B	culture	global	Pitchfork
+rollingstone	https://www.rollingstone.com/	A	culture	global	Rolling Stone
+genius	https://genius.com/	B	culture	global	Genius
+discogs	https://www.discogs.com/	B	culture	global	Discogs
+nme	https://www.nme.com/	B	culture	global	NME
+# --- Global (books & arts) ---
+goodreads	https://www.goodreads.com/	B	culture	global	Goodreads
+gutenberg	https://www.gutenberg.org/	A	culture	global	Project Gutenberg
+nationalgeographic	https://www.nationalgeographic.com/	A	culture	global	National Geographic
+smithsonianmag	https://www.smithsonianmag.com/	A	culture	global	Smithsonian Magazine
+metmuseum	https://www.metmuseum.org/	A	culture	global	The Met
+louvre	https://www.louvre.fr/	A	culture	global	Louvre
+britishmuseum	https://www.britishmuseum.org/	A	culture	global	British Museum
+newyorker	https://www.newyorker.com/	A	culture	global	The New Yorker
+theatlantic	https://www.theatlantic.com/	A	culture	global	The Atlantic
+vulture	https://www.vulture.com/	B	culture	global	Vulture
+polygon	https://www.polygon.com/	B	culture	global	Polygon (games)
+ign	https://www.ign.com/	B	culture	global	IGN
+eurogamer	https://www.eurogamer.net/	B	culture	global	Eurogamer
 
-# Global news — French
-france24-fr	https://www.france24.com/fr/	B	France 24, French
-lemonde	https://www.lemonde.fr/	B	Le Monde
-rfi-fr	https://www.rfi.fr/fr/	B	Radio France Internationale
-lefigaro	https://www.lefigaro.fr/	B	Le Figaro
+# ============================================================================================
+# BUSINESS (economy, finance, markets)
+# ============================================================================================
+# --- Algerian ---
+bourse-alger	https://www.sgbv.dz/	B	business	dz	Algiers Stock Exchange
+bank-algeria	https://www.bank-of-algeria.dz/	A	business	dz	Bank of Algeria
+cci-dz	https://www.caci.dz/	B	business	dz	Chamber of Commerce and Industry
+algex	https://www.algex.dz/	B	business	dz	Export promotion agency
+# --- Global ---
+bloomberg	https://www.bloomberg.com/markets	A	business	global	Bloomberg Markets
+forbes	https://www.forbes.com/	B	business	global	Forbes
+cnbc	https://www.cnbc.com/	B	business	global	CNBC
+marketwatch	https://www.marketwatch.com/	B	business	global	MarketWatch
+businessinsider	https://www.businessinsider.com/	B	business	global	Business Insider
+investopedia	https://www.investopedia.com/	A	business	global	Investopedia
+morningstar	https://www.morningstar.com/	A	business	global	Morningstar
+fortune	https://fortune.com/	B	business	global	Fortune
+hbr	https://hbr.org/	A	business	global	Harvard Business Review
+theeconomist-fin	https://www.economist.com/finance-and-economics	A	business	global	The Economist (finance)
+ftadviser	https://www.ftadviser.com/	B	business	global	FT Adviser
+lesechos	https://www.lesechos.fr/	A	business	global	Les Échos
+latribune-fr	https://www.latribune.fr/	B	business	global	La Tribune (France)
+handelsblatt	https://www.handelsblatt.com/	A	business	global	Handelsblatt
+nikkei	https://www.nikkei.com/	A	business	global	Nikkei
+tradingeconomics	https://tradingeconomics.com/	B	business	global	Trading Economics
+statista	https://www.statista.com/	B	business	global	Statista
+crunchbase	https://www.crunchbase.com/	B	business	global	Crunchbase
+sec-gov	https://www.sec.gov/	A	business	global	US SEC
+ecb	https://www.ecb.europa.eu/	A	business	global	European Central Bank
+federalreserve	https://www.federalreserve.gov/	A	business	global	US Federal Reserve
+zawya	https://www.zawya.com/	B	business	global	Zawya (MENA business)
+argaam	https://www.argaam.com/	B	business	global	Argaam (Arabic finance)
 
-# Global news — English
-bbc-news	https://www.bbc.com/news	B	BBC News
-reuters	https://www.reuters.com/	B	Reuters
-apnews	https://apnews.com/	B	Associated Press
-aljazeera-en	https://www.aljazeera.com/	B	Al Jazeera English
-theguardian	https://www.theguardian.com/	B	The Guardian
-
-# Health (Arabic, article streams — high query overlap with local searches)
-altibbi	https://altibbi.com/	B	Altibbi, Arabic medical reference
-webteb	https://www.webteb.com/	B	WebTeb, Arabic health
-mawdoo3	https://mawdoo3.com/	B	Mawdoo3, Arabic general knowledge
-
-# Sport (Arabic)
-yallakora	https://www.yallakora.com/	B	Yallakora, Arabic football
-kooora	https://www.kooora.com/	B	Kooora, Arabic sport
+# ============================================================================================
+# REFERENCE (encyclopedias, dictionaries, archives, data)
+# ============================================================================================
+# Wikipedia seeded at the Algeria portals only — a crawler pointed at the front page would index the
+# encyclopaedia of everything. The rest are bounded reference works.
+wikipedia-ar	https://ar.wikipedia.org/wiki/بوابة:الجزائر	B	reference	dz	Arabic Wikipedia, Algeria portal
+wikipedia-fr	https://fr.wikipedia.org/wiki/Portail:Algérie	B	reference	dz	French Wikipedia, Algeria portal
+wikipedia-en	https://en.wikipedia.org/wiki/Portal:Algeria	B	reference	dz	English Wikipedia, Algeria portal
+britannica	https://www.britannica.com/	A	reference	global	Encyclopædia Britannica
+wiktionary	https://www.wiktionary.org/	B	reference	global	Wiktionary
+wikidata	https://www.wikidata.org/	B	reference	global	Wikidata
+wikisource	https://www.wikisource.org/	B	reference	global	Wikisource
+wikivoyage	https://www.wikivoyage.org/	B	reference	global	Wikivoyage
+archive-org	https://archive.org/	A	reference	global	Internet Archive
+stanford-encyclopedia	https://plato.stanford.edu/	A	reference	global	Stanford Encyclopedia of Philosophy
+merriam-webster	https://www.merriam-webster.com/	A	reference	global	Merriam-Webster
+cambridge-dict	https://dictionary.cambridge.org/	A	reference	global	Cambridge Dictionary
+oxford-learners	https://www.oxfordlearnersdictionaries.com/	A	reference	global	Oxford Learner's Dictionaries
+larousse	https://www.larousse.fr/	A	reference	global	Larousse
+cnrtl	https://www.cnrtl.fr/	A	reference	global	CNRTL (French language)
+almaany	https://www.almaany.com/	B	reference	global	Almaany (Arabic dictionary)
+almaani-lisaan	https://www.lesansarab.com/	B	reference	global	Lisaan Al-Arab
+wordreference	https://www.wordreference.com/	B	reference	global	WordReference
+etymonline	https://www.etymonline.com/	B	reference	global	Online Etymology Dictionary
+worldatlas	https://www.worldatlas.com/	B	reference	global	WorldAtlas
+cia-factbook	https://www.cia.gov/the-world-factbook/	A	reference	global	CIA World Factbook
+ourworldindata	https://ourworldindata.org/	A	reference	global	Our World in Data
+data-worldbank	https://data.worldbank.org/	A	reference	global	World Bank Open Data
+un-data	https://data.un.org/	A	reference	global	UN Data
+snopes	https://www.snopes.com/	B	reference	global	Snopes (fact-checking)
+poetryfoundation	https://www.poetryfoundation.org/	A	reference	global	Poetry Foundation
