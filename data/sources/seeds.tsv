@@ -33,7 +33,6 @@ algerie360	https://www.algerie360.com/	B	news	dz	Algérie 360
 observalgerie	https://www.observalgerie.com/	B	news	dz	Observ'Algérie
 elbilad	https://www.elbilad.net/	B	news	dz	El Bilad
 echaab	https://www.ech-chaab.com/	B	news	dz	Ech-Chaab
-elheddaf	https://www.elheddaf.com/	B	news	dz	El Heddaf
 lesoirdalgerie	https://www.lesoirdalgerie.com/	B	news	dz	Le Soir d'Algérie
 reporters-dz	https://www.reporters.dz/	B	news	dz	Reporters
 algeriepatriotique	https://www.algeriepatriotique.com/	B	news	dz	Algérie Patriotique
@@ -159,7 +158,6 @@ douane	https://www.douane.gov.dz/	A	government	dz	Customs
 impots	https://www.mfdgi.gov.dz/	A	government	dz	Tax administration
 mspaff	https://www.msnfcf.gov.dz/	A	government	dz	Solidarity and Family
 mhydraulique	https://www.mre.gov.dz/	A	government	dz	Water Resources
-santepub	https://www.insp.dz/	A	government	dz	National Institute of Public Health
 andi	https://www.andi.dz/	A	government	dz	Investment agency
 cnrc	https://www.cnrc.dz/	A	government	dz	Trade register
 # --- Global (intergovernmental + national) ---
@@ -348,7 +346,7 @@ techcrunch	https://techcrunch.com/	B	science-tech	global	TechCrunch
 engadget	https://www.engadget.com/	B	science-tech	global	Engadget
 cnet	https://www.cnet.com/	B	science-tech	global	CNET
 zdnet	https://www.zdnet.com/	B	science-tech	global	ZDNET
-mdn	https://developer.mozilla.org/	A	science-tech	global	MDN Web Docs
+mdn-docs	https://developer.mozilla.org/	A	science-tech	global	MDN Web Docs
 w3schools	https://www.w3schools.com/	B	science-tech	global	W3Schools
 freecodecamp	https://www.freecodecamp.org/	B	science-tech	global	freeCodeCamp
 digitalocean-tut	https://www.digitalocean.com/community/tutorials	B	science-tech	global	DigitalOcean tutorials
@@ -496,3 +494,547 @@ data-worldbank	https://data.worldbank.org/	A	reference	global	World Bank Open Da
 un-data	https://data.un.org/	A	reference	global	UN Data
 snopes	https://www.snopes.com/	B	reference	global	Snopes (fact-checking)
 poetryfoundation	https://www.poetryfoundation.org/	A	reference	global	Poetry Foundation
+
+# ============================================================================================
+# ADDITIONAL SOURCES (grouped by category in the UI regardless of position here)
+# ============================================================================================
+
+# --- Health (more) ---
+aha-heart	https://www.heart.org/	A	health	global	American Heart Association
+cancer-org	https://www.cancer.org/	A	health	global	American Cancer Society
+diabetes-org	https://www.diabetes.org/	A	health	global	American Diabetes Association
+lung-org	https://www.lung.org/	A	health	global	American Lung Association
+kidney-org	https://www.kidney.org/	A	health	global	National Kidney Foundation
+arthritis-org	https://www.arthritis.org/	A	health	global	Arthritis Foundation
+alz-org	https://www.alz.org/	A	health	global	Alzheimer's Association
+nami	https://www.nami.org/	A	health	global	NAMI (mental health)
+apa-psych	https://www.apa.org/	A	health	global	American Psychological Association
+mind-uk	https://www.mind.org.uk/	B	health	global	Mind (UK mental health)
+samhsa	https://www.samhsa.gov/	A	health	global	SAMHSA
+redcross	https://www.redcross.org/	A	health	global	American Red Cross
+icrc	https://www.icrc.org/	A	health	global	Red Cross (ICRC)
+msf	https://www.msf.org/	A	health	global	Médecins Sans Frontières
+gavi	https://www.gavi.org/	A	health	global	Gavi vaccine alliance
+globalfund	https://www.theglobalfund.org/	A	health	global	The Global Fund
+path-org	https://www.path.org/	A	health	global	PATH global health
+wellcome	https://wellcome.org/	A	health	global	Wellcome Trust
+gatesfoundation	https://www.gatesfoundation.org/	A	health	global	Gates Foundation
+unaids	https://www.unaids.org/	A	health	global	UNAIDS
+cochrane	https://www.cochrane.org/	A	health	global	Cochrane
+clinicaltrials	https://clinicaltrials.gov/	A	health	global	ClinicalTrials.gov
+dailymed	https://dailymed.nlm.nih.gov/	A	health	global	DailyMed
+ema-eu	https://www.ema.europa.eu/	A	health	global	European Medicines Agency
+mhra	https://www.gov.uk/government/organisations/medicines-and-healthcare-products-regulatory-agency	A	health	global	MHRA (UK)
+harvard-health	https://www.health.harvard.edu/	A	health	global	Harvard Health
+massgeneral	https://www.massgeneral.org/	A	health	global	Massachusetts General Hospital
+mountsinai	https://www.mountsinai.org/	A	health	global	Mount Sinai
+stanfordhealth	https://stanfordhealthcare.org/	A	health	global	Stanford Health Care
+ucsfhealth	https://www.ucsfhealth.org/	A	health	global	UCSF Health
+mdanderson	https://www.mdanderson.org/	A	health	global	MD Anderson Cancer Center
+nyulangone	https://nyulangone.org/	A	health	global	NYU Langone
+uclahealth	https://www.uclahealth.org/	A	health	global	UCLA Health
+cedars-sinai	https://www.cedars-sinai.org/	A	health	global	Cedars-Sinai
+cincinnatichildrens	https://www.cincinnatichildrens.org/	A	health	global	Cincinnati Children's
+stjude	https://www.stjude.org/	A	health	global	St. Jude
+danafarber	https://www.dana-farber.org/	A	health	global	Dana-Farber
+everydayhealth	https://www.everydayhealth.com/	B	health	global	Everyday Health
+medicalnewstoday	https://www.medicalnewstoday.com/	B	health	global	Medical News Today
+patient-info	https://patient.info/	B	health	global	Patient.info
+netdoctor	https://www.netdoctor.co.uk/	B	health	global	NetDoctor
+familydoctor	https://familydoctor.org/	B	health	global	FamilyDoctor.org
+goodrx	https://www.goodrx.com/	B	health	global	GoodRx
+rxlist	https://www.rxlist.com/	B	health	global	RxList
+aad-derm	https://www.aad.org/	A	health	global	American Academy of Dermatology
+eatright	https://www.eatright.org/	A	health	global	Academy of Nutrition and Dietetics
+examine	https://examine.com/	B	health	global	Examine (nutrition)
+radiopaedia	https://radiopaedia.org/	A	health	global	Radiopaedia
+dermnet	https://dermnetnz.org/	A	health	global	DermNet NZ
+orphanet	https://www.orpha.net/	A	health	global	Orphanet (rare diseases)
+paho	https://www.paho.org/	A	health	global	Pan American Health Organization
+who-emro	https://www.emro.who.int/	A	health	global	WHO Eastern Mediterranean
+moh-sa	https://www.moh.gov.sa/	A	health	global	Saudi Ministry of Health
+seha-ae	https://www.seha.ae/	B	health	global	SEHA (UAE)
+health-au	https://www.health.gov.au/	A	health	global	Australian Dept of Health
+hse-ie	https://www.hse.ie/	A	health	global	HSE (Ireland)
+rki	https://www.rki.de/	A	health	global	Robert Koch Institute
+pasteur-fr	https://www.pasteur.fr/	A	health	global	Institut Pasteur
+inserm	https://www.inserm.fr/	A	health	global	Inserm
+has-sante	https://www.has-sante.fr/	A	health	global	Haute Autorité de Santé
+aafp	https://www.aafp.org/	A	health	global	American Academy of Family Physicians
+merckmanuals	https://www.merckmanuals.com/	A	health	global	Merck Manuals
+niddk	https://www.niddk.nih.gov/	A	health	global	NIDDK
+cancer-gov	https://www.cancer.gov/	A	health	global	US National Cancer Institute
+sfda-sa	https://www.sfda.gov.sa/	A	health	global	Saudi Food and Drug Authority
+verywellmind	https://www.verywellmind.com/	B	health	global	Verywell Mind
+
+# --- Science & Tech (more) ---
+biorxiv	https://www.biorxiv.org/	A	science-tech	global	bioRxiv
+medrxiv	https://www.medrxiv.org/	A	science-tech	global	medRxiv
+ssrn	https://www.ssrn.com/	A	science-tech	global	SSRN
+jstor	https://www.jstor.org/	A	science-tech	global	JSTOR
+mdpi	https://www.mdpi.com/	B	science-tech	global	MDPI
+wiley	https://onlinelibrary.wiley.com/	A	science-tech	global	Wiley Online Library
+tandfonline	https://www.tandfonline.com/	A	science-tech	global	Taylor & Francis
+sagepub	https://journals.sagepub.com/	A	science-tech	global	SAGE Journals
+doaj	https://doaj.org/	A	science-tech	global	Directory of Open Access Journals
+semanticscholar	https://www.semanticscholar.org/	B	science-tech	global	Semantic Scholar
+europepmc	https://europepmc.org/	A	science-tech	global	Europe PMC
+osf	https://osf.io/	A	science-tech	global	Open Science Framework
+zenodo	https://zenodo.org/	A	science-tech	global	Zenodo
+cern	https://home.cern/	A	science-tech	global	CERN
+jpl-nasa	https://www.jpl.nasa.gov/	A	science-tech	global	NASA JPL
+maxplanck	https://www.mpg.de/	A	science-tech	global	Max Planck Society
+cnrs	https://www.cnrs.fr/	A	science-tech	global	CNRS
+nist	https://www.nist.gov/	A	science-tech	global	NIST
+usgs	https://www.usgs.gov/	A	science-tech	global	US Geological Survey
+royalsociety	https://royalsociety.org/	A	science-tech	global	Royal Society
+nasonline	https://www.nasonline.org/	A	science-tech	global	US National Academy of Sciences
+aaas	https://www.aaas.org/	A	science-tech	global	AAAS
+hackernews	https://news.ycombinator.com/	B	science-tech	global	Hacker News
+stackexchange	https://stackexchange.com/	B	science-tech	global	Stack Exchange
+dev-to	https://dev.to/	B	science-tech	global	DEV Community
+csstricks	https://css-tricks.com/	B	science-tech	global	CSS-Tricks
+smashingmag	https://www.smashingmagazine.com/	B	science-tech	global	Smashing Magazine
+python-org	https://www.python.org/	A	science-tech	global	Python
+rustlang	https://www.rust-lang.org/	A	science-tech	global	Rust
+golang	https://go.dev/	A	science-tech	global	Go
+nodejs	https://nodejs.org/	A	science-tech	global	Node.js
+kernel-org	https://www.kernel.org/	A	science-tech	global	The Linux Kernel Archives
+apache	https://www.apache.org/	A	science-tech	global	Apache Software Foundation
+gnu	https://www.gnu.org/	A	science-tech	global	GNU
+w3c	https://www.w3.org/	A	science-tech	global	W3C
+ietf	https://www.ietf.org/	A	science-tech	global	IETF
+postgresql	https://www.postgresql.org/	A	science-tech	global	PostgreSQL
+docker-docs	https://docs.docker.com/	A	science-tech	global	Docker Docs
+kubernetes	https://kubernetes.io/	A	science-tech	global	Kubernetes
+openai	https://openai.com/	B	science-tech	global	OpenAI
+deepmind	https://deepmind.google/	A	science-tech	global	Google DeepMind
+huggingface	https://huggingface.co/	B	science-tech	global	Hugging Face
+pytorch	https://pytorch.org/	A	science-tech	global	PyTorch
+tensorflow	https://www.tensorflow.org/	A	science-tech	global	TensorFlow
+paperswithcode	https://paperswithcode.com/	B	science-tech	global	Papers with Code
+anandtech	https://www.anandtech.com/	B	science-tech	global	AnandTech
+notebookcheck	https://www.notebookcheck.net/	B	science-tech	global	Notebookcheck
+dpreview	https://www.dpreview.com/	B	science-tech	global	DPReview
+rtings	https://www.rtings.com/	B	science-tech	global	RTINGS
+ifixit	https://www.ifixit.com/	B	science-tech	global	iFixit
+nature-astronomy	https://www.eso.org/	A	science-tech	global	European Southern Observatory
+csiro	https://www.csiro.au/	A	science-tech	global	CSIRO (Australia)
+riken	https://www.riken.jp/en/	A	science-tech	global	RIKEN (Japan)
+fermilab	https://www.fnal.gov/	A	science-tech	global	Fermilab
+nsf	https://www.nsf.gov/	A	science-tech	global	US National Science Foundation
+crossref-tech	https://www.crossref.org/	A	science-tech	global	Crossref
+mathoverflow	https://mathoverflow.net/	B	science-tech	global	MathOverflow
+
+# --- Sport (more) ---
+premierleague	https://www.premierleague.com/	A	sport	global	Premier League
+laliga	https://www.laliga.com/	A	sport	global	LaLiga
+bundesliga	https://www.bundesliga.com/	A	sport	global	Bundesliga
+seriea	https://www.legaseriea.it/	A	sport	global	Serie A
+ligue1	https://www.ligue1.com/	A	sport	global	Ligue 1
+mls	https://www.mlssoccer.com/	A	sport	global	MLS
+concacaf	https://www.concacaf.com/	A	sport	global	CONCACAF
+conmebol	https://www.conmebol.com/	A	sport	global	CONMEBOL
+the-afc	https://www.the-afc.com/	A	sport	global	Asian Football Confederation
+worldathletics	https://worldathletics.org/	A	sport	global	World Athletics
+worldaquatics	https://www.worldaquatics.com/	A	sport	global	World Aquatics
+uci-cycling	https://www.uci.org/	A	sport	global	UCI (cycling)
+itftennis	https://www.itftennis.com/	A	sport	global	ITF Tennis
+wtatennis	https://www.wtatennis.com/	A	sport	global	WTA
+icc-cricket	https://www.icc-cricket.com/	A	sport	global	ICC Cricket
+worldrugby	https://www.world.rugby/	A	sport	global	World Rugby
+fiba	https://www.fiba.basketball/	A	sport	global	FIBA
+nfl	https://www.nfl.com/	A	sport	global	NFL
+mlb	https://www.mlb.com/	A	sport	global	MLB
+nhl	https://www.nhl.com/	A	sport	global	NHL
+ufc	https://www.ufc.com/	B	sport	global	UFC
+fivb	https://www.fivb.com/	A	sport	global	FIVB (volleyball)
+realmadrid	https://www.realmadrid.com/	B	sport	global	Real Madrid
+fcbarcelona	https://www.fcbarcelona.com/	B	sport	global	FC Barcelona
+manutd	https://www.manutd.com/	B	sport	global	Manchester United
+mancity	https://www.mancity.com/	B	sport	global	Manchester City
+liverpoolfc	https://www.liverpoolfc.com/	B	sport	global	Liverpool FC
+chelseafc	https://www.chelseafc.com/	B	sport	global	Chelsea FC
+arsenal	https://www.arsenal.com/	B	sport	global	Arsenal
+juventus	https://www.juventus.com/	B	sport	global	Juventus
+acmilan	https://www.acmilan.com/	B	sport	global	AC Milan
+inter	https://www.inter.it/	B	sport	global	Inter Milan
+psg	https://www.psg.fr/	B	sport	global	Paris Saint-Germain
+fcbayern	https://fcbayern.com/	B	sport	global	Bayern Munich
+bvb	https://www.bvb.de/	B	sport	global	Borussia Dortmund
+yahoo-sports	https://sports.yahoo.com/	B	sport	global	Yahoo Sports
+cbssports	https://www.cbssports.com/	B	sport	global	CBS Sports
+si-com	https://www.si.com/	B	sport	global	Sports Illustrated
+bleacherreport	https://bleacherreport.com/	B	sport	global	Bleacher Report
+foxsports	https://www.foxsports.com/	B	sport	global	Fox Sports
+talksport	https://talksport.com/	B	sport	global	talkSPORT
+mundodeportivo	https://www.mundodeportivo.com/	B	sport	global	Mundo Deportivo
+corrieredellosport	https://www.corrieredellosport.it/	B	sport	global	Corriere dello Sport
+tuttosport	https://www.tuttosport.com/	B	sport	global	Tuttosport
+footmercato	https://www.footmercato.net/	B	sport	global	Foot Mercato
+onefootball	https://onefootball.com/	B	sport	global	OneFootball
+sofascore	https://www.sofascore.com/	B	sport	global	SofaScore
+flashscore	https://www.flashscore.com/	B	sport	global	FlashScore
+whoscored	https://www.whoscored.com/	B	sport	global	WhoScored
+fbref	https://fbref.com/	B	sport	global	FBref
+football365	https://www.football365.com/	B	sport	global	Football365
+givemesport	https://www.givemesport.com/	B	sport	global	GiveMeSport
+espncricinfo	https://www.espncricinfo.com/	B	sport	global	ESPNcricinfo
+motorsport	https://www.motorsport.com/	B	sport	global	Motorsport.com
+autosport	https://www.autosport.com/	B	sport	global	Autosport
+cyclingnews	https://www.cyclingnews.com/	B	sport	global	Cyclingnews
+tennis-com	https://www.tennis.com/	B	sport	global	Tennis.com
+golfdigest	https://www.golfdigest.com/	B	sport	global	Golf Digest
+pgatour	https://www.pgatour.com/	A	sport	global	PGA Tour
+rolandgarros	https://www.rolandgarros.com/	A	sport	global	Roland-Garros
+wimbledon	https://www.wimbledon.com/	A	sport	global	Wimbledon
+worldrowing	https://worldrowing.com/	A	sport	global	World Rowing
+ihf-handball	https://www.ihf.info/	A	sport	global	IHF (handball)
+worldcup	https://www.fifa.com/fifaplus/en/tournaments	A	sport	global	FIFA World Cup
+paralympic	https://www.paralympic.org/	A	sport	global	Paralympics
+insidethegames	https://www.insidethegames.biz/	B	sport	global	Inside the Games
+sport-es	https://www.sport.es/	B	sport	global	Sport (Spain)
+90min	https://www.90min.com/	B	sport	global	90min
+thescore	https://www.thescore.com/	B	sport	global	theScore
+
+# --- Culture (more) ---
+screenrant	https://screenrant.com/	B	culture	global	Screen Rant
+collider	https://collider.com/	B	culture	global	Collider
+indiewire	https://www.indiewire.com/	B	culture	global	IndieWire
+thewrap	https://www.thewrap.com/	B	culture	global	TheWrap
+ew	https://ew.com/	B	culture	global	Entertainment Weekly
+tvguide	https://www.tvguide.com/	B	culture	global	TV Guide
+criterion	https://www.criterion.com/	A	culture	global	The Criterion Collection
+bfi	https://www.bfi.org.uk/	A	culture	global	British Film Institute
+festival-cannes	https://www.festival-cannes.com/	A	culture	global	Cannes Film Festival
+rogerebert	https://www.rogerebert.com/	B	culture	global	RogerEbert.com
+stereogum	https://www.stereogum.com/	B	culture	global	Stereogum
+consequence	https://consequence.net/	B	culture	global	Consequence
+thefader	https://www.thefader.com/	B	culture	global	The FADER
+residentadvisor	https://ra.co/	B	culture	global	Resident Advisor
+allmusic	https://www.allmusic.com/	B	culture	global	AllMusic
+whosampled	https://www.whosampled.com/	B	culture	global	WhoSampled
+setlistfm	https://www.setlist.fm/	B	culture	global	setlist.fm
+classicfm	https://www.classicfm.com/	B	culture	global	Classic FM
+gramophone	https://www.gramophone.co.uk/	B	culture	global	Gramophone
+publishersweekly	https://www.publishersweekly.com/	A	culture	global	Publishers Weekly
+kirkus	https://www.kirkusreviews.com/	B	culture	global	Kirkus Reviews
+lithub	https://lithub.com/	B	culture	global	Literary Hub
+parisreview	https://www.theparisreview.org/	A	culture	global	The Paris Review
+poets-org	https://poets.org/	A	culture	global	Academy of American Poets
+bookriot	https://bookriot.com/	B	culture	global	Book Riot
+openlibrary	https://openlibrary.org/	A	culture	global	Open Library
+standardebooks	https://standardebooks.org/	A	culture	global	Standard Ebooks
+moma	https://www.moma.org/	A	culture	global	MoMA
+tate	https://www.tate.org.uk/	A	culture	global	Tate
+guggenheim	https://www.guggenheim.org/	A	culture	global	Guggenheim
+artsy	https://www.artsy.net/	B	culture	global	Artsy
+artnews	https://www.artnews.com/	B	culture	global	ARTnews
+artforum	https://www.artforum.com/	B	culture	global	Artforum
+hyperallergic	https://hyperallergic.com/	B	culture	global	Hyperallergic
+theartnewspaper	https://www.theartnewspaper.com/	B	culture	global	The Art Newspaper
+rijksmuseum	https://www.rijksmuseum.nl/	A	culture	global	Rijksmuseum
+prado	https://www.museodelprado.es/	A	culture	global	Museo del Prado
+getty	https://www.getty.edu/	A	culture	global	Getty
+si-edu	https://www.si.edu/	A	culture	global	Smithsonian Institution
+gamespot	https://www.gamespot.com/	B	culture	global	GameSpot
+pcgamer	https://www.pcgamer.com/	B	culture	global	PC Gamer
+kotaku	https://kotaku.com/	B	culture	global	Kotaku
+rockpapershotgun	https://www.rockpapershotgun.com/	B	culture	global	Rock Paper Shotgun
+gamesradar	https://www.gamesradar.com/	B	culture	global	GamesRadar
+vanityfair	https://www.vanityfair.com/	A	culture	global	Vanity Fair
+gq	https://www.gq.com/	B	culture	global	GQ
+vogue	https://www.vogue.com/	A	culture	global	Vogue
+harpers	https://harpers.org/	A	culture	global	Harper's Magazine
+aeon	https://aeon.co/	A	culture	global	Aeon
+longreads	https://longreads.com/	B	culture	global	Longreads
+mentalfloss	https://www.mentalfloss.com/	B	culture	global	Mental Floss
+atlasobscura	https://www.atlasobscura.com/	B	culture	global	Atlas Obscura
+animenewsnetwork	https://www.animenewsnetwork.com/	B	culture	global	Anime News Network
+comicbook	https://comicbook.com/	B	culture	global	ComicBook.com
+newyorker-culture	https://www.newyorker.com/culture	A	culture	global	The New Yorker (culture)
+
+# --- Business (more) ---
+barrons	https://www.barrons.com/	A	business	global	Barron's
+seekingalpha	https://seekingalpha.com/	B	business	global	Seeking Alpha
+fool	https://www.fool.com/	B	business	global	The Motley Fool
+kiplinger	https://www.kiplinger.com/	B	business	global	Kiplinger
+thebalancemoney	https://www.thebalancemoney.com/	B	business	global	The Balance
+nerdwallet	https://www.nerdwallet.com/	B	business	global	NerdWallet
+bankrate	https://www.bankrate.com/	B	business	global	Bankrate
+benzinga	https://www.benzinga.com/	B	business	global	Benzinga
+yahoo-finance	https://finance.yahoo.com/	B	business	global	Yahoo Finance
+nasdaq	https://www.nasdaq.com/	A	business	global	Nasdaq
+nyse	https://www.nyse.com/	A	business	global	New York Stock Exchange
+lse	https://www.londonstockexchange.com/	A	business	global	London Stock Exchange
+cmegroup	https://www.cmegroup.com/	A	business	global	CME Group
+spglobal	https://www.spglobal.com/	A	business	global	S&P Global
+moodys	https://www.moodys.com/	A	business	global	Moody's
+fitchratings	https://www.fitchratings.com/	A	business	global	Fitch Ratings
+msci	https://www.msci.com/	A	business	global	MSCI
+coinmarketcap	https://coinmarketcap.com/	B	business	global	CoinMarketCap
+coindesk	https://www.coindesk.com/	B	business	global	CoinDesk
+cointelegraph	https://cointelegraph.com/	B	business	global	Cointelegraph
+bis	https://www.bis.org/	A	business	global	Bank for International Settlements
+unctad	https://unctad.org/	A	business	global	UNCTAD
+weforum	https://www.weforum.org/	A	business	global	World Economic Forum
+brookings	https://www.brookings.edu/	A	business	global	Brookings Institution
+piie	https://www.piie.com/	A	business	global	Peterson Institute
+bea	https://www.bea.gov/	A	business	global	US Bureau of Economic Analysis
+bls	https://www.bls.gov/	A	business	global	US Bureau of Labor Statistics
+treasury	https://home.treasury.gov/	A	business	global	US Treasury
+bankofengland	https://www.bankofengland.co.uk/	A	business	global	Bank of England
+banque-france	https://www.banque-france.fr/	A	business	global	Banque de France
+bundesbank	https://www.bundesbank.de/	A	business	global	Deutsche Bundesbank
+boj	https://www.boj.or.jp/en/	A	business	global	Bank of Japan
+inc	https://www.inc.com/	B	business	global	Inc.
+entrepreneur	https://www.entrepreneur.com/	B	business	global	Entrepreneur
+fastcompany	https://www.fastcompany.com/	B	business	global	Fast Company
+qz	https://qz.com/	B	business	global	Quartz
+mckinsey	https://www.mckinsey.com/	A	business	global	McKinsey & Company
+bcg	https://www.bcg.com/	A	business	global	Boston Consulting Group
+bain	https://www.bain.com/	A	business	global	Bain & Company
+pwc	https://www.pwc.com/	A	business	global	PwC
+deloitte	https://www.deloitte.com/	A	business	global	Deloitte
+gartner	https://www.gartner.com/	A	business	global	Gartner
+tradingview	https://www.tradingview.com/	B	business	global	TradingView
+arabianbusiness	https://www.arabianbusiness.com/	B	business	global	Arabian Business
+pitchbook	https://pitchbook.com/	B	business	global	PitchBook
+cbinsights	https://www.cbinsights.com/	B	business	global	CB Insights
+ycombinator	https://www.ycombinator.com/	B	business	global	Y Combinator
+techmeme	https://www.techmeme.com/	B	business	global	Techmeme
+theinformation	https://www.theinformation.com/	A	business	global	The Information
+euromonitor	https://www.euromonitor.com/	A	business	global	Euromonitor
+mundodeportivo-eco	https://www.expansion.com/	A	business	global	Expansión (Spain)
+ilboursa	https://www.ilboursa.com/	B	business	global	IlBoursa (Maghreb markets)
+
+# --- Reference (more) ---
+collinsdict	https://www.collinsdictionary.com/	A	reference	global	Collins Dictionary
+dictionary-com	https://www.dictionary.com/	B	reference	global	Dictionary.com
+thesaurus	https://www.thesaurus.com/	B	reference	global	Thesaurus.com
+vocabulary	https://www.vocabulary.com/	B	reference	global	Vocabulary.com
+freedictionary	https://www.thefreedictionary.com/	B	reference	global	The Free Dictionary
+macmillandict	https://www.macmillandictionary.com/	A	reference	global	Macmillan Dictionary
+longman	https://www.ldoceonline.com/	A	reference	global	Longman Dictionary
+linguee	https://www.linguee.com/	B	reference	global	Linguee
+reverso	https://www.reverso.net/	B	reference	global	Reverso
+deepl	https://www.deepl.com/	B	reference	global	DeepL
+forvo	https://forvo.com/	B	reference	global	Forvo (pronunciation)
+babla	https://en.bab.la/	B	reference	global	bab.la
+duden	https://www.duden.de/	A	reference	global	Duden (German)
+treccani	https://www.treccani.it/	A	reference	global	Treccani (Italian)
+rae	https://www.rae.es/	A	reference	global	Real Academia Española
+academie-francaise	https://www.academie-francaise.fr/	A	reference	global	Académie française
+lerobert	https://dictionnaire.lerobert.com/	A	reference	global	Le Robert
+scholarpedia	http://www.scholarpedia.org/	B	reference	global	Scholarpedia
+encyclopedia-com	https://www.encyclopedia.com/	B	reference	global	Encyclopedia.com
+infoplease	https://www.infoplease.com/	B	reference	global	Infoplease
+howstuffworks	https://www.howstuffworks.com/	B	reference	global	HowStuffWorks
+wolframalpha	https://www.wolframalpha.com/	A	reference	global	Wolfram Alpha
+mathworld	https://mathworld.wolfram.com/	A	reference	global	Wolfram MathWorld
+oeis	https://oeis.org/	A	reference	global	OEIS (integer sequences)
+desmos	https://www.desmos.com/	B	reference	global	Desmos
+loc	https://www.loc.gov/	A	reference	global	Library of Congress
+bnf	https://www.bnf.fr/	A	reference	global	Bibliothèque nationale de France
+bl-uk	https://www.bl.uk/	A	reference	global	British Library
+europeana	https://www.europeana.eu/	A	reference	global	Europeana
+hathitrust	https://www.hathitrust.org/	A	reference	global	HathiTrust
+worldcat	https://www.worldcat.org/	A	reference	global	WorldCat
+wikibooks	https://www.wikibooks.org/	B	reference	global	Wikibooks
+wikiquote	https://www.wikiquote.org/	B	reference	global	Wikiquote
+wikiversity	https://www.wikiversity.org/	B	reference	global	Wikiversity
+commons-wikimedia	https://commons.wikimedia.org/	B	reference	global	Wikimedia Commons
+datagov	https://data.gov/	A	reference	global	Data.gov
+gapminder	https://www.gapminder.org/	A	reference	global	Gapminder
+macrotrends	https://www.macrotrends.net/	B	reference	global	Macrotrends
+numbeo	https://www.numbeo.com/	B	reference	global	Numbeo
+timeanddate	https://www.timeanddate.com/	B	reference	global	Time and Date
+xe	https://www.xe.com/	B	reference	global	XE currency
+worldometers	https://www.worldometers.info/	B	reference	global	Worldometers
+factcheck-org	https://www.factcheck.org/	A	reference	global	FactCheck.org
+politifact	https://www.politifact.com/	B	reference	global	PolitiFact
+poynter	https://www.poynter.org/	A	reference	global	Poynter
+openstreetmap	https://www.openstreetmap.org/	A	reference	global	OpenStreetMap
+geonames	https://www.geonames.org/	A	reference	global	GeoNames
+iso-org	https://www.iso.org/	A	reference	global	ISO
+doi-org	https://www.doi.org/	A	reference	global	DOI Foundation
+orcid	https://orcid.org/	A	reference	global	ORCID
+unicode	https://home.unicode.org/	A	reference	global	Unicode Consortium
+iana	https://www.iana.org/	A	reference	global	IANA
+unstats	https://unstats.un.org/	A	reference	global	UN Statistics Division
+mawrid	https://www.baheth.info/	B	reference	global	Baheth (Arabic dictionary)
+shamela	https://shamela.ws/	B	reference	global	Al-Maktaba Al-Shamela
+noor-book	https://www.noor-book.com/	B	reference	global	Noor Library (Arabic books)
+dorar	https://dorar.net/	B	reference	global	Dorar (Islamic reference)
+kingfahad	https://kfnl.gov.sa/	A	reference	global	King Fahd National Library
+worldbank-data2	https://databank.worldbank.org/	A	reference	global	World Bank DataBank
+
+# ============================================================================================
+# TOP-UP (to reach ~100 per category; grouped by category in the UI)
+# ============================================================================================
+
+# --- News (more) ---
+jeuneafrique	https://www.jeuneafrique.com/	A	news	global	Jeune Afrique
+africanews	https://www.africanews.com/	B	news	global	Africanews
+arabnews	https://www.arabnews.com/	A	news	global	Arab News
+gulfnews	https://gulfnews.com/	A	news	global	Gulf News
+thenationalnews	https://www.thenationalnews.com/	A	news	global	The National (UAE)
+lorientlejour	https://www.lorientlejour.com/	A	news	global	L'Orient-Le Jour
+hespress	https://www.hespress.com/	B	news	global	Hespress (Morocco)
+le360	https://fr.le360.ma/	B	news	global	Le360 (Morocco)
+allafrica	https://allafrica.com/	B	news	global	AllAfrica
+news24	https://www.news24.com/	B	news	global	News24 (South Africa)
+
+# --- Government (more) ---
+interpol	https://www.interpol.int/	A	government	global	INTERPOL
+icao	https://www.icao.int/	A	government	global	ICAO
+itu	https://www.itu.int/	A	government	global	ITU
+wipo	https://www.wipo.int/	A	government	global	WIPO
+wmo	https://wmo.int/	A	government	global	World Meteorological Organization
+iaea	https://www.iaea.org/	A	government	global	IAEA
+ohchr	https://www.ohchr.org/	A	government	global	UN Human Rights
+icj	https://www.icj-cij.org/	A	government	global	International Court of Justice
+nato	https://www.nato.int/	A	government	global	NATO
+coe	https://www.coe.int/	A	government	global	Council of Europe
+commonwealth	https://thecommonwealth.org/	A	government	global	The Commonwealth
+oic	https://www.oic-oci.org/	A	government	global	Organisation of Islamic Cooperation
+afdb	https://www.afdb.org/	A	government	global	African Development Bank
+adb	https://www.adb.org/	A	government	global	Asian Development Bank
+europarl	https://www.europarl.europa.eu/	A	government	global	European Parliament
+consilium	https://www.consilium.europa.eu/	A	government	global	Council of the EU
+india-gov	https://www.india.gov.in/	A	government	global	Government of India
+gov-za	https://www.gov.za/	A	government	global	South African Government
+gov-sg	https://www.gov.sg/	A	government	global	Government of Singapore
+gov-ae	https://u.ae/	A	government	global	UAE Government
+my-gov-sa	https://www.my.gov.sa/	A	government	global	Saudi Government portal
+maroc-ma	https://www.maroc.ma/	A	government	global	Government of Morocco
+tunisie-gov	http://www.tunisie.gov.tn/	A	government	global	Government of Tunisia
+government-nl	https://www.government.nl/	A	government	global	Government of the Netherlands
+regjeringen	https://www.regjeringen.no/	A	government	global	Government of Norway
+epa	https://www.epa.gov/	A	government	global	US EPA
+ed-gov	https://www.ed.gov/	A	government	global	US Department of Education
+justice-gov	https://www.justice.gov/	A	government	global	US Department of Justice
+irs	https://www.irs.gov/	A	government	global	US IRS
+nps	https://www.nps.gov/	A	government	global	US National Park Service
+uscis	https://www.uscis.gov/	A	government	global	US Citizenship and Immigration
+eib	https://www.eib.org/	A	government	global	European Investment Bank
+gov-uk-orgs	https://www.parliament.uk/	A	government	global	UK Parliament
+
+# --- Education (more) ---
+ucla	https://www.ucla.edu/	A	education	global	UCLA
+umich	https://umich.edu/	A	education	global	University of Michigan
+uw	https://www.washington.edu/	A	education	global	University of Washington
+utexas	https://www.utexas.edu/	A	education	global	UT Austin
+gatech	https://www.gatech.edu/	A	education	global	Georgia Tech
+cmu	https://www.cmu.edu/	A	education	global	Carnegie Mellon
+jhu	https://www.jhu.edu/	A	education	global	Johns Hopkins University
+upenn	https://www.upenn.edu/	A	education	global	University of Pennsylvania
+nyu	https://www.nyu.edu/	A	education	global	New York University
+northwestern	https://www.northwestern.edu/	A	education	global	Northwestern University
+duke	https://www.duke.edu/	A	education	global	Duke University
+ucsd	https://ucsd.edu/	A	education	global	UC San Diego
+wisc	https://www.wisc.edu/	A	education	global	University of Wisconsin-Madison
+purdue	https://www.purdue.edu/	A	education	global	Purdue University
+ubc	https://www.ubc.ca/	A	education	global	University of British Columbia
+uwaterloo	https://uwaterloo.ca/	A	education	global	University of Waterloo
+monash	https://www.monash.edu/	A	education	global	Monash University
+unimelb	https://www.unimelb.edu.au/	A	education	global	University of Melbourne
+sydney	https://www.sydney.edu.au/	A	education	global	University of Sydney
+anu	https://www.anu.edu.au/	A	education	global	Australian National University
+hku	https://www.hku.hk/	A	education	global	University of Hong Kong
+ntu-sg	https://www.ntu.edu.sg/	A	education	global	Nanyang Technological University
+utokyo	https://www.u-tokyo.ac.jp/en/	A	education	global	University of Tokyo
+kyoto-u	https://www.kyoto-u.ac.jp/en	A	education	global	Kyoto University
+pku	https://english.pku.edu.cn/	A	education	global	Peking University
+kcl	https://www.kcl.ac.uk/	A	education	global	King's College London
+manchester	https://www.manchester.ac.uk/	A	education	global	University of Manchester
+lse-edu	https://www.lse.ac.uk/	A	education	global	London School of Economics
+sciencespo	https://www.sciencespo.fr/	A	education	global	Sciences Po
+polytechnique	https://www.polytechnique.edu/	A	education	global	École Polytechnique
+heidelberg	https://www.uni-heidelberg.de/	A	education	global	Heidelberg University
+kuleuven	https://www.kuleuven.be/	A	education	global	KU Leuven
+uva-nl	https://www.uva.nl/	A	education	global	University of Amsterdam
+ted	https://www.ted.com/	B	education	global	TED
+oercommons	https://oercommons.org/	A	education	global	OER Commons
+
+# --- Health (more) ---
+kff	https://www.kff.org/	A	health	global	KFF (health policy)
+who-afro	https://www.afro.who.int/	A	health	global	WHO Africa
+niddk-extra	https://www.nimh.nih.gov/	A	health	global	US National Institute of Mental Health
+
+# --- Science & Tech (more) ---
+acs	https://pubs.acs.org/	A	science-tech	global	American Chemical Society
+aps-physics	https://journals.aps.org/	A	science-tech	global	American Physical Society
+rsc	https://www.rsc.org/	A	science-tech	global	Royal Society of Chemistry
+ams-math	https://www.ams.org/	A	science-tech	global	American Mathematical Society
+agu	https://www.agu.org/	A	science-tech	global	American Geophysical Union
+
+# --- Sport (more) ---
+bwfbadminton	https://bwfbadminton.com/	A	sport	global	Badminton World Federation
+ittf	https://www.ittf.com/	A	sport	global	International Table Tennis Federation
+worldarchery	https://www.worldarchery.sport/	A	sport	global	World Archery
+iihf	https://www.iihf.com/	A	sport	global	IIHF (ice hockey)
+fie-fencing	https://fie.org/	A	sport	global	International Fencing Federation
+worldsailing	https://www.sailing.org/	A	sport	global	World Sailing
+
+# --- Culture (more) ---
+cbr	https://www.cbr.com/	B	culture	global	CBR (comics)
+slashfilm	https://www.slashfilm.com/	B	culture	global	/Film
+avclub	https://www.avclub.com/	B	culture	global	The A.V. Club
+berlinale	https://www.berlinale.de/	A	culture	global	Berlin International Film Festival
+labiennale	https://www.labiennale.org/	A	culture	global	La Biennale di Venezia
+sundance	https://www.sundance.org/	A	culture	global	Sundance
+tiff	https://www.tiff.net/	A	culture	global	Toronto International Film Festival
+mixmag	https://mixmag.net/	B	culture	global	Mixmag
+djmag	https://djmag.com/	B	culture	global	DJ Mag
+nybooks	https://www.nybooks.com/	A	culture	global	The New York Review of Books
+granta	https://granta.com/	A	culture	global	Granta
+nationalgallery	https://www.nationalgallery.org.uk/	A	culture	global	The National Gallery (London)
+vam	https://www.vam.ac.uk/	A	culture	global	Victoria and Albert Museum
+nga-art	https://www.nga.gov/	A	culture	global	National Gallery of Art (US)
+giantbomb	https://www.giantbomb.com/	B	culture	global	Giant Bomb
+gamedeveloper	https://www.gamedeveloper.com/	B	culture	global	Game Developer
+
+# --- Business (more) ---
+accenture	https://www.accenture.com/	A	business	global	Accenture
+oliverwyman	https://www.oliverwyman.com/	A	business	global	Oliver Wyman
+rolandberger	https://www.rolandberger.com/	A	business	global	Roland Berger
+kearney	https://www.kearney.com/	A	business	global	Kearney
+uschamber	https://www.uschamber.com/	A	business	global	US Chamber of Commerce
+iccwbo	https://iccwbo.org/	A	business	global	International Chamber of Commerce
+swift	https://www.swift.com/	A	business	global	SWIFT
+african-business	https://african.business/	B	business	global	African Business
+cnbcafrica	https://www.cnbcafrica.com/	B	business	global	CNBC Africa
+businesslive	https://www.businesslive.co.za/	B	business	global	Business Day (SA)
+wamda	https://www.wamda.com/	B	business	global	Wamda (MENA startups)
+magnitt	https://magnitt.com/	B	business	global	MAGNiTT
+investing-com	https://www.investing.com/	B	business	global	Investing.com
+stocktwits	https://stocktwits.com/	B	business	global	Stocktwits
+insiderintelligence	https://www.emarketer.com/	B	business	global	EMARKETER
+businessoffashion	https://www.businessoffashion.com/	B	business	global	The Business of Fashion
+adweek	https://www.adweek.com/	B	business	global	Adweek
+campaignlive	https://www.campaignlive.co.uk/	B	business	global	Campaign
+warc	https://www.warc.com/	B	business	global	WARC
+thedrum	https://www.thedrum.com/	B	business	global	The Drum
+mediapost	https://www.mediapost.com/	B	business	global	MediaPost
+fred-stlouis	https://fred.stlouisfed.org/	A	business	global	FRED (economic data)
+knoema	https://knoema.com/	B	business	global	Knoema
+
+# --- Reference (more) ---
+quran-com	https://quran.com/	A	reference	global	Quran.com
+sunnah	https://sunnah.com/	A	reference	global	Sunnah.com
+islamweb	https://www.islamweb.net/	B	reference	global	Islamweb
+altafsir	https://www.altafsir.com/	B	reference	global	Altafsir
+glosbe	https://glosbe.com/	B	reference	global	Glosbe
+tatoeba	https://tatoeba.org/	B	reference	global	Tatoeba
+omniglot	https://www.omniglot.com/	B	reference	global	Omniglot
+yourdictionary	https://www.yourdictionary.com/	B	reference	global	YourDictionary
+core-ac	https://core.ac.uk/	A	reference	global	CORE (research aggregator)
+base-search	https://www.base-search.net/	A	reference	global	BASE (academic search)
+schema-org	https://schema.org/	A	reference	global	Schema.org
+rfc-editor	https://www.rfc-editor.org/	A	reference	global	RFC Editor
+sparknotes	https://www.sparknotes.com/	B	reference	global	SparkNotes
+cliffsnotes	https://www.cliffsnotes.com/	B	reference	global	CliffsNotes
+litcharts	https://www.litcharts.com/	B	reference	global	LitCharts
+symbolab	https://www.symbolab.com/	B	reference	global	Symbolab
+knowledgebase-ecb	https://ec.europa.eu/eurostat/data/database	A	reference	global	Eurostat database
