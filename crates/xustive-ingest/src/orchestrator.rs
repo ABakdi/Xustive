@@ -128,6 +128,9 @@ pub struct Orchestrator {
     /// that cannot reach it should still crawl.
     visits: Option<Visits>,
     raw_store: Option<crate::raw_store::RawStore>,
+    /// The domain link graph, when capture is on. Optional like the rest: a crawl that cannot reach
+    /// it still crawls, it just contributes nothing to the next PageRank.
+    link_graph: Option<crate::link_graph::LinkGraphStore>,
     last_promote: std::time::Instant,
 }
 
@@ -145,8 +148,15 @@ impl Orchestrator {
             shared: None,
             visits: None,
             raw_store: None,
+            link_graph: None,
             last_promote: std::time::Instant::now(),
         }
+    }
+
+    /// Capture the domain link graph as pages are crawled, for `xustive-cli pagerank`. Off unless set.
+    pub fn with_link_graph(mut self, store: crate::link_graph::LinkGraphStore) -> Self {
+        self.link_graph = Some(store);
+        self
     }
 
     /// Publish counters where the admin console can read them.
@@ -525,6 +535,18 @@ impl Orchestrator {
         // made the check below compare 1 against a limit of 3 — always false, so `max_depth` never
         // fired and every URL in the frontier scored identically. The crawler had no breadth-first
         // ordering at all: it would follow a single site's archive as readily as a new homepage.
+        // Record the domain link graph before any filtering — an off-site link we would never
+        // enqueue is exactly the cross-domain vote PageRank is built on, and a page's links are a
+        // vote whether or not it was deep enough to follow.
+        if let Some(graph) = &self.link_graph {
+            let targets: Vec<String> = links
+                .iter()
+                .filter_map(|l| url::Url::parse(l).ok())
+                .filter_map(|u| u.host_str().map(str::to_string))
+                .collect();
+            graph.record(&from.host, &targets).await;
+        }
+
         let depth = from.depth + 1;
         if depth > self.config.max_depth {
             self.stats.skip("too_deep");

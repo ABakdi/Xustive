@@ -150,6 +150,9 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             orchestrator = orchestrator.with_raw_store(r);
         }
     }
+    if let Some(g) = xustive_ingest::link_graph::LinkGraphStore::connect(&config.queue.url) {
+        orchestrator = orchestrator.with_link_graph(g);
+    }
 
     // Seeded every start, not only the first. `add` is idempotent, so a seed already known is a
     // no-op — and a seed added to the file since the last start would otherwise never be picked up
@@ -265,6 +268,9 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                 ) {
                     orch = orch.with_raw_store(r);
                 }
+            }
+            if let Some(g) = xustive_ingest::link_graph::LinkGraphStore::connect(&redis_url) {
+                orch = orch.with_link_graph(g);
             }
             let dedup = xustive_ingest::dedup::Dedup::connect_in(&redis_url, "frontier");
 
