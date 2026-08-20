@@ -218,7 +218,13 @@ pub async fn handler(
             match chunk {
                 Chunk::Token(text) => {
                     produced += 1;
-                    yield Ok::<Event, Infallible>(frame(&Frame::Delta { text: &text }));
+                    // Strip any character from a script no target language uses (a stray CJK/kana
+                    // token the quantised model substitutes). A token that was *only* such
+                    // characters becomes empty and is dropped rather than sent as a blank delta.
+                    let cleaned = xustive_ml::translate::strip_foreign_scripts(&text);
+                    if !cleaned.is_empty() {
+                        yield Ok::<Event, Infallible>(frame(&Frame::Delta { text: cleaned.as_ref() }));
+                    }
                 }
                 Chunk::Done(generated) => {
                     metrics.incr(

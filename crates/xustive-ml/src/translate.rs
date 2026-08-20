@@ -239,6 +239,35 @@ pub fn build(text: &str, from: Option<&Language>, to: &Language) -> Option<Promp
 /// Qwen at this size sometimes echoes the delimiter, prefixes "Translation:", or wraps the whole
 /// thing in quotes. These are formatting artefacts, not content, and leaving them in makes the
 /// output look broken in a way that reads as a bad translation rather than a bad prompt.
+/// Whether `c` belongs to a script none of the supported target languages use.
+///
+/// CJK ideographs, Japanese kana, Korean hangul, and full/half-width forms. A heavily quantised
+/// multilingual model resolving to a cross-lingual neighbour drops one of these in mid-sentence —
+/// the documented `الم下车` / `أين closest` failure — and since ar/ary/fr/en/es/de/it/tr never use
+/// them, they are always a defect, safe to remove.
+fn is_foreign_script(c: char) -> bool {
+    matches!(c as u32,
+        0x3000..=0x303F   // CJK symbols and punctuation
+        | 0x3040..=0x30FF // hiragana + katakana
+        | 0x3400..=0x4DBF // CJK extension A
+        | 0x4E00..=0x9FFF // CJK unified ideographs
+        | 0xA000..=0xA4CF // Yi
+        | 0xAC00..=0xD7AF // hangul syllables
+        | 0xF900..=0xFAFF // CJK compatibility ideographs
+        | 0xFF00..=0xFFEF // half/fullwidth forms
+    )
+}
+
+/// Drop characters from scripts no target language uses. Applied to each streamed token so a stray
+/// Chinese/Japanese/Korean character the model substitutes never reaches the reader. Borrows when
+/// there is nothing to strip, which is the overwhelming common case.
+pub fn strip_foreign_scripts(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.chars().any(is_foreign_script) {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    std::borrow::Cow::Owned(text.chars().filter(|c| !is_foreign_script(*c)).collect())
+}
+
 pub fn clean(raw: &str) -> String {
     let mut text = raw.trim();
 
@@ -340,6 +369,19 @@ mod tests {
     fn translating_a_language_into_itself_is_not_a_translation() {
         assert!(build("bonjour", language("fr"), language("fr").unwrap()).is_none());
         assert!(build("", None, language("ar").unwrap()).is_none());
+    }
+
+    #[test]
+    fn foreign_script_characters_are_stripped_but_the_rest_is_kept() {
+        // The quantised model's cross-lingual slip: a CJK character dropped into Arabic output.
+        assert_eq!(strip_foreign_scripts("أين تقع الم下车؟"), "أين تقع الم؟");
+        assert_eq!(strip_foreign_scripts("la 药 pharmacie"), "la  pharmacie");
+        // Clean output in a supported language is returned untouched (and borrowed, not reallocated).
+        assert!(matches!(
+            strip_foreign_scripts("Where is the nearest pharmacy?"),
+            std::borrow::Cow::Borrowed(_)
+        ));
+        assert_eq!(strip_foreign_scripts("مرحبا بك"), "مرحبا بك");
     }
 
     #[test]
