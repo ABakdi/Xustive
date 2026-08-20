@@ -49,3 +49,20 @@ serp_max_queries_per_run = 50
 # http://, https://, or socks5:// with optional inline credentials, e.g.
 #   serp_proxy = "http://USER:PASS@gate.provider.com:7000"
 serp_proxy = ""
+
+[ml]
+# The AI summary above results. A local Qwen model — nothing leaves this machine.
+# summariser_model: empty = first present file in model_dir; or pin one from the registry. Qwen 7B
+# gives noticeably better summaries (fewer withheld) but exceeds 4 GB VRAM — run it on CPU or a
+# bigger card. To switch:
+#   1. download:  huggingface-cli download Qwen/Qwen2.5-7B-Instruct-GGUF qwen2.5-7b-instruct-q4_k_m.gguf --local-dir models
+#   2. select:    summariser_model = "qwen2.5-7b-instruct-q4"
+summariser_model = ""
+# Device: auto | gpu | cpu — also switchable live from the admin Compute page. GPU needs a binary
+# built with `--features cuda` (CUDA toolkit at build time); without it this falls back to CPU.
+device = "auto"
+gpu_layers = -1
+# Budget for one summary. The generator makes a second, varied attempt when the first is withheld for
+# a fixable reason (uncited / wrong language) and time remains, so a larger budget buys the retry on
+# slow CPU too; on GPU several attempts fit easily.
+deadline_ms = 30000
