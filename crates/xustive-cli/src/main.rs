@@ -9,6 +9,7 @@ mod crawl;
 mod crawld;
 mod discover;
 mod eval;
+mod pagerank;
 mod parsecheck;
 mod registry;
 mod serp_eval;
@@ -109,6 +110,9 @@ enum Command {
     },
     /// Resolve weak-coverage search terms to URLs via Brave, seeding them for crawl (M2-T16.4/.6).
     Discover,
+    /// Compute domain authority (PageRank) from the crawl link graph and store it for ranking.
+    #[command(name = "pagerank")]
+    PageRank,
     /// Fetch a URL and show what the parser extracts — for authoring per-domain rules.
     ParseCheck {
         url: String,
@@ -248,6 +252,11 @@ async fn main() -> Result<()> {
         return discover::run(&config).await;
     }
 
+    // `pagerank` computes domain authority from the link graph in Redis; no Meili involved.
+    if let Command::PageRank = &args.command {
+        return pagerank::run(&config).await;
+    }
+
     // `parse-check` fetches a URL and runs the parser; no index or queue involved.
     if let Command::ParseCheck {
         url,
@@ -368,7 +377,8 @@ async fn main() -> Result<()> {
         | Command::Registry { .. }
         | Command::ParseCheck { .. }
         | Command::CommonCrawl { .. }
-        | Command::Discover => {
+        | Command::Discover
+        | Command::PageRank => {
             unreachable!("handled above")
         }
     }

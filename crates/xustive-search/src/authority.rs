@@ -26,6 +26,11 @@ pub const HOME_FLOOR: f32 = 0.62;
 /// Authority (0–1) given to an unlisted non-`.dz` host: present, but unproven.
 pub const BASELINE: f32 = 0.35;
 
+/// Ceiling for a *computed* (PageRank) authority score. Held below the top curated priors (~0.9+) so
+/// an earned score can lift an unlisted domain well above the baseline without ever outranking a
+/// domain a human deliberately vouched for.
+pub const PAGERANK_CAP: f32 = 0.85;
+
 /// Load the curated domain→authority map from `data/sources/authority.tsv`.
 ///
 /// Compiled in rather than read at runtime: the list is small and a missing file would quietly drop
