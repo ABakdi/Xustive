@@ -1,0 +1,48 @@
+# Benchmark queries for the SERP yardstick (xustive-cli eval-serp).
+# One query per line; blank lines and #-comments ignored. Mix of Algerian-local and global/category
+# queries so the report shows where our corpus is strong (home turf) and where it lags a general
+# engine (global categories that discovery still needs to fill).
+
+# --- Algeria: local intent (we should do WELL here) ---
+جواز السفر الجزائر
+منحة البطالة
+نتائج البكالوريا
+سونلغاز فاتورة
+CNAS تعويض
+الديوان الوطني للامتحانات
+وزارة التربية الوطنية
+بريد الجزائر
+
+# --- Health / medicine ---
+paracetamol
+ibuprofen dosage
+diabetes symptoms
+تصلب الشرايين
+
+# --- Reference / education ---
+photosynthesis
+theory of relativity
+français langue grammaire
+khan academy calculus
+
+# --- Entertainment: film & TV ---
+inception movie
+breaking bad cast
+oppenheimer film
+دراما تركية
+
+# --- Technology ---
+rust programming language
+javascript async await
+git rebase
+what is docker
+
+# --- News / world ---
+climate change latest
+world cup results
+gaza news today
+
+# --- Sport ---
+premier league table
+champions league final
+coupe d'afrique des nations

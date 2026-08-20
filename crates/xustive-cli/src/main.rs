@@ -11,6 +11,7 @@ mod discover;
 mod eval;
 mod parsecheck;
 mod registry;
+mod serp_eval;
 mod worker;
 
 use std::path::PathBuf;
@@ -145,6 +146,23 @@ enum Command {
         /// Compare against this report and fail on a regression beyond the tolerance.
         #[arg(long)]
         baseline: Option<PathBuf>,
+        /// Print the report without writing it.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Compare our result ordering to a reference search engine (the "compare to Google" yardstick).
+    EvalSerp {
+        #[arg(long, default_value = "eval/serp-queries.txt")]
+        queries: PathBuf,
+        #[arg(long, default_value = "eval/reports")]
+        out: PathBuf,
+        /// Reference engine: `duckduckgo` | `bing` | `google`. Default: google if a SERP proxy is
+        /// configured, else duckduckgo (the engine that answers a direct connection).
+        #[arg(long)]
+        engine: Option<String>,
+        /// How many top domains to compare.
+        #[arg(long, default_value_t = 10)]
+        k: usize,
         /// Print the report without writing it.
         #[arg(long)]
         dry_run: bool,
@@ -319,6 +337,23 @@ async fn main() -> Result<()> {
                 date: today(),
             };
             eval::run(&client, &config, &opts).await
+        }
+        Command::EvalSerp {
+            queries,
+            out,
+            engine,
+            k,
+            dry_run,
+        } => {
+            let opts = serp_eval::SerpEvalOptions {
+                queries,
+                out_dir: out,
+                engine,
+                k,
+                dry_run,
+                date: today(),
+            };
+            serp_eval::run(&client, &config, &opts).await
         }
         Command::Worker { once } => worker::run(&config, &client, once).await,
         Command::Dlq { action, limit } => worker::dlq(&config, &action, limit).await,
