@@ -39,15 +39,19 @@ export function TranslateCard({
 }) {
   const [to, setTo] = useState(detail.to ?? 'ar')
   const [from, setFrom] = useState(detail.from ?? '')
+  // Editable: the query may carry the text ("translate hello to fr") or nothing ("translate"),
+  // and either way the reader can correct or type it. This is what makes it a tool, not a readout.
+  const [input, setInput] = useState(detail.text ?? '')
   const [out, setOut] = useState('')
   const [state, setState] = useState<'idle' | 'running' | 'done' | 'failed' | 'truncated'>('idle')
   const abort = useRef<AbortController | null>(null)
 
-  const text = detail.text ?? ''
   const name = (l: Language) =>
     uiLang === 'ar' || uiLang === 'ary' ? l.name_ar : uiLang === 'en' ? l.name_en : l.name_fr
 
   const run = useCallback(async () => {
+    const text = input.trim()
+    if (!text) return
     // Any previous run is abandoned before a new one starts. Two streams writing into one box
     // would interleave their tokens into nonsense.
     abort.current?.abort()
@@ -112,24 +116,42 @@ export function TranslateCard({
       // An abort is the expected end of a cancelled run, not a failure to report.
       if ((error as Error)?.name !== 'AbortError') setState('failed')
     }
-  }, [text, from, to])
+  }, [input, from, to])
 
   useEffect(() => {
-    if (!text) return
+    // Translate what the query already carried on mount, and re-translate when the source or target
+    // language changes. Typing is NOT a trigger — a stream on every keystroke would thrash the two
+    // model slots; the Translate button and the language selectors are the deliberate triggers.
+    if (!input.trim()) return
     void run()
-    // Aborts on unmount and before any re-run, which is what makes leaving the page free a model
-    // slot rather than leave one generating into nothing.
+    // Aborts on unmount and before any re-run, which frees a model slot rather than leaving one
+    // generating into nothing.
     return () => abort.current?.abort()
-  }, [run, text])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to])
 
   const target = languages.find((l) => l.code === to)
   const approximate = target?.approximate ?? false
 
   return (
     <section className="assert group mb-7" aria-label={t.translate}>
-      <p className="m-0 text-xs" style={{ color: 'var(--fg-muted)' }}>
-        <bdi>{text}</bdi>
-      </p>
+      <textarea
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter translates; Shift+Enter is a newline. Mirrors chat inputs people already know.
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            void run()
+          }
+        }}
+        rows={2}
+        dir="auto"
+        placeholder={t.translatePlaceholder}
+        aria-label={t.translatePlaceholder}
+        className="w-full resize-y rounded border px-3 py-2 text-base"
+        style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }}
+      />
 
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         <Select
@@ -151,7 +173,7 @@ export function TranslateCard({
             </option>
           ))}
         </Select>
-        {state === 'running' && (
+        {state === 'running' ? (
           <Button
             type="button"
             onClick={() => {
@@ -160,6 +182,10 @@ export function TranslateCard({
             }}
           >
             {t.stop}
+          </Button>
+        ) : (
+          <Button type="button" onClick={() => void run()} disabled={!input.trim()}>
+            {t.translateButton}
           </Button>
         )}
       </div>

@@ -5,6 +5,7 @@ import { Pagination } from '@/components/search/Pagination'
 import { ResultCard } from '@/components/search/ResultCard'
 import { SearchBox } from '@/components/search/SearchBox'
 import { Summary } from '@/components/search/Summary'
+import { KnowledgePanel } from '@/components/search/KnowledgePanel'
 import { ToolCard } from '@/components/tools/ToolCard'
 import { TranslateCard } from '@/components/tools/TranslateCard'
 import { readDisabledTools } from '@/lib/tools'
@@ -99,7 +100,19 @@ export default async function SearchPage({
   const languages = data.instant?.tool === 'translate' ? await translateLanguages() : []
 
   return (
-    <Shell lang={lang} t={t} q={q}>
+    <Shell
+      lang={lang}
+      t={t}
+      q={q}
+      aside={
+        <KnowledgePanel
+          q={q}
+          lang={lang}
+          t={t}
+          className="mt-6 self-start lg:mt-0 lg:sticky lg:top-20"
+        />
+      }
+    >
       <p className="mb-5 text-sm" style={{ color: 'var(--fg-muted)' }}>
         {p.estimated ? `${t.resultsApprox} ` : ''}
         <bdi className="numeric">{formatNumber(lang, p.total_hits)}</bdi>{' '}
@@ -146,7 +159,12 @@ export default async function SearchPage({
           and ten blue links above it makes them do the work themselves. The placement is the whole
           difference — the summary itself is identical, and it still cites its sources. */}
       {data.summary_token && data.is_question && (
-        <Summary token={data.summary_token} note={t.summaryNote} prominent />
+        <Summary
+          token={data.summary_token}
+          note={t.summaryNote}
+          loadingLabel={t.summaryLoading}
+          prominent
+        />
       )}
 
       {data.results.length === 0 ? (
@@ -174,7 +192,11 @@ export default async function SearchPage({
               block before the filters. Fetched after paint either way: on CPU a summary takes
               tens of seconds and nothing on the page may wait for it. */}
           {data.summary_token && !data.is_question && (
-            <Summary token={data.summary_token} note={t.summaryNote} />
+            <Summary
+              token={data.summary_token}
+              note={t.summaryNote}
+              loadingLabel={t.summaryLoading}
+            />
           )}
 
           <ol
@@ -197,11 +219,14 @@ async function Shell({
   lang,
   t,
   q,
+  aside,
   children,
 }: {
   lang: Locale
   t: ReturnType<typeof messages>
   q: string
+  /** The right-hand knowledge rail, when the page has one. Absent on the error shell. */
+  aside?: React.ReactNode
   children: React.ReactNode
 }) {
   const [theme, density] = await Promise.all([readTheme(), readDensity()])
@@ -234,7 +259,18 @@ async function Shell({
         </div>
       </header>
 
-      <main className="mx-auto min-w-0 max-w-3xl px-6 py-6">{children}</main>
+      <main className="mx-auto min-w-0 max-w-3xl px-6 py-6 lg:max-w-5xl">
+        {aside ? (
+          // Two columns on large screens: results (capped for readability) + a sticky knowledge
+          // rail. One column below that, where the rail falls under the results.
+          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-8">
+            <div className="min-w-0">{children}</div>
+            {aside}
+          </div>
+        ) : (
+          children
+        )}
+      </main>
     </>
   )
 }

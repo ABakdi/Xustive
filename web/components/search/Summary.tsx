@@ -21,10 +21,13 @@ import { summarise, type SummaryResponse } from '@/lib/api'
 export function Summary({
   token,
   note,
+  loadingLabel,
   prominent = false,
 }: {
   token: string
   note: string
+  /** Shown while the model is still generating — the "loading until it resolves" state. */
+  loadingLabel: string
   /**
    * The query was a question, so this is the answer rather than a précis.
    *
@@ -45,7 +48,30 @@ export function Summary({
     return () => controller.abort()
   }, [token])
 
-  if (!data?.summary) return null
+  // Three states, not two. While the request is in flight (`data === null`) we show a loading
+  // line so the reader knows an answer is coming — on CPU that wait is tens of seconds, and a
+  // silent gap reads as "nothing here". Once it resolves *without* a summary (the model refused,
+  // the queue was full) we collapse to nothing rather than leave a broken placeholder.
+  if (data === null) {
+    return (
+      <section
+        className={`assert rise mb-6 py-1 ${prominent ? 'summary-answer' : ''}`.trim()}
+        aria-label="Summary"
+        aria-live="polite"
+        aria-busy="true"
+      >
+        <p
+          className="m-0 inline-flex items-center gap-2 text-sm"
+          dir="auto"
+          style={{ color: 'var(--fg-muted)' }}
+        >
+          <LoadingDots />
+          {loadingLabel}
+        </p>
+      </section>
+    )
+  }
+  if (!data.summary) return null
 
   return (
     <section
@@ -91,6 +117,26 @@ export function Summary({
         {note}
       </p>
     </section>
+  )
+}
+
+/** Three pulsing dots — a lightweight "the model is thinking" indicator, no layout shift. */
+function LoadingDots() {
+  return (
+    <span aria-hidden className="inline-flex gap-1" style={{ verticalAlign: 'middle' }}>
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="inline-block animate-pulse rounded-full"
+          style={{
+            inlineSize: '0.4rem',
+            blockSize: '0.4rem',
+            background: 'var(--accent)',
+            animationDelay: `${i * 160}ms`,
+          }}
+        />
+      ))}
+    </span>
   )
 }
 
