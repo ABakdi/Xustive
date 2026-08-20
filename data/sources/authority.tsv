@@ -1,0 +1,134 @@
+# Domain authority list — the "famous websites per category" corpus, used for RANKING, not bulk
+# crawling. A page from one of these domains (however it entered the index — usually pulled in by
+# query-driven SERP discovery) gets this domain's authority as a ranking signal, so the well-known
+# answer surfaces above a random blog that happens to match the same words.
+#
+# Format:  domain <TAB> category <TAB> authority(0-100) <TAB> region
+#   - domain:    registrable host, no scheme, no www. A subdomain matches its parent too.
+#   - authority: 0-100, how well-known/authoritative the domain is IN GENERAL. Scaled to 0-1 at load.
+#   - region:    informational (global | mena | dz | fr | intl). Algeria-first is handled separately:
+#                any .dz host gets a home floor even when it is not listed here, so this list does not
+#                need every Algerian site — it names the ones worth an explicit, higher score.
+#
+# Keep this Algeria-first: Algerian entries sit at the top of the scale; global sites sit just below
+# so they fill gaps and win on relevance, but a home site takes a tie. Authority is a small weight —
+# a tie-breaker among documents that already match, never a way to float an irrelevant page up.
+
+# --- Algeria (explicit, highest tier) ---------------------------------------------------------
+aps.dz	news	92	dz
+elmoudjahid.dz	news	88	dz
+echoroukonline.com	news	86	dz
+ennaharonline.com	news	84	dz
+elkhabar.com	news	86	dz
+tsa-algerie.com	news	84	dz
+liberte-algerie.com	news	82	dz
+elwatan-dz.com	news	84	dz
+aljazeera.net	news	88	mena
+joradp.dz	government	92	dz
+gov.dz	government	92	dz
+interieur.gov.dz	government	90	dz
+mesrs.dz	education	88	dz
+onec.dz	education	88	dz
+univ-alger.dz	education	84	dz
+cdta.dz	science	82	dz
+
+# --- Reference / encyclopedia ------------------------------------------------------------------
+wikipedia.org	reference	96	global
+wiktionary.org	reference	88	global
+britannica.com	reference	90	global
+wikidata.org	reference	86	global
+archive.org	reference	90	global
+gutenberg.org	reference	84	global
+scholar.google.com	reference	88	global
+
+# --- Education ---------------------------------------------------------------------------------
+khanacademy.org	education	88	global
+coursera.org	education	84	global
+edx.org	education	84	global
+mit.edu	education	92	global
+ocw.mit.edu	education	90	global
+stanford.edu	education	90	global
+harvard.edu	education	90	global
+ox.ac.uk	education	90	global
+cam.ac.uk	education	90	global
+brilliant.org	education	76	global
+
+# --- News / world ------------------------------------------------------------------------------
+bbc.com	news	92	global
+reuters.com	news	92	global
+apnews.com	news	90	global
+aljazeera.com	news	88	global
+theguardian.com	news	88	global
+nytimes.com	news	90	global
+france24.com	news	84	fr
+lemonde.fr	news	86	fr
+dw.com	news	84	global
+cnn.com	news	84	global
+
+# --- Entertainment: film & TV ------------------------------------------------------------------
+imdb.com	film-tv	90	global
+themoviedb.org	film-tv	82	global
+rottentomatoes.com	film-tv	84	global
+metacritic.com	film-tv	82	global
+letterboxd.com	film-tv	78	global
+tvtime.com	film-tv	70	global
+
+# --- Entertainment: music ----------------------------------------------------------------------
+spotify.com	music	86	global
+genius.com	music	80	global
+discogs.com	music	78	global
+last.fm	music	74	global
+
+# --- Technology / software ---------------------------------------------------------------------
+developer.mozilla.org	technology	90	global
+stackoverflow.com	technology	88	global
+github.com	technology	90	global
+w3schools.com	technology	78	global
+arstechnica.com	technology	82	global
+theverge.com	technology	80	global
+wired.com	technology	80	global
+techcrunch.com	technology	78	global
+
+# --- Science / academia ------------------------------------------------------------------------
+nature.com	science	92	global
+science.org	science	90	global
+ncbi.nlm.nih.gov	science	92	global
+arxiv.org	science	88	global
+sciencedirect.com	science	86	global
+springer.com	science	84	global
+
+# --- Health / medicine -------------------------------------------------------------------------
+who.int	health	92	global
+nih.gov	health	92	global
+mayoclinic.org	health	88	global
+medlineplus.gov	health	86	global
+webmd.com	health	78	global
+altibbi.com	health	80	mena
+webteb.com	health	76	mena
+drugs.com	health	82	global
+
+# --- Sport -------------------------------------------------------------------------------------
+espn.com	sport	84	global
+fifa.com	sport	86	global
+uefa.com	sport	84	global
+olympics.com	sport	86	global
+skysports.com	sport	80	global
+
+# --- Business / finance ------------------------------------------------------------------------
+bloomberg.com	business	88	global
+forbes.com	business	82	global
+investopedia.com	business	82	global
+cnbc.com	business	82	global
+economist.com	business	86	global
+
+# --- Culture / books / travel ------------------------------------------------------------------
+goodreads.com	culture	80	global
+imdb.com	culture	88	global
+nationalgeographic.com	culture	86	global
+lonelyplanet.com	travel	78	global
+
+# --- Government / intergovernmental ------------------------------------------------------------
+un.org	government	90	global
+europa.eu	government	88	global
+worldbank.org	government	86	global
+imf.org	government	84	global

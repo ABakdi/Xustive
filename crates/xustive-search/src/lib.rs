@@ -1,5 +1,6 @@
 //! Search backend integration: the Meilisearch client, index settings, and filter construction.
 
+pub mod authority;
 pub mod client;
 pub mod eval;
 pub mod filter;
