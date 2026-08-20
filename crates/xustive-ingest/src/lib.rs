@@ -21,6 +21,7 @@ pub mod fetch;
 pub mod fingerprint;
 pub mod frontier;
 pub mod gazetteer;
+pub mod interaction;
 pub mod link_graph;
 pub mod orchestrator;
 pub mod pagerank;

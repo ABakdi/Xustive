@@ -297,6 +297,57 @@ impl DiscoveryConfig {
     }
 }
 
+/// Anonymous interaction signals ([[ADR-0015]], [[Interaction Signals]]). Impressions and clicks as
+/// k-anonymous, windowed Redis counters — never tied to a person — feeding ranking and re-crawl.
+///
+/// **Off by default.** It amends the no-click-tracking promise of ADR-0008, so it must be an explicit
+/// choice, never a silent one. When on, `k_anonymity` is the ADR-0008 floor of 20 on any multi-user
+/// deployment; a single-user dev box may lower it, understanding that means "no anonymity, one
+/// operator" rather than "anonymised".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InteractionConfig {
+    pub enabled: bool,
+    /// k-anonymity floor: a (query, doc) or query signal is used only above this many distinct
+    /// searches. 20 is the ADR-0008 floor; 1 is single-user-dev only.
+    pub k_anonymity: u32,
+    /// Sliding retention. CTR reflects roughly the last quarter.
+    pub window_days: u64,
+    /// Clicks on a (query, doc) before the doc becomes a re-crawl freshness candidate. 0 = use `k`.
+    pub hot_click_floor: u32,
+}
+
+// The `interaction` ranking *weight* deliberately lives in the ranker's `Weights` (config/ranking.toml),
+// not here — it is a ranking concern, and keeping it out lets this config derive `Eq` alongside the
+// rest of `Config`.
+
+impl Default for InteractionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            k_anonymity: 20,
+            window_days: 90,
+            hot_click_floor: 0,
+        }
+    }
+}
+
+impl InteractionConfig {
+    /// The effective k floor (never below 1).
+    pub fn effective_k(&self) -> u32 {
+        self.k_anonymity.max(1)
+    }
+
+    /// The click floor for re-crawl candidacy, defaulting to the k floor when unset.
+    pub fn hot_floor(&self) -> u32 {
+        if self.hot_click_floor == 0 {
+            self.effective_k()
+        } else {
+            self.hot_click_floor
+        }
+    }
+}
+
 impl Default for CrawlConfig {
     fn default() -> Self {
         Self {
@@ -415,6 +466,8 @@ pub struct Config {
     pub crawl: CrawlConfig,
     #[serde(default)]
     pub discovery: DiscoveryConfig,
+    #[serde(default)]
+    pub interaction: InteractionConfig,
 }
 
 impl Default for Config {
@@ -429,6 +482,7 @@ impl Default for Config {
             queue: QueueConfig::default(),
             crawl: CrawlConfig::default(),
             discovery: DiscoveryConfig::default(),
+            interaction: InteractionConfig::default(),
         }
     }
 }
