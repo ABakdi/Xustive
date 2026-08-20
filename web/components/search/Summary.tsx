@@ -22,12 +22,15 @@ export function Summary({
   token,
   note,
   loadingLabel,
+  sourcesLabel,
   prominent = false,
 }: {
   token: string
   note: string
   /** Shown while the model is still generating — the "loading until it resolves" state. */
   loadingLabel: string
+  /** Label before the numbered source links, e.g. "sources:". */
+  sourcesLabel: string
   /**
    * The query was a question, so this is the answer rather than a précis.
    *
@@ -92,10 +95,11 @@ export function Summary({
       {/* Sources listed, not only linked inline.
           An answer whose sources you have to hunt for through bracketed numbers is an answer you
           cannot check, and an unverifiable answer from a 3B model is worse than a list of links.
-          Shown only for questions, where the summary is the primary content. */}
-      {prominent && (data.citations?.length ?? 0) > 0 && (
-        <ul className="mt-3 mb-0 flex flex-wrap gap-x-3 gap-y-1 list-none p-0 text-xs">
-          <li style={{ color: 'var(--fg-faint)' }}>{note ? 'sources:' : ''}</li>
+          Shown under every summary — a grounded answer should always show what it is grounded in,
+          and each number jumps to the result card where the domain and title already appear. */}
+      {(data.citations?.length ?? 0) > 0 && (
+        <ul className="mt-3 mb-0 flex flex-wrap items-center gap-x-3 gap-y-1 list-none p-0 text-xs">
+          <li style={{ color: 'var(--fg-faint)' }}>{sourcesLabel}</li>
           {data.citations!.map((c) => (
             <li key={c.n}>
               <a

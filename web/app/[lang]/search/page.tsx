@@ -163,6 +163,7 @@ export default async function SearchPage({
           token={data.summary_token}
           note={t.summaryNote}
           loadingLabel={t.summaryLoading}
+          sourcesLabel={t.sources}
           prominent
         />
       )}
@@ -196,6 +197,7 @@ export default async function SearchPage({
               token={data.summary_token}
               note={t.summaryNote}
               loadingLabel={t.summaryLoading}
+              sourcesLabel={t.sources}
             />
           )}
 
