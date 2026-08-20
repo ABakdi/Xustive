@@ -209,7 +209,7 @@ impl AppState {
             expander: Arc::new(Expander::new(ExpanderConfig::default())),
             ranking: Arc::new(load_ranking_weights()),
             trust_tiers: Arc::new(load_trust_tiers()),
-            authority: Arc::new(xustive_search::authority::load()),
+            authority: Arc::new(load_authority(&queue_url)),
             device_preference: Arc::new(AtomicU8::new(
                 xustive_ml::DevicePreference::parse(&device).unwrap_or_default() as u8,
             )),
@@ -251,6 +251,28 @@ fn load_ranking_weights() -> Weights {
         },
         Err(_) => Weights::default(),
     }
+}
+
+/// Build the domain→authority map: the curated prior, with computed PageRank filling in every domain
+/// the prior does not name.
+///
+/// The curated list wins on conflict (`or_insert`) — a human vouching for a domain outranks the link
+/// graph — and PageRank's earned scores lift crawled-but-unlisted domains above the flat baseline.
+/// The PageRank scores already carry the `.dz` home floor, so merging them preserves Algeria-first.
+/// A missing or empty `pagerank:authority` (PageRank never run, or no Redis) just leaves the prior.
+fn load_authority(queue_url: &str) -> HashMap<String, f32> {
+    let mut map = xustive_search::authority::load();
+    if let Some(store) = xustive_ingest::link_graph::LinkGraphStore::connect(queue_url) {
+        let computed = store.load_authority_blocking();
+        let earned = computed.len();
+        for (domain, score) in computed {
+            map.entry(domain).or_insert(score);
+        }
+        if earned > 0 {
+            tracing::info!(earned, "merged PageRank authority into the curated prior");
+        }
+    }
+    map
 }
 
 /// Read source trust tiers from the seed registry.
