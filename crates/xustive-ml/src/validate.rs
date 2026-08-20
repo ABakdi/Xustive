@@ -117,7 +117,11 @@ pub fn check(raw: &str, cited: &[Cited], lang: OutputLang) -> Result<Summary, Re
         return Err(Rejection::Uncited);
     }
 
-    if !matches_language(&text, lang) {
+    // Prefer the requested language — the prompt asks for it — but do not drop a clean answer that
+    // came back in another supported language (the source language of the passages). For a bilingual
+    // Algerian audience a right answer in Arabic beats no answer at all. Only genuinely garbled,
+    // script-mixed output — the small model's cross-lingual failure mode — is rejected.
+    if !matches_language(&text, lang) && !is_coherent_language(&text) {
         return Err(Rejection::WrongLanguage);
     }
 
@@ -295,6 +299,24 @@ fn matches_language(text: &str, lang: OutputLang) -> bool {
     }
 }
 
+/// Whether the text commits to a single language — predominantly one script — rather than the
+/// script-mixed garble a small model produces when it cannot hold a target language ("أين closest
+/// الصيدلية pharmacy"). Used as the fallback gate: a clean answer in the "wrong" supported language
+/// is kept; a mixed one is not.
+fn is_coherent_language(text: &str) -> bool {
+    let letters: Vec<char> = text.chars().filter(|c| c.is_alphabetic()).collect();
+    if letters.is_empty() {
+        return false;
+    }
+    let arabic = letters
+        .iter()
+        .filter(|c| matches!(**c, '\u{0600}'..='\u{06FF}' | '\u{0750}'..='\u{077F}'))
+        .count();
+    let share = arabic as f32 / letters.len() as f32;
+    // Clearly Arabic, or clearly Latin. The messy middle is the failure mode we still reject.
+    share >= 0.7 || share <= 0.15
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,17 +439,34 @@ mod tests {
     }
 
     #[test]
-    fn output_in_the_wrong_language_is_rejected() {
-        assert_eq!(
+    fn a_clean_answer_in_another_supported_language_is_kept_as_a_fallback() {
+        // Prefer the query language, but do not drop a clean answer that came back in the source
+        // language — for a bilingual audience a right answer in Arabic beats no answer.
+        assert!(
             check(
                 "The report says consumption rose sharply [1].",
                 &[cited(1)],
                 OutputLang::Arabic
-            ),
-            Err(Rejection::WrongLanguage)
+            )
+            .is_ok(),
+            "clean Latin answer for an Arabic target should be kept"
         );
+        assert!(
+            check("ارتفع الاستهلاك [1].", &[cited(1)], OutputLang::French).is_ok(),
+            "clean Arabic answer for a French target should be kept"
+        );
+    }
+
+    #[test]
+    fn garbled_script_mixed_output_is_still_rejected() {
+        // The small model's cross-lingual failure: Latin and Arabic spliced together, coherent in
+        // no language. This is what the wrong-language gate still exists to catch.
         assert_eq!(
-            check("ارتفع الاستهلاك [1].", &[cited(1)], OutputLang::French),
+            check(
+                "The nearest صيدلية pharmacy الأقرب is open حتى [1].",
+                &[cited(1)],
+                OutputLang::English
+            ),
             Err(Rejection::WrongLanguage)
         );
     }
