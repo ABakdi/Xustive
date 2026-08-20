@@ -62,14 +62,13 @@ A Redis connection-churn bug that was throttling indexing was fixed (one shared 
   wording. **Recommendation:** carry the social track (T01a–d, the connectors, T04.6 headless) into a
   dedicated future milestone ("Social & Advanced Ingestion") rather than block M2 on it.
 
-**One completable code item remains** and is not blocked: **M2-T14.3 Files/PDF** — accept
-`application/pdf` in the fetcher and extract its text into the index (adds a PDF-text dependency and a
-parse branch). It is the natural next increment if the ingestion track is to be pushed further before
-moving on.
+**PDF/Files ingestion (M2-T14.3) is now done** — the last unblocked completable code item — so the
+web-ingestion track carries born-digital documents as well as pages, behind a Files vertical.
 
-**Verdict:** the web-ingestion track is code-complete to its achievable scope; the remaining exit-gate
-items are runtime (1M) or externally blocked (social/legal). It is reasonable to proceed to the next
-milestone and track the social track separately.
+**Verdict:** the web-ingestion track is **code-complete to its achievable scope**; the remaining
+exit-gate items are runtime (crawl to 1M) or externally blocked (social connectors, legal). It is
+reasonable to proceed to the next milestone and carry the social track ([[Session Manager]],
+[[Fingerprint Engine]], [[Signature Service]], the connectors, headless) as its own future milestone.
 
 ---
 
@@ -225,10 +224,12 @@ their content does** — five of the seven have nothing behind them today, and a
 - [x] M2-T14.2 **News** — a filter over what is already indexed: web source with a real publication
       date (`source_type=web` + `published_at_precision != unknown`), applied server-side in
       `parse_filters`; unknown `?v=` falls back to All rather than erroring. Tested.
-- [ ] M2-T14.3 **Files** — accept `application/pdf` in the fetcher (it refuses it today), extract
-      text with a hard page cap, and a size limit well below the HTML one. A large share of
-      `.gov.dz` PDFs are **scans**, which yield no text at all, so this covers the born-digital
-      minority until OCR exists
+- [x] M2-T14.3 **Files** — the fetcher accepts `application/pdf` (12 MB cap, well below HTML),
+      extracts text off the runtime and panic-guarded (`pdf-extract` panics on some malformed files),
+      caps it at 200k chars, and wraps it in a minimal HTML article so the one parser handles it —
+      language, quality, dedup and hashing all apply. A `content_type` field on `Document` (filterable)
+      drives a **Files vertical** (`?v=files` → `content_type = application/pdf`). Scans yield no text
+      and fall out as thin, correct until OCR exists.
 - [x] M2-T14.4 An empty vertical names *which* vertical is empty and links back to All — the News
       tab with no dated results shows "No news for this search → See all results"
 - [ ] M2-T14.5 Social tab, arriving with the connectors
