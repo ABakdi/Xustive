@@ -160,7 +160,16 @@ const INDEXABLE: &[&str] = &[
     "text/xml",
     "application/rss+xml",
     "application/atom+xml",
+    // Born-digital PDFs (M2-T14.3). The bytes are extracted to text below; scanned PDFs yield
+    // nothing and fall out as thin, which is correct until OCR exists.
+    "application/pdf",
 ];
+
+/// Hard cap on a PDF, well below the HTML body cap: PDFs are large and mostly binary, and we keep
+/// only their text.
+const PDF_MAX_BYTES: usize = 12 * 1024 * 1024;
+/// Characters of extracted PDF text kept — a page cap expressed in text rather than bytes.
+const PDF_MAX_CHARS: usize = 200_000;
 
 pub struct Fetcher {
     http: reqwest::Client,
@@ -341,15 +350,30 @@ impl Fetcher {
             let last_modified = take(reqwest::header::LAST_MODIFIED);
 
             let final_url = resp.url().to_string();
+            let is_pdf = mime == "application/pdf";
+            let cap = if is_pdf {
+                PDF_MAX_BYTES
+            } else {
+                self.config.max_body_bytes
+            };
             let bytes = resp
                 .bytes()
                 .await
                 .map_err(|e| FetchError::Transport(e.to_string()))?;
-            if bytes.len() > self.config.max_body_bytes {
-                return Err(FetchError::TooLarge(self.config.max_body_bytes));
+            if bytes.len() > cap {
+                return Err(FetchError::TooLarge(cap));
             }
 
-            let (body, charset_guessed) = decode(&bytes, &content_type);
+            // A PDF is extracted to text and then treated exactly like any other document; a page
+            // that yields no text (a scan) fails the thin-content check downstream, as it should.
+            let (body, charset_guessed) = if is_pdf {
+                match extract_pdf_text(bytes.to_vec()).await {
+                    Some(text) => (text, false),
+                    None => return Err(FetchError::ContentType("application/pdf".into())),
+                }
+            } else {
+                decode(&bytes, &content_type)
+            };
             return Ok(Fetched {
                 url: raw_url.to_string(),
                 final_url,
@@ -545,6 +569,31 @@ impl Fetcher {
 ///
 /// Algerian sites still serve `windows-1256`, and getting this wrong produces mojibake that
 /// survives all the way into the index and is invisible until someone searches in Arabic.
+/// Extract the text of a PDF, or `None` if it is unreadable, a scan (no text), or malformed.
+///
+/// Run on the blocking pool — extraction is CPU-bound and a large document can take a moment — and
+/// inside `catch_unwind`, because `pdf-extract` panics on some malformed files and a panicking fetch
+/// worker is a crawler that stops. The output is capped so one pathological document cannot dominate
+/// the index.
+async fn extract_pdf_text(bytes: Vec<u8>) -> Option<String> {
+    let text = tokio::task::spawn_blocking(move || {
+        std::panic::catch_unwind(|| pdf_extract::extract_text_from_mem(&bytes).ok())
+            .ok()
+            .flatten()
+    })
+    .await
+    .ok()
+    .flatten()?;
+
+    let text: String = text.chars().take(PDF_MAX_CHARS).collect();
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
 fn decode(bytes: &[u8], content_type: &str) -> (String, bool) {
     if let Some(label) = content_type
         .split(';')
@@ -701,7 +750,9 @@ mod tests {
     fn only_indexable_content_types_are_accepted() {
         assert!(INDEXABLE.contains(&"text/html"));
         assert!(!INDEXABLE.contains(&"image/png"));
-        assert!(!INDEXABLE.contains(&"application/pdf"));
+        // PDFs are now accepted — their text is extracted (M2-T14.3).
+        assert!(INDEXABLE.contains(&"application/pdf"));
+        assert!(!INDEXABLE.contains(&"image/jpeg"));
     }
 }
 

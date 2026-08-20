@@ -175,11 +175,11 @@ export default async function SearchPage({
 
       {data.results.length === 0 ? (
         <div className="py-16 text-center">
-          {vertical === 'news' ? (
+          {vertical && vertical !== 'all' ? (
             <>
               {/* Name the empty vertical, and offer the way out — the corpus may hold the answer
-                  outside News even when News is empty. */}
-              <p className="text-xl">{t.noNews}</p>
+                  outside this vertical even when the vertical is empty. */}
+              <p className="text-xl">{vertical === 'files' ? t.noFiles : t.noNews}</p>
               <p className="mt-2 text-sm">
                 <a
                   href={`/${lang}/search?q=${encodeURIComponent(q)}`}

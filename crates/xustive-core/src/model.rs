@@ -331,6 +331,10 @@ pub struct Document {
     pub canonical_url: Option<String>,
     pub domain: String,
     pub source_type: SourceType,
+    /// The fetched MIME type — `text/html` for pages, `application/pdf` for files. Filterable, so a
+    /// "Files" vertical can select documents that came from a document rather than a web page.
+    #[serde(default = "default_content_type")]
+    pub content_type: String,
     pub source_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub platform_post_id: Option<String>,
@@ -411,6 +415,11 @@ fn default_schema_version() -> u32 {
     SCHEMA_VERSION
 }
 
+/// The default document MIME: an ordinary web page. Pre-`content_type` documents deserialize to this.
+fn default_content_type() -> String {
+    "text/html".to_string()
+}
+
 impl Document {
     /// Minimal valid document, for tests and for builders that fill the rest in.
     pub fn new(id: impl Into<String>, url: impl Into<String>, source_type: SourceType) -> Self {
@@ -424,6 +433,7 @@ impl Document {
             canonical_url: None,
             domain,
             source_type,
+            content_type: default_content_type(),
             source_id: String::new(),
             platform_post_id: None,
             title: String::new(),

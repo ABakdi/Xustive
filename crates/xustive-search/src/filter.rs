@@ -17,6 +17,8 @@ pub struct Filters {
     pub published_to: Option<i64>,
     /// From a `site:` operator. Free text, therefore escaped.
     pub domain: Option<String>,
+    /// Fetched MIME, set by the Files vertical to select documents (`application/pdf`).
+    pub content_type: Option<String>,
     /// Hide documents suppressed as spam. On by default.
     pub exclude_spam: bool,
     /// Hide documents whose publish date we guessed. Set when a date filter is active, because
@@ -32,6 +34,7 @@ impl Filters {
             && self.published_from.is_none()
             && self.published_to.is_none()
             && self.domain.is_none()
+            && self.content_type.is_none()
     }
 
     /// Render as a Meilisearch filter expression.
@@ -67,6 +70,9 @@ impl Filters {
         }
         if let Some(d) = &self.domain {
             clauses.push(format!("domain = {}", quote(d)));
+        }
+        if let Some(ct) = &self.content_type {
+            clauses.push(format!("content_type = {}", quote(ct)));
         }
         if self.exclude_spam {
             clauses.push(format!("spam_score < {spam_threshold}"));

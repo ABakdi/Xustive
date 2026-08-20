@@ -26,8 +26,9 @@ export function Verticals({
   const tabs: { id: string; label: string }[] = [
     { id: 'all', label: t.verticalAll },
     { id: 'news', label: t.verticalNews },
+    { id: 'files', label: t.verticalFiles },
   ]
-  const current = active === 'news' ? 'news' : 'all'
+  const current = tabs.some((tab) => tab.id === active) ? active! : 'all'
 
   const href = (id: string) => {
     const p = new URLSearchParams({ q })

@@ -378,8 +378,16 @@ impl Orchestrator {
             return Outcome::Idle;
         }
 
+        // A PDF's extracted text is wrapped in a minimal HTML article so the one parser handles it
+        // like any page — language detection, quality, dedup and hashing all apply unchanged. HTML
+        // pages are parsed as-is (borrowed, never copied).
+        let to_parse: std::borrow::Cow<str> = if fetched.content_type == "application/pdf" {
+            std::borrow::Cow::Owned(pdf_shell(&fetched.final_url, &fetched.body))
+        } else {
+            std::borrow::Cow::Borrowed(fetched.body.as_str())
+        };
         let mut parsed = match self.parser.parse(
-            &fetched.body,
+            &to_parse,
             &fetched.final_url,
             "crawl",
             xustive_core::SourceType::Web,
@@ -416,6 +424,9 @@ impl Orchestrator {
         };
         self.stats.parsed += 1;
         self.publish("parsed").await;
+
+        // Stamp the fetched MIME so a "Files" vertical can select PDFs from pages.
+        parsed.document.content_type = fetched.content_type.clone();
 
         // Stamp the document with the channel that discovered its URL (M2-T16.7). The parser does
         // not know this — it is a property of how the URL reached the frontier, carried on the
@@ -612,6 +623,40 @@ impl Orchestrator {
     pub fn idle_sleep(&self) -> Duration {
         IDLE_SLEEP
     }
+}
+
+/// Wrap PDF-extracted text in a minimal HTML article for the parser.
+///
+/// The title is the file name from the URL — a PDF has no `<title>` — and both it and the body are
+/// escaped so text that happens to contain angle brackets cannot become markup the parser would act
+/// on. Everything downstream (body extraction, language, quality, dedup) then treats it as a page.
+fn pdf_shell(url: &str, text: &str) -> String {
+    let name = url
+        .rsplit('/')
+        .find(|s| !s.is_empty())
+        .and_then(|s| s.split(['?', '#']).next())
+        .unwrap_or("document");
+    format!(
+        "<!doctype html><html><head><title>{}</title></head><body><article>{}</article></body></html>",
+        escape_html(name),
+        escape_html(text),
+    )
+}
+
+/// Escape the five characters that matter for HTML text/attribute context.
+fn escape_html(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 #[cfg(test)]

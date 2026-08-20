@@ -621,9 +621,16 @@ fn parse_filters(p: &SearchParams) -> Result<Filters, ApiError> {
     // Verticals are saved filters over the same index, not separate corpora. `news` is web content
     // with a date we actually know (a guessed date is not news). Unknown verticals fall back to All
     // rather than erroring, so a stale `?v=` link still returns results.
-    if p.v.as_deref() == Some("news") {
-        f.source_types = vec![SourceType::Web];
-        f.exclude_unknown_dates = true;
+    match p.v.as_deref() {
+        Some("news") => {
+            f.source_types = vec![SourceType::Web];
+            f.exclude_unknown_dates = true;
+        }
+        // Files: documents extracted from a PDF rather than a web page.
+        Some("files") => {
+            f.content_type = Some("application/pdf".to_string());
+        }
+        _ => {}
     }
 
     Ok(f)

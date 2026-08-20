@@ -44,7 +44,9 @@ pub fn documents_settings() -> Value {
             "sentiment.label", "published_at", "crawled_at", "is_nsfw",
             "quality_score", "spam_score", "geo.wilaya", "topics", "robots_indexable",
             // So the repass job (M2-T06.9) can find documents that were enriched under load.
-            "enrichment_level"
+            "enrichment_level",
+            // The fetched MIME, so a "Files" vertical can select PDFs (M2-T14.3).
+            "content_type"
         ],
         "sortableAttributes": [
             "published_at", "crawled_at", "quality_score", "engagement.likes"
