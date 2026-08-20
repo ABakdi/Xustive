@@ -13,8 +13,8 @@ serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tokio = { workspace = true }
-redis = { version = "0.27", default-features = false, features = ["tokio-comp", "streams"] }
+redis = { version = "0.27", default-features = false, features = ["tokio-comp", "streams", "connection-manager"] }
 
 [dev-dependencies]
-redis = { version = "0.27", default-features = false, features = ["tokio-comp", "streams"] }
+redis = { version = "0.27", default-features = false, features = ["tokio-comp", "streams", "connection-manager"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

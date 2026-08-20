@@ -82,9 +82,15 @@ pub struct Delivery<T> {
 }
 
 /// A named stream with a consumer group.
+///
+/// Holds one auto-reconnecting [`redis::aio::ConnectionManager`], shared by cloning across every
+/// worker, rather than opening a fresh multiplexed connection per call. The old per-op pattern
+/// spun up hundreds of short-lived connections a second under sixteen workers — the resource waste,
+/// and the "Multiplexed connection driver unexpectedly terminated" flood, both came from that. The
+/// manager keeps a single connection alive and silently re-establishes it after a drop.
 #[derive(Clone)]
 pub struct Queue {
-    pub(crate) client: redis::Client,
+    pub(crate) manager: redis::aio::ConnectionManager,
     pub stream: String,
     pub group: String,
 }
@@ -136,8 +142,9 @@ impl Queue {
     /// Connect and ensure the consumer group exists.
     pub async fn connect(url: &str, stream: &str, group: &str) -> Result<Self, QueueError> {
         let client = redis::Client::open(url)?;
+        let manager = client.get_connection_manager().await?;
         let queue = Self {
-            client,
+            manager,
             stream: stream.to_string(),
             group: group.to_string(),
         };
@@ -158,8 +165,9 @@ impl Queue {
     /// them touches `self.group`.
     pub async fn connect_producer(url: &str, stream: &str) -> Result<Self, QueueError> {
         let client = redis::Client::open(url)?;
+        let manager = client.get_connection_manager().await?;
         Ok(Self {
-            client,
+            manager,
             stream: stream.to_string(),
             // Never used by the producer paths. Named so a stray consume() is obviously wrong
             // rather than silently joining some default group.
@@ -167,8 +175,11 @@ impl Queue {
         })
     }
 
-    async fn conn(&self) -> Result<redis::aio::MultiplexedConnection, QueueError> {
-        Ok(self.client.get_multiplexed_async_connection().await?)
+    /// A handle to the shared connection. Cloning a `ConnectionManager` is cheap — it hands back a
+    /// reference to the one underlying connection and its reconnect logic — so every call reuses it
+    /// instead of opening a socket.
+    async fn conn(&self) -> Result<redis::aio::ConnectionManager, QueueError> {
+        Ok(self.manager.clone())
     }
 
     /// Create the group, tolerating one that already exists.

@@ -30,17 +30,13 @@ pub struct DeadLetter {
 }
 
 impl Queue {
-    /// The dead-letter queue for this stream.
+    /// The dead-letter queue for this stream. Shares the same connection manager.
     pub fn dead_letter(&self) -> Queue {
         Queue {
-            client: self.client_handle(),
+            manager: self.manager.clone(),
             stream: format!("{}:dead", self.stream),
             group: self.group.clone(),
         }
-    }
-
-    pub(crate) fn client_handle(&self) -> redis::Client {
-        self.client.clone()
     }
 
     /// Move a job to the dead-letter queue and acknowledge the original.
@@ -72,7 +68,7 @@ impl Queue {
     pub async fn peek_dead(&self, count: usize) -> Result<Vec<DeadLetter>, QueueError> {
         use redis::AsyncCommands;
         let dead = self.dead_letter();
-        let mut conn = self.client.get_multiplexed_async_connection().await?;
+        let mut conn = self.conn().await?;
         let reply: redis::streams::StreamRangeReply =
             conn.xrevrange_count(&dead.stream, "+", "-", count).await?;
 
@@ -98,7 +94,7 @@ impl Queue {
 
         if replayed > 0 {
             use redis::AsyncCommands;
-            let mut conn = self.client.get_multiplexed_async_connection().await?;
+            let mut conn = self.conn().await?;
             let _: Result<i64, redis::RedisError> = conn.del(&self.dead_letter().stream).await;
         }
         Ok(replayed)
