@@ -105,10 +105,11 @@ pub fn registry() -> Vec<Box<dyn Tool>> {
         Box::new(exam::ExamTool),
         Box::new(wilaya::WilayaTool),
         Box::new(utilities::Utilities),
-        // `translator::Translator` is deliberately NOT registered. The detector, the endpoint and
-        // the card all work; the model's output into Arabic does not. See the module docs for the
-        // measurements. Registering it would put a card carrying `أين closest الصيدلية؟` above
-        // results in the engine's primary language.
+        // The translation card, surfaced on an explicit translate/traduire/ترجم verb. The local
+        // model's output *into Arabic* is still weak (see the translator module docs) — that is a
+        // model limitation the card states plainly, not a reason to hide a feature the operator
+        // asked for. The card is interactive and dismissible, and translation into fr/en/es is good.
+        Box::new(translator::Translator),
         Box::new(transliterate::Transliterator),
     ]
 }

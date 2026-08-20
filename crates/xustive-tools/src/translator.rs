@@ -46,6 +46,7 @@ pub struct Translator;
 const VERBS: &[&str] = &[
     "translate",
     "translation of",
+    "translation",
     "traduire",
     "traduction de",
     "traduction",
@@ -149,10 +150,10 @@ pub fn detect(query: &str, ui_lang: &str) -> Option<Request> {
         .map(|(_, code)| *code)
         .next();
 
+    // A bare verb with no operand ("translate", "traduction") still opens the card — the reader
+    // asked for the translation tool by name, and the card carries its own editable input, so an
+    // empty text means "an empty box to type into", not "nothing to show".
     let text = strip(after, cut, from.is_some());
-    if text.is_empty() {
-        return None;
-    }
 
     Some(Request { text, from, to })
 }
@@ -312,14 +313,18 @@ mod tests {
     }
 
     #[test]
-    fn a_verb_with_no_text_is_not_a_request() {
-        for q in [
-            "translate",
-            "translate to arabic",
-            "ترجم",
-            "traduire en arabe",
+    fn a_bare_verb_opens_the_tool_with_an_empty_editable_box() {
+        // The reader asked for the translation tool by name. The card has its own input, so a verb
+        // with no operand opens an empty box to type into rather than showing nothing.
+        for (q, ui, to) in [
+            ("translate", "en", "en"),
+            ("translate to arabic", "en", "ar"),
+            ("ترجم", "ar", "ar"),
+            ("traduire en arabe", "fr", "ar"),
         ] {
-            assert!(req(q, "en").is_none(), "{q:?} has nothing to translate");
+            let r = req(q, ui).unwrap_or_else(|| panic!("{q:?} should open the tool"));
+            assert!(r.text.is_empty(), "{q:?} should carry no pre-filled text");
+            assert_eq!(r.to, to, "{q:?}");
         }
     }
 
