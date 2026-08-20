@@ -37,6 +37,7 @@ wikipedia.org	reference	96	global
 wiktionary.org	reference	88	global
 britannica.com	reference	90	global
 wikidata.org	reference	86	global
+mawdoo3.com	reference	74	mena
 archive.org	reference	90	global
 gutenberg.org	reference	84	global
 scholar.google.com	reference	88	global
@@ -64,6 +65,10 @@ france24.com	news	84	fr
 lemonde.fr	news	86	fr
 dw.com	news	84	global
 cnn.com	news	84	global
+alarabiya.net	news	82	mena
+skynewsarabia.com	news	78	mena
+rfi.fr	news	80	fr
+lefigaro.fr	news	80	fr
 
 # --- Entertainment: film & TV ------------------------------------------------------------------
 imdb.com	film-tv	90	global
@@ -113,6 +118,8 @@ fifa.com	sport	86	global
 uefa.com	sport	84	global
 olympics.com	sport	86	global
 skysports.com	sport	80	global
+kooora.com	sport	80	mena
+yallakora.com	sport	78	mena
 
 # --- Business / finance ------------------------------------------------------------------------
 bloomberg.com	business	88	global

@@ -9,9 +9,15 @@
 # Trust is about accountability, not agreement. A tier-A source can be wrong; the tier says
 # someone is answerable for it.
 #
-# Every entry here is a public Algerian site crawled under the open-web profile: robots.txt is
-# obeyed, we identify ourselves as XustiveBot, and there is one request per host at a time. If a
-# site disallows us, it is not crawled — that is enforced in code, not by convention.
+# Most entries are public Algerian sites; the "Global" section at the end adds a curated 2nd tier of
+# world sources in the languages Algerians read, so common non-local queries have real answers. All
+# are crawled under the open-web profile: robots.txt is obeyed, we identify ourselves as XustiveBot,
+# and there is one request per host at a time. If a site disallows us, it is not crawled — that is
+# enforced in code, not by convention.
+#
+# Algeria-first is not enforced here (trust is about accountability, not geography). It lives in the
+# ranker: any .dz host gets an authority home floor above an unlisted global one. So the global tier
+# fills gaps and wins on relevance, while a home site still takes a tie.
 #
 # Entry points are sitemaps and feeds where the publisher offers them, because a list the site
 # maintains itself beats guessing URLs by following links.
@@ -113,3 +119,46 @@ wikipedia-en	https://en.wikipedia.org/wiki/Portal:Algeria	B	English Wikipedia, A
 # signature machinery, and it cannot be reached by adding a line to this file.
 wikipedia-org	https://www.wikipedia.org/	A	added from the admin console
 google-com	https://google.com/	A	added from the admin console
+
+# --- Global (2nd tier) -----------------------------------------------------------------------
+#
+# The world's most-used sources, in the languages Algerians actually search: Arabic first, then
+# French and English. Tier B: these are edited and accountable, but ranked a step below the home
+# A-tier here and below any .dz host on the authority signal, so they answer the queries the local
+# corpus cannot without displacing Algerian results on local ones. Seeded at the homepage or the
+# language section; the same-host crawl and the global depth limit bound each one.
+#
+# Deliberately NOT bulk-seeded: Wikipedia (seeded above at the Algeria portals only), and the
+# reference/UGC giants (github, stackoverflow, imdb, reddit) — those are pulled page-by-page by
+# query-driven discovery and recognised by the domain-authority list, which is the right tool for
+# "index the one relevant page", not "crawl the whole site".
+
+# Global news — Arabic
+aljazeera-net	https://www.aljazeera.net/	B	Al Jazeera, Arabic
+france24-ar	https://www.france24.com/ar/	B	France 24, Arabic
+bbc-arabic	https://www.bbc.com/arabic	B	BBC Arabic
+dw-arabic	https://www.dw.com/ar/	B	Deutsche Welle, Arabic
+skynews-arabia	https://www.skynewsarabia.com/	B	Sky News Arabia
+alarabiya	https://www.alarabiya.net/	B	Al Arabiya
+
+# Global news — French
+france24-fr	https://www.france24.com/fr/	B	France 24, French
+lemonde	https://www.lemonde.fr/	B	Le Monde
+rfi-fr	https://www.rfi.fr/fr/	B	Radio France Internationale
+lefigaro	https://www.lefigaro.fr/	B	Le Figaro
+
+# Global news — English
+bbc-news	https://www.bbc.com/news	B	BBC News
+reuters	https://www.reuters.com/	B	Reuters
+apnews	https://apnews.com/	B	Associated Press
+aljazeera-en	https://www.aljazeera.com/	B	Al Jazeera English
+theguardian	https://www.theguardian.com/	B	The Guardian
+
+# Health (Arabic, article streams — high query overlap with local searches)
+altibbi	https://altibbi.com/	B	Altibbi, Arabic medical reference
+webteb	https://www.webteb.com/	B	WebTeb, Arabic health
+mawdoo3	https://mawdoo3.com/	B	Mawdoo3, Arabic general knowledge
+
+# Sport (Arabic)
+yallakora	https://www.yallakora.com/	B	Yallakora, Arabic football
+kooora	https://www.kooora.com/	B	Kooora, Arabic sport
