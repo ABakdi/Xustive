@@ -148,12 +148,15 @@ pub async fn handler(
         return Ok(Json(SummaryResponse::none("unknown_token", started)));
     };
 
-    let Some(prompt) = prompt::build(&pending.query, pending.lang, &pending.passages) else {
+    let Some(built) = prompt::build(&pending.query, pending.lang, &pending.passages) else {
         return Ok(Json(SummaryResponse::none("no_passages", started)));
     };
-    let cited = prompt.cited.clone();
+    // Cloned for the validator, which needs the shown passages to resolve `[n]` markers. The prompt
+    // itself is rebuilt per attempt inside `generate` (it is cheap and each attempt consumes one).
+    let cited = built.cited.clone();
+    drop(built);
 
-    let outcome = generate(&state, prompt, pending.lang, &cited).await;
+    let outcome = generate(&state, &pending, &cited).await;
     let took_ms = started.elapsed().as_millis() as u64;
 
     Ok(Json(match outcome {
@@ -187,11 +190,18 @@ pub async fn handler(
     }))
 }
 
+/// Rejections a second, differently-sampled attempt has a real chance of clearing. Deliberate
+/// outcomes (the model answering INSUFFICIENT, an injection attempt) and infra failures are not
+/// retried — a retry would only burn time and a model slot to reach the same conclusion.
+#[cfg(feature = "summariser")]
+fn is_recoverable(reason: &str) -> bool {
+    matches!(reason, "uncited" | "wrong_language" | "contact_details")
+}
+
 #[cfg(feature = "summariser")]
 async fn generate(
     state: &AppState,
-    prompt: xustive_ml::Prompt,
-    lang: OutputLang,
+    pending: &Pending,
     cited: &[prompt::Cited],
 ) -> Result<validate::Summary, &'static str> {
     use xustive_ml::engine::{EngineError, Sampling};
@@ -200,34 +210,69 @@ async fn generate(
         return Err("model_not_loaded");
     };
 
-    let budget = Duration::from_millis(state.config.ml.deadline_ms);
-    let generated = match engine.generate(prompt, Sampling::default(), budget).await {
-        Ok(g) => g,
-        Err(EngineError::Busy) => return Err("busy"),
-        Err(EngineError::Timeout) => return Err("timeout"),
-        Err(e) => {
-            tracing::warn!(error = %e, "summary generation failed");
-            return Err("generation_failed");
+    // Up to two attempts within one overall budget. The first is faithful (low temperature); if it
+    // is withheld for a reason a different sample could fix — a forgotten citation, a language the
+    // model slipped out of — a second, more varied attempt often clears it. The retry is gated on
+    // time remaining, so on slow CPU (where the first attempt eats the budget) there is simply no
+    // second try, while on GPU (where a generation is seconds) the retry comes for free.
+    let overall = Duration::from_millis(state.config.ml.deadline_ms);
+    let start = Instant::now();
+    let mut last = "generation_failed";
+
+    for attempt in 0..2 {
+        let remaining = overall.saturating_sub(start.elapsed());
+        if remaining < Duration::from_secs(3) {
+            break;
         }
-    };
+        let sampling = if attempt == 0 {
+            Sampling::default()
+        } else {
+            // A hotter sample for the second try: a different path through the passages, still
+            // grounded in them, is exactly what a transient miss needs.
+            Sampling {
+                temperature: 0.7,
+                top_p: 0.95,
+                ..Sampling::default()
+            }
+        };
+        let Some(prompt) = prompt::build(&pending.query, pending.lang, &pending.passages) else {
+            return Err("no_passages");
+        };
+        let generated = match engine.generate(prompt, sampling, remaining).await {
+            Ok(g) => g,
+            Err(EngineError::Busy) => return Err("busy"),
+            Err(EngineError::Timeout) => return Err("timeout"),
+            Err(e) => {
+                tracing::warn!(error = %e, "summary generation failed");
+                return Err("generation_failed");
+            }
+        };
 
-    tracing::debug!(
-        tokens = generated.tokens,
-        ttft_ms = generated.time_to_first_token.as_millis() as u64,
-        total_ms = generated.total.as_millis() as u64,
-        truncated = generated.truncated,
-        "summary generated"
-    );
+        tracing::debug!(
+            attempt,
+            tokens = generated.tokens,
+            total_ms = generated.total.as_millis() as u64,
+            "summary generated"
+        );
 
-    // Never log the text or the query: only why it was withheld ([[Security and Privacy]] P1).
-    validate::check(&generated.text, cited, lang).map_err(|r| r.as_str())
+        // Never log the text or the query: only why it was withheld ([[Security and Privacy]] P1).
+        match validate::check(&generated.text, cited, pending.lang) {
+            Ok(summary) => return Ok(summary),
+            Err(r) => {
+                last = r.as_str();
+                if !is_recoverable(last) {
+                    return Err(last);
+                }
+            }
+        }
+    }
+    Err(last)
 }
 
 #[cfg(not(feature = "summariser"))]
 async fn generate(
     _state: &AppState,
-    _prompt: xustive_ml::Prompt,
-    _lang: OutputLang,
+    _pending: &Pending,
     _cited: &[prompt::Cited],
 ) -> Result<validate::Summary, &'static str> {
     Err("summariser_not_compiled")
