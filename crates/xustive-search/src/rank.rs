@@ -111,7 +111,8 @@ const EVERGREEN_MARKERS: &[&str] = &[
 /// Positions over which engine relevance decays by `1/e`. See the comment at its use site.
 const RELEVANCE_DECAY: f32 = 10.0;
 
-/// Weights. Hot-reloadable from `config/ranking.toml` without a restart.
+/// Weights. Loaded at startup from `config/ranking.toml` when present (the API restart picks up a
+/// tuned file), otherwise these defaults.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Weights {
@@ -119,6 +120,9 @@ pub struct Weights {
     pub relevance: f32,
     pub freshness: f32,
     pub trust: f32,
+    /// Domain fame/authority — the "famous websites" signal (`authority.tsv`), keyed on the host
+    /// rather than the curated source id, so it also applies to pages pulled in by discovery.
+    pub authority: f32,
     pub quality: f32,
     /// Subtracted, not added.
     pub spam_penalty: f32,
@@ -133,12 +137,13 @@ pub struct Weights {
 impl Default for Weights {
     fn default() -> Self {
         Self {
-            // The side weights sum to 0.32, deliberately below the relevance gap across
+            // The additive side weights sum to 0.40, deliberately below the relevance gap across
             // twenty positions (0.48). That bound is what makes "relevance dominates" true by
             // construction rather than by hoping the numbers work out.
             relevance: 0.55,
             freshness: 0.15,
-            trust: 0.10,
+            trust: 0.08,
+            authority: 0.10,
             quality: 0.07,
             spam_penalty: 0.15,
             unknown_date_factor: 0.5,
@@ -154,6 +159,7 @@ pub struct Explain {
     pub relevance: f32,
     pub freshness: f32,
     pub trust: f32,
+    pub authority: f32,
     pub quality: f32,
     pub spam: f32,
     pub total: f32,
@@ -200,6 +206,7 @@ pub fn rerank(
     normalized_query: &str,
     now: i64,
     trust_of: &HashMap<String, TrustTier>,
+    authority_of: &HashMap<String, f32>,
     weights: &Weights,
 ) -> Vec<Ranked> {
     if hits.is_empty() {
@@ -243,12 +250,19 @@ pub fn rerank(
                 .unwrap_or(TrustTier::B)
                 .weight();
 
+            // Domain fame, keyed on the host (with the .dz home floor baked into `score_for`).
+            let authority = crate::authority::score_for(
+                authority_of,
+                &string_field(hit, "domain").unwrap_or_default(),
+            );
+
             let quality = f32_field(hit, "quality_score").unwrap_or(0.4);
             let spam = f32_field(hit, "spam_score").unwrap_or(0.0);
 
             let total = weights.relevance * relevance
                 + weights.freshness * freshness
                 + weights.trust * trust
+                + weights.authority * authority
                 + weights.quality * quality
                 - weights.spam_penalty * spam;
 
@@ -257,6 +271,7 @@ pub fn rerank(
                     relevance: weights.relevance * relevance,
                     freshness: weights.freshness * freshness,
                     trust: weights.trust * trust,
+                    authority: weights.authority * authority,
                     quality: weights.quality * quality,
                     spam: -weights.spam_penalty * spam,
                     total,
@@ -393,6 +408,12 @@ mod tests {
         m
     }
 
+    // Empty on purpose: every test doc is `.dz`, so all candidates get the same home-floor
+    // authority — uniform, so it never reorders anyone and the side-signal tests stay honest.
+    fn authority() -> HashMap<String, f32> {
+        HashMap::new()
+    }
+
     #[test]
     fn relevance_dominates_every_other_signal() {
         // The invariant that keeps ranking honest: a fresh, high-quality, trusted document
@@ -410,7 +431,14 @@ mod tests {
             .chain(std::iter::once(doc("boosted", 0, 1.0, "a-source")))
             .collect();
 
-        let out = rerank(&hits, "الجزائر", NOW, &trust(), &Weights::default());
+        let out = rerank(
+            &hits,
+            "الجزائر",
+            NOW,
+            &trust(),
+            &authority(),
+            &Weights::default(),
+        );
         let pos = out.iter().position(|r| r.hit["id"] == "boosted").unwrap();
         assert!(
             pos > 3,
@@ -424,7 +452,14 @@ mod tests {
             doc("old", 365, 0.5, "a-source"),
             doc("new", 1, 0.5, "a-source"),
         ];
-        let out = rerank(&hits, "الجزائر", NOW, &trust(), &Weights::default());
+        let out = rerank(
+            &hits,
+            "الجزائر",
+            NOW,
+            &trust(),
+            &authority(),
+            &Weights::default(),
+        );
         // `old` is first by engine rank; a year of age should not be enough to keep it there.
         assert_eq!(
             out[0].hit["id"], "new",
@@ -469,6 +504,7 @@ mod tests {
             "الجزائر",
             NOW,
             &trust(),
+            &authority(),
             &Weights::default(),
         );
         let g = out.iter().find(|r| r.hit["id"] == "guessed").unwrap();
@@ -487,11 +523,41 @@ mod tests {
             "الجزائر",
             NOW,
             &trust(),
+            &authority(),
             &Weights::default(),
         );
         let a = out.iter().find(|r| r.hit["id"] == "a").unwrap();
         let c = out.iter().find(|r| r.hit["id"] == "c").unwrap();
         assert!(a.explain.trust > c.explain.trust);
+    }
+
+    #[test]
+    fn authority_breaks_ties_toward_the_famous_domain() {
+        // Two equally-relevant, equally-fresh results; one is on a high-authority domain. It should
+        // take the tie. Both share a source so the trust tier is held constant.
+        let mut famous = doc("famous", 10, 0.5, "a-source");
+        famous["domain"] = json!("wikipedia.org");
+        let mut obscure = doc("obscure", 10, 0.5, "a-source");
+        obscure["domain"] = json!("some-random-blog.com");
+
+        let mut auth = HashMap::new();
+        auth.insert("wikipedia.org".to_string(), 0.95_f32);
+
+        let out = rerank(
+            &[obscure, famous],
+            "x",
+            NOW,
+            &trust(),
+            &auth,
+            &Weights::default(),
+        );
+        assert_eq!(
+            out[0].hit["id"], "famous",
+            "the famous domain should win a near-tie"
+        );
+        let f = out.iter().find(|r| r.hit["id"] == "famous").unwrap();
+        let o = out.iter().find(|r| r.hit["id"] == "obscure").unwrap();
+        assert!(f.explain.authority > o.explain.authority);
     }
 
     #[test]
@@ -503,6 +569,7 @@ mod tests {
             "x",
             NOW,
             &trust(),
+            &authority(),
             &Weights::default(),
         );
         assert_eq!(out[0].hit["id"], "clean");
@@ -521,7 +588,14 @@ mod tests {
         a["simhash"] = json!("ffffffffffffffff");
         b["simhash"] = json!("fffffffffffffffe"); // distance 1
 
-        let out = rerank(&[a, b], "x", NOW, &trust(), &Weights::default());
+        let out = rerank(
+            &[a, b],
+            "x",
+            NOW,
+            &trust(),
+            &authority(),
+            &Weights::default(),
+        );
         assert_eq!(out.len(), 1, "near-duplicates should collapse");
         assert_eq!(out[0].collapsed.len(), 1);
         assert_eq!(out[0].explain.collapsed, 1);
@@ -534,7 +608,14 @@ mod tests {
         a["simhash"] = json!("ffffffffffffffff");
         b["simhash"] = json!("0000000000000000"); // distance 64
 
-        let out = rerank(&[a, b], "x", NOW, &trust(), &Weights::default());
+        let out = rerank(
+            &[a, b],
+            "x",
+            NOW,
+            &trust(),
+            &authority(),
+            &Weights::default(),
+        );
         assert_eq!(out.len(), 2);
     }
 
@@ -545,7 +626,14 @@ mod tests {
         low["simhash"] = json!("ffffffffffffffff");
         high["simhash"] = json!("ffffffffffffffff");
 
-        let out = rerank(&[low, high], "x", NOW, &trust(), &Weights::default());
+        let out = rerank(
+            &[low, high],
+            "x",
+            NOW,
+            &trust(),
+            &authority(),
+            &Weights::default(),
+        );
         assert_eq!(out.len(), 1);
         assert_eq!(
             out[0].hit["id"], "high",
@@ -560,7 +648,7 @@ mod tests {
             .collect();
         hits.push(doc("other", 1, 0.5, "c-source"));
 
-        let out = rerank(&hits, "x", NOW, &trust(), &Weights::default());
+        let out = rerank(&hits, "x", NOW, &trust(), &authority(), &Weights::default());
         let top4: Vec<&str> = out
             .iter()
             .take(4)
@@ -575,7 +663,7 @@ mod tests {
         let hits: Vec<Value> = (0..10)
             .map(|i| doc(&format!("h{i}"), 1, 0.9, "a-source"))
             .collect();
-        let out = rerank(&hits, "x", NOW, &trust(), &Weights::default());
+        let out = rerank(&hits, "x", NOW, &trust(), &authority(), &Weights::default());
         assert_eq!(out.len(), 10, "capping must reorder, never discard");
     }
 
@@ -586,16 +674,17 @@ mod tests {
             "x",
             NOW,
             &trust(),
+            &authority(),
             &Weights::default(),
         );
         let e = &out[0].explain;
-        let sum = e.relevance + e.freshness + e.trust + e.quality + e.spam;
+        let sum = e.relevance + e.freshness + e.trust + e.authority + e.quality + e.spam;
         assert!((sum - e.total).abs() < 1e-5, "{sum} != {}", e.total);
     }
 
     #[test]
     fn empty_input_is_handled() {
-        assert!(rerank(&[], "x", NOW, &trust(), &Weights::default()).is_empty());
+        assert!(rerank(&[], "x", NOW, &trust(), &authority(), &Weights::default()).is_empty());
     }
 
     #[test]
@@ -605,6 +694,7 @@ mod tests {
             "x",
             NOW,
             &trust(),
+            &authority(),
             &Weights::default(),
         );
         assert_eq!(out.len(), 1);
@@ -615,8 +705,8 @@ mod tests {
         let hits: Vec<Value> = (0..8)
             .map(|i| doc(&format!("h{i}"), i, 0.5, "a-source"))
             .collect();
-        let a = rerank(&hits, "x", NOW, &trust(), &Weights::default());
-        let b = rerank(&hits, "x", NOW, &trust(), &Weights::default());
+        let a = rerank(&hits, "x", NOW, &trust(), &authority(), &Weights::default());
+        let b = rerank(&hits, "x", NOW, &trust(), &authority(), &Weights::default());
         let ids_a: Vec<&Value> = a.iter().map(|r| &r.hit["id"]).collect();
         let ids_b: Vec<&Value> = b.iter().map(|r| &r.hit["id"]).collect();
         assert_eq!(ids_a, ids_b);
@@ -625,7 +715,7 @@ mod tests {
     #[test]
     fn default_weights_keep_relevance_dominant() {
         let w = Weights::default();
-        let side_total = w.freshness + w.trust + w.quality;
+        let side_total = w.freshness + w.trust + w.authority + w.quality;
         assert!(
             w.relevance > side_total,
             "the side signals together must not outweigh relevance"
@@ -648,7 +738,7 @@ mod tests {
         let w = Weights::default();
         let adjacent_gap =
             w.relevance * ((-0.0f32 / RELEVANCE_DECAY).exp() - (-1.0f32 / RELEVANCE_DECAY).exp());
-        let side_total = w.freshness + w.trust + w.quality;
+        let side_total = w.freshness + w.trust + w.authority + w.quality;
         assert!(
             side_total > adjacent_gap,
             "side signals ({side_total}) cannot reorder neighbours ({adjacent_gap}) — \

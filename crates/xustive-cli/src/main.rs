@@ -714,6 +714,7 @@ async fn cmd_search(
             &normalized,
             xustive_core::now_unix(),
             &trust_tiers(),
+            &xustive_search::authority::load(),
             &xustive_search::rank::Weights::default(),
         ))
     } else {
@@ -738,8 +739,8 @@ async fn cmd_search(
             println!("     {url}");
             println!(
                 "     score {:.4}  = relevance {:.3}  freshness {:.3}  trust {:.3}  \
-                 quality {:.3}  spam {:.3}",
-                e.total, e.relevance, e.freshness, e.trust, e.quality, e.spam
+                 authority {:.3}  quality {:.3}  spam {:.3}",
+                e.total, e.relevance, e.freshness, e.trust, e.authority, e.quality, e.spam
             );
             // Age is only meaningful when the date is trusted. Printing `0 days` for a document
             // whose date we guessed reads as "published today", which is how a freshness bug hides.

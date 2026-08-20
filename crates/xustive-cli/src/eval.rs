@@ -43,6 +43,7 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
 
     let index = client.resolve(&config.search.documents_index).await?;
     let trust = HashMap::new();
+    let authority = xustive_search::authority::load();
     let weights = rank::Weights::default();
     let now = xustive_core::now_unix();
     let detector = xustive_lang::Detector::default();
@@ -97,7 +98,7 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
             }
         }
 
-        let ranked = rank::rerank(&hits.hits, &normalized, now, &trust, &weights);
+        let ranked = rank::rerank(&hits.hits, &normalized, now, &trust, &authority, &weights);
         let results: Vec<String> = ranked
             .iter()
             .filter_map(|r| r.hit.get("id")?.as_str().map(str::to_string))

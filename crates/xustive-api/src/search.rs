@@ -395,6 +395,7 @@ pub async fn handler(
         &normalized,
         xustive_core::now_unix(),
         trust,
+        state.authority.as_ref(),
         &state.ranking,
     );
     state.metrics.observe(

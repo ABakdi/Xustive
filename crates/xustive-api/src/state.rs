@@ -27,10 +27,12 @@ pub struct AppState {
     /// Built once — the lexicons are compiled in but the maps are not free to construct, and
     /// expansion runs on every query that needs a second retrieval leg.
     pub expander: Arc<Expander>,
-    /// Ranking weights. Loaded once; hot-reload arrives with the config work.
+    /// Ranking weights. Loaded once at startup from `config/ranking.toml` if present, else defaults.
     pub ranking: Arc<Weights>,
     /// Source id to trust tier, from the seed registry.
     pub trust_tiers: Arc<HashMap<String, TrustTier>>,
+    /// Domain to authority (0–1), from `data/sources/authority.tsv` — the "famous websites" signal.
+    pub authority: Arc<HashMap<String, f32>>,
     /// Device preference, encoded as `DevicePreference as u8`.
     ///
     /// An atomic rather than a lock: it is read on every model load and written rarely from the
@@ -205,8 +207,9 @@ impl AppState {
             search: Arc::new(search),
             detector: Arc::new(Detector::default()),
             expander: Arc::new(Expander::new(ExpanderConfig::default())),
-            ranking: Arc::new(Weights::default()),
+            ranking: Arc::new(load_ranking_weights()),
             trust_tiers: Arc::new(load_trust_tiers()),
+            authority: Arc::new(xustive_search::authority::load()),
             device_preference: Arc::new(AtomicU8::new(
                 xustive_ml::DevicePreference::parse(&device).unwrap_or_default() as u8,
             )),
@@ -225,6 +228,28 @@ impl AppState {
             engine: Arc::new(std::sync::RwLock::new(None)),
             metrics: Metrics::new(),
         })
+    }
+}
+
+/// Load ranking weights from `config/ranking.toml`, falling back to the built-in defaults.
+///
+/// Read at runtime (not compiled in) precisely so the offline yardstick can write tuned weights
+/// there and a restart picks them up — the tuning loop is edit-file-then-restart, not recompile. A
+/// missing or malformed file is not an error: it just means "use the defaults", logged so a typo in
+/// the file does not silently revert a deliberate tune.
+fn load_ranking_weights() -> Weights {
+    match std::fs::read_to_string("config/ranking.toml") {
+        Ok(body) => match toml::from_str::<Weights>(&body) {
+            Ok(w) => {
+                tracing::info!("loaded ranking weights from config/ranking.toml");
+                w
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "config/ranking.toml is malformed; using default weights");
+                Weights::default()
+            }
+        },
+        Err(_) => Weights::default(),
     }
 }
 
