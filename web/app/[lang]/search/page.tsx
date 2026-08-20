@@ -5,6 +5,7 @@ import { Pagination } from '@/components/search/Pagination'
 import { ResultCard } from '@/components/search/ResultCard'
 import { SearchBox } from '@/components/search/SearchBox'
 import { Summary } from '@/components/search/Summary'
+import { Verticals } from '@/components/search/Verticals'
 import { KnowledgePanel } from '@/components/search/KnowledgePanel'
 import { ToolCard } from '@/components/tools/ToolCard'
 import { TranslateCard } from '@/components/tools/TranslateCard'
@@ -65,11 +66,13 @@ export default async function SearchPage({
 
   const page = Math.max(1, Number(one(sp, 'page') ?? 1) || 1)
 
+  const vertical = one(sp, 'v')
   const query = new URLSearchParams({ q, page: String(page), hits_per_page: '20', ui: lang })
   for (const key of FILTER_PARAMS) {
     const value = one(sp, key)
     if (value) query.set(key, value)
   }
+  if (vertical) query.set('v', vertical)
 
   let data
   try {
@@ -134,6 +137,8 @@ export default async function SearchPage({
         </bdi>
       </p>
 
+      <Verticals lang={lang} q={q} active={vertical} t={t} />
+
       {/* Above the results and below the search box. Rendered even when there are no results —
           `2+2` has an answer whether or not the corpus mentions arithmetic. */}
       {data.instant &&
@@ -170,10 +175,28 @@ export default async function SearchPage({
 
       {data.results.length === 0 ? (
         <div className="py-16 text-center">
-          <p className="text-xl">{t.noResults}</p>
-          <p className="mt-2 text-sm" style={{ color: 'var(--fg-muted)' }}>
-            {t.noResultsHint}
-          </p>
+          {vertical === 'news' ? (
+            <>
+              {/* Name the empty vertical, and offer the way out — the corpus may hold the answer
+                  outside News even when News is empty. */}
+              <p className="text-xl">{t.noNews}</p>
+              <p className="mt-2 text-sm">
+                <a
+                  href={`/${lang}/search?q=${encodeURIComponent(q)}`}
+                  style={{ color: 'var(--accent)' }}
+                >
+                  {t.noNewsHint}
+                </a>
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xl">{t.noResults}</p>
+              <p className="mt-2 text-sm" style={{ color: 'var(--fg-muted)' }}>
+                {t.noResultsHint}
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <>

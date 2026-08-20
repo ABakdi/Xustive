@@ -47,6 +47,10 @@ pub struct SearchParams {
     pub to: Option<i64>,
     #[serde(default)]
     pub sort: Option<String>,
+    /// Search vertical: `all` (default) or `news`. A vertical is a saved filter over the one index —
+    /// `news` is web documents that carry a real publication date. Shareable in the URL (`?v=news`).
+    #[serde(default)]
+    pub v: Option<String>,
     /// Interface language, for tool labels. Distinct from `lang`, which filters results —
     /// someone reading a French interface searching in Darija is the normal case.
     #[serde(default)]
@@ -613,6 +617,15 @@ fn parse_filters(p: &SearchParams) -> Result<Filters, ApiError> {
 
     f.published_from = p.from;
     f.published_to = p.to;
+
+    // Verticals are saved filters over the same index, not separate corpora. `news` is web content
+    // with a date we actually know (a guessed date is not news). Unknown verticals fall back to All
+    // rather than erroring, so a stale `?v=` link still returns results.
+    if p.v.as_deref() == Some("news") {
+        f.source_types = vec![SourceType::Web];
+        f.exclude_unknown_dates = true;
+    }
+
     Ok(f)
 }
 
@@ -845,11 +858,58 @@ mod tests {
             from: None,
             to: None,
             sort: None,
+            v: None,
         };
         let f = parse_filters(&p).unwrap();
         assert_eq!(f.source_types, vec![SourceType::Web, SourceType::Facebook]);
         assert_eq!(f.sentiments, vec![SentimentLabel::Negative]);
         assert!(f.exclude_spam, "spam suppression should be on by default");
+    }
+
+    #[test]
+    fn the_news_vertical_filters_to_dated_web_documents() {
+        let p = SearchParams {
+            ui: None,
+            q: Some("x".into()),
+            page: None,
+            hits_per_page: None,
+            lang: None,
+            source: None,
+            sentiment: None,
+            from: None,
+            to: None,
+            sort: None,
+            v: Some("news".into()),
+        };
+        let f = parse_filters(&p).unwrap();
+        assert_eq!(f.source_types, vec![SourceType::Web]);
+        assert!(
+            f.exclude_unknown_dates,
+            "news requires a real publication date"
+        );
+    }
+
+    #[test]
+    fn an_unknown_vertical_falls_back_to_all() {
+        let p = SearchParams {
+            ui: None,
+            q: Some("x".into()),
+            page: None,
+            hits_per_page: None,
+            lang: None,
+            source: None,
+            sentiment: None,
+            from: None,
+            to: None,
+            sort: None,
+            v: Some("wibble".into()),
+        };
+        let f = parse_filters(&p).unwrap();
+        assert!(
+            f.source_types.is_empty(),
+            "an unknown vertical must not filter"
+        );
+        assert!(!f.exclude_unknown_dates);
     }
 
     #[test]
@@ -865,6 +925,7 @@ mod tests {
             from: None,
             to: None,
             sort: None,
+            v: None,
         };
         let err = parse_filters(&p).unwrap_err();
         assert_eq!(err.code(), "invalid_filter");
