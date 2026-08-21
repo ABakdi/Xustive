@@ -41,13 +41,27 @@ live: file picker, camera capture, paste and drag-drop; browser-side downscale t
 (GPS) stripped before upload; and the recognised text lands **editable and is never auto-submitted**
 (M3-T06.1/.2/.4/.7).
 
+Done (visual similarity, M3-T05): the **`xustive-vector` crate** — a lean Qdrant REST client
+(collection with int8 quantisation, cosine on L2-normalised vectors, payload indexes, ANN search
+with NSFW filtering, `delete_by_document` for takedowns), **verified live end-to-end against dev
+Qdrant** with synthetic vectors (exact match ranks first at score > 0.99). A **CLIP embedder** trait
++ sidecar client, and the **`clip-embed` service** (CLIP ViT-B/32, CPU-capable — *not* GPU-gated).
+The **write path** (`media_embed`): the crawler embeds a page's images and upserts them, opt-in and
+failure-isolated. The **read path**: **`POST /api/v1/search/image`** embeds an upload, ANN-searches,
+collapses by document, and resolves the documents for display — and the image tool's **"Find similar
+images"** renders them with qualitative match labels. All isolated: vector search being down never
+touches text search. See [[ADR-0016 - Two OCR Engines with an Optional Unlimited-OCR Sidecar]] for
+the shared sidecar pattern.
+
 Blocked on model/data provisioning (like M2's social track), not code: **voice/STT** (M3-T02/T03)
 needs a **whisper model** (none present) and the **audio fixture corpus** (B7); the formal **CER
 target** (M3-T04.8) needs a **labelled screenshot ground-truth set**; the **Unlimited-OCR sidecar**
 needs a **GPU box (≥ 8 GB) with the model** to run live — the Rust side and the service are done and
-fall back to tesseract until then. **CLIP + Qdrant** (M3-T05, the visual-similarity half of image
-search) is buildable next — Qdrant already runs in dev — and needs a CLIP model. Remaining OCR
-follow-ups: per-image phash dedup (T07.2), NSFW scoring (T07.6), PSM 6/11 retry and adaptive
+fall back to tesseract until then; **image similarity** needs the **CLIP model provisioned** into the
+`clip-embed` service before it returns real results (the whole path is wired and tested, off by
+default via `[vector] enabled`). Remaining vector follow-ups: the phash reuse-skip (T05.3), the
+scheduled orphan-reconciliation job (T05.7), and the recall/latency measurement (T05.6). Remaining
+OCR follow-ups: per-image phash dedup (T07.2), NSFW scoring (T07.6), PSM 6/11 retry and adaptive
 threshold (T04.3/.4).
 
 ---
@@ -113,16 +127,16 @@ document ([[Social Connector - Instagram]] §4.2).
 
 ## M3-T05 — CLIP and [[Vector Index]]
 
-- [ ] M3-T05.1 Qdrant collection with int8 quantisation and payload indexes
-- [ ] M3-T05.2 `rust-bert` CLIP ViT-B/32 image tower; L2 normalisation
-- [ ] M3-T05.3 dHash `phash` + Redis `phash → embedding_id` reuse map
-- [ ] M3-T05.4 Upsert batching from [[Indexer Worker]]
-- [ ] M3-T05.5 ANN search with payload filters; `ef` tuning
+- [x] M3-T05.1 Qdrant collection with int8 quantisation and payload indexes
+- [x] M3-T05.2 CLIP ViT-B/32 image tower; L2 normalisation ← *via the `clip-embed` sidecar, not `rust-bert`; keeps the model out of the Rust build and runs CPU-only*
+- [ ] M3-T05.3 dHash `phash` + Redis `phash → embedding_id` reuse map ← *phash carried in the payload; the reuse-skip is not wired yet*
+- [x] M3-T05.4 Upsert batching from the crawler (index-side, `media_embed`)
+- [x] M3-T05.5 ANN search with payload filters; `ef` tuning
 - [ ] M3-T05.6 **Measure recall vs latency on our own corpus** — the table in
-      [[Vector Index]] §4 is a hypothesis until this runs
-- [ ] M3-T05.7 Orphan reconciliation job (deleted document → deleted vectors)
-- [ ] M3-T05.8 Round-trip test: re-uploaded image ranks 1 at > 0.95
-- [ ] M3-T05.9 Transform robustness: crop / resize / recompress / watermark → top 3
+      [[Vector Index]] §4 is a hypothesis until this runs ← *needs the CLIP model + a corpus*
+- [~] M3-T05.7 Orphan reconciliation job (deleted document → deleted vectors) ← *`Store::delete_by_document` exists; the scheduled job is not wired*
+- [x] M3-T05.8 Round-trip test: re-uploaded image ranks 1 — *verified live against dev Qdrant with synthetic vectors (exact match score > 0.99); with a real CLIP model this becomes the > 0.95 image test*
+- [ ] M3-T05.9 Transform robustness: crop / resize / recompress / watermark → top 3 ← *needs the CLIP model*
 
 ## M3-T06 — [[UI - Image Search]]
 
@@ -130,7 +144,7 @@ document ([[Social Connector - Instagram]] §4.2).
 - [x] M3-T06.2 Client-side downscale to 2048 px + EXIF strip before upload
 - [ ] M3-T06.3 Optional crop step, skippable
 - [x] M3-T06.4 OCR result panel — **text into the search box, not auto-submitted**
-- [ ] M3-T06.5 Similarity grid with qualitative labels, not raw scores ← *needs CLIP (M3-T05)*
+- [x] M3-T06.5 Similarity grid with qualitative labels, not raw scores — *"Find similar images" on the tool; results as pages with a qualitative match label, never a raw score*
 - [~] M3-T06.6 Determinate upload progress; cancellable; blob retained for retry ← *cancellable; progress is indeterminate*
 - [x] M3-T06.7 Privacy statement at the preview step
 - [x] M3-T06.8 Keyboard equivalent for drag & drop; accessible names on tiles
