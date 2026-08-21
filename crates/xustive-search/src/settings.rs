@@ -45,6 +45,9 @@ pub fn documents_settings() -> Value {
         "filterableAttributes": [
             "source_type", "source_id", "domain", "language", "script",
             "sentiment.label", "published_at", "crawled_at", "is_nsfw",
+            // The News vertical excludes documents with a guessed date, which filters on the
+            // precision, not the timestamp — so it must be filterable (M3 verticals).
+            "published_at_precision",
             "quality_score", "spam_score", "geo.wilaya", "topics", "robots_indexable",
             // So the repass job (M2-T06.9) can find documents that were enriched under load.
             "enrichment_level",
@@ -230,6 +233,31 @@ mod tests {
             assert!(
                 filterable.contains(&required.to_string()),
                 "{required} must be filterable"
+            );
+        }
+    }
+
+    #[test]
+    fn every_field_the_filter_builder_can_reference_is_filterable() {
+        // The bug this guards: the News vertical filtered on `published_at_precision`, which was not
+        // filterable, so Meilisearch rejected the query and the tab showed "something went wrong".
+        // Every field `Filters::to_expression` can emit a clause for must be declared here, or the
+        // vertical/facet that uses it fails only at runtime, against the live index.
+        let s = documents_settings();
+        let filterable = strs(&s, "filterableAttributes");
+        for field in [
+            "source_type",
+            "sentiment.label",
+            "language",
+            "published_at",
+            "published_at_precision", // News vertical
+            "domain",
+            "content_type", // Files vertical
+            "spam_score",
+        ] {
+            assert!(
+                filterable.contains(&field.to_string()),
+                "{field} is used in a filter clause but is not filterable"
             );
         }
     }
