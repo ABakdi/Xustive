@@ -411,6 +411,58 @@ impl Default for MediaConfig {
     }
 }
 
+/// Image-similarity vector search: Qdrant plus the CLIP embedder ([[Vector Index]] C07, M3-T05).
+///
+/// Off by default — it needs both Qdrant reachable and a CLIP embedder service. Unlike the OCR
+/// sidecar, CLIP ViT-B/32 is small enough to run CPU-only, so the visual-similarity feature is not
+/// GPU-gated; it is opt-in only because it needs its model and index provisioned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VectorConfig {
+    /// Master switch for image-similarity search.
+    pub enabled: bool,
+    /// Qdrant base URL. On the internal network; the serving plane reaches it like Meilisearch.
+    pub qdrant_url: String,
+    /// Optional Qdrant API key.
+    pub qdrant_key: String,
+    /// Collection name.
+    pub collection: String,
+    /// CLIP embedder endpoint (the embed sidecar). An image posted here returns a 512-d vector.
+    pub embedder_endpoint: String,
+    /// Hard per-request timeout for both Qdrant and the embedder, milliseconds.
+    pub timeout_ms: u64,
+    /// Results requested from Qdrant before collapsing by document.
+    pub search_limit: usize,
+    /// HNSW `ef` at search time — recall vs latency (64 default).
+    pub ef_search: usize,
+    /// Cosine score below which a match is dropped: below this, "no similar images". Stored as
+    /// per-mille (750 = 0.75) so the whole config can stay `Eq`; use [`VectorConfig::score_threshold`].
+    pub score_threshold_milli: u32,
+}
+
+impl VectorConfig {
+    /// The cosine score threshold as a fraction (0.0–1.0).
+    pub fn score_threshold(&self) -> f32 {
+        self.score_threshold_milli as f32 / 1000.0
+    }
+}
+
+impl Default for VectorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            qdrant_url: "http://127.0.0.1:6333".into(),
+            qdrant_key: String::new(),
+            collection: "image_clip".into(),
+            embedder_endpoint: "http://127.0.0.1:8092/embed".into(),
+            timeout_ms: 10_000,
+            search_limit: 40,
+            ef_search: 64,
+            score_threshold_milli: 750,
+        }
+    }
+}
+
 impl Default for CrawlConfig {
     fn default() -> Self {
         Self {
@@ -533,6 +585,8 @@ pub struct Config {
     pub interaction: InteractionConfig,
     #[serde(default)]
     pub media: MediaConfig,
+    #[serde(default)]
+    pub vector: VectorConfig,
 }
 
 impl Default for Config {
@@ -549,6 +603,7 @@ impl Default for Config {
             discovery: DiscoveryConfig::default(),
             interaction: InteractionConfig::default(),
             media: MediaConfig::default(),
+            vector: VectorConfig::default(),
         }
     }
 }

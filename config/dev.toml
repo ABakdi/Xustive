@@ -88,3 +88,18 @@ ocr_backend = "tesseract"
 # internet egress. Only reached when ocr_backend = "unlimited".
 endpoint = "http://127.0.0.1:8091/ocr"
 timeout_ms = 30000
+
+[vector]
+# Image-similarity search (reverse image search / the visual half of "search by image"). Off by
+# default: needs Qdrant reachable and the CLIP embed sidecar (services/clip-embed) running. CLIP
+# ViT-B/32 runs CPU-only, so this is not GPU-gated — only opt-in until its model + index exist.
+enabled = false
+qdrant_url = "http://127.0.0.1:6333"
+qdrant_key = ""
+collection = "image_clip"
+embedder_endpoint = "http://127.0.0.1:8092/embed"
+timeout_ms = 10000
+search_limit = 40
+ef_search = 64
+# Per-mille (750 = cosine 0.75). Below this, "no similar images".
+score_threshold_milli = 750

@@ -20,6 +20,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+pub mod embed;
+pub use embed::{Embedder, SidecarEmbedder};
+
 pub const DEFAULT_COLLECTION: &str = "image_clip";
 /// CLIP ViT-B/32 embedding dimensionality.
 pub const DIM: usize = 512;
