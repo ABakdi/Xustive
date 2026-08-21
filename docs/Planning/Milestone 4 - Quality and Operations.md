@@ -42,7 +42,7 @@ the entire point. Discovering it during beta is not.
 ## M4-T02 — [[Error Handling and Resilience]]
 
 - [ ] M4-T02.1 `ErrorClass`-driven retry layer applied everywhere (no string matching)
-- [ ] M4-T02.2 Circuit breakers with shared Redis state and exponential cooldown
+- [~] M4-T02.2 Circuit breakers with exponential cooldown — *`xustive_core::circuit`: a fully-tested Closed/Open/HalfOpen state machine with exponential backoff (capped) and an injectable clock; wired into the STT sidecar client (fail-fast + admin visibility) as the pattern. Remaining: the shared-Redis variant for multi-instance coordination, and wiring the other call sites (Meili, other sidecars)*
 - [ ] M4-T02.3 Backpressure thresholds wired from queue depth to crawl dispatch
 - [ ] M4-T02.4 DLQ tooling: stats, peek, replay, retention
 - [ ] M4-T02.5 Degradation ladder verified by fault injection, step by step
