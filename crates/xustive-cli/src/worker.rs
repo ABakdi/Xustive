@@ -97,21 +97,41 @@ pub async fn run(config: &Config, client: &MeiliClient, once: bool) -> Result<()
         config.queue.index_stream
     );
 
-    loop {
+    if once {
         let stats = indexer.run_once().await?;
-        if stats.indexed > 0 || stats.rejected > 0 {
-            println!(
-                "  indexed {} · rejected {} · dead-lettered {} · {} batches",
-                stats.indexed, stats.rejected, stats.dead_lettered, stats.batches
-            );
-        }
-        // Trimming here rather than only on write: a queue that stops receiving work stops
-        // trimming itself, and a stream that stopped growing is the one nobody is watching.
+        report(&stats);
         queue.trim().await.ok();
+        return Ok(());
+    }
 
-        if once {
-            return Ok(());
+    // Graceful shutdown (M4-T02.7): on SIGTERM/Ctrl-C stop taking new batches. A batch that is
+    // mid-flight when the signal lands is abandoned *unacked*, so it is redelivered and reprocessed
+    // on the next start (the indexer's reclaim path) — at-least-once, and `add_documents` is
+    // idempotent by id, so a reprocess overwrites rather than duplicates. Every batch that finished
+    // before the signal is already acked.
+    let mut shutdown = std::pin::pin!(crate::shutdown::signal());
+    loop {
+        tokio::select! {
+            biased;
+            _ = &mut shutdown => {
+                println!("worker: shutdown signal received; exiting");
+                return Ok(());
+            }
+            result = indexer.run_once() => {
+                let stats = result?;
+                report(&stats);
+                queue.trim().await.ok();
+            }
         }
+    }
+}
+
+fn report(stats: &xustive_queue::indexer::Stats) {
+    if stats.indexed > 0 || stats.rejected > 0 {
+        println!(
+            "  indexed {} · rejected {} · dead-lettered {} · {} batches",
+            stats.indexed, stats.rejected, stats.dead_lettered, stats.batches
+        );
     }
 }
 

@@ -180,4 +180,19 @@ async fn shutdown_signal() {
         _ = ctrl_c => tracing::info!("received SIGINT, draining"),
         _ = terminate => tracing::info!("received SIGTERM, draining"),
     }
+
+    // Bound the drain (M4-T02.7). Returning from this future lets axum stop accepting connections
+    // and wait for in-flight requests to finish — but that wait is unbounded, so a single hung
+    // request (a stalled summary, a wedged upstream) would keep the process alive until the
+    // orchestrator SIGKILLs it. Arm a grace timer: if the drain has not completed by then, exit
+    // cleanly ourselves rather than be killed uncleanly.
+    const GRACE: std::time::Duration = std::time::Duration::from_secs(25);
+    tokio::spawn(async move {
+        tokio::time::sleep(GRACE).await;
+        tracing::warn!(
+            grace_secs = GRACE.as_secs(),
+            "graceful shutdown grace period elapsed with requests still in flight; forcing exit"
+        );
+        std::process::exit(0);
+    });
 }

@@ -13,6 +13,7 @@ mod pagerank;
 mod parsecheck;
 mod registry;
 mod serp_eval;
+mod shutdown;
 mod worker;
 
 use std::path::PathBuf;

@@ -503,7 +503,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
     tracing::info!(workers, "workers started");
 
     // The main task watches for shutdown and reports; the workers do the crawling.
-    let mut shutdown = std::pin::pin!(signal());
+    let mut shutdown = std::pin::pin!(crate::shutdown::signal());
     let mut ticker = tokio::time::interval(HEARTBEAT);
     ticker.tick().await;
     loop {
@@ -543,8 +543,12 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
 
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     // Drain rather than abort: an in-flight fetch finishes and its document is queued, so a
-    // restart resumes instead of re-fetching pages we already paid a site for.
-    while tasks.join_next().await.is_some() {}
+    // restart resumes instead of re-fetching pages we already paid a site for. Bounded by the grace
+    // period so a wedged fetch cannot keep the process alive past SIGKILL (M4-T02.7).
+    crate::shutdown::with_grace("crawler", async {
+        while tasks.join_next().await.is_some() {}
+    })
+    .await;
 
     let produced = produced.load(std::sync::atomic::Ordering::Relaxed);
 
@@ -595,30 +599,4 @@ async fn build_image_embed(config: &Config) -> Option<xustive_ingest::media_embe
         },
         cache,
     })
-}
-
-/// Ctrl-C or `SIGTERM`.
-///
-/// `SIGTERM` matters as much as Ctrl-C: it is what a container runtime sends, and a crawler that
-/// only handled Ctrl-C would be killed uncleanly on every ordinary deploy.
-async fn signal() {
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{signal, SignalKind};
-        let mut term = match signal(SignalKind::terminate()) {
-            Ok(s) => s,
-            Err(_) => {
-                let _ = tokio::signal::ctrl_c().await;
-                return;
-            }
-        };
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {}
-            _ = term.recv() => {}
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = tokio::signal::ctrl_c().await;
-    }
 }
