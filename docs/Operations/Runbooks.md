@@ -286,22 +286,27 @@ cargo run -p xustive-cli -- crawld --reset
 
 ### Execute a takedown (remove already-indexed content)
 
-A takedown is a **composite**, not one command — the content lives in several stores and each must be
-cleared:
+Removing already-indexed content for a domain is **one command** — it clears every store the content
+lives in (lexical index, image vectors, raw bodies). It previews by default; `--yes` executes:
 
-1. **Stop future crawling:** `registry disable <source-id>` (above), or add the host to the takedown
-   exclusion tier so it is refused even if reachable another way.
-2. **Remove the image vectors** whose documents are being taken down, then reconcile orphans:
-   `cargo run -p xustive-cli -- reconcile-vectors` deletes vectors whose parent document no longer
-   exists (M4-T04.8 / [[Security and Privacy]] §8).
-3. **Remove the raw stored bodies** so the page's bytes do not linger (`raw_store` TTL, or an
-   explicit purge).
+```
+cargo run -p xustive-cli -- takedown --domain example.dz          # preview
+cargo run -p xustive-cli -- takedown --domain example.dz --yes    # delete
+```
 
-> ❌ **Not built: a single `xustive-cli takedown <url|domain>` command** that performs all of the
-> above atomically. The store-level primitives exist (`MeiliClient::delete_document`,
-> `Store::delete_by_document`, `raw_store` drop, the exclusion tier), but wiring them into one
-> audited command is a follow-up. Until then, a takedown is the operator running the steps above and
-> recording what was removed.
+It reports how many documents, vector groups, and raw bodies it removed. It does **not** stop future
+crawling — pair it with:
+
+```
+cargo run -p xustive-cli -- registry disable <source-id> --reason "takedown: <why>"
+```
+
+so the source is not re-indexed on the next crawl.
+
+> **Still partial:** the takedown targets a **domain**. A single-URL takedown, and adding the host
+> to a *persisted* takedown exclusion tier the crawler loads (so it is refused even from another
+> discovery path, not just via the source registry), are follow-ups — the exclusion `Blocklist`
+> exists but is not yet persisted/wired into the crawler.
 
 ---
 

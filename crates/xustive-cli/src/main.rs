@@ -205,6 +205,21 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Remove all already-indexed content for a domain — the composite takedown (M4-T09.3).
+    ///
+    /// A takedown lives across stores, so one command clears them all: every document with this
+    /// domain is deleted from the lexical index, its image vectors from Qdrant, and its raw stored
+    /// body from Redis. **Destructive and deliberate** — it previews by default and only deletes
+    /// with `--yes`. It does NOT stop *future* crawling; pair it with `registry disable <source>`
+    /// (or a takedown-tier exclusion) for that.
+    Takedown {
+        /// The domain to remove, e.g. `example.dz`. Matched exactly against each document's `domain`.
+        #[arg(long)]
+        domain: String,
+        /// Actually delete. Without this the command only reports what it would remove.
+        #[arg(long)]
+        yes: bool,
+    },
     /// Show index document counts.
     Stats,
     /// Delete image vectors whose parent document is gone from the index (orphan reconciliation).
@@ -429,6 +444,7 @@ async fn main() -> Result<()> {
         Command::Dlq { action, limit } => worker::dlq(&config, &action, limit).await,
         Command::Keys { show } => cmd_keys(&client, show).await,
         Command::Stats => cmd_stats(&client, &config).await,
+        Command::Takedown { domain, yes } => cmd_takedown(&client, &config, &domain, yes).await,
         Command::Reindex {
             index,
             rollback,
@@ -786,6 +802,123 @@ async fn cmd_reconcile_vectors(client: &MeiliClient, config: &Config, dry_run: b
         orphans.len()
     );
     Ok(())
+}
+
+/// Remove every already-indexed artefact of a domain across all stores.
+async fn cmd_takedown(
+    client: &MeiliClient,
+    config: &Config,
+    domain: &str,
+    execute: bool,
+) -> Result<()> {
+    use serde_json::Value;
+
+    let index = client
+        .resolve(&config.search.documents_index)
+        .await
+        .unwrap_or_else(|_| config.search.documents_index.clone());
+
+    // Find every document for this domain. `domain` is a filterable attribute, so this is one
+    // filtered query paged to the end — the same shape the reindex copy uses.
+    let filter = format!("domain = {}", quote_meili(domain));
+    let mut targets: Vec<(String, String)> = Vec::new(); // (id, url)
+    let mut offset = 0usize;
+    const PAGE: usize = 1000;
+    loop {
+        let query = xustive_search::Query::new("")
+            .filter(filter.clone())
+            .offset(offset)
+            .limit(PAGE);
+        let hits = client
+            .search::<Value>(&index, &query)
+            .await
+            .context("searching for the domain's documents")?;
+        if hits.hits.is_empty() {
+            break;
+        }
+        for h in &hits.hits {
+            if let Some(id) = h.get("id").and_then(Value::as_str) {
+                let url = h
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                targets.push((id.to_string(), url));
+            }
+        }
+        offset += PAGE;
+    }
+
+    if targets.is_empty() {
+        println!("takedown: no indexed documents for domain '{domain}' — nothing to remove");
+        return Ok(());
+    }
+    println!("takedown: {} documents for '{domain}'", targets.len());
+
+    if !execute {
+        for (id, url) in targets.iter().take(20) {
+            println!("  would remove {id}  {url}");
+        }
+        if targets.len() > 20 {
+            println!("  … and {} more", targets.len() - 20);
+        }
+        println!("preview only — re-run with --yes to delete. This does NOT stop future crawling;");
+        println!("pair it with `registry disable <source>` to prevent re-indexing.");
+        return Ok(());
+    }
+
+    // Optional stores: image vectors and raw bodies. Absent is fine — a document simply had none.
+    let vectors = if config.vector.enabled {
+        let v = &config.vector;
+        let key = (!v.qdrant_key.is_empty()).then(|| v.qdrant_key.clone());
+        xustive_vector::Store::new(
+            &v.qdrant_url,
+            key,
+            v.collection.clone(),
+            Duration::from_millis(v.timeout_ms),
+        )
+        .ok()
+    } else {
+        None
+    };
+    let raw = xustive_ingest::raw_store::RawStore::connect_in(
+        &config.queue.url,
+        "frontier",
+        Duration::from_secs(1),
+    );
+
+    let (mut docs, mut vecs, mut bodies) = (0u64, 0u64, 0u64);
+    for (id, url) in &targets {
+        // Lexical index.
+        match client.delete_document(&index, id).await {
+            Ok(_) => docs += 1,
+            Err(e) => eprintln!("  ⚠ failed to delete document {id}: {e}"),
+        }
+        // Image vectors keyed by this document id.
+        if let Some(store) = &vectors {
+            if store.delete_by_document(id).await.is_ok() {
+                vecs += 1;
+            }
+        }
+        // Raw stored body, keyed by url.
+        if let (Some(rs), false) = (&raw, url.is_empty()) {
+            rs.forget(url).await;
+            bodies += 1;
+        }
+    }
+
+    println!("takedown complete for '{domain}':");
+    println!("  documents removed from the index : {docs}");
+    println!("  image-vector groups deleted      : {vecs}");
+    println!("  raw bodies forgotten             : {bodies}");
+    println!("Reminder: future crawls are NOT blocked by this. Run `registry disable <source>`");
+    println!("(or add the host to the takedown exclusion tier) to prevent re-indexing.");
+    Ok(())
+}
+
+/// Quote a value for a Meilisearch filter expression.
+fn quote_meili(s: &str) -> String {
+    format!("\"{}\"", s.replace('"', "\\\""))
 }
 
 /// The index-migration drill: build a staging copy, verify, atomically swap, and support rollback.
