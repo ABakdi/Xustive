@@ -1,0 +1,15 @@
+[package]
+name = "xustive-media"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Image OCR and (later) audio/vector media pipelines. In-memory, no temp files."
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp", "tiff"] }
+kamadak-exif = "0.6"
+leptess = "0.14"
+xustive-text = { path = "../xustive-text" }

@@ -11,3 +11,4 @@
 .DS_Store
 tests/fixtures/corpus/*.jsonl
 docs/.obsidian/workspace.json
+data/tessdata/
