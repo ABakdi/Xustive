@@ -366,6 +366,35 @@ pub struct MediaConfig {
     pub max_images_per_doc: usize,
     /// Largest image fetched, in bytes.
     pub max_image_bytes: usize,
+    /// Which engine the **user-facing** OCR tools use: `"tesseract"` (in-process, CPU, always
+    /// available) or `"unlimited"` (the Unlimited-OCR sidecar, a GPU vision-language model). The
+    /// crawl-time enrichment path always uses tesseract regardless — it runs over every image and
+    /// must fit the CPU-only reference hardware. `"unlimited"` falls back to tesseract when the
+    /// sidecar is unreachable, so selecting it never breaks the tools.
+    pub ocr_backend: String,
+    /// The optional Unlimited-OCR sidecar.
+    pub sidecar: SidecarConfig,
+}
+
+/// The Unlimited-OCR sidecar: a Python/GPU service on the private network, reached over HTTP. This
+/// is an *internal-service* call, not internet egress — the serving plane stays sealed ([[ADR-0001
+/// Two-Plane Architecture]]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SidecarConfig {
+    /// Full URL of the sidecar's OCR endpoint, e.g. `http://127.0.0.1:8091/ocr`.
+    pub endpoint: String,
+    /// Hard per-request timeout, milliseconds. A wedged 3 B VLM must fail over in bounded time.
+    pub timeout_ms: u64,
+}
+
+impl Default for SidecarConfig {
+    fn default() -> Self {
+        Self {
+            endpoint: "http://127.0.0.1:8091/ocr".into(),
+            timeout_ms: 30_000,
+        }
+    }
 }
 
 impl Default for MediaConfig {
@@ -376,6 +405,8 @@ impl Default for MediaConfig {
             ocr_langs: "ara+fra+eng".into(),
             max_images_per_doc: 3,
             max_image_bytes: 5 * 1024 * 1024,
+            ocr_backend: "tesseract".into(),
+            sidecar: SidecarConfig::default(),
         }
     }
 }

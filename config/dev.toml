@@ -76,3 +76,15 @@ tessdata_dir = "data/tessdata"
 ocr_langs = "ara+fra+eng"
 max_images_per_doc = 3
 max_image_bytes = 5242880
+
+# Engine for the user-facing OCR tools (the standalone tool and the "photograph → search" flow).
+# "tesseract" runs in-process on the CPU and is always available; "unlimited" routes to the
+# Unlimited-OCR sidecar (a 3B GPU vision-language model) and falls back to tesseract if it is down.
+# The crawl-time enrichment above always uses tesseract regardless — it must fit CPU-only hardware.
+ocr_backend = "tesseract"
+
+[media.sidecar]
+# The optional Unlimited-OCR service (services/ocr-sidecar). An internal-network HTTP call, not
+# internet egress. Only reached when ocr_backend = "unlimited".
+endpoint = "http://127.0.0.1:8091/ocr"
+timeout_ms = 30000
