@@ -38,6 +38,9 @@ pub trait Embedder: Send + Sync {
 pub struct SidecarEmbedder {
     http: reqwest::Client,
     endpoint: String,
+    /// Fail fast when the embed sidecar is down, so image search returns "unavailable" immediately
+    /// instead of waiting out the timeout on every query (M4-T02.2).
+    breaker: xustive_core::circuit::SharedBreaker,
 }
 
 #[derive(serde::Deserialize)]
@@ -54,9 +57,15 @@ impl SidecarEmbedder {
             .timeout(timeout)
             .build()
             .map_err(|e| VectorError::Unreachable(e.to_string()))?;
+        let breaker = xustive_core::circuit::SharedBreaker::new(xustive_core::circuit::Config {
+            failure_threshold: 3,
+            cooldown: std::time::Duration::from_secs(10),
+            max_cooldown: std::time::Duration::from_secs(120),
+        });
         Ok(Self {
             http,
             endpoint: endpoint.into(),
+            breaker,
         })
     }
 }
@@ -64,6 +73,38 @@ impl SidecarEmbedder {
 #[async_trait]
 impl Embedder for SidecarEmbedder {
     async fn embed(&self, image: Vec<u8>) -> Result<Vec<f32>, VectorError> {
+        // Breaker open → fail fast; image search reports "unavailable" without the timeout wait.
+        if !self.breaker.allow() {
+            return Err(VectorError::Unreachable("circuit open".into()));
+        }
+        match self.try_embed(image).await {
+            Ok(v) => {
+                self.breaker.on_success();
+                Ok(v)
+            }
+            Err(e) => {
+                self.breaker.on_failure();
+                Err(e)
+            }
+        }
+    }
+
+    /// Liveness probe against the sidecar's `/health` (the endpoint is the `/embed` path).
+    async fn healthy(&self) -> bool {
+        let base = self
+            .endpoint
+            .trim_end_matches("/embed")
+            .trim_end_matches('/');
+        matches!(
+            self.http.get(format!("{base}/health")).send().await,
+            Ok(r) if r.status().is_success()
+        )
+    }
+}
+
+impl SidecarEmbedder {
+    /// The actual HTTP call, wrapped by the breaker in [`Embedder::embed`].
+    async fn try_embed(&self, image: Vec<u8>) -> Result<Vec<f32>, VectorError> {
         let resp = self
             .http
             .post(&self.endpoint)
@@ -89,18 +130,6 @@ impl Embedder for SidecarEmbedder {
             )));
         }
         Ok(l2_normalise(reply.embedding))
-    }
-
-    /// Liveness probe against the sidecar's `/health` (the endpoint is the `/embed` path).
-    async fn healthy(&self) -> bool {
-        let base = self
-            .endpoint
-            .trim_end_matches("/embed")
-            .trim_end_matches('/');
-        matches!(
-            self.http.get(format!("{base}/health")).send().await,
-            Ok(r) if r.status().is_success()
-        )
     }
 }
 

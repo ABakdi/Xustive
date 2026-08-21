@@ -13,6 +13,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 kamadak-exif = "0.6"
 leptess = "0.14"
 xustive-text = { path = "../xustive-text" }
+xustive-core = { path = "../xustive-core" }
 # The backend layer: an async trait over tesseract (blocking pool) and the Unlimited-OCR sidecar
 # (HTTP). reqwest keeps json only — no TLS features, the sidecar is a private-network HTTP service.
 async-trait = "0.1"

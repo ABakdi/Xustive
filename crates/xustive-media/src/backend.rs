@@ -81,6 +81,9 @@ impl OcrBackend for Tesseract {
 pub struct Sidecar {
     http: reqwest::Client,
     endpoint: String,
+    /// Fail fast when the sidecar has been failing, so [`Fallback`] drops to tesseract immediately
+    /// rather than waiting out the (long, VLM-sized) timeout on every request (M4-T02.2).
+    breaker: xustive_core::circuit::SharedBreaker,
 }
 
 /// Confidence assumed when the sidecar returns text but no score of its own.
@@ -101,9 +104,17 @@ impl Sidecar {
             .timeout(timeout)
             .build()
             .map_err(|e| OcrError::Engine(format!("sidecar client: {e}")))?;
+        // A short cooldown: the tools stay responsive (via tesseract) while a probe periodically
+        // checks whether the GPU sidecar has come back.
+        let breaker = xustive_core::circuit::SharedBreaker::new(xustive_core::circuit::Config {
+            failure_threshold: 3,
+            cooldown: Duration::from_secs(10),
+            max_cooldown: Duration::from_secs(120),
+        });
         Ok(Self {
             http,
             endpoint: endpoint.into(),
+            breaker,
         })
     }
 }
@@ -111,6 +122,37 @@ impl Sidecar {
 #[async_trait]
 impl OcrBackend for Sidecar {
     async fn recognise(&self, bytes: Vec<u8>) -> Result<Ocr, OcrError> {
+        // Breaker open → fail immediately so Fallback uses tesseract without the timeout wait.
+        if !self.breaker.allow() {
+            return Err(OcrError::Engine("circuit open".into()));
+        }
+        match self.try_recognise(bytes).await {
+            Ok(ocr) => {
+                self.breaker.on_success();
+                Ok(ocr)
+            }
+            Err(e) => {
+                self.breaker.on_failure();
+                Err(e)
+            }
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "unlimited"
+    }
+
+    /// Liveness probe against the sidecar's `/health`, so the admin console can show a down sidecar.
+    /// The endpoint is the `/ocr` path; health lives at the service root, so strip it first.
+    async fn healthy(&self) -> bool {
+        let base = self.endpoint.trim_end_matches("/ocr").trim_end_matches('/');
+        matches!(self.http.get(format!("{base}/health")).send().await, Ok(r) if r.status().is_success())
+    }
+}
+
+impl Sidecar {
+    /// The actual HTTP call, wrapped by the breaker in [`OcrBackend::recognise`].
+    async fn try_recognise(&self, bytes: Vec<u8>) -> Result<Ocr, OcrError> {
         let resp = self
             .http
             .post(&self.endpoint)
@@ -131,17 +173,6 @@ impl OcrBackend for Sidecar {
             .map_err(|e| OcrError::Engine(format!("sidecar decode: {e}")))?;
         let confidence = reply.confidence.unwrap_or(ASSUMED_VLM_CONFIDENCE);
         Ok(ocr::score(&reply.text, confidence))
-    }
-
-    fn name(&self) -> &'static str {
-        "unlimited"
-    }
-
-    /// Liveness probe against the sidecar's `/health`, so the admin console can show a down sidecar.
-    /// The endpoint is the `/ocr` path; health lives at the service root, so strip it first.
-    async fn healthy(&self) -> bool {
-        let base = self.endpoint.trim_end_matches("/ocr").trim_end_matches('/');
-        matches!(self.http.get(format!("{base}/health")).send().await, Ok(r) if r.status().is_success())
     }
 }
 

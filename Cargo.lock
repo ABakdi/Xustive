@@ -3877,6 +3877,7 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "tracing",
+ "xustive-core",
  "xustive-text",
 ]
 
@@ -3976,6 +3977,7 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "tracing",
+ "xustive-core",
 ]
 
 [[package]]
