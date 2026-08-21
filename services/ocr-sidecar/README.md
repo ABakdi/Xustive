@@ -63,10 +63,18 @@ endpoint   = "http://ocr-sidecar:8091/ocr"   # service name on the private netwo
 timeout_ms = 30000
 ```
 
-Wire it into `deploy/docker-compose.yml` as a service on the internal `core` network with a
-`mem_limit`, a GPU reservation (`deploy.resources.reservations.devices`), **no published port**, and
-`profiles: ["ocr"]` so it stays off on GPU-less hosts. It is kept out of the base compose here on
-purpose: the base topology must come up on CPU-only hardware.
+It is already wired into `deploy/docker-compose.yml` as the `ocr-sidecar` service — on the internal
+`core` network, with a `mem_limit`, a GPU reservation, no published port, and `profiles: ["ocr"]` so
+it stays **off** on GPU-less hosts (the base topology must come up on CPU-only hardware). Bring it up
+with the profile, weights already provisioned into the `ocr_models` volume:
+
+```bash
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml \
+  --profile ocr up -d ocr-sidecar
+```
+
+`core` has no egress, so the model is **never downloaded at runtime** (`HF_HUB_OFFLINE=1`): populate
+the `ocr_models` volume out-of-band first, the same way the summariser's weights are provisioned.
 
 ## Privacy
 

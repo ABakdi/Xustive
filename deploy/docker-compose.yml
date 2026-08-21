@@ -111,6 +111,52 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Optional high-quality OCR: the Unlimited-OCR sidecar (a 3B GPU vision-language model). Off
+  # unless the `ocr` profile is enabled, because it needs a real GPU (≥ 8 GB) that the reference
+  # hardware does not have — the always-on engine is tesseract, in-process in the Rust API, and it
+  # requires none of this. See [[ADR-0016 - Two OCR Engines with an Optional Unlimited-OCR Sidecar]].
+  #
+  # On `core` (internal, no egress): the serving plane reaches it the way it reaches Meilisearch,
+  # and it must not phone home. `HF_HUB_OFFLINE=1` enforces that — the weights are provisioned into
+  # the `ocr_models` volume out-of-band (a model-init step, like the summariser's), never downloaded
+  # at runtime. No published port here; the dev override adds one so a host-run API can reach it.
+  ocr-sidecar:
+    build:
+      context: ../services/ocr-sidecar
+    container_name: xustive-ocr-sidecar
+    profiles: ["ocr"]
+    # A 3B model in bf16 plus image activations. This is the development slice; a production box
+    # sizes it to the GPU. The limit exists so a wedged load cannot take the host down.
+    mem_limit: 10g
+    cpus: 4.0
+    environment:
+      OCR_MODEL: baidu/Unlimited-OCR
+      HF_HOME: /models/hf
+      # No runtime egress: the weights are already in the volume, and the model is never fetched.
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    volumes:
+      # Pre-provisioned weights, read-only. The service never writes here.
+      - ocr_models:/models/hf:ro
+    networks: [core]
+    # GPU reservation. `deploy.resources.reservations.devices` is the spelling `docker compose up`
+    # honours for GPUs (unlike the mem/cpu keys under it, which is why those stay as mem_limit/cpus).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8091/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      # Loading a 3B model takes tens of seconds; do not mark it unhealthy before it has a chance.
+      retries: 20
+      start_period: 120s
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: xustive-prometheus
@@ -155,6 +201,9 @@ volumes:
   redis_data:
   prom_data:
   grafana_data:
+  # Pre-provisioned Unlimited-OCR weights (HuggingFace cache layout). Populated out-of-band, mounted
+  # read-only into the sidecar so `core` needs no egress. Empty unless the `ocr` profile is used.
+  ocr_models:
 
 networks:
   # No egress: nothing on this network can reach the internet, which is what makes
