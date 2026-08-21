@@ -1,6 +1,7 @@
 'use client'
 
-import { Search, X } from 'lucide-react'
+import { Camera, Search, X } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useId, useRef, useState } from 'react'
 
@@ -186,6 +187,18 @@ export function SearchBox({
             <X size={18} aria-hidden />
           </button>
         )}
+        {/* Search by image — the Lens-style entry. A real link, not a button: it navigates to the
+            image tool, which works without JavaScript and can be opened in a new tab. The tool reads
+            the photo to text and hands it back editable; nothing is searched automatically. */}
+        <Link
+          href={`/${lang}/tools/ocr`}
+          aria-label={t.ocrByImage}
+          title={t.ocrByImage}
+          className="shrink-0 p-1"
+          style={{ color: 'var(--fg-faint)', borderRadius: 'var(--radius)' }}
+        >
+          <Camera size={compact ? 16 : 18} aria-hidden />
+        </Link>
       </div>
 
       {open && items.length > 0 && (
