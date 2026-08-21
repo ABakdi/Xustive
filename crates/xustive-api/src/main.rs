@@ -96,6 +96,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState::new(config)?;
     state.resolve_index().await;
     state.refresh_suggestions().await;
+    // Create the image-similarity collection if enabled. Failure here (Qdrant down) is not fatal:
+    // the endpoint returns a clean "unavailable" and text search is unaffected ([[Vector Index]] §7).
+    if let Some(engine) = &state.image_search {
+        match engine.store.ensure_collection().await {
+            Ok(()) => tracing::info!("image-similarity collection ready"),
+            Err(e) => tracing::warn!(error = %e, "image similarity enabled but Qdrant unreachable"),
+        }
+    }
     spawn_model_load(&state);
     // Publishes how old the cached tool data is, on a timer rather than on request. A fetcher
     // that stops silently leaves the last values in place and every card keeps rendering, so

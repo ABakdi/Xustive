@@ -74,6 +74,9 @@ pub struct AppState {
     /// a [`xustive_media::Fallback`] over the Unlimited-OCR sidecar when `ocr_backend = "unlimited"`,
     /// so a down sidecar degrades to tesseract instead of failing. See [`build_ocr_backend`].
     pub ocr: Arc<dyn xustive_media::OcrBackend>,
+    /// Image-similarity search, or `None` when `[vector] enabled = false`. Its absence is a normal
+    /// state — the `/search/image` endpoint returns a clean unavailable and text search is untouched.
+    pub image_search: Option<crate::image_search::ImageSearch>,
     pub metrics: Metrics,
 }
 
@@ -201,8 +204,10 @@ impl AppState {
         let curated = crate::suggest::load_curated(&config.suggest.curated_path);
         let device = config.ml.device.clone();
         let gpu_layers = config.ml.gpu_layers;
-        // Cloned out before `config` is moved into the Arc — the OCR backend is built from it.
+        // Cloned out before `config` is moved into the Arc — the OCR and image-search engines are
+        // built from these.
         let media = config.media.clone();
+        let vector = config.vector.clone();
         let search = MeiliClient::new(
             &config.search.meili_url,
             &config.search.meili_key,
@@ -229,6 +234,7 @@ impl AppState {
             // not the fetcher has ever run — a cold system has no cached weather by definition.
             tool_cache: xustive_toold::store::Store::connect(&queue_url).ok(),
             ocr: build_ocr_backend(&media),
+            image_search: crate::image_search::ImageSearch::from_config(&vector),
             limiter: Arc::new(RateLimiter::new()),
             pending: Arc::new(PendingStore::default()),
             #[cfg(feature = "summariser")]

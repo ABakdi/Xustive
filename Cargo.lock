@@ -3771,6 +3771,7 @@ dependencies = [
  "xustive-text",
  "xustive-toold",
  "xustive-tools",
+ "xustive-vector",
 ]
 
 [[package]]

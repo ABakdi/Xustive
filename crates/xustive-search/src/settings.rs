@@ -49,7 +49,10 @@ pub fn documents_settings() -> Value {
             // So the repass job (M2-T06.9) can find documents that were enriched under load.
             "enrichment_level",
             // The fetched MIME, so a "Files" vertical can select PDFs (M2-T14.3).
-            "content_type"
+            "content_type",
+            // So image-similarity results can be resolved back to documents with `id IN [...]`
+            // in one query (M3-T05). The primary key is not filterable unless declared.
+            "id"
         ],
         "sortableAttributes": [
             "published_at", "crawled_at", "quality_score", "engagement.likes"

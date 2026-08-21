@@ -16,6 +16,7 @@ xustive-lang = { path = "../xustive-lang" }
 blake3.workspace = true
 xustive-ml = { path = "../xustive-ml", default-features = false }
 xustive-media = { path = "../xustive-media" }
+xustive-vector = { path = "../xustive-vector" }
 
 axum.workspace = true
 tower = { workspace = true, features = ["load-shed", "limit", "util", "buffer"] }

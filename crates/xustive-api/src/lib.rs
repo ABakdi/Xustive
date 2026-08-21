@@ -9,6 +9,7 @@ pub mod admin_crawler;
 pub mod dataage;
 pub mod deadline;
 pub mod error;
+pub mod image_search;
 pub mod metrics;
 pub mod ocr;
 pub mod ratelimit;
@@ -159,6 +160,9 @@ pub fn app(state: AppState) -> Router {
     // and bounded by the sidecar timeout plus slack so a wedged VLM cannot hold the request open.
     let ocr_route = Router::new()
         .route("/ocr", axum::routing::post(ocr::handler))
+        // Image-similarity search also takes an image body, so it shares this large-body group and
+        // its media rate limit. Its work is an embed + an ANN query, well within the group timeout.
+        .route("/search/image", axum::routing::post(image_search::handler))
         .layer(middleware::from_fn_with_state(state.clone(), limit_ocr))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::GATEWAY_TIMEOUT,

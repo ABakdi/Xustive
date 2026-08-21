@@ -640,7 +640,7 @@ fn parse_filters(p: &SearchParams) -> Result<Filters, ApiError> {
 ///
 /// Highlighted text comes from Meilisearch's `_formatted` object, which contains `<em>` markers.
 /// Everything else is escaped by the client; `<em>` is the only markup it may render.
-fn to_card(hit: &Value) -> ResultCard {
+pub(crate) fn to_card(hit: &Value) -> ResultCard {
     let formatted = hit.get("_formatted").unwrap_or(hit);
     let s = |v: &Value, k: &str| {
         v.get(k)
