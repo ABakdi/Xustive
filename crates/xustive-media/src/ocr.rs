@@ -9,7 +9,7 @@
 
 use std::io::Cursor;
 
-use image::{DynamicImage, GenericImageView, ImageFormat};
+use image::{DynamicImage, GenericImageView, GrayImage, ImageFormat};
 
 /// Pixel budget — a guard against decompression bombs. Generous for a screenshot, far below what
 /// would exhaust memory once expanded.
@@ -20,6 +20,9 @@ const MIN_OCR_DIM: u32 = 1000;
 pub const MIN_CONFIDENCE: f32 = 55.0;
 /// Fewest alphanumeric characters worth keeping — below this it is noise, not text.
 pub const MIN_USABLE_CHARS: usize = 8;
+/// A first pass at or above this confidence is trusted as-is; below it (or if unusable) the
+/// binarised retry runs. Clean screenshots clear this easily, so they never pay for the second pass.
+const GOOD_ENOUGH_CONFIDENCE: f32 = 75.0;
 
 #[derive(Debug, thiserror::Error)]
 pub enum OcrError {
@@ -115,6 +118,12 @@ fn preprocess(img: DynamicImage, orientation: u32) -> DynamicImage {
 /// as `"ara+fra+eng"` — Arabic first, since that is what most Algerian screenshots are.
 ///
 /// **Blocking and CPU-bound.** Run it on a blocking pool.
+///
+/// Two passes at most. The first reads the grayscale image (tesseract binarises internally, which is
+/// right for clean anti-aliased screenshot text). When that reads poorly — unusable, or below
+/// [`GOOD_ENOUGH_CONFIDENCE`] — a second pass reads an **Otsu-binarised** version, which recovers
+/// low-contrast or unevenly-lit sources a global grayscale pass struggles with. The better of the
+/// two results wins, so the retry can only help: an image that already read well never reaches it.
 pub fn recognise(
     bytes: &[u8],
     tessdata: &str,
@@ -122,24 +131,102 @@ pub fn recognise(
     max_pixels: u64,
 ) -> Result<Ocr, OcrError> {
     let orientation = exif_orientation(bytes);
-    let img = preprocess(decode(bytes, max_pixels)?, orientation);
-
-    // Re-encode the preprocessed image as PNG for leptonica's in-memory reader — lossless, so no OCR
-    // quality is lost, and still no disk touched.
-    let mut png = Vec::new();
-    img.write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
-        .map_err(|_| OcrError::Decode)?;
+    let luma = preprocess(decode(bytes, max_pixels)?, orientation).to_luma8();
 
     let mut tess = leptess::LepTess::new(Some(tessdata), langs)
         .map_err(|e| OcrError::Engine(e.to_string()))?;
+
+    let (raw1, conf1) = ocr_luma(&mut tess, &luma)?;
+    let first = score(&raw1, conf1);
+    if first.usable && conf1 >= GOOD_ENOUGH_CONFIDENCE {
+        return Ok(first);
+    }
+
+    // Retry on a binarised image. Otsu picks the threshold from the image's own histogram, so it
+    // adapts to each source rather than using a fixed cut.
+    let threshold = otsu_threshold(&luma);
+    let (raw2, conf2) = ocr_luma(&mut tess, &binarize(&luma, threshold))?;
+    let second = score(&raw2, conf2);
+
+    Ok(pick_better(first, second))
+}
+
+/// OCR one grayscale image on an existing engine: encode to PNG (in memory), set, read, score.
+fn ocr_luma(tess: &mut leptess::LepTess, luma: &GrayImage) -> Result<(String, f32), OcrError> {
+    let mut png = Vec::new();
+    DynamicImage::ImageLuma8(luma.clone())
+        .write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
+        .map_err(|_| OcrError::Decode)?;
     tess.set_image_from_mem(&png)
         .map_err(|e| OcrError::Engine(e.to_string()))?;
     let raw = tess
         .get_utf8_text()
         .map_err(|e| OcrError::Engine(e.to_string()))?;
     let confidence = tess.mean_text_conf() as f32;
+    Ok((raw, confidence))
+}
 
-    Ok(score(&raw, confidence))
+/// Keep the better of two OCR results: a usable result always beats an unusable one; between two of
+/// the same usability, the higher confidence wins.
+fn pick_better(a: Ocr, b: Ocr) -> Ocr {
+    match (a.usable, b.usable) {
+        (true, false) => a,
+        (false, true) => b,
+        _ => {
+            if b.confidence > a.confidence {
+                b
+            } else {
+                a
+            }
+        }
+    }
+}
+
+/// Otsu's method: the grayscale threshold that maximises between-class variance, computed from the
+/// image histogram. A parameter-free way to split "ink" from "paper" that adapts per image.
+fn otsu_threshold(luma: &GrayImage) -> u8 {
+    let mut hist = [0u32; 256];
+    for p in luma.pixels() {
+        hist[p[0] as usize] += 1;
+    }
+    let total = luma.pixels().len() as f64;
+    if total == 0.0 {
+        return 128;
+    }
+    let sum: f64 = (0..256).map(|i| i as f64 * hist[i] as f64).sum();
+
+    let mut sum_b = 0.0;
+    let mut w_b = 0.0;
+    let mut max_var = -1.0;
+    let mut threshold = 128u8;
+    for i in 0..256 {
+        w_b += hist[i] as f64;
+        if w_b == 0.0 {
+            continue;
+        }
+        let w_f = total - w_b;
+        if w_f == 0.0 {
+            break;
+        }
+        sum_b += i as f64 * hist[i] as f64;
+        let mean_b = sum_b / w_b;
+        let mean_f = (sum - sum_b) / w_f;
+        let between = w_b * w_f * (mean_b - mean_f) * (mean_b - mean_f);
+        if between > max_var {
+            max_var = between;
+            threshold = i as u8;
+        }
+    }
+    threshold
+}
+
+/// Binarise: pixels brighter than `threshold` become white, the rest black.
+fn binarize(luma: &GrayImage, threshold: u8) -> GrayImage {
+    let mut out = luma.clone();
+    for p in out.pixels_mut() {
+        p[0] = if p[0] > threshold { 255 } else { 0 };
+    }
+    out
 }
 
 /// Turn raw OCR output and a confidence into a scored [`Ocr`]: collapse whitespace, normalise via
@@ -213,6 +300,66 @@ mod tests {
             "hello world line"
         );
         assert_eq!(collapse_whitespace("   "), "");
+    }
+
+    #[test]
+    fn otsu_splits_a_bimodal_image_between_its_two_levels() {
+        // Half the pixels at 40, half at 200 — the threshold must land strictly between them.
+        let mut img = GrayImage::new(10, 10);
+        for (i, p) in img.pixels_mut().enumerate() {
+            p[0] = if i < 50 { 40 } else { 200 };
+        }
+        let t = otsu_threshold(&img);
+        assert!(
+            t >= 40 && t < 200,
+            "threshold {t} not between the two levels"
+        );
+    }
+
+    #[test]
+    fn binarize_pushes_to_black_and_white() {
+        let mut img = GrayImage::new(3, 1);
+        img.get_pixel_mut(0, 0)[0] = 10;
+        img.get_pixel_mut(1, 0)[0] = 130;
+        img.get_pixel_mut(2, 0)[0] = 250;
+        let out = binarize(&img, 128);
+        assert_eq!(out.get_pixel(0, 0)[0], 0);
+        assert_eq!(out.get_pixel(1, 0)[0], 255);
+        assert_eq!(out.get_pixel(2, 0)[0], 255);
+    }
+
+    #[test]
+    fn pick_better_prefers_usable_then_confidence() {
+        let usable_low = Ocr {
+            text: "a".into(),
+            confidence: 60.0,
+            usable: true,
+        };
+        let unusable_high = Ocr {
+            text: "b".into(),
+            confidence: 90.0,
+            usable: false,
+        };
+        // A usable result beats an unusable one even at lower confidence.
+        assert_eq!(
+            pick_better(usable_low.clone(), unusable_high.clone()).text,
+            "a"
+        );
+        assert_eq!(pick_better(unusable_high, usable_low).text, "a");
+
+        // Same usability → higher confidence wins.
+        let lo = Ocr {
+            text: "lo".into(),
+            confidence: 55.0,
+            usable: true,
+        };
+        let hi = Ocr {
+            text: "hi".into(),
+            confidence: 80.0,
+            usable: true,
+        };
+        assert_eq!(pick_better(lo.clone(), hi.clone()).text, "hi");
+        assert_eq!(pick_better(hi, lo).text, "hi");
     }
 
     #[test]
