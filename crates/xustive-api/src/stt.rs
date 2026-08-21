@@ -131,8 +131,56 @@ pub async fn handler(
     }
     // Only pass a language hint we recognise, so a stray query value cannot reach the model.
     let lang = params.lang.as_deref().filter(|l| is_known_lang(l));
-    let transcript = stt.transcribe(body.to_vec(), lang).await?;
+    let mut transcript = stt.transcribe(body.to_vec(), lang).await?;
+    // Defence in depth against whisper's silence hallucinations (M3-T02.6). The sidecar drops
+    // low-confidence segments; this blanks a transcript that is *only* a known phantom phrase, which
+    // the per-segment signal occasionally lets through.
+    transcript.text = strip_artefacts(&transcript.text);
     Ok(Json(transcript))
+}
+
+/// Phrases whisper emits on silence or noise, normalised for comparison. When the *entire*
+/// transcript reduces to one of these, it is an artefact, not speech, and is blanked — a voice
+/// search must not run for a word nobody said. Only whole-transcript matches are removed; a real
+/// utterance that merely contains "thank you" is untouched.
+const ARTEFACTS: &[&str] = &[
+    // English — the notorious ones from video-transcript training data.
+    "thank you",
+    "thanks for watching",
+    "thank you for watching",
+    "please subscribe",
+    "like and subscribe",
+    "you",
+    // French. `normalize` keeps Latin accents, so these carry them.
+    "merci",
+    "merci d'avoir regardé",
+    "merci d'avoir regardé cette vidéo",
+    "abonnez-vous",
+    "sous-titrage",
+    // Arabic / Darija — subscribe/like call-outs and the stray "ترجمة".
+    "شكرا",
+    "شكرا لكم",
+    "اشتركوا في القناة",
+    "اشترك في القناة",
+    "لا تنسوا الاشتراك",
+    "ترجمة",
+];
+
+/// Blank a transcript that is nothing but a known hallucination phrase.
+fn strip_artefacts(text: &str) -> String {
+    let normalised = xustive_text::normalize(text);
+    let trimmed = normalised
+        .trim_end_matches(['.', '!', '؟', '?', '،', ','])
+        .trim();
+    if ARTEFACTS
+        .iter()
+        .any(|a| trimmed == xustive_text::normalize(a))
+    {
+        return String::new();
+    }
+    // Not an artefact — return the original text (not the normalised form, which would strip
+    // diacritics and casing a reader may want).
+    text.trim().to_string()
 }
 
 /// The languages the UI offers — a whitelist so the `lang` hint is bounded.
@@ -173,5 +221,33 @@ mod tests {
         assert_eq!(a.language.as_deref(), Some("ar"));
         let b: SidecarReply = serde_json::from_str(r#"{"text":"hi"}"#).unwrap();
         assert_eq!(b.language, None);
+    }
+
+    #[test]
+    fn a_pure_hallucination_phrase_is_blanked() {
+        assert_eq!(strip_artefacts("Thank you."), "");
+        assert_eq!(strip_artefacts("Thanks for watching!"), "");
+        assert_eq!(strip_artefacts("شكرا لكم"), "");
+        assert_eq!(strip_artefacts("Merci d'avoir regardé"), "");
+    }
+
+    #[test]
+    fn real_speech_containing_an_artefact_phrase_survives() {
+        // "thank you for the information about Oran" is a real query — only a *whole* match is an
+        // artefact, so this must pass through unchanged.
+        let real = "thank you for the information about Oran";
+        assert_eq!(strip_artefacts(real), real);
+    }
+
+    #[test]
+    fn ordinary_transcripts_are_untouched() {
+        assert_eq!(
+            strip_artefacts("مواقيت الصلاة في وهران"),
+            "مواقيت الصلاة في وهران"
+        );
+        assert_eq!(
+            strip_artefacts("  paracetamol dosage  "),
+            "paracetamol dosage"
+        );
     }
 }

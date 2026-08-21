@@ -94,6 +94,14 @@ async def transcribe(request: Request) -> Response:
     return JSONResponse({"text": text, "language": detected})
 
 
+# Whisper hallucinates confident-sounding phrases on silence ("thank you", "subscribe"). Its own
+# per-segment signals catch most of it: a high no-speech probability with a low average token
+# log-probability means "the model was guessing". Segments past these thresholds are dropped. The
+# Rust side applies a second, phrase-based filter as defence in depth (M3-T02.6).
+NO_SPEECH_MAX = 0.6
+AVG_LOGPROB_MIN = -1.0
+
+
 def _run(data: bytes, lang: str | None) -> tuple[str, str]:
     model = _state["model"]
     # faster-whisper decodes via PyAV from a file-like object — no temp file, so nothing persists.
@@ -103,5 +111,12 @@ def _run(data: bytes, lang: str | None) -> tuple[str, str]:
         vad_filter=True,  # trim leading/trailing silence so a near-silent clip returns little
         beam_size=5,
     )
-    text = " ".join(seg.text.strip() for seg in segments).strip()
+    kept = []
+    for seg in segments:
+        no_speech = getattr(seg, "no_speech_prob", 0.0)
+        avg_logprob = getattr(seg, "avg_logprob", 0.0)
+        if no_speech > NO_SPEECH_MAX and avg_logprob < AVG_LOGPROB_MIN:
+            continue  # a hallucinated segment on near-silence
+        kept.append(seg.text.strip())
+    text = " ".join(kept).strip()
     return text, getattr(info, "language", lang or "und")

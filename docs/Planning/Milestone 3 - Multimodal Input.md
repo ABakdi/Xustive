@@ -113,7 +113,7 @@ document ([[Social Connector - Instagram]] §4.2).
 - [~] M3-T02.3 Resample to 16 kHz mono — *whisper resamples internally*
 - [x] M3-T02.4 VAD trimming — *`vad_filter=True` in the sidecar*
 - [~] M3-T02.5 Whisper `small`, Arabic-preferred language — *faster-whisper, with the UI language forwarded as `?lang=`; not `whisper.cpp` FFI*
-- [ ] M3-T02.6 **Artefact filter** for hallucinated trailing text on near-silent input
+- [x] M3-T02.6 **Artefact filter** for hallucinated trailing text on near-silent input — *the sidecar drops segments with high `no_speech_prob` + low `avg_logprob`; the API blanks a transcript that is only a known phantom phrase (multilingual, whole-match only), unit-tested*
 - [~] M3-T02.7 Bounded queue and slot management — *the API rate-limits `/transcribe`; the sidecar is single-model*
 - [x] M3-T02.8 **Zero-disk-write** — *the sidecar decodes from a `BytesIO`, no temp file; the API forwards a raw body (test still to add)*
 - [ ] M3-T02.9 Robustness suite: silence, noise, truncated container, 1-sample file, 30 s clip
