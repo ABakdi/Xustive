@@ -140,6 +140,11 @@ worker: ## Drain the index queue into Meilisearch
 dlq: ## Dead letters: make dlq A=stats|peek|replay
 	cargo run --release -q -p xustive-cli -- --config $(CONFIG) dlq $(or $(A),stats)
 
+.PHONY: load
+load: ## Load-test the running API on :8080: make load S=search|suggest|summary|mixed [RPS=n DUR=s]
+	cargo run --release -q -p xustive-loadgen -- \
+		--scenario $(or $(S),search) $(if $(RPS),--rps $(RPS),) $(if $(DUR),--duration $(DUR),)
+
 .PHONY: eval
 eval: ## Score the golden set and write a dated report
 	cargo run --release -q -p xustive-cli -- --config $(CONFIG) eval

@@ -3852,6 +3852,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "xustive-loadgen"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "xustive-media"
 version = "0.1.0"
 dependencies = [

@@ -3,8 +3,8 @@ tags:
   - planning
   - milestone
 milestone: 4
-status: not-started
-updated: 2026-08-06
+status: in-progress
+updated: 2026-08-21
 ---
 
 # Milestone 4 - Quality and Operations
@@ -53,7 +53,7 @@ the entire point. Discovering it during beta is not.
 
 ## M4-T03 — Load testing
 
-- [ ] M4-T03.1 Load harness (`k6`/`oha`) with realistic query mix by language
+- [x] M4-T03.1 Load harness with realistic query mix by language — *`xustive-loadgen`: a Rust-native **open-loop** generator (no k6/oha dependency), weighted ar/ary/fr/en query mix, p50/p95/p99, distinguishes ok/error/shed, exits non-zero on a budget miss. `make load S=…`. Verified live against the local API. The 10M-scale runs below (T03.2–.6) are the exercise it instruments*
 - [ ] M4-T03.2 500 rps search for 10 min → p95 ≤ 200 ms
 - [ ] M4-T03.3 2 000 rps suggest → p95 ≤ 40 ms
 - [ ] M4-T03.4 20 concurrent summaries → drop ≤ 2 %, **search latency unaffected**

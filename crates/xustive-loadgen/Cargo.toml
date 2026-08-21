@@ -1,0 +1,19 @@
+[package]
+name = "xustive-loadgen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Open-loop HTTP load generator for the serving plane (M4-T03). Rust-native, no k6/oha dependency."
+
+[[bin]]
+name = "xustive-loadgen"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
