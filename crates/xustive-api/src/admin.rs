@@ -235,6 +235,15 @@ pub async fn media(
         }
     };
 
+    let stt = match &state.stt {
+        None => json!({ "enabled": false }),
+        Some(client) => json!({
+            "enabled": true,
+            "healthy": client.healthy().await,
+            "endpoint": state.config.stt.endpoint,
+        }),
+    };
+
     Ok(Json(json!({
         "ocr": {
             "backend": ocr_backend,
@@ -242,6 +251,7 @@ pub async fn media(
             "sidecar_endpoint": state.config.media.sidecar.endpoint,
         },
         "vector": vector,
+        "stt": stt,
     })))
 }
 

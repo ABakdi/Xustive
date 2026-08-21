@@ -50,6 +50,13 @@ services:
     ports:
       - "127.0.0.1:${XUSTIVE_CLIP_PORT:-8092}:8092"
 
+  # Only started with `--profile voice`. Published so the host-run API reaches it at the
+  # `stt.endpoint` default (http://127.0.0.1:8093/transcribe).
+  stt-sidecar:
+    networks: [core, devhost]
+    ports:
+      - "127.0.0.1:${XUSTIVE_STT_PORT:-8093}:8093"
+
   prometheus:
     networks: [core, obs, devhost]
     ports:

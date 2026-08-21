@@ -15,6 +15,7 @@ pub mod ocr;
 pub mod ratelimit;
 pub mod search;
 pub mod state;
+pub mod stt;
 pub mod suggest;
 pub mod summary;
 pub mod telemetry;
@@ -174,6 +175,17 @@ pub fn app(state: AppState) -> Router {
         ))
         .with_state(state.clone());
 
+    // Transcription takes an *audio* body — its own large-body group, bounded by the STT timeout.
+    let stt_route = Router::new()
+        .route("/transcribe", axum::routing::post(stt::handler))
+        .layer(middleware::from_fn_with_state(state.clone(), limit_ocr))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            Duration::from_millis(state.config.stt.timeout_ms + 10_000),
+        ))
+        .layer(RequestBodyLimitLayer::new(state.config.stt.max_audio_bytes))
+        .with_state(state.clone());
+
     let core = Router::new()
         .nest(
             "/api/v1",
@@ -189,6 +201,7 @@ pub fn app(state: AppState) -> Router {
     Router::new()
         .merge(core)
         .nest("/api/v1", ocr_route)
+        .nest("/api/v1", stt_route)
         // Request ids, outermost after panic catching so even a shed or rejected request
         // carries one. A ULID rather than a UUID: it sorts by time, so grepping a log for ids
         // near an incident actually narrows the window.

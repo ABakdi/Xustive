@@ -1,0 +1,6 @@
+# Whisper via faster-whisper (CTranslate2) — fast enough on CPU at int8, which is the reference path.
+# The model itself is downloaded to HF_HOME on first use; provision it out-of-band for the offline
+# `core` network (see README).
+faster-whisper==1.0.*
+fastapi==0.115.*
+uvicorn[standard]==0.32.*

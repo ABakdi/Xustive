@@ -106,3 +106,11 @@ score_threshold_milli = 750
 # TTL (days) for the phash → vector reuse cache: a re-posted image reuses its embedding instead of
 # re-calling the model. 0 disables it.
 embed_cache_ttl_days = 30
+
+[stt]
+# Voice search. Off by default: needs the STT sidecar (services/stt-sidecar) and its whisper model.
+# Whisper small runs CPU-only, so voice is not GPU-gated — only opt-in until the model is provisioned.
+enabled = false
+endpoint = "http://127.0.0.1:8093/transcribe"
+timeout_ms = 30000
+max_audio_bytes = 8388608

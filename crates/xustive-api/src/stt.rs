@@ -1,0 +1,177 @@
+//! The transcription endpoint: audio in, text out.
+//!
+//! Backs voice search ([[Speech to Text]], M3-T02). The browser records a short clip, posts the raw
+//! bytes here, and gets back a transcript that lands in the search box **editable and never
+//! auto-submitted** (the frontend enforces that). Transcription itself runs in the STT sidecar
+//! (`services/stt-sidecar`), reached as an internal-network service — the same shape as the OCR and
+//! CLIP sidecars.
+//!
+//! # Isolation and availability
+//!
+//! Voice is optional. When `[stt] enabled = false` or the sidecar is unreachable, the endpoint
+//! returns a clean "unavailable" and nothing else is affected — text search never depends on it.
+//!
+//! # Privacy
+//!
+//! The audio is a raw POST body, forwarded to the local sidecar, and never stored or logged — voice
+//! is among the most sensitive input a person gives, and the entire reason to self-host STT is that
+//! it never reaches a cloud API.
+
+use std::time::Duration;
+
+use axum::body::Bytes;
+use axum::extract::{Query, State};
+use axum::Json;
+use serde::{Deserialize, Serialize};
+
+use crate::error::ApiError;
+use crate::state::AppState;
+
+/// A client for the STT sidecar. Present only when `[stt] enabled`.
+#[derive(Clone)]
+pub struct SttClient {
+    http: reqwest::Client,
+    endpoint: String,
+    max_bytes: usize,
+}
+
+#[derive(Deserialize)]
+struct SidecarReply {
+    text: String,
+    #[serde(default)]
+    language: Option<String>,
+}
+
+impl SttClient {
+    /// Build from `[stt]`, or `None` when disabled or the client cannot be constructed.
+    pub fn from_config(cfg: &xustive_core::config::SttConfig) -> Option<Self> {
+        if !cfg.enabled {
+            return None;
+        }
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_millis(cfg.timeout_ms))
+            .build()
+            .ok()?;
+        Some(Self {
+            http,
+            endpoint: cfg.endpoint.clone(),
+            max_bytes: cfg.max_audio_bytes,
+        })
+    }
+
+    /// Liveness probe against the sidecar's `/health` (the endpoint is the `/transcribe` path).
+    pub async fn healthy(&self) -> bool {
+        let base = self
+            .endpoint
+            .trim_end_matches("/transcribe")
+            .trim_end_matches('/');
+        matches!(self.http.get(format!("{base}/health")).send().await, Ok(r) if r.status().is_success())
+    }
+
+    async fn transcribe(&self, audio: Vec<u8>, lang: Option<&str>) -> Result<Transcript, ApiError> {
+        let mut req = self
+            .http
+            .post(&self.endpoint)
+            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+            .body(audio);
+        if let Some(l) = lang {
+            req = req.query(&[("lang", l)]);
+        }
+        let resp = req.send().await.map_err(|e| {
+            tracing::warn!(error = %e, "STT sidecar request failed");
+            ApiError::model_unavailable("stt_unavailable")
+        })?;
+        if !resp.status().is_success() {
+            tracing::warn!(status = %resp.status(), "STT sidecar returned an error");
+            return Err(ApiError::model_unavailable("stt_unavailable"));
+        }
+        let reply: SidecarReply = resp.json().await.map_err(|e| {
+            tracing::warn!(error = %e, "STT sidecar reply decode failed");
+            ApiError::model_unavailable("stt_unavailable")
+        })?;
+        Ok(Transcript {
+            text: reply.text,
+            language: reply.language.unwrap_or_default(),
+        })
+    }
+}
+
+#[derive(Serialize)]
+pub struct Transcript {
+    /// The transcript. May be empty for silence — the client shows an empty state, not an error.
+    pub text: String,
+    /// Detected (or forced) language code.
+    pub language: String,
+}
+
+#[derive(Deserialize)]
+pub struct TranscribeParams {
+    /// Optional language hint (the UI language), so a short Arabic clip is not mis-detected.
+    pub lang: Option<String>,
+}
+
+/// `POST /api/v1/transcribe` — turn an uploaded audio clip into text.
+pub async fn handler(
+    State(state): State<AppState>,
+    Query(params): Query<TranscribeParams>,
+    body: Bytes,
+) -> Result<Json<Transcript>, ApiError> {
+    let Some(stt) = state.stt.clone() else {
+        return Err(ApiError::model_unavailable("stt_unavailable"));
+    };
+    if body.is_empty() {
+        return Err(ApiError::BadImage {
+            code: "empty_audio",
+        });
+    }
+    if body.len() > stt.max_bytes {
+        return Err(ApiError::BadImage {
+            code: "audio_too_large",
+        });
+    }
+    // Only pass a language hint we recognise, so a stray query value cannot reach the model.
+    let lang = params.lang.as_deref().filter(|l| is_known_lang(l));
+    let transcript = stt.transcribe(body.to_vec(), lang).await?;
+    Ok(Json(transcript))
+}
+
+/// The languages the UI offers — a whitelist so the `lang` hint is bounded.
+fn is_known_lang(l: &str) -> bool {
+    matches!(l, "ar" | "ary" | "fr" | "en")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disabled_config_builds_no_client() {
+        let cfg = xustive_core::config::SttConfig::default(); // enabled = false
+        assert!(SttClient::from_config(&cfg).is_none());
+    }
+
+    #[test]
+    fn enabled_config_builds_a_client() {
+        let cfg = xustive_core::config::SttConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        assert!(SttClient::from_config(&cfg).is_some());
+    }
+
+    #[test]
+    fn only_known_languages_are_forwarded() {
+        assert!(is_known_lang("ar"));
+        assert!(is_known_lang("ary"));
+        assert!(!is_known_lang("zh"));
+        assert!(!is_known_lang("'; drop"));
+    }
+
+    #[test]
+    fn reply_decodes_with_and_without_language() {
+        let a: SidecarReply = serde_json::from_str(r#"{"text":"hi","language":"ar"}"#).unwrap();
+        assert_eq!(a.language.as_deref(), Some("ar"));
+        let b: SidecarReply = serde_json::from_str(r#"{"text":"hi"}"#).unwrap();
+        assert_eq!(b.language, None);
+    }
+}

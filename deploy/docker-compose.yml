@@ -185,6 +185,31 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # Speech-to-text sidecar for voice search. Behind the `voice` profile (off by default). Whisper
+  # small runs CPU-only, so no GPU reservation. On `core` (internal, no egress); weights provisioned
+  # into `stt_models` out-of-band (`HF_HUB_OFFLINE=1`). See services/stt-sidecar.
+  stt-sidecar:
+    build:
+      context: ../services/stt-sidecar
+    container_name: xustive-stt-sidecar
+    profiles: ["voice"]
+    mem_limit: 2g
+    cpus: 2.0
+    environment:
+      STT_MODEL: small
+      HF_HOME: /models/hf
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - stt_models:/models/hf:ro
+    networks: [core]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8093/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: xustive-prometheus
@@ -234,6 +259,8 @@ volumes:
   ocr_models:
   # Pre-provisioned CLIP weights, same posture. Empty unless the `vector` profile is used.
   clip_models:
+  # Pre-provisioned whisper weights, same posture. Empty unless the `voice` profile is used.
+  stt_models:
 
 networks:
   # No egress: nothing on this network can reach the internet, which is what makes

@@ -77,6 +77,9 @@ pub struct AppState {
     /// Image-similarity search, or `None` when `[vector] enabled = false`. Its absence is a normal
     /// state — the `/search/image` endpoint returns a clean unavailable and text search is untouched.
     pub image_search: Option<crate::image_search::ImageSearch>,
+    /// Voice transcription, or `None` when `[stt] enabled = false`. Same posture: absence is normal
+    /// and the `/transcribe` endpoint returns a clean unavailable.
+    pub stt: Option<crate::stt::SttClient>,
     pub metrics: Metrics,
 }
 
@@ -208,6 +211,7 @@ impl AppState {
         // built from these.
         let media = config.media.clone();
         let vector = config.vector.clone();
+        let stt = config.stt.clone();
         let search = MeiliClient::new(
             &config.search.meili_url,
             &config.search.meili_key,
@@ -235,6 +239,7 @@ impl AppState {
             tool_cache: xustive_toold::store::Store::connect(&queue_url).ok(),
             ocr: build_ocr_backend(&media),
             image_search: crate::image_search::ImageSearch::from_config(&vector),
+            stt: crate::stt::SttClient::from_config(&stt),
             limiter: Arc::new(RateLimiter::new()),
             pending: Arc::new(PendingStore::default()),
             #[cfg(feature = "summariser")]

@@ -450,6 +450,32 @@ impl VectorConfig {
     }
 }
 
+/// Speech-to-text for voice search ([[Speech to Text]], M3-T02). Off by default; needs the STT
+/// sidecar and its model. Whisper `small` runs CPU-only, so voice is not GPU-gated.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SttConfig {
+    /// Master switch for voice search.
+    pub enabled: bool,
+    /// The STT sidecar's transcribe endpoint. An internal-network HTTP call, not internet egress.
+    pub endpoint: String,
+    /// Hard per-request timeout, milliseconds — a wedged model must fail in bounded time.
+    pub timeout_ms: u64,
+    /// Largest audio accepted, bytes. A 30 s Opus clip is well under 1 MB; this is the ceiling.
+    pub max_audio_bytes: usize,
+}
+
+impl Default for SttConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: "http://127.0.0.1:8093/transcribe".into(),
+            timeout_ms: 30_000,
+            max_audio_bytes: 8 * 1024 * 1024,
+        }
+    }
+}
+
 impl Default for VectorConfig {
     fn default() -> Self {
         Self {
@@ -591,6 +617,8 @@ pub struct Config {
     pub media: MediaConfig,
     #[serde(default)]
     pub vector: VectorConfig,
+    #[serde(default)]
+    pub stt: SttConfig,
 }
 
 impl Default for Config {
@@ -608,6 +636,7 @@ impl Default for Config {
             interaction: InteractionConfig::default(),
             media: MediaConfig::default(),
             vector: VectorConfig::default(),
+            stt: SttConfig::default(),
         }
     }
 }
