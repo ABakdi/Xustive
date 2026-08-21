@@ -18,9 +18,10 @@ updated: 2026-08-21
 > NSFW filtering, and `delete_by_document` for takedowns/orphans. The write path is the crawler's
 > `media_embed`; the read path is `POST /api/v1/search/image`. Embeddings come from the `clip-embed`
 > sidecar (CLIP ViT-B/32, CPU-capable). Verified live against dev Qdrant with synthetic vectors.
-> Off by default (`[vector] enabled`) until a CLIP model is provisioned. Not yet wired: the phash
-> reuse-skip (§5), the scheduled orphan-reconciliation job (§7), and the recall/latency measurement
-> (§4 — those numbers stay a hypothesis until measured on our corpus).
+> Off by default (`[vector] enabled`) until a CLIP model is provisioned. Orphan reconciliation (§7)
+> ships as `xustive-cli reconcile-vectors` — it walks the collection and deletes vectors whose
+> document is gone from the lexical index. Not yet wired: the phash reuse-skip (§5) and the
+> recall/latency measurement (§4 — those numbers stay a hypothesis until measured on our corpus).
 
 ## 1. Purpose
 

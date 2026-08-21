@@ -59,10 +59,11 @@ target** (M3-T04.8) needs a **labelled screenshot ground-truth set**; the **Unli
 needs a **GPU box (≥ 8 GB) with the model** to run live — the Rust side and the service are done and
 fall back to tesseract until then; **image similarity** needs the **CLIP model provisioned** into the
 `clip-embed` service before it returns real results (the whole path is wired and tested, off by
-default via `[vector] enabled`). Remaining vector follow-ups: the phash reuse-skip (T05.3), the
-scheduled orphan-reconciliation job (T05.7), and the recall/latency measurement (T05.6). Remaining
-OCR follow-ups: per-image phash dedup (T07.2), NSFW scoring (T07.6), PSM 6/11 retry and adaptive
-threshold (T04.3/.4).
+default via `[vector] enabled`). Orphan reconciliation is done as `xustive-cli reconcile-vectors`
+(a removed document's image vectors are deletable, closing the [[Security and Privacy]] §8 gap).
+Remaining vector follow-ups: the phash reuse-skip (T05.3) and the recall/latency measurement (T05.6,
+needs the model + a corpus). Remaining OCR follow-ups: per-image phash dedup (T07.2), NSFW scoring
+(T07.6), PSM 6/11 retry and adaptive threshold (T04.3/.4).
 
 ---
 
@@ -134,7 +135,7 @@ document ([[Social Connector - Instagram]] §4.2).
 - [x] M3-T05.5 ANN search with payload filters; `ef` tuning
 - [ ] M3-T05.6 **Measure recall vs latency on our own corpus** — the table in
       [[Vector Index]] §4 is a hypothesis until this runs ← *needs the CLIP model + a corpus*
-- [~] M3-T05.7 Orphan reconciliation job (deleted document → deleted vectors) ← *`Store::delete_by_document` exists; the scheduled job is not wired*
+- [x] M3-T05.7 Orphan reconciliation job (deleted document → deleted vectors) — *`xustive-cli reconcile-vectors` walks the collection, checks each document against the index, and deletes orphans (`--dry-run` to preview); verified live. A cron/timer around it is an ops concern, not code*
 - [x] M3-T05.8 Round-trip test: re-uploaded image ranks 1 — *verified live against dev Qdrant with synthetic vectors (exact match score > 0.99); with a real CLIP model this becomes the > 0.95 image test*
 - [ ] M3-T05.9 Transform robustness: crop / resize / recompress / watermark → top 3 ← *needs the CLIP model*
 
