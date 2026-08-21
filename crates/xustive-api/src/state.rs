@@ -70,6 +70,10 @@ pub struct AppState {
     /// Cache the tool data plane fills. `None` when Redis is unreachable, which is not fatal:
     /// tools that need it render nothing and everything else is unaffected.
     pub tool_cache: Option<xustive_toold::store::Store>,
+    /// The OCR engine the user-facing tools use, built once from `[media]`. Tesseract by default;
+    /// a [`xustive_media::Fallback`] over the Unlimited-OCR sidecar when `ocr_backend = "unlimited"`,
+    /// so a down sidecar degrades to tesseract instead of failing. See [`build_ocr_backend`].
+    pub ocr: Arc<dyn xustive_media::OcrBackend>,
     pub metrics: Metrics,
 }
 
@@ -197,6 +201,8 @@ impl AppState {
         let curated = crate::suggest::load_curated(&config.suggest.curated_path);
         let device = config.ml.device.clone();
         let gpu_layers = config.ml.gpu_layers;
+        // Cloned out before `config` is moved into the Arc — the OCR backend is built from it.
+        let media = config.media.clone();
         let search = MeiliClient::new(
             &config.search.meili_url,
             &config.search.meili_key,
@@ -222,12 +228,42 @@ impl AppState {
             // Connecting lazily and tolerating failure. The serving plane must start whether or
             // not the fetcher has ever run — a cold system has no cached weather by definition.
             tool_cache: xustive_toold::store::Store::connect(&queue_url).ok(),
+            ocr: build_ocr_backend(&media),
             limiter: Arc::new(RateLimiter::new()),
             pending: Arc::new(PendingStore::default()),
             #[cfg(feature = "summariser")]
             engine: Arc::new(std::sync::RwLock::new(None)),
             metrics: Metrics::new(),
         })
+    }
+}
+
+/// Build the user-facing OCR backend from `[media]`.
+///
+/// `"tesseract"` (the default, and the fallback for anything unrecognised) is the in-process CPU
+/// engine. `"unlimited"` wraps the sidecar in a [`xustive_media::Fallback`] over tesseract, so the
+/// GPU service is *preferred* but never *required*: if it is down or slow, the request quietly
+/// degrades to tesseract rather than failing. Building the sidecar client can only fail on a
+/// malformed endpoint, and there too we fall back to tesseract rather than refuse to start.
+fn build_ocr_backend(
+    media: &xustive_core::config::MediaConfig,
+) -> Arc<dyn xustive_media::OcrBackend> {
+    let tesseract = xustive_media::Tesseract::new(&media.tessdata_dir, &media.ocr_langs);
+    if media.ocr_backend != "unlimited" {
+        return Arc::new(tesseract);
+    }
+    match xustive_media::Sidecar::new(
+        &media.sidecar.endpoint,
+        Duration::from_millis(media.sidecar.timeout_ms),
+    ) {
+        Ok(sidecar) => Arc::new(xustive_media::Fallback::new(
+            Box::new(sidecar),
+            Box::new(tesseract),
+        )),
+        Err(e) => {
+            tracing::warn!(error = %e, "Unlimited-OCR sidecar unavailable; using tesseract");
+            Arc::new(tesseract)
+        }
     }
 }
 
@@ -310,5 +346,32 @@ mod tests {
         let t = load_trust_tiers();
         assert!(t.len() >= 15, "only {} sources loaded", t.len());
         assert_eq!(t.get("aps-dz"), Some(&TrustTier::A));
+    }
+
+    #[test]
+    fn ocr_backend_defaults_to_tesseract() {
+        let media = xustive_core::config::MediaConfig::default();
+        assert_eq!(build_ocr_backend(&media).name(), "tesseract");
+    }
+
+    #[test]
+    fn ocr_backend_unlimited_prefers_the_sidecar() {
+        // The reported name is the sidecar's even though a tesseract fallback is wrapped behind it —
+        // selecting "unlimited" puts the sidecar in the path, and the fallback stays invisible until
+        // it is actually needed.
+        let media = xustive_core::config::MediaConfig {
+            ocr_backend: "unlimited".into(),
+            ..Default::default()
+        };
+        assert_eq!(build_ocr_backend(&media).name(), "unlimited");
+    }
+
+    #[test]
+    fn ocr_backend_falls_back_to_tesseract_for_unknown_value() {
+        let media = xustive_core::config::MediaConfig {
+            ocr_backend: "nonsense".into(),
+            ..Default::default()
+        };
+        assert_eq!(build_ocr_backend(&media).name(), "tesseract");
     }
 }

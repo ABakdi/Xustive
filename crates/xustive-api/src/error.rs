@@ -37,6 +37,10 @@ pub enum ApiError {
     /// The local model is not available: not loaded, every slot busy, or shut down.
     #[error("the model is unavailable")]
     ModelUnavailable { code: &'static str },
+    /// The uploaded image could not be used: not an image, too large, or undecodable. Carries a
+    /// static code and never echoes the bytes.
+    #[error("cannot read image")]
+    BadImage { code: &'static str },
 }
 
 impl ApiError {
@@ -49,7 +53,9 @@ impl ApiError {
             Self::SearchUnavailable => "search_unavailable",
             Self::UpstreamTimeout => "upstream_timeout",
             Self::Internal => "internal_error",
-            Self::Untranslatable { code } | Self::ModelUnavailable { code } => code,
+            Self::Untranslatable { code }
+            | Self::ModelUnavailable { code }
+            | Self::BadImage { code } => code,
         }
     }
 
@@ -71,6 +77,7 @@ impl ApiError {
             }
             Self::UpstreamTimeout => StatusCode::GATEWAY_TIMEOUT,
             Self::Untranslatable { .. } => StatusCode::BAD_REQUEST,
+            Self::BadImage { .. } => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -92,6 +99,7 @@ impl ApiError {
             // was; repeating it in an error body would put it somewhere it does not need to be.
             Self::Untranslatable { .. } => "That text cannot be translated as given.".into(),
             Self::ModelUnavailable { .. } => "Translation is temporarily unavailable.".into(),
+            Self::BadImage { .. } => "That image could not be read.".into(),
         }
     }
 }

@@ -10,6 +10,7 @@ pub mod dataage;
 pub mod deadline;
 pub mod error;
 pub mod metrics;
+pub mod ocr;
 pub mod ratelimit;
 pub mod search;
 pub mod state;
@@ -150,13 +151,39 @@ pub fn app(state: AppState) -> Router {
         .layer(search_budget)
         .with_state(state.clone());
 
-    Router::new()
+    // OCR takes an *image* body — up to `max_image_bytes`, three orders of magnitude past the 8 KB
+    // default the text endpoints live under. It therefore cannot sit inside the global body-limit
+    // layer below (a limit applied outside a route binds it regardless of any looser inner limit),
+    // so it is built here with its own limit and merged at the top level, outside that layer. Its
+    // timeout is looser than search — tesseract runs in seconds, the sidecar up to its own timeout —
+    // and bounded by the sidecar timeout plus slack so a wedged VLM cannot hold the request open.
+    let ocr_route = Router::new()
+        .route("/ocr", axum::routing::post(ocr::handler))
+        .layer(middleware::from_fn_with_state(state.clone(), limit_ocr))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            Duration::from_millis(state.config.media.sidecar.timeout_ms + 10_000),
+        ))
+        .layer(RequestBodyLimitLayer::new(
+            state.config.media.max_image_bytes,
+        ))
+        .with_state(state.clone());
+
+    let core = Router::new()
         .nest(
             "/api/v1",
             api.merge(summary).merge(translate).merge(suggest_routes),
         )
         .nest("/api/v1/admin", admin_api)
         .merge(ops)
+        // The 8 KB default guards the text endpoints. OCR is deliberately outside it (see above).
+        .layer(RequestBodyLimitLayer::new(
+            state.config.api.body_limit_default,
+        ));
+
+    Router::new()
+        .merge(core)
+        .nest("/api/v1", ocr_route)
         // Request ids, outermost after panic catching so even a shed or rejected request
         // carries one. A ULID rather than a UUID: it sorts by time, so grepping a log for ids
         // near an incident actually narrows the window.
@@ -167,9 +194,8 @@ pub fn app(state: AppState) -> Router {
         .layer(middleware::from_fn_with_state(state.clone(), observe))
         .layer(middleware::from_fn(security_headers))
         .layer(CompressionLayer::new())
-        .layer(RequestBodyLimitLayer::new(
-            state.config.api.body_limit_default,
-        ))
+        // No global body-limit layer here: it would re-cap `/ocr` at 8 KB. The 8 KB default is
+        // applied to `core` above; `/ocr` carries its own, larger limit.
         .layer(cors_layer(&state))
         .layer(SetRequestIdLayer::x_request_id(UlidRequestId))
         // Outside `SetRequestIdLayer`, so it runs first and that layer always sees an absent
@@ -224,6 +250,12 @@ async fn limit_translate(State(state): State<AppState>, req: Request, next: Next
 
 async fn limit_suggest(State(state): State<AppState>, req: Request, next: Next) -> Response {
     enforce(&state, "/suggest", ratelimit::SUGGEST, req, next).await
+}
+
+async fn limit_ocr(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    // The same budget as other media work: OCR is CPU-heavy (tesseract) or holds a GPU slot (the
+    // sidecar), so what matters is how many one client can have in flight, not raw request rate.
+    enforce(&state, "/ocr", ratelimit::MEDIA, req, next).await
 }
 
 async fn enforce(
