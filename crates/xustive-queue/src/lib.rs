@@ -20,6 +20,7 @@
 //! Claiming otherwise would be worse than useless. It would let a consumer be written as though
 //! replay could not happen.
 
+pub mod breaker;
 pub mod dlq;
 pub mod indexer;
 
