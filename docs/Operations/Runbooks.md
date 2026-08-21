@@ -223,7 +223,119 @@ see this (the wilayas that do refresh keep it healthy), so coverage is watched s
 
 ---
 
+## Common operations
+
+The routine actions an operator performs, with the exact commands (M4-T09.3). Where a one-shot
+command does not exist yet, that is stated rather than papered over.
+
+### Scale indexer workers
+
+The index queue drains only as fast as the running workers. To add capacity, start more worker
+processes — they share a Redis consumer group, so work is split automatically and never duplicated:
+
+```
+make worker            # one worker, runs until SIGTERM
+```
+
+Run several (more replicas / more `make worker` invocations / a higher replica count in the
+orchestrator). Graceful shutdown means scaling *down* is safe: a worker stops taking new batches and
+leaves any in-flight batch unacked for another worker to pick up (M4-T02.7).
+
+### Drain the queue once and stop
+
+For a controlled catch-up (e.g. after a backlog), process what is queued and exit rather than running
+continuously:
+
+```
+cargo run -p xustive-cli -- worker --once
+```
+
+### Inspect and replay the dead-letter queue
+
+```
+make dlq A=stats       # how many, and the rejection-reason breakdown
+make dlq A=peek        # the actual dead-lettered payloads
+make dlq A=replay      # re-enqueue them — do this ONLY after fixing the cause (see DLQGrowth)
+```
+
+Replay is deliberately manual: a poison payload that auto-replayed would loop.
+
+### Disable a source (opt-out, takedown, persistent failure)
+
+```
+cargo run -p xustive-cli -- registry disable <source-id> --reason "operator: <why>"
+```
+
+This flips the source in the registry and starts its 90-day archival clock. It stops *future*
+crawling of the source; it does not by itself remove already-indexed documents — for that, see the
+takedown flow below.
+
+### Force a recrawl
+
+The crawler resumes from the shared frontier by default. To restart the frontier from the seed list
+(a full re-discovery, not a targeted recrawl):
+
+```
+cargo run -p xustive-cli -- crawld --reset
+```
+
+> ❌ **Not built: targeted single-URL / single-source recrawl.** There is no CLI command today to
+> force *one* URL or source to be re-fetched ahead of schedule — the recrawl scheduler
+> ([[Adaptive Recrawl over Static Crawling]]) decides cadence. Forcing one is a follow-up; the
+> primitives (`revisit::Visits::forget`) exist in the ingest crate but are not exposed on the CLI.
+
+### Execute a takedown (remove already-indexed content)
+
+A takedown is a **composite**, not one command — the content lives in several stores and each must be
+cleared:
+
+1. **Stop future crawling:** `registry disable <source-id>` (above), or add the host to the takedown
+   exclusion tier so it is refused even if reachable another way.
+2. **Remove the image vectors** whose documents are being taken down, then reconcile orphans:
+   `cargo run -p xustive-cli -- reconcile-vectors` deletes vectors whose parent document no longer
+   exists (M4-T04.8 / [[Security and Privacy]] §8).
+3. **Remove the raw stored bodies** so the page's bytes do not linger (`raw_store` TTL, or an
+   explicit purge).
+
+> ❌ **Not built: a single `xustive-cli takedown <url|domain>` command** that performs all of the
+> above atomically. The store-level primitives exist (`MeiliClient::delete_document`,
+> `Store::delete_by_document`, `raw_store` drop, the exclusion tier), but wiring them into one
+> audited command is a follow-up. Until then, a takedown is the operator running the steps above and
+> recording what was removed.
+
+---
+
+## Incident procedure
+
+**Severity.** Each alert above is tagged **page** or **ticket**:
+
+- **page** — user-visible or imminent: the search API is down or slow, results have gone empty, a
+  user-facing tool card has been withheld. Respond now.
+- **ticket** — degraded but not user-fatal: a growing backlog, dropped summaries (results are
+  unaffected), partial tool coverage. Respond in hours, not minutes.
+
+**On a page, in order:**
+1. **Confirm it is real** — every runbook above has a one-line confirm step. A false alert is itself
+   a bug: fix the rule (`deploy/prometheus/alerts_test.yml`) so it does not page again.
+2. **Stop the bleeding** before finding root cause — roll back the last deploy (`reindex --rollback`
+   for an index/settings regression), restart the wedged process (graceful, ≤ 25 s drain), or shed
+   load. The system already sheds automatically under overload (503) and fails fast when a
+   dependency is down (circuit breakers, M4-T02.2), so "stop the bleeding" is often "let the
+   automatic protection work and remove the trigger".
+3. **Then** diagnose using `xustive_search_duration_seconds{stage}` / the DLQ / the logs.
+
+**Communication.** Note what fired, when, the user-facing impact (or "none — results unaffected"),
+and the action taken. The privacy posture holds during an incident too: **never** paste query text
+into an incident channel — the nightly log scan (`make scan-logs`) exists precisely so query text
+never leaves the box ([[ADR-0008 - No Query Logging]]).
+
+> ❌ **Not built: a formal escalation/on-call policy** (who is paged, hand-off, comms templates) —
+> that is an organisational decision for when there is a team to escalate *to*, not code
+> (M4-T09.2). This section is the technical incident flow; the people-process wraps it later.
+
+---
+
 ## Related
 
 [[Observability]] · [[Error Handling and Resilience]] · [[Performance Budgets]] ·
-[[Milestone 4 - Quality and Operations]]
+[[Milestone 4 - Quality and Operations]] · [[Security and Privacy]]

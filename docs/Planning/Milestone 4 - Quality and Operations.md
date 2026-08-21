@@ -116,8 +116,8 @@ the entire point. Discovering it during beta is not.
 ## M4-T09 — Runbooks
 
 - [x] M4-T09.1 One runbook section per alert — *[[Runbooks]]: a section per configured alert (fires / means / confirm / resolve-in-order), covering all 10 armed alerts. The unbuilt-feature alerts in §6 have no runbook because they have no metric yet, stated explicitly*
-- [ ] M4-T09.2 Incident procedure: severity levels, escalation, comms
-- [~] M4-T09.3 Common operations — *the runbooks cover scale-workers, drain/replay-DLQ, roll back a reindex, restart toold inline where a resolution needs them; a standalone operations-cookbook section (force-recrawl, disable-source, takedown) is still to gather in one place*
+- [~] M4-T09.2 Incident procedure: severity levels, escalation, comms — *the technical flow is in [[Runbooks]] (page vs ticket, confirm→stop-the-bleeding→diagnose, the no-query-text comms rule); the organisational escalation/on-call policy is explicitly deferred until there is a team to escalate to*
+- [x] M4-T09.3 Common operations — *[[Runbooks]] "Common operations": scale/drain workers, DLQ stats/peek/replay, disable a source, force a recrawl, and the composite takedown flow — every command verified to exist. The two genuine gaps (targeted single-URL recrawl, a one-shot `takedown` command) are marked ❌ with the primitives that exist*
 - [ ] M4-T09.4 Recovery procedures per row of [[Error Handling and Resilience]] §8
 - [x] M4-T09.5 **Delete any alert that does not have a runbook** — *enforced mechanically: `scripts/lint-runbooks.sh` fails CI if any configured alert lacks a `## <Alert>` section (and flags stale runbook sections too). Wired into `make lint` and CI. Negative-tested.*
 
