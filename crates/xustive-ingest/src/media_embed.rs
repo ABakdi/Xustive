@@ -10,6 +10,7 @@
 //! filterable fields the query path needs (document id, source type, date, NSFW flag, phash).
 
 use xustive_core::{Document, MediaKind};
+use xustive_media::ocr;
 use xustive_vector::{point_id, Embedder, Payload, Point, Store};
 
 use crate::media_ocr::ImageFetcher;
@@ -31,9 +32,13 @@ pub struct ImageEmbed {
     pub settings: Settings,
 }
 
-/// Embed a document's images and upsert them. Every failure is swallowed — a document is indexed
-/// for text regardless of whether its images could be embedded.
-pub async fn embed_and_store(document: &Document, cfg: &ImageEmbed) {
+/// Embed a document's images and upsert them, and stamp each image's perceptual hash. Every failure
+/// is swallowed — a document is indexed for text regardless of whether its images could be embedded.
+///
+/// Takes `&mut Document` so it can fill `media[].phash` (dHash) from the bytes it already fetched —
+/// the fingerprint that dedup and the future reuse-skip key on, computed once here rather than by a
+/// second fetch elsewhere.
+pub async fn embed_and_store(document: &mut Document, cfg: &ImageEmbed) {
     let candidates: Vec<usize> = document
         .media
         .iter()
@@ -48,27 +53,32 @@ pub async fn embed_and_store(document: &Document, cfg: &ImageEmbed) {
 
     let mut points: Vec<Point> = Vec::new();
     for i in candidates {
-        let media = &document.media[i];
-        let Some(bytes) = cfg.fetcher.fetch(&media.url, cfg.settings.max_bytes).await else {
+        let url = document.media[i].url.clone();
+        let Some(bytes) = cfg.fetcher.fetch(&url, cfg.settings.max_bytes).await else {
             continue; // a failed image is skipped, never fatal
         };
+        // Fingerprint from the fetched bytes, if not already set. Cheap next to the embed, and it
+        // travels with the document into the index for dedup ([[Deduplication Service]] §4.4).
+        if document.media[i].phash.is_none() {
+            document.media[i].phash = xustive_media::phash::dhash(&bytes, ocr::MAX_PIXELS);
+        }
         let vector = match cfg.embedder.embed(bytes).await {
             Ok(v) => v,
             Err(e) => {
-                tracing::debug!(url = %media.url, error = %e, "image embed skipped");
+                tracing::debug!(url = %url, error = %e, "image embed skipped");
                 continue;
             }
         };
         points.push(Point {
-            id: point_id(&media.url),
+            id: point_id(&url),
             vector,
             payload: Payload {
                 document_id: document.id.clone(),
-                media_url: media.url.clone(),
+                media_url: url.clone(),
                 source_type: Some(document.source_type.as_str().to_string()),
                 published_at: (document.published_at > 0).then_some(document.published_at),
                 is_nsfw: document.is_nsfw,
-                phash: media.phash.clone(),
+                phash: document.media[i].phash.clone(),
             },
         });
     }

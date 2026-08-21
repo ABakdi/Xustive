@@ -462,7 +462,7 @@ impl Orchestrator {
         // Index-side image embedding (M3-T05): embed the page's images into the vector store so they
         // are findable by visual similarity. Opt-in and bounded; a failed embed never fails the doc.
         if let Some(embed) = &self.image_embed {
-            crate::media_embed::embed_and_store(&parsed.document, embed).await;
+            crate::media_embed::embed_and_store(&mut parsed.document, embed).await;
         }
 
         // Stamp the document with the channel that discovered its URL (M2-T16.7). The parser does

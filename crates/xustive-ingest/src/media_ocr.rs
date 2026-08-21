@@ -90,6 +90,11 @@ pub async fn enrich(document: &mut Document, fetcher: &ImageFetcher, cfg: &Setti
         let Some(bytes) = fetcher.fetch(&url, cfg.max_bytes).await else {
             continue; // a failed image is skipped, never fatal
         };
+        // Fingerprint from the bytes we already have, before they are moved into the OCR task, so an
+        // OCR-only crawl still stamps `phash` for dedup ([[Deduplication Service]] §4.4).
+        if document.media[i].phash.is_none() {
+            document.media[i].phash = xustive_media::phash::dhash(&bytes, ocr::MAX_PIXELS);
+        }
         let (tessdata, langs) = (cfg.tessdata.to_string(), cfg.langs.to_string());
         let ocr = tokio::task::spawn_blocking(move || {
             ocr::recognise(&bytes, &tessdata, &langs, ocr::MAX_PIXELS)
