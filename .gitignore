@@ -1,7 +1,10 @@
 /target
 **/*.rs.bk
 .env
-/models/
+# Ignore the model weights, but keep the licence audit that governs them (a direct child, so the
+# negation works — it would not under a blanket `/models/`).
+/models/*
+!/models/LICENSES.md
 # Build output. Hand-authored UI source lives in web/public/ and IS committed.
 /web/dist/
 /web/node_modules/

@@ -96,7 +96,7 @@ document ([[Social Connector - Instagram]] §4.2).
 - [ ] M3-T01.1 Service scaffold: internal HTTP, health, readiness gated on model load
 - [ ] M3-T01.2 Model manifest with checksums; `model-init` job populating the shared read-only volume
       ([[Deployment Topology]] §5)
-- [ ] M3-T01.3 Model licence audit → `models/LICENSES.md` ([[Legal and Compliance]] §7)
+- [x] M3-T01.3 Model licence audit → `models/LICENSES.md` ([[Legal and Compliance]] §7) — *done; **found the default summariser (Qwen2.5-3B) is `qwen-research`, non-commercial** — swap to an Apache-2.0 size (1.5B/7B) before commercial launch. Unlimited-OCR is MIT; CLIP/Whisper/tesseract flagged for per-artefact confirmation*
 - [ ] M3-T01.4 Shared admission controller so voice/image bursts cannot starve [[Summarizer]]
 - [ ] M3-T01.5 Per-model memory and latency metrics
 - [ ] M3-T01.6 Decide B6: is a GPU in the budget? Config path either way, no redesign
