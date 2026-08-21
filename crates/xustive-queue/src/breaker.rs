@@ -190,6 +190,61 @@ static ON_FAILURE: std::sync::LazyLock<Script> = std::sync::LazyLock::new(|| {
     )
 });
 
+/// A [`Sink`](crate::indexer::Sink) wrapped in a shared breaker: when the index backend has been
+/// failing, submissions fail fast (a *retryable* error, so the indexer leaves the batch unacked for
+/// redelivery — nothing is lost or dead-lettered) instead of every worker hammering a down
+/// Meilisearch. Because the breaker state is shared in Redis, the whole worker fleet backs off
+/// together and probes for recovery in unison (M4-T02.2).
+///
+/// The breaker is optional: with `None` (Redis unreachable at startup) this is a transparent
+/// pass-through, so a worker never fails to start over the breaker.
+pub struct BreakeredSink<S> {
+    inner: S,
+    breaker: Option<RedisBreaker>,
+    name: String,
+}
+
+impl<S> BreakeredSink<S> {
+    pub fn new(inner: S, breaker: Option<RedisBreaker>, name: impl Into<String>) -> Self {
+        Self {
+            inner,
+            breaker,
+            name: name.into(),
+        }
+    }
+}
+
+impl<S: crate::indexer::Sink> crate::indexer::Sink for BreakeredSink<S> {
+    fn submit(
+        &self,
+        index: &str,
+        documents: &[serde_json::Value],
+    ) -> impl std::future::Future<Output = Result<(), crate::indexer::SubmitError>> + Send {
+        async move {
+            use crate::indexer::SubmitError;
+            if let Some(b) = &self.breaker {
+                if !b.allow(&self.name).await {
+                    // Retryable on purpose: the batch is left for redelivery, not dead-lettered.
+                    return Err(SubmitError::transient(
+                        "circuit open: index backend unavailable",
+                    ));
+                }
+            }
+            let result = self.inner.submit(index, documents).await;
+            if let Some(b) = &self.breaker {
+                match &result {
+                    // A retryable failure is the backend being down — count it toward tripping.
+                    Err(e) if e.retryable => b.on_failure(&self.name).await,
+                    // Success, or a permanent rejection, both mean the backend *responded* — it is
+                    // up, so the breaker closes.
+                    _ => b.on_success(&self.name).await,
+                }
+            }
+            result
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,5 +254,44 @@ mod tests {
         let c = Config::default();
         assert!(c.failure_threshold >= 1);
         assert!(c.cooldown <= c.max_cooldown);
+    }
+
+    // A Sink that fails a configurable number of times, then succeeds — for exercising the decorator
+    // without a live Meilisearch.
+    struct FlakySink {
+        fails: std::sync::atomic::AtomicU32,
+    }
+    impl crate::indexer::Sink for FlakySink {
+        fn submit(
+            &self,
+            _index: &str,
+            _docs: &[serde_json::Value],
+        ) -> impl std::future::Future<Output = Result<(), crate::indexer::SubmitError>> + Send
+        {
+            async move {
+                use std::sync::atomic::Ordering;
+                if self.fails.load(Ordering::Relaxed) > 0 {
+                    self.fails.fetch_sub(1, Ordering::Relaxed);
+                    Err(crate::indexer::SubmitError::transient("down"))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn pass_through_when_no_breaker() {
+        use crate::indexer::Sink;
+        // With no breaker, the decorator is transparent: the inner sink's result is returned as-is.
+        let sink = BreakeredSink::new(
+            FlakySink {
+                fails: std::sync::atomic::AtomicU32::new(1),
+            },
+            None,
+            "test",
+        );
+        assert!(sink.submit("i", &[]).await.is_err(), "first call fails");
+        assert!(sink.submit("i", &[]).await.is_ok(), "second call succeeds");
     }
 }

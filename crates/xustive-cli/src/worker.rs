@@ -83,14 +83,27 @@ pub async fn run(config: &Config, client: &MeiliClient, once: bool) -> Result<()
         .apply_settings(&index, &xustive_search::settings::documents_settings())
         .await
         .with_context(|| format!("configuring the write index {index}"))?;
-    let indexer = Indexer::new(
-        queue.clone(),
+    // Shared circuit breaker over the Meili writes (M4-T02.2): when the index backend is down, the
+    // whole worker fleet backs off together — a fast, retryable failure that leaves batches for
+    // redelivery — instead of each worker independently hammering it. Optional: if Redis is
+    // unreachable the breaker is a no-op and indexing proceeds unbroken.
+    let breaker = xustive_queue::breaker::RedisBreaker::connect_in(
+        &config.queue.url,
+        "worker",
+        xustive_queue::breaker::Config::default(),
+    )
+    .await;
+    if breaker.is_some() {
+        tracing::info!("indexer breaker armed (shared via Redis)");
+    }
+    let sink = xustive_queue::breaker::BreakeredSink::new(
         MeiliSink {
             client: client.clone(),
         },
-        &consumer,
-        &index,
+        breaker,
+        "meili-index",
     );
+    let indexer = Indexer::new(queue.clone(), sink, &consumer, &index);
 
     println!(
         "worker {consumer} draining {} → {index}",
