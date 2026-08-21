@@ -3829,6 +3829,7 @@ dependencies = [
  "url",
  "xustive-core",
  "xustive-lang",
+ "xustive-media",
  "xustive-text",
  "zeroize",
 ]

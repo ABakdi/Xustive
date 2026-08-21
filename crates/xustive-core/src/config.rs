@@ -348,6 +348,38 @@ impl InteractionConfig {
     }
 }
 
+/// Index-side image enrichment ([[Enrichment Pipeline]], M3-T07): fetch a crawled page's images and
+/// OCR them so the text inside an image becomes searchable.
+///
+/// **Off by default** — it adds a network fetch and CPU-bound OCR per image, so it is opt-in and
+/// heavily bounded. A failed image never fails its document.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MediaConfig {
+    /// Master switch for image OCR enrichment.
+    pub image_ocr_enabled: bool,
+    /// Directory holding the tesseract `*.traineddata` files.
+    pub tessdata_dir: String,
+    /// `+`-joined OCR languages, Arabic first for Algerian screenshots.
+    pub ocr_langs: String,
+    /// Most images OCR'd per document — the cost ceiling per page.
+    pub max_images_per_doc: usize,
+    /// Largest image fetched, in bytes.
+    pub max_image_bytes: usize,
+}
+
+impl Default for MediaConfig {
+    fn default() -> Self {
+        Self {
+            image_ocr_enabled: false,
+            tessdata_dir: "data/tessdata".into(),
+            ocr_langs: "ara+fra+eng".into(),
+            max_images_per_doc: 3,
+            max_image_bytes: 5 * 1024 * 1024,
+        }
+    }
+}
+
 impl Default for CrawlConfig {
     fn default() -> Self {
         Self {
@@ -468,6 +500,8 @@ pub struct Config {
     pub discovery: DiscoveryConfig,
     #[serde(default)]
     pub interaction: InteractionConfig,
+    #[serde(default)]
+    pub media: MediaConfig,
 }
 
 impl Default for Config {
@@ -483,6 +517,7 @@ impl Default for Config {
             crawl: CrawlConfig::default(),
             discovery: DiscoveryConfig::default(),
             interaction: InteractionConfig::default(),
+            media: MediaConfig::default(),
         }
     }
 }

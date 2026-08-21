@@ -9,6 +9,7 @@ description = "Polite fetching, robots.txt compliance, and HTML to Document extr
 [dependencies]
 pdf-extract = "0.7"
 xustive-core = { path = "../xustive-core", features = ["resolve"] }
+xustive-media = { path = "../xustive-media" }
 xustive-text = { path = "../xustive-text" }
 xustive-lang = { path = "../xustive-lang" }
 

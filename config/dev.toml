@@ -66,3 +66,13 @@ gpu_layers = -1
 # a fixable reason (uncited / wrong language) and time remains, so a larger budget buys the retry on
 # slow CPU too; on GPU several attempts fit easily.
 deadline_ms = 30000
+
+[media]
+# Index-side image OCR (M3-T07): fetch a crawled page's images and read the text inside them so it
+# becomes searchable. Off by default — it adds a network fetch + CPU-bound OCR per image. Needs the
+# tesseract traineddata provisioned in tessdata_dir (ara/fra/eng). Bounded per document.
+image_ocr_enabled = false
+tessdata_dir = "data/tessdata"
+ocr_langs = "ara+fra+eng"
+max_images_per_doc = 3
+max_image_bytes = 5242880

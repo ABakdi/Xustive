@@ -36,6 +36,9 @@ pub fn documents_settings() -> Value {
             "excerpt",
             "entities",
             "body",
+            // Text OCR'd from a page's images (M3-T07), weighted below body — it is real content but
+            // noisier than prose the page wrote itself.
+            "media.ocr_text",
             "translit_body",
             "author.name"
         ],

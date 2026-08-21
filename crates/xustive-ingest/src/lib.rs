@@ -23,6 +23,7 @@ pub mod frontier;
 pub mod gazetteer;
 pub mod interaction;
 pub mod link_graph;
+pub mod media_ocr;
 pub mod orchestrator;
 pub mod pagerank;
 pub mod parse;

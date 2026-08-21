@@ -131,6 +131,9 @@ pub struct Orchestrator {
     /// The domain link graph, when capture is on. Optional like the rest: a crawl that cannot reach
     /// it still crawls, it just contributes nothing to the next PageRank.
     link_graph: Option<crate::link_graph::LinkGraphStore>,
+    /// Image OCR enrichment, when enabled. A fetcher plus its bounded settings; off means images are
+    /// never fetched.
+    media_ocr: Option<(crate::media_ocr::ImageFetcher, crate::media_ocr::Settings)>,
     last_promote: std::time::Instant,
 }
 
@@ -149,6 +152,7 @@ impl Orchestrator {
             visits: None,
             raw_store: None,
             link_graph: None,
+            media_ocr: None,
             last_promote: std::time::Instant::now(),
         }
     }
@@ -156,6 +160,16 @@ impl Orchestrator {
     /// Capture the domain link graph as pages are crawled, for `xustive-cli pagerank`. Off unless set.
     pub fn with_link_graph(mut self, store: crate::link_graph::LinkGraphStore) -> Self {
         self.link_graph = Some(store);
+        self
+    }
+
+    /// OCR a page's images so their text is searchable (M3-T07). Off unless set.
+    pub fn with_media_ocr(
+        mut self,
+        fetcher: crate::media_ocr::ImageFetcher,
+        settings: crate::media_ocr::Settings,
+    ) -> Self {
+        self.media_ocr = Some((fetcher, settings));
         self
     }
 
@@ -427,6 +441,12 @@ impl Orchestrator {
 
         // Stamp the fetched MIME so a "Files" vertical can select PDFs from pages.
         parsed.document.content_type = fetched.content_type.clone();
+
+        // Index-side image OCR (M3-T07): pull the page's images and read the text inside them. Opt-in
+        // and bounded; a failed image never fails the document.
+        if let Some((fetcher, settings)) = &self.media_ocr {
+            crate::media_ocr::enrich(&mut parsed.document, fetcher, settings).await;
+        }
 
         // Stamp the document with the channel that discovered its URL (M2-T16.7). The parser does
         // not know this — it is a property of how the URL reached the frontier, carried on the

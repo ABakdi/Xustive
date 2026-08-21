@@ -218,6 +218,23 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
     let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let produced = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
+    // Image OCR enrichment, built once and shared (cloned) into every worker. Off unless enabled.
+    let media_ocr = if config.media.image_ocr_enabled {
+        xustive_ingest::media_ocr::ImageFetcher::new().map(|fetcher| {
+            (
+                fetcher,
+                xustive_ingest::media_ocr::Settings {
+                    tessdata: config.media.tessdata_dir.clone(),
+                    langs: config.media.ocr_langs.clone(),
+                    max_images: config.media.max_images_per_doc,
+                    max_bytes: config.media.max_image_bytes,
+                },
+            )
+        })
+    } else {
+        None
+    };
+
     for id in 0..workers {
         let frontier = orchestrator.frontier().clone();
         let queue = queue.clone();
@@ -229,6 +246,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
         let ignore_politeness = config.crawl.ignore_politeness;
         let redis_url = config.queue.url.clone();
         let raw_ttl_days = config.crawl.raw_ttl_days;
+        let media_ocr = media_ocr.clone();
 
         tasks.spawn(async move {
             let Ok(fetcher) = Fetcher::new(FetchConfig {
@@ -271,6 +289,9 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             }
             if let Some(g) = xustive_ingest::link_graph::LinkGraphStore::connect(&redis_url) {
                 orch = orch.with_link_graph(g);
+            }
+            if let Some((fetcher, settings)) = media_ocr {
+                orch = orch.with_media_ocr(fetcher, settings);
             }
             let dedup = xustive_ingest::dedup::Dedup::connect_in(&redis_url, "frontier");
 
