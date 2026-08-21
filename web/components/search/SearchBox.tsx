@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 
 import { suggest, type Suggestion } from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
+import { VoiceButton } from './VoiceButton'
 
 const DEBOUNCE_MS = 90
 const MIN_PREFIX = 2
@@ -187,6 +188,19 @@ export function SearchBox({
             <X size={18} aria-hidden />
           </button>
         )}
+        {/* Voice search — records, transcribes on our own server, and drops the text into this box
+            editable. Renders nothing where the browser cannot record, so it never shows a dead
+            control. The transcript is never auto-submitted. */}
+        <VoiceButton
+          t={t}
+          uiLang={lang}
+          onTranscript={(text) => {
+            typedRef.current = text
+            setValue(text)
+            setOpen(false)
+            inputRef.current?.focus()
+          }}
+        />
         {/* Search by image — the Lens-style entry. A real link, not a button: it navigates to the
             image tool, which works without JavaScript and can be opened in a new tab. The tool reads
             the photo to text and hands it back editable; nothing is searched automatically. */}

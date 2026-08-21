@@ -239,6 +239,42 @@ export async function imageSearch(
   return res.json() as Promise<ImageSearchResult>
 }
 
+export interface TranscriptResult {
+  text: string
+  language: string
+}
+
+/**
+ * Transcribe a recorded audio clip.
+ *
+ * Raw POST body, same privacy posture as image OCR — the audio is the payload and never a query
+ * string. `lang` is the UI language, a hint so a short Arabic clip is not mis-detected. A 503 means
+ * voice is off or the STT service is down; the caller shows "unavailable", not an error.
+ */
+export async function transcribe(
+  audio: Blob,
+  lang?: string,
+  signal?: AbortSignal,
+): Promise<TranscriptResult> {
+  const qs = lang ? `?lang=${encodeURIComponent(lang)}` : ''
+  const res = await fetch(`${BASE}/api/v1/transcribe${qs}`, {
+    method: 'POST',
+    headers: { 'Content-Type': audio.type || 'application/octet-stream' },
+    body: audio,
+    signal,
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as ApiError | null
+    throw new SearchFailed(
+      body?.error?.code ?? 'stt_failed',
+      body?.error?.message ?? 'Transcription failed',
+      res.status,
+    )
+  }
+  return res.json() as Promise<TranscriptResult>
+}
+
 export type TranslateLanguage = {
   code: string
   name_ar: string

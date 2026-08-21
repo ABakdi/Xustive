@@ -119,6 +119,15 @@ const ar = {
   similarityVery: 'مطابقة قوية',
   similaritySimilar: 'مشابهة',
   similarityRelated: 'قريبة',
+  voiceSearch: 'البحث الصوتي',
+  voiceListening: 'جارٍ الاستماع…',
+  voiceTranscribing: 'جارٍ التحويل إلى نص…',
+  voiceStop: 'إيقاف',
+  voiceCancel: 'إلغاء',
+  voiceUnavailable: 'البحث الصوتي غير متاح حاليا.',
+  voiceFailed: 'تعذّر تحويل الصوت.',
+  voicePermission: 'اسمح باستعمال الميكروفون لبدء البحث الصوتي.',
+  voiceHint: 'تكلّم، والنص يظهر في خانة البحث لتراجعه قبل الإرسال.',
 } as const
 
 /**
@@ -242,6 +251,15 @@ const fr: Messages = {
   similarityVery: 'Correspondance forte',
   similaritySimilar: 'Similaire',
   similarityRelated: 'Proche',
+  voiceSearch: 'Recherche vocale',
+  voiceListening: 'Écoute…',
+  voiceTranscribing: 'Transcription…',
+  voiceStop: 'Arrêter',
+  voiceCancel: 'Annuler',
+  voiceUnavailable: 'La recherche vocale est indisponible.',
+  voiceFailed: 'Échec de la transcription.',
+  voicePermission: 'Autorisez le micro pour la recherche vocale.',
+  voiceHint: 'Parlez ; le texte apparaît dans la recherche pour révision avant envoi.',
 }
 
 const en: Messages = {
@@ -356,6 +374,15 @@ const en: Messages = {
   similarityVery: 'Strong match',
   similaritySimilar: 'Similar',
   similarityRelated: 'Related',
+  voiceSearch: 'Voice search',
+  voiceListening: 'Listening…',
+  voiceTranscribing: 'Transcribing…',
+  voiceStop: 'Stop',
+  voiceCancel: 'Cancel',
+  voiceUnavailable: 'Voice search is unavailable.',
+  voiceFailed: 'Could not transcribe the audio.',
+  voicePermission: 'Allow the microphone to start voice search.',
+  voiceHint: 'Speak; the text appears in the search box to review before you send it.',
 }
 
 /**
@@ -450,6 +477,12 @@ const ary: Messages = {
   ocrFailed: 'ما قدرناش نقراو الصورة.',
   ocrPrivacy: 'الصورة تتقرا هنا على السيرفور وما تتسجل أبدا.',
   ocrByImage: 'قلب بالصورة',
+  voiceListening: 'راه يسمع…',
+  voiceTranscribing: 'راه يحوّل للنص…',
+  voicePermission: 'اسمح بالميكرو باش تبدا البحث الصوتي.',
+  voiceHint: 'هدر، والنص يبان في خانة البحث باش تشوفو قبل ما تبعث.',
+  voiceUnavailable: 'البحث الصوتي ماشي متوفر دروك.',
+  voiceFailed: 'ما قدرناش نحوّلو الصوت.',
   ocrFindSimilar: 'صور كيفها',
   ocrSimilarResults: 'صفحات فيها صور كيفها',
   ocrNoSimilar: 'ما لقينا حتى صورة كيفها.',

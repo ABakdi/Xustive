@@ -33,6 +33,7 @@ export default function MediaPage() {
 
   const ocr = data?.ocr
   const vector = data?.vector
+  const stt = data?.stt
 
   return (
     <>
@@ -100,6 +101,24 @@ export default function MediaPage() {
               {vector.image_vectors == null ? 'unknown' : vector.image_vectors.toLocaleString()}
             </Row>
           </>
+        )}
+      </section>
+
+      <section className="mt-8 max-w-xl">
+        <h2 className="mb-2 text-base font-semibold">Voice</h2>
+        {!stt ? (
+          <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>
+            …
+          </p>
+        ) : stt.enabled === false ? (
+          <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>
+            Disabled. Set <code>[stt] enabled = true</code> and provide a whisper model to turn on
+            voice search.
+          </p>
+        ) : (
+          <Row label="STT sidecar">
+            <Dot ok={stt.healthy} label={stt.healthy ? 'up' : 'down'} />
+          </Row>
         )}
       </section>
     </>
