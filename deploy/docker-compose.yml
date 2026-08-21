@@ -157,6 +157,34 @@ services:
       start_period: 120s
     restart: unless-stopped
 
+  # CLIP embed sidecar: image → 512-d vector, for image-similarity search. Behind the `vector`
+  # profile (off by default). Unlike the OCR sidecar this is CPU-capable — no GPU reservation — so
+  # image similarity runs on the reference hardware. On `core` (internal, no egress); weights are
+  # provisioned into `clip_models` out-of-band (`HF_HUB_OFFLINE=1`). See [[Vector Index]].
+  clip-embed:
+    build:
+      context: ../services/clip-embed
+    container_name: xustive-clip-embed
+    profiles: ["vector"]
+    # CLIP ViT-B/32 is small; this holds the model plus a little headroom.
+    mem_limit: 2g
+    cpus: 2.0
+    environment:
+      CLIP_MODEL: openai/clip-vit-base-patch32
+      HF_HOME: /models/hf
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    volumes:
+      - clip_models:/models/hf:ro
+    networks: [core]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8092/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: xustive-prometheus
@@ -204,6 +232,8 @@ volumes:
   # Pre-provisioned Unlimited-OCR weights (HuggingFace cache layout). Populated out-of-band, mounted
   # read-only into the sidecar so `core` needs no egress. Empty unless the `ocr` profile is used.
   ocr_models:
+  # Pre-provisioned CLIP weights, same posture. Empty unless the `vector` profile is used.
+  clip_models:
 
 networks:
   # No egress: nothing on this network can reach the internet, which is what makes

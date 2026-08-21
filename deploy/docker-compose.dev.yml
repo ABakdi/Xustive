@@ -43,6 +43,13 @@ services:
     ports:
       - "127.0.0.1:${XUSTIVE_OCR_PORT:-8091}:8091"
 
+  # Only started with `--profile vector`. Published so the host-run API reaches it at the
+  # `vector.embedder_endpoint` default (http://127.0.0.1:8092/embed).
+  clip-embed:
+    networks: [core, devhost]
+    ports:
+      - "127.0.0.1:${XUSTIVE_CLIP_PORT:-8092}:8092"
+
   prometheus:
     networks: [core, obs, devhost]
     ports:

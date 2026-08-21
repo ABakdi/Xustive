@@ -1,0 +1,7 @@
+# CLIP ViT-B/32 via HuggingFace transformers. CPU wheels are fine — the model is small enough to
+# embed on CPU; install the CUDA-matched torch if a GPU is present (see README).
+torch==2.10.0
+transformers==4.57.1
+pillow
+fastapi==0.115.*
+uvicorn[standard]==0.32.*
