@@ -46,6 +46,10 @@ jobs:
       - name: Docs lint
         run: ./scripts/lint-docs.sh
 
+      # Every configured alert must have a runbook (M4-T09.5).
+      - name: Runbook lint
+        run: ./scripts/lint-runbooks.sh
+
   audit:
     name: dependency audit
     runs-on: ubuntu-latest

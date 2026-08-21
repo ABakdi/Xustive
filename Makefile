@@ -233,6 +233,7 @@ lint: ## Format check, clippy, and the privacy/topology/docs lints
 	./scripts/lint-compose.sh
 	./scripts/lint-docs.sh
 	./scripts/check-alerts.sh
+	./scripts/lint-runbooks.sh
 	./scripts/lint-bidi.sh
 
 .PHONY: audit
