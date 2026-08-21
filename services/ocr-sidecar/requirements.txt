@@ -1,0 +1,12 @@
+# Pinned to the versions the Unlimited-OCR model card was published against. torch/torchvision
+# carry the CUDA build; install the CUDA-matched wheels for your box (see README).
+torch==2.10.0
+torchvision==0.25.0
+transformers==4.57.1
+# The model's remote code (trust_remote_code=True) pulls these at load time.
+pillow
+einops
+pymupdf
+# The HTTP surface. Kept minimal on purpose — this service does one thing.
+fastapi==0.115.*
+uvicorn[standard]==0.32.*
