@@ -9,6 +9,7 @@ members = [
     "crates/xustive-lang",
     "crates/xustive-ingest",
     "crates/xustive-media",
+    "crates/xustive-vector",
     "crates/xustive-ml",
     "crates/xustive-search",
     "crates/xustive-api",

@@ -3949,6 +3949,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "xustive-vector"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "yoke"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
