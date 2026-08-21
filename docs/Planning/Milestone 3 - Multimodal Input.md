@@ -117,7 +117,7 @@ document ([[Social Connector - Instagram]] §4.2).
 - [~] M3-T02.7 Bounded queue and slot management — *the API rate-limits `/transcribe`; the sidecar is single-model*
 - [x] M3-T02.8 **Zero-disk-write** — *the sidecar decodes from a `BytesIO`, no temp file; the API forwards a raw body (test still to add)*
 - [ ] M3-T02.9 Robustness suite: silence, noise, truncated container, 1-sample file, 30 s clip
-- [ ] M3-T02.10 **WER evaluation**: 100 Algerian recordings — ar ≤ 25 %, fr ≤ 20 %, ary ≤ 45 % ← *needs the audio corpus (B7)*
+- [~] M3-T02.10 **WER evaluation**: 100 Algerian recordings — ar ≤ 25 %, fr ≤ 20 %, ary ≤ 45 % ← *the scorer exists (`xustive-cli score-transcripts --metric wer`, WER/CER in `xustive_text::metrics`, unit-tested); still needs the audio corpus (B7) to run*
 
 ## M3-T03 — [[UI - Voice Search]]
 
@@ -141,7 +141,7 @@ document ([[Social Connector - Instagram]] §4.2).
 - [x] M3-T04.5 Confidence filtering and usability scoring
 - [x] M3-T04.6 Normalisation via `xustive-text`
 - [~] M3-T04.7 Adversarial suite: bombs, truncated, wrong extension, 1×1, CMYK
-- [ ] M3-T04.8 **CER ≤ 15 % on the screenshot subset**
+- [~] M3-T04.8 **CER ≤ 15 % on the screenshot subset** ← *the scorer exists (`xustive-cli score-transcripts --metric cer`); needs the labelled screenshot ground-truth set to run*
 
 ## M3-T05 — CLIP and [[Vector Index]]
 
