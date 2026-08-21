@@ -193,6 +193,52 @@ export async function ocrImage(image: Blob, signal?: AbortSignal): Promise<OcrRe
   return res.json() as Promise<OcrResult>
 }
 
+/** A visually-similar document, the subset of a result the similarity grid shows. */
+export interface SimilarResult {
+  id: string
+  title: string
+  url: string
+  display_url: string
+  source_name: string
+  /** Cosine similarity, 0–1. Shown as a qualitative label, never a raw number. */
+  score: number
+}
+
+export interface ImageSearchResult {
+  results: SimilarResult[]
+  /** Similar images found before collapsing by document. */
+  matched_images: number
+}
+
+/**
+ * Find documents whose images look like the uploaded one (reverse image search).
+ *
+ * Raw POST body, same privacy posture as {@link ocrImage}. A 503 means the feature is off or the
+ * vector services are down — the caller shows "unavailable", never an error, because text search is
+ * unaffected.
+ */
+export async function imageSearch(
+  image: Blob,
+  signal?: AbortSignal,
+): Promise<ImageSearchResult> {
+  const res = await fetch(`${BASE}/api/v1/search/image`, {
+    method: 'POST',
+    headers: { 'Content-Type': image.type || 'application/octet-stream' },
+    body: image,
+    signal,
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as ApiError | null
+    throw new SearchFailed(
+      body?.error?.code ?? 'image_search_failed',
+      body?.error?.message ?? 'Image search failed',
+      res.status,
+    )
+  }
+  return res.json() as Promise<ImageSearchResult>
+}
+
 export type TranslateLanguage = {
   code: string
   name_ar: string

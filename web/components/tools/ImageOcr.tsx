@@ -1,11 +1,18 @@
 'use client'
 
-import { Camera, Copy, Loader2, Search, Upload } from 'lucide-react'
+import { Camera, Copy, Images, Loader2, Search, Upload } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
-import { ocrImage, type OcrResult } from '@/lib/api'
+import {
+  imageSearch,
+  ocrImage,
+  SearchFailed,
+  type OcrResult,
+  type SimilarResult,
+} from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
 
 /**
@@ -42,6 +49,13 @@ export function ImageOcr({ lang, t }: { lang: string; t: Messages }) {
   const [text, setText] = useState('')
   const [copied, setCopied] = useState(false)
   const [dragging, setDragging] = useState(false)
+  // The downscaled, EXIF-stripped blob kept for the visual-similarity search, so "Find similar"
+  // reuses exactly what was OCR'd rather than re-preparing the original.
+  const preparedRef = useRef<Blob | null>(null)
+  const [similar, setSimilar] = useState<SimilarResult[] | null>(null)
+  const [simState, setSimState] = useState<
+    'idle' | 'searching' | 'done' | 'unavailable' | 'failed'
+  >('idle')
 
   // Revoke the last preview object URL when it is replaced or the component unmounts — an image
   // blob URL held forever is a real leak on a page someone keeps open.
@@ -62,9 +76,12 @@ export function ImageOcr({ lang, t }: { lang: string; t: Messages }) {
       setResult(null)
       setText('')
       setCopied(false)
+      setSimilar(null)
+      setSimState('idle')
 
       try {
         const prepared = await downscale(file)
+        preparedRef.current = prepared
         const url = URL.createObjectURL(prepared)
         setPreview((old) => {
           if (old) URL.revokeObjectURL(old)
@@ -115,6 +132,26 @@ export function ImageOcr({ lang, t }: { lang: string; t: Messages }) {
   function searchThis() {
     const q = text.trim()
     if (q) router.push(`/${lang}/search?q=${encodeURIComponent(q)}`)
+  }
+
+  async function findSimilar() {
+    const image = preparedRef.current
+    if (!image) return
+    setSimState('searching')
+    setSimilar(null)
+    try {
+      const out = await imageSearch(image)
+      setSimilar(out.results)
+      setSimState('done')
+    } catch (error) {
+      // A 503 is the feature being off or the vector services being down — a distinct, honest state,
+      // not a failure the user caused.
+      if (error instanceof SearchFailed && error.status === 503) {
+        setSimState('unavailable')
+      } else {
+        setSimState('failed')
+      }
+    }
   }
 
   const lowConfidence = result != null && (!result.usable || result.confidence < 60)
@@ -250,10 +287,79 @@ export function ImageOcr({ lang, t }: { lang: string; t: Messages }) {
               {t.ocrEmpty}
             </p>
           )}
+
+          {/* Visual similarity — the other half of Lens. Available whether or not OCR read any
+              text, because "find pages with this image" does not depend on the image having text. */}
+          <div className="mt-3">
+            <Button type="button" variant="quiet" onClick={() => void findSimilar()}>
+              <Images size={16} aria-hidden className="me-1 inline" />
+              {t.ocrFindSimilar}
+            </Button>
+          </div>
+
+          {simState === 'searching' && (
+            <p
+              className="mt-3 flex items-center gap-2 text-sm"
+              style={{ color: 'var(--fg-faint)' }}
+              aria-live="polite"
+            >
+              <Loader2 size={16} aria-hidden className="animate-spin" />
+              {t.ocrFindSimilar}
+            </p>
+          )}
+          {simState === 'unavailable' && (
+            <p className="mt-3 text-sm" style={{ color: 'var(--fg-faint)' }} aria-live="polite">
+              {t.ocrSimilarUnavailable}
+            </p>
+          )}
+          {simState === 'failed' && (
+            <p className="mt-3 text-sm" style={{ color: 'var(--fg-faint)' }} aria-live="polite">
+              {t.ocrFailed}
+            </p>
+          )}
+          {simState === 'done' && similar && (
+            <div className="mt-4">
+              {similar.length === 0 ? (
+                <p className="text-sm" style={{ color: 'var(--fg-faint)' }} aria-live="polite">
+                  {t.ocrNoSimilar}
+                </p>
+              ) : (
+                <>
+                  <h2 className="mb-2 text-sm font-medium">{t.ocrSimilarResults}</h2>
+                  <ul className="m-0 list-none p-0">
+                    {similar.map((r) => (
+                      <li key={r.id} className="mb-3">
+                        <Link
+                          href={r.url}
+                          className="text-base font-medium no-underline hover:underline"
+                          style={{ color: 'var(--accent, #1a5fb4)' }}
+                          dir="auto"
+                        >
+                          {r.title || r.display_url}
+                        </Link>
+                        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--fg-faint)' }}>
+                          <span dir="ltr">{r.display_url}</span>
+                          <span aria-hidden>·</span>
+                          <span>{simLabel(r.score, t)}</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
     </section>
   )
+}
+
+/** A qualitative similarity label — never a raw score ([[UI - Image Search]] M3-T06.5). */
+function simLabel(score: number, t: Messages): string {
+  if (score >= 0.92) return t.similarityVery
+  if (score >= 0.82) return t.similaritySimilar
+  return t.similarityRelated
 }
 
 /**

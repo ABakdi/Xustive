@@ -112,6 +112,13 @@ const ar = {
   ocrConfidence: 'الثقة',
   ocrByImage: 'البحث بالصورة',
   ocrEnhanced: 'قراءة محسّنة (نموذج بصري)',
+  ocrFindSimilar: 'صور مشابهة',
+  ocrSimilarResults: 'صفحات فيها صور مشابهة',
+  ocrNoSimilar: 'لم نعثر على صور مشابهة.',
+  ocrSimilarUnavailable: 'البحث بالصورة المشابهة غير متاح حاليا.',
+  similarityVery: 'مطابقة قوية',
+  similaritySimilar: 'مشابهة',
+  similarityRelated: 'قريبة',
 } as const
 
 /**
@@ -228,6 +235,13 @@ const fr: Messages = {
   ocrConfidence: 'Confiance',
   ocrByImage: 'Recherche par image',
   ocrEnhanced: 'Lecture améliorée (modèle visuel)',
+  ocrFindSimilar: 'Images similaires',
+  ocrSimilarResults: 'Pages contenant des images similaires',
+  ocrNoSimilar: 'Aucune image similaire trouvée.',
+  ocrSimilarUnavailable: 'La recherche d’images similaires est indisponible.',
+  similarityVery: 'Correspondance forte',
+  similaritySimilar: 'Similaire',
+  similarityRelated: 'Proche',
 }
 
 const en: Messages = {
@@ -335,6 +349,13 @@ const en: Messages = {
   ocrConfidence: 'Confidence',
   ocrByImage: 'Search by image',
   ocrEnhanced: 'Enhanced reading (vision model)',
+  ocrFindSimilar: 'Similar images',
+  ocrSimilarResults: 'Pages with similar images',
+  ocrNoSimilar: 'No similar images found.',
+  ocrSimilarUnavailable: 'Similar-image search is unavailable.',
+  similarityVery: 'Strong match',
+  similaritySimilar: 'Similar',
+  similarityRelated: 'Related',
 }
 
 /**
@@ -429,6 +450,10 @@ const ary: Messages = {
   ocrFailed: 'ما قدرناش نقراو الصورة.',
   ocrPrivacy: 'الصورة تتقرا هنا على السيرفور وما تتسجل أبدا.',
   ocrByImage: 'قلب بالصورة',
+  ocrFindSimilar: 'صور كيفها',
+  ocrSimilarResults: 'صفحات فيها صور كيفها',
+  ocrNoSimilar: 'ما لقينا حتى صورة كيفها.',
+  ocrSimilarUnavailable: 'القلب بالصور المشابهة ماشي متوفر دروك.',
 }
 
 const catalogues: Record<Locale, Messages> = { ar, ary, fr, en }
