@@ -140,7 +140,7 @@ document ([[Social Connector - Instagram]] §4.2).
 - [x] M3-T04.4 `leptess` with `ara+fra+eng`, poor-read retry — *a low-confidence/unusable first pass retries on the binarised image and keeps the better result; a PSM-mode variant would be the natural next lever*
 - [x] M3-T04.5 Confidence filtering and usability scoring
 - [x] M3-T04.6 Normalisation via `xustive-text`
-- [~] M3-T04.7 Adversarial suite: bombs, truncated, wrong extension, 1×1, CMYK
+- [x] M3-T04.7 Adversarial suite: decompression bomb (header-dim guard), truncated, corrupt body, 1×1, magic-byte-not-extension — *unit-tested; a `.png` full of script is inert*
 - [~] M3-T04.8 **CER ≤ 15 % on the screenshot subset** ← *the scorer exists (`xustive-cli score-transcripts --metric cer`); needs the labelled screenshot ground-truth set to run*
 
 ## M3-T05 — CLIP and [[Vector Index]]

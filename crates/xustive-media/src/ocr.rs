@@ -280,6 +280,43 @@ mod tests {
     }
 
     #[test]
+    fn a_truncated_image_errors_without_panicking() {
+        // Valid PNG signature + IHDR, then the pixel data is cut off mid-chunk. The header parses
+        // (so dimensions are read), but decoding the body must fail cleanly, not panic — a truncated
+        // upload is the ordinary hostile case (a dropped connection, a crafted file).
+        let truncated = &TINY_PNG[..40];
+        assert!(matches!(
+            decode(truncated, MAX_PIXELS),
+            Err(OcrError::Decode)
+        ));
+    }
+
+    #[test]
+    fn a_valid_header_with_a_corrupt_body_errors() {
+        // Signature + IHDR intact, the rest replaced with garbage of the same length.
+        let mut corrupt = TINY_PNG.to_vec();
+        for b in corrupt.iter_mut().skip(33) {
+            *b = 0xff;
+        }
+        assert!(matches!(
+            decode(&corrupt, MAX_PIXELS),
+            Err(OcrError::Decode) | Err(OcrError::Format)
+        ));
+    }
+
+    #[test]
+    fn the_magic_bytes_decide_the_format_not_any_extension() {
+        // `decode` never sees a filename — it sniffs `guess_format`. So bytes that are really a PNG
+        // decode as a PNG regardless of what a caller might have named the file, and non-image bytes
+        // are refused no matter what. This is the property that makes a `.png` full of script inert.
+        assert!(decode(TINY_PNG, MAX_PIXELS).is_ok());
+        assert!(matches!(
+            decode(b"<script>alert(1)</script>", MAX_PIXELS),
+            Err(OcrError::Format)
+        ));
+    }
+
+    #[test]
     fn the_pixel_budget_rejects_before_expanding() {
         // The 1×1 image is one pixel; a budget of zero must still reject it, proving the guard fires
         // on the header rather than after decoding.
