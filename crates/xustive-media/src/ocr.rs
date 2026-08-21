@@ -17,9 +17,9 @@ pub const MAX_PIXELS: u64 = 40_000_000;
 /// Below this shortest side, the image is upscaled: small screenshots OCR far better enlarged.
 const MIN_OCR_DIM: u32 = 1000;
 /// Mean confidence (0–100) below which the text is treated as unusable.
-const MIN_CONFIDENCE: f32 = 55.0;
+pub const MIN_CONFIDENCE: f32 = 55.0;
 /// Fewest alphanumeric characters worth keeping — below this it is noise, not text.
-const MIN_USABLE_CHARS: usize = 8;
+pub const MIN_USABLE_CHARS: usize = 8;
 
 #[derive(Debug, thiserror::Error)]
 pub enum OcrError {
@@ -139,15 +139,23 @@ pub fn recognise(
         .map_err(|e| OcrError::Engine(e.to_string()))?;
     let confidence = tess.mean_text_conf() as f32;
 
-    let text = xustive_text::normalize(&collapse_whitespace(&raw));
+    Ok(score(&raw, confidence))
+}
+
+/// Turn raw OCR output and a confidence into a scored [`Ocr`]: collapse whitespace, normalise via
+/// [`xustive_text::normalize`], and decide usability against the confidence and length floors.
+///
+/// Shared by every backend — the tesseract engine here and the [`crate::backend::Sidecar`] — so
+/// "usable" means exactly one thing regardless of which engine produced the text.
+pub fn score(raw: &str, confidence: f32) -> Ocr {
+    let text = xustive_text::normalize(&collapse_whitespace(raw));
     let alnum = text.chars().filter(|c| c.is_alphanumeric()).count();
     let usable = confidence >= MIN_CONFIDENCE && alnum >= MIN_USABLE_CHARS;
-
-    Ok(Ocr {
+    Ocr {
         text,
         confidence,
         usable,
-    })
+    }
 }
 
 /// Collapse every run of whitespace — including the per-line newlines tesseract inserts — to a

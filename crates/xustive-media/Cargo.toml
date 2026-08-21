@@ -13,3 +13,13 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 kamadak-exif = "0.6"
 leptess = "0.14"
 xustive-text = { path = "../xustive-text" }
+# The backend layer: an async trait over tesseract (blocking pool) and the Unlimited-OCR sidecar
+# (HTTP). reqwest keeps json only — no TLS features, the sidecar is a private-network HTTP service.
+async-trait = "0.1"
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
