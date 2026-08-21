@@ -3,8 +3,8 @@ tags:
   - planning
   - milestone
 milestone: 3
-status: not-started
-updated: 2026-08-06
+status: in-progress
+updated: 2026-08-21
 ---
 
 # Milestone 3 - Multimodal Input
@@ -13,6 +13,29 @@ updated: 2026-08-06
 > **Exit gate:** WER within targets; screenshot OCR CER ≤ 15 %; `/search/image` p95 ≤ 500 ms; no
 > regression to text search latency.
 > Parent: [[TODO]] · Previous: [[Milestone 1 - Text Search MVP]] · Previous: [[Milestone 2 - Ingestion at Scale]]
+
+---
+
+## Status as of 2026-08-21 — the image OCR track is up
+
+The **image OCR pipeline and index-side enrichment are live.** Started with the "crawled images become
+searchable text" half of the goal, since tesseract is installed on the reference machine and it needs
+no model beyond the traineddata.
+
+Done: the **`xustive-media` crate** with an in-memory OCR pipeline (decode + pixel-budget bomb guard,
+EXIF auto-orient/strip with GPS never read, upscale/grayscale, tesseract `ara+fra+eng`, confidence +
+usability scoring, `xustive-text` normalisation) — no file ever touches disk (P4 holds by
+construction), verified reading a rendered screenshot back verbatim (M3-T04.1/.2/.5/.6, partials on
+.3/.4/.7). And **index-side image enrichment** (`media_ocr` in `xustive-ingest`): the crawler fetches
+a page's images (SSRF-guarded, size-capped, bounded per doc), OCRs them, fills `media[].ocr_text`
+(searchable, weighted below body), backfills a thin body, and **a failed image never fails its
+document** (M3-T07.1/.4/.5/.7). Opt-in via `[media] image_ocr_enabled`, default off.
+
+Blocked on model/data provisioning (like M2's social track), not code: **voice/STT** (M3-T02/T03)
+needs a **whisper model** (none present) and the **audio fixture corpus** (B7); the formal **CER
+target** (M3-T04.8) needs a **labelled screenshot ground-truth set**. **CLIP + Qdrant** (M3-T05) is
+buildable next — Qdrant already runs in dev — and needs a CLIP model. Remaining OCR follow-ups:
+per-image phash dedup (T07.2), NSFW scoring (T07.6), PSM 6/11 retry and adaptive threshold (T04.3/.4).
 
 ---
 
@@ -66,13 +89,13 @@ document ([[Social Connector - Instagram]] §4.2).
 
 ## M3-T04 — [[Image Pipeline]] — OCR path
 
-- [ ] M3-T04.1 Magic-byte typing; pixel budget; decode timeout in `spawn_blocking`
-- [ ] M3-T04.2 **EXIF auto-orient then strip**; GPS never read
-- [ ] M3-T04.3 OCR preprocessing: upscale, grayscale, adaptive threshold
-- [ ] M3-T04.4 `tesseract-rs` with `ara+fra+eng`, `--psm 6` with `--psm 11` retry
-- [ ] M3-T04.5 Confidence filtering and usability scoring
-- [ ] M3-T04.6 Normalisation via `xustive-text`
-- [ ] M3-T04.7 Adversarial suite: bombs, truncated, wrong extension, 1×1, CMYK
+- [x] M3-T04.1 Magic-byte typing; pixel budget; decode timeout in `spawn_blocking`
+- [x] M3-T04.2 **EXIF auto-orient then strip**; GPS never read
+- [~] M3-T04.3 OCR preprocessing: upscale, grayscale, adaptive threshold
+- [~] M3-T04.4 `tesseract-rs` with `ara+fra+eng`, `--psm 6` with `--psm 11` retry
+- [x] M3-T04.5 Confidence filtering and usability scoring
+- [x] M3-T04.6 Normalisation via `xustive-text`
+- [~] M3-T04.7 Adversarial suite: bombs, truncated, wrong extension, 1×1, CMYK
 - [ ] M3-T04.8 **CER ≤ 15 % on the screenshot subset**
 
 ## M3-T05 — CLIP and [[Vector Index]]
@@ -101,13 +124,13 @@ document ([[Social Connector - Instagram]] §4.2).
 
 ## M3-T07 — Index-side media enrichment
 
-- [ ] M3-T07.1 Media fetch in [[Enrichment Pipeline]] via `SafeUrl`, size-capped, bounded concurrency
+- [x] M3-T07.1 Media fetch in [[Enrichment Pipeline]] via `SafeUrl`, size-capped, bounded concurrency
 - [ ] M3-T07.2 Skip fetch when `phash` is already known ([[Deduplication Service]] §4.4)
 - [ ] M3-T07.3 Prioritise Instagram media (expiring CDN URLs)
-- [ ] M3-T07.4 OCR text backfills `body` when the caption is empty; `body_source = "ocr"`
-- [ ] M3-T07.5 A failed image never fails its document
+- [x] M3-T07.4 OCR text backfills `body` when the caption is empty; `body_source = "ocr"`
+- [x] M3-T07.5 A failed image never fails its document
 - [ ] M3-T07.6 NSFW scoring and default filtering of image results
-- [ ] M3-T07.7 `media[].ocr_text` searchable, weighted below `body`
+- [x] M3-T07.7 `media[].ocr_text` searchable, weighted below `body`
 
 ## M3-T08 — Quality suites
 
