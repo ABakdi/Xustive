@@ -61,9 +61,10 @@ fall back to tesseract until then; **image similarity** needs the **CLIP model p
 `clip-embed` service before it returns real results (the whole path is wired and tested, off by
 default via `[vector] enabled`). Orphan reconciliation is done as `xustive-cli reconcile-vectors`
 (a removed document's image vectors are deletable, closing the [[Security and Privacy]] §8 gap).
-Remaining vector follow-ups: the phash reuse-skip (T05.3) and the recall/latency measurement (T05.6,
-needs the model + a corpus). Remaining OCR follow-ups: per-image phash dedup (T07.2), NSFW scoring
-(T07.6), PSM 6/11 retry and adaptive threshold (T04.3/.4).
+The phash reuse-skip (T05.3) is done — a re-posted image reuses its embedding via the Redis
+`embed_cache`. Remaining vector follow-up: the recall/latency measurement (T05.6, needs the model +
+a corpus). Remaining OCR follow-ups: the fetch-skip on a known phash (T07.2), NSFW scoring (T07.6),
+PSM 6/11 retry and adaptive threshold (T04.3/.4).
 
 ---
 
@@ -130,7 +131,7 @@ document ([[Social Connector - Instagram]] §4.2).
 
 - [x] M3-T05.1 Qdrant collection with int8 quantisation and payload indexes
 - [x] M3-T05.2 CLIP ViT-B/32 image tower; L2 normalisation ← *via the `clip-embed` sidecar, not `rust-bert`; keeps the model out of the Rust build and runs CPU-only*
-- [~] M3-T05.3 dHash `phash` + Redis `phash → embedding_id` reuse map ← *dHash is computed (`xustive_media::phash`) and stamped on `media.phash` during the crawl and carried in the payload; the Redis reuse-skip is not wired yet*
+- [x] M3-T05.3 dHash `phash` + Redis `phash → vector` reuse map — *dHash computed (`xustive_media::phash`) and stamped on `media.phash`; the `embed_cache` reuses a known image's embedding instead of re-calling the model, verified live against Redis. Keyed on `phash → vector` rather than `→ embedding_id` (one Redis read, no Qdrant round trip)*
 - [x] M3-T05.4 Upsert batching from the crawler (index-side, `media_embed`)
 - [x] M3-T05.5 ANN search with payload filters; `ef` tuning
 - [ ] M3-T05.6 **Measure recall vs latency on our own corpus** — the table in

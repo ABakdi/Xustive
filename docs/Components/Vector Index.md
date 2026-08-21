@@ -20,8 +20,9 @@ updated: 2026-08-21
 > sidecar (CLIP ViT-B/32, CPU-capable). Verified live against dev Qdrant with synthetic vectors.
 > Off by default (`[vector] enabled`) until a CLIP model is provisioned. Orphan reconciliation (§7)
 > ships as `xustive-cli reconcile-vectors` — it walks the collection and deletes vectors whose
-> document is gone from the lexical index. Not yet wired: the phash reuse-skip (§5) and the
-> recall/latency measurement (§4 — those numbers stay a hypothesis until measured on our corpus).
+> document is gone from the lexical index. The phash reuse map (§5) ships as the ingest
+> `embed_cache` — a re-posted image reuses its CLIP vector instead of re-embedding. Not yet wired:
+> the recall/latency measurement (§4 — those numbers stay a hypothesis until measured on our corpus).
 
 ## 1. Purpose
 
