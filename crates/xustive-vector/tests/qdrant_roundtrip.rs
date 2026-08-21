@@ -87,6 +87,13 @@ async fn upsert_search_delete_round_trip() {
     // Self-similarity of a normalised vector is ~1.0.
     assert!(hits[0].score > 0.99, "exact match score {}", hits[0].score);
 
+    // The scroll enumeration (used by orphan reconciliation) sees this document.
+    let ids = store.all_document_ids(100).await.expect("scroll");
+    assert!(
+        ids.contains(&doc.to_string()),
+        "all_document_ids must include the upserted document"
+    );
+
     // Takedown: deleting the document removes both points.
     store.delete_by_document(doc).await.expect("delete");
     let after = store
@@ -96,5 +103,15 @@ async fn upsert_search_delete_round_trip() {
     assert!(
         after.iter().all(|h| h.payload.document_id != doc),
         "no points for the deleted document remain"
+    );
+
+    // And after deletion the document no longer appears in the enumeration.
+    let ids_after = store
+        .all_document_ids(100)
+        .await
+        .expect("scroll after delete");
+    assert!(
+        !ids_after.contains(&doc.to_string()),
+        "a deleted document must not appear in all_document_ids"
     );
 }

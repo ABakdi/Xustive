@@ -187,6 +187,17 @@ enum Command {
     },
     /// Show index document counts.
     Stats,
+    /// Delete image vectors whose parent document is gone from the index (orphan reconciliation).
+    ///
+    /// A takedown or reindex can remove a document from the lexical index while its image
+    /// embeddings linger in Qdrant, leaving a removed image findable by similarity. This walks the
+    /// vector collection, checks each document against the index, and deletes the orphans
+    /// ([[Vector Index]] §7, [[Security and Privacy]] §8).
+    ReconcileVectors {
+        /// Report what would be deleted without deleting anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Show what normalisation does to a string.
     Text { input: String },
     /// Run a search from the command line.
@@ -368,6 +379,9 @@ async fn main() -> Result<()> {
         Command::Dlq { action, limit } => worker::dlq(&config, &action, limit).await,
         Command::Keys { show } => cmd_keys(&client, show).await,
         Command::Stats => cmd_stats(&client, &config).await,
+        Command::ReconcileVectors { dry_run } => {
+            cmd_reconcile_vectors(&client, &config, dry_run).await
+        }
         Command::Search {
             query,
             limit,
@@ -615,6 +629,106 @@ async fn cmd_seed(
     }
 
     println!("✓ seeded {indexed} documents into {index}");
+    Ok(())
+}
+
+/// Delete image vectors whose parent document no longer exists in the lexical index.
+///
+/// The direction matters: it walks what the *vector* store holds and checks each document against
+/// the *lexical* index, deleting the vectors of anything the index no longer has. It never adds or
+/// changes vectors — reconciliation only removes, so at worst a transient index outage makes it a
+/// no-op, never a data-losing one.
+async fn cmd_reconcile_vectors(client: &MeiliClient, config: &Config, dry_run: bool) -> Result<()> {
+    use serde_json::Value;
+
+    let v = &config.vector;
+    let key = (!v.qdrant_key.is_empty()).then(|| v.qdrant_key.clone());
+    let store = xustive_vector::Store::new(
+        &v.qdrant_url,
+        key,
+        v.collection.clone(),
+        Duration::from_millis(v.timeout_ms.max(30_000)),
+    )
+    .context("building the vector store client")?;
+
+    let doc_ids = match store.all_document_ids(1_000).await {
+        Ok(ids) => ids,
+        // A missing collection is not an error to reconcile — there is simply nothing embedded yet.
+        Err(xustive_vector::VectorError::Backend { status: 404, .. }) => {
+            println!(
+                "vector collection '{}' does not exist; nothing to reconcile",
+                v.collection
+            );
+            return Ok(());
+        }
+        Err(e) => return Err(anyhow::Error::new(e).context("scrolling the vector collection")),
+    };
+    if doc_ids.is_empty() {
+        println!(
+            "vector collection '{}' is empty; nothing to reconcile",
+            v.collection
+        );
+        return Ok(());
+    }
+    println!(
+        "{} distinct documents in the vector collection",
+        doc_ids.len()
+    );
+
+    let index = client
+        .resolve(&config.search.documents_index)
+        .await
+        .unwrap_or_else(|_| config.search.documents_index.clone());
+
+    // Check existence in batches: `id IN [...]` returns the ids the index still has, so the orphans
+    // are the batch minus what came back.
+    let mut orphans: Vec<String> = Vec::new();
+    for batch in doc_ids.chunks(200) {
+        let quoted: Vec<String> = batch.iter().map(|id| format!("\"{id}\"")).collect();
+        let query = xustive_search::Query::new("")
+            .filter(format!("id IN [{}]", quoted.join(", ")))
+            .limit(batch.len());
+        let hits = client
+            .search::<Value>(&index, &query)
+            .await
+            .context("checking documents against the index")?;
+        let live: std::collections::HashSet<String> = hits
+            .hits
+            .iter()
+            .filter_map(|h| h.get("id").and_then(Value::as_str).map(str::to_string))
+            .collect();
+        for id in batch {
+            if !live.contains(id) {
+                orphans.push(id.clone());
+            }
+        }
+    }
+
+    if orphans.is_empty() {
+        println!("no orphaned vectors — every embedded document still exists in the index");
+        return Ok(());
+    }
+    println!("{} orphaned documents (vectors to delete)", orphans.len());
+
+    if dry_run {
+        for id in &orphans {
+            println!("  would delete vectors for {id}");
+        }
+        println!("dry run: nothing deleted");
+        return Ok(());
+    }
+
+    let mut deleted = 0usize;
+    for id in &orphans {
+        match store.delete_by_document(id).await {
+            Ok(()) => deleted += 1,
+            Err(e) => eprintln!("  failed to delete vectors for {id}: {e}"),
+        }
+    }
+    println!(
+        "deleted vectors for {deleted}/{} orphaned documents",
+        orphans.len()
+    );
     Ok(())
 }
 

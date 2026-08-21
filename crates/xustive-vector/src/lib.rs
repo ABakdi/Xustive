@@ -308,6 +308,50 @@ impl Store {
         self.check(resp).await
     }
 
+    /// Every distinct `document_id` in the collection.
+    ///
+    /// Pages through the whole collection with the scroll API, pulling only the `document_id`
+    /// payload (no vectors), and de-duplicates. This is the enumeration the orphan-reconciliation
+    /// job walks — deliberately a full scan, run off the serving path on a cadence, never per query.
+    pub async fn all_document_ids(&self, batch: usize) -> Result<Vec<String>, VectorError> {
+        let mut ids = std::collections::HashSet::new();
+        let mut offset: Option<Value> = None;
+        loop {
+            let mut body = json!({
+                "limit": batch,
+                "with_payload": ["document_id"],
+                "with_vector": false,
+            });
+            if let Some(o) = &offset {
+                body["offset"] = o.clone();
+            }
+            let resp = self
+                .req(
+                    reqwest::Method::POST,
+                    &format!("/collections/{}/points/scroll", self.collection),
+                )
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| VectorError::Unreachable(e.to_string()))?;
+            let value = self.json(resp).await?;
+            let points = value["result"]["points"]
+                .as_array()
+                .ok_or_else(|| VectorError::Decode("missing result.points".into()))?;
+            for p in points {
+                if let Some(id) = p["payload"]["document_id"].as_str() {
+                    ids.insert(id.to_string());
+                }
+            }
+            // `next_page_offset` is null when the scan is exhausted.
+            match value["result"].get("next_page_offset") {
+                Some(next) if !next.is_null() => offset = Some(next.clone()),
+                _ => break,
+            }
+        }
+        Ok(ids.into_iter().collect())
+    }
+
     /// Total points in the collection — for metrics and tests.
     pub async fn count(&self) -> Result<u64, VectorError> {
         let resp = self
