@@ -116,9 +116,17 @@ export default function MediaPage() {
             voice search.
           </p>
         ) : (
-          <Row label="STT sidecar">
-            <Dot ok={stt.healthy} label={stt.healthy ? 'up' : 'down'} />
-          </Row>
+          <>
+            <Row label="STT sidecar">
+              <Dot ok={stt.healthy} label={stt.healthy ? 'up' : 'down'} />
+            </Row>
+            <Row label="Circuit breaker">
+              <Dot
+                ok={stt.breaker === 'closed'}
+                label={stt.breaker === 'closed' ? 'closed (healthy)' : stt.breaker}
+              />
+            </Row>
+          </>
         )}
       </section>
     </>

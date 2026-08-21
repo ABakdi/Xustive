@@ -240,6 +240,7 @@ pub async fn media(
         Some(client) => json!({
             "enabled": true,
             "healthy": client.healthy().await,
+            "breaker": client.breaker_state(),
             "endpoint": state.config.stt.endpoint,
         }),
     };

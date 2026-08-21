@@ -182,6 +182,8 @@ export interface MediaStatus {
         embedder_endpoint: string
         collection: string
       }
-  stt: { enabled: false } | { enabled: true; healthy: boolean; endpoint: string }
+  stt:
+    | { enabled: false }
+    | { enabled: true; healthy: boolean; breaker: string; endpoint: string }
 }
 export const getMedia = (signal?: AbortSignal) => getJSON<MediaStatus>('/media', signal)

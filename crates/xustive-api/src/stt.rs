@@ -33,6 +33,9 @@ pub struct SttClient {
     http: reqwest::Client,
     endpoint: String,
     max_bytes: usize,
+    /// Fail fast when the sidecar is down instead of waiting out the timeout on every request
+    /// (M4-T02.2). A tripped breaker returns "unavailable" immediately and probes for recovery.
+    breaker: xustive_core::circuit::SharedBreaker,
 }
 
 #[derive(Deserialize)]
@@ -52,11 +55,27 @@ impl SttClient {
             .timeout(Duration::from_millis(cfg.timeout_ms))
             .build()
             .ok()?;
+        let breaker = xustive_core::circuit::SharedBreaker::new(xustive_core::circuit::Config {
+            failure_threshold: 3,
+            cooldown: Duration::from_secs(5),
+            max_cooldown: Duration::from_secs(60),
+        });
         Some(Self {
             http,
             endpoint: cfg.endpoint.clone(),
             max_bytes: cfg.max_audio_bytes,
+            breaker,
         })
+    }
+
+    /// The breaker's state, for the admin console (`"closed"`, `"open"`, `"half-open"`).
+    pub fn breaker_state(&self) -> &'static str {
+        use xustive_core::circuit::State;
+        match self.breaker.state() {
+            State::Closed => "closed",
+            State::Open => "open",
+            State::HalfOpen => "half-open",
+        }
     }
 
     /// Liveness probe against the sidecar's `/health` (the endpoint is the `/transcribe` path).
@@ -69,6 +88,27 @@ impl SttClient {
     }
 
     async fn transcribe(&self, audio: Vec<u8>, lang: Option<&str>) -> Result<Transcript, ApiError> {
+        // Fail fast if the sidecar has been failing — no request, no timeout wait.
+        if !self.breaker.allow() {
+            return Err(ApiError::model_unavailable("stt_unavailable"));
+        }
+        match self.try_transcribe(audio, lang).await {
+            Ok(t) => {
+                self.breaker.on_success();
+                Ok(t)
+            }
+            Err(e) => {
+                self.breaker.on_failure();
+                Err(e)
+            }
+        }
+    }
+
+    async fn try_transcribe(
+        &self,
+        audio: Vec<u8>,
+        lang: Option<&str>,
+    ) -> Result<Transcript, ApiError> {
         let mut req = self
             .http
             .post(&self.endpoint)
