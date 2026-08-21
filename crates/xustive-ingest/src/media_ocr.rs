@@ -41,8 +41,8 @@ impl ImageFetcher {
     }
 
     /// Fetch image bytes: private addresses refused ([`SafeUrl`]), `image/*` only, size-capped both
-    /// by the declared length and by the actual bytes read.
-    async fn fetch(&self, url: &str, max_bytes: usize) -> Option<Vec<u8>> {
+    /// by the declared length and by the actual bytes read. Shared by the OCR and embed passes.
+    pub async fn fetch(&self, url: &str, max_bytes: usize) -> Option<Vec<u8>> {
         let safe = SafeUrl::parse(url).ok()?;
         let resp = self.http.get(safe.as_str()).send().await.ok()?;
         if !resp.status().is_success() {

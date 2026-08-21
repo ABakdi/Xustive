@@ -16,6 +16,7 @@ xustive-text = { path = "../xustive-text" }
 xustive-queue = { path = "../xustive-queue" }
 xustive-search = { path = "../xustive-search" }
 xustive-ingest = { path = "../xustive-ingest" }
+xustive-vector = { path = "../xustive-vector" }
 xustive-lang = { path = "../xustive-lang" }
 url.workspace = true
 

@@ -134,6 +134,9 @@ pub struct Orchestrator {
     /// Image OCR enrichment, when enabled. A fetcher plus its bounded settings; off means images are
     /// never fetched.
     media_ocr: Option<(crate::media_ocr::ImageFetcher, crate::media_ocr::Settings)>,
+    /// Image embedding into the vector index, when enabled. Independent of OCR: either, both, or
+    /// neither can be on.
+    image_embed: Option<crate::media_embed::ImageEmbed>,
     last_promote: std::time::Instant,
 }
 
@@ -153,6 +156,7 @@ impl Orchestrator {
             raw_store: None,
             link_graph: None,
             media_ocr: None,
+            image_embed: None,
             last_promote: std::time::Instant::now(),
         }
     }
@@ -170,6 +174,13 @@ impl Orchestrator {
         settings: crate::media_ocr::Settings,
     ) -> Self {
         self.media_ocr = Some((fetcher, settings));
+        self
+    }
+
+    /// Embed a page's images into the vector index so they are findable by similarity (M3-T05). Off
+    /// unless set.
+    pub fn with_image_embed(mut self, embed: crate::media_embed::ImageEmbed) -> Self {
+        self.image_embed = Some(embed);
         self
     }
 
@@ -446,6 +457,12 @@ impl Orchestrator {
         // and bounded; a failed image never fails the document.
         if let Some((fetcher, settings)) = &self.media_ocr {
             crate::media_ocr::enrich(&mut parsed.document, fetcher, settings).await;
+        }
+
+        // Index-side image embedding (M3-T05): embed the page's images into the vector store so they
+        // are findable by visual similarity. Opt-in and bounded; a failed embed never fails the doc.
+        if let Some(embed) = &self.image_embed {
+            crate::media_embed::embed_and_store(&parsed.document, embed).await;
         }
 
         // Stamp the document with the channel that discovered its URL (M2-T16.7). The parser does

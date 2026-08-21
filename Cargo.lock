@@ -3792,6 +3792,7 @@ dependencies = [
  "xustive-queue",
  "xustive-search",
  "xustive-text",
+ "xustive-vector",
 ]
 
 [[package]]
@@ -3833,6 +3834,7 @@ dependencies = [
  "xustive-lang",
  "xustive-media",
  "xustive-text",
+ "xustive-vector",
  "zeroize",
 ]
 

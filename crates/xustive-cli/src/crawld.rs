@@ -235,6 +235,15 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
         None
     };
 
+    // Image embedding into the vector index, built once and cloned per worker. Off unless `[vector]`
+    // is enabled AND both the embedder and Qdrant clients construct. CLIP embedding runs CPU-only,
+    // so this is not GPU-gated — but it still fetches + embeds per image, hence opt-in.
+    let image_embed = if config.vector.enabled {
+        build_image_embed(&config)
+    } else {
+        None
+    };
+
     for id in 0..workers {
         let frontier = orchestrator.frontier().clone();
         let queue = queue.clone();
@@ -247,6 +256,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
         let redis_url = config.queue.url.clone();
         let raw_ttl_days = config.crawl.raw_ttl_days;
         let media_ocr = media_ocr.clone();
+        let image_embed = image_embed.clone();
 
         tasks.spawn(async move {
             let Ok(fetcher) = Fetcher::new(FetchConfig {
@@ -292,6 +302,9 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             }
             if let Some((fetcher, settings)) = media_ocr {
                 orch = orch.with_media_ocr(fetcher, settings);
+            }
+            if let Some(embed) = image_embed {
+                orch = orch.with_image_embed(embed);
             }
             let dedup = xustive_ingest::dedup::Dedup::connect_in(&redis_url, "frontier");
 
@@ -546,6 +559,30 @@ fn now_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+/// Build the image-embedding pass from `[vector]`, or `None` if a client cannot be constructed.
+///
+/// Returns `None` (rather than failing the crawl) when the embedder or Qdrant client will not
+/// build — image embedding is an enrichment, and a crawl must run without it. The Qdrant collection
+/// is ensured lazily by the serving side's startup; the crawler only writes.
+fn build_image_embed(config: &Config) -> Option<xustive_ingest::media_embed::ImageEmbed> {
+    let v = &config.vector;
+    let timeout = std::time::Duration::from_millis(v.timeout_ms);
+    let key = (!v.qdrant_key.is_empty()).then(|| v.qdrant_key.clone());
+    let store =
+        xustive_vector::Store::new(&v.qdrant_url, key, v.collection.clone(), timeout).ok()?;
+    let embedder = xustive_vector::SidecarEmbedder::new(&v.embedder_endpoint, timeout).ok()?;
+    let fetcher = xustive_ingest::media_ocr::ImageFetcher::new()?;
+    Some(xustive_ingest::media_embed::ImageEmbed {
+        fetcher,
+        embedder: std::sync::Arc::new(embedder),
+        store,
+        settings: xustive_ingest::media_embed::Settings {
+            max_images: config.media.max_images_per_doc,
+            max_bytes: config.media.max_image_bytes,
+        },
+    })
 }
 
 /// Ctrl-C or `SIGTERM`.
