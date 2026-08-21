@@ -140,6 +140,14 @@ worker: ## Drain the index queue into Meilisearch
 dlq: ## Dead letters: make dlq A=stats|peek|replay
 	cargo run --release -q -p xustive-cli -- --config $(CONFIG) dlq $(or $(A),stats)
 
+.PHONY: backup
+backup: ## Snapshot Meili+Qdrant+Redis+registry off-host: make backup [DEST=dir]
+	scripts/backup.sh $(or $(DEST),backups)
+
+.PHONY: restore-drill
+restore-drill: ## Restore from a backup (STAGING ONLY): make restore-drill SRC=backups/<ts> CONFIRM=yes
+	CONFIRM=$(CONFIRM) scripts/restore.sh $(SRC)
+
 .PHONY: load
 load: ## Load-test the running API on :8080: make load S=search|suggest|summary|mixed [RPS=n DUR=s]
 	cargo run --release -q -p xustive-loadgen -- \

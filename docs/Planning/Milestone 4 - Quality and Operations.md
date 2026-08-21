@@ -47,7 +47,7 @@ the entire point. Discovering it during beta is not.
 - [ ] M4-T02.4 DLQ tooling: stats, peek, replay, retention
 - [ ] M4-T02.5 Degradation ladder verified by fault injection, step by step
 - [ ] M4-T02.6 Idempotency audit: every stage re-runnable, with a test per stage
-- [ ] M4-T02.7 Graceful shutdown: drain in-flight, ack, exit within the grace period
+- [x] M4-T02.7 Graceful shutdown: drain in-flight, ack, exit within the grace period — *shared `shutdown` helper (SIGTERM/Ctrl-C + a 25 s grace bound); the worker stops taking batches (unacked in-flight redelivers, idempotent by id), the crawler drains bounded, the API arms a grace timer over axum's drain. Worker exit verified live at ~1 s*
 - [ ] M4-T02.8 **Chaos exercises**: kill Redis, kill Meilisearch, kill `xustive-ml`, fill the disk —
       assert the documented behaviour in each case
 
@@ -65,11 +65,11 @@ the entire point. Discovering it during beta is not.
 
 ## M4-T04 — Backup and restore
 
-- [ ] M4-T04.1 Meilisearch snapshots every 6 h, shipped off-host
-- [ ] M4-T04.2 Qdrant daily collection snapshots
-- [ ] M4-T04.3 Redis AOF + hourly RDB copies
-- [ ] M4-T04.4 Registry export to git on every change
-- [ ] M4-T04.5 **Restore drill**: wipe a staging environment and restore from backups only
+- [~] M4-T04.1 Meilisearch snapshots, shipped off-host — *`scripts/backup.sh` triggers + waits for the snapshot task and copies it out; the schedule (every 6 h) is a cron/timer wrapper, and the snapshot-dir path is deployment-specific (warns if the file is not found)*
+- [x] M4-T04.2 Qdrant collection snapshots — *`backup.sh` snapshots each collection and downloads it over HTTP; verified live (394 KB snapshot pulled)*
+- [x] M4-T04.3 Redis AOF + RDB copies — *AOF already on (`appendonly yes`); `backup.sh` BGSAVEs and copies `dump.rdb` out; verified live (572 MB captured)*
+- [x] M4-T04.4 Registry export — *`backup.sh` copies the git-versioned registry into the backup set*
+- [~] M4-T04.5 **Restore drill** — *`scripts/restore.sh` recovers Qdrant (snapshot upload) and Redis (dump.rdb + restart), prints the Meili startup-import steps, and lists the verify checks (stats / a search / reconcile-vectors) that are the drill's real pass/fail; guarded by `CONFIRM=yes`. Still owes a real wipe-and-restore run in staging to measure RTO/RPO (T04.6)*
 - [ ] M4-T04.6 Measure actual RTO/RPO; correct [[Deployment Topology]] §7 if they differ
 - [ ] M4-T04.7 Resolve where off-host backups physically live, given data sovereignty
 - [ ] M4-T04.8 Index migration drill: build `documents_v2`, dual-write, alias flip, roll back
