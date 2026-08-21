@@ -130,7 +130,7 @@ document ([[Social Connector - Instagram]] §4.2).
 
 - [x] M3-T05.1 Qdrant collection with int8 quantisation and payload indexes
 - [x] M3-T05.2 CLIP ViT-B/32 image tower; L2 normalisation ← *via the `clip-embed` sidecar, not `rust-bert`; keeps the model out of the Rust build and runs CPU-only*
-- [ ] M3-T05.3 dHash `phash` + Redis `phash → embedding_id` reuse map ← *phash carried in the payload; the reuse-skip is not wired yet*
+- [~] M3-T05.3 dHash `phash` + Redis `phash → embedding_id` reuse map ← *dHash is computed (`xustive_media::phash`) and stamped on `media.phash` during the crawl and carried in the payload; the Redis reuse-skip is not wired yet*
 - [x] M3-T05.4 Upsert batching from the crawler (index-side, `media_embed`)
 - [x] M3-T05.5 ANN search with payload filters; `ef` tuning
 - [ ] M3-T05.6 **Measure recall vs latency on our own corpus** — the table in
@@ -153,7 +153,7 @@ document ([[Social Connector - Instagram]] §4.2).
 ## M3-T07 — Index-side media enrichment
 
 - [x] M3-T07.1 Media fetch in [[Enrichment Pipeline]] via `SafeUrl`, size-capped, bounded concurrency
-- [ ] M3-T07.2 Skip fetch when `phash` is already known ([[Deduplication Service]] §4.4)
+- [~] M3-T07.2 Skip fetch when `phash` is already known ([[Deduplication Service]] §4.4) ← *dHash now computed and stamped on every fetched image; the "skip fetch if phash seen" registry is not wired yet*
 - [ ] M3-T07.3 Prioritise Instagram media (expiring CDN URLs)
 - [x] M3-T07.4 OCR text backfills `body` when the caption is empty; `body_source = "ocr"`
 - [x] M3-T07.5 A failed image never fails its document
