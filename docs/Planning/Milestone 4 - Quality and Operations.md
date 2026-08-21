@@ -72,7 +72,7 @@ the entire point. Discovering it during beta is not.
 - [~] M4-T04.5 **Restore drill** — *`scripts/restore.sh` recovers Qdrant (snapshot upload) and Redis (dump.rdb + restart), prints the Meili startup-import steps, and lists the verify checks (stats / a search / reconcile-vectors) that are the drill's real pass/fail; guarded by `CONFIRM=yes`. Still owes a real wipe-and-restore run in staging to measure RTO/RPO (T04.6)*
 - [ ] M4-T04.6 Measure actual RTO/RPO; correct [[Deployment Topology]] §7 if they differ
 - [ ] M4-T04.7 Resolve where off-host backups physically live, given data sovereignty
-- [ ] M4-T04.8 Index migration drill: build `documents_v2`, dual-write, alias flip, roll back
+- [x] M4-T04.8 Index migration drill: build staging, verify, alias flip, roll back — *`xustive-cli reindex` builds `<index>_next` with the current settings, copies every document (all fields, not just displayed), verifies the count, and **atomically swaps** it in (Meili `swap-indexes`); `--rollback` swaps back (previous contents kept in staging), `--dry-run` previews. **Verified live end-to-end against a throwaway index** — swap, search, rollback, cleanup. (Continuous **dual-write** during the copy is the one piece left for a hot index; the drill mechanism and the flip/rollback are proven.)*
 
 ## M4-T05 — Scale to 10M documents
 

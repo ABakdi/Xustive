@@ -537,6 +537,37 @@ impl MeiliClient {
         Ok(t.task_uid)
     }
 
+    /// One page of raw documents from an index, with **all** stored fields (the documents endpoint
+    /// is not restricted by `displayedAttributes`, unlike search — so a reindex copy keeps `body`
+    /// and everything else). Empty when the page is past the end.
+    pub async fn documents_page(
+        &self,
+        index: &str,
+        offset: u64,
+        limit: u64,
+    ) -> Result<Vec<Value>, SearchError> {
+        #[derive(serde::Deserialize)]
+        struct Page {
+            results: Vec<Value>,
+        }
+        let url = self.url(&format!(
+            "/indexes/{index}/documents?offset={offset}&limit={limit}"
+        ))?;
+        let page: Page = self.send(self.http.get(url)).await?;
+        Ok(page.results)
+    }
+
+    /// Atomically swap the contents of two indexes — documents, settings, and tasks — in one
+    /// operation ([[ADR]] alias model). This is the **alias flip**: build the replacement index,
+    /// verify it, then swap it into place with no window where searches see a half-built index; the
+    /// identical call in reverse is the **rollback**. Returns the task uid.
+    pub async fn swap_indexes(&self, a: &str, b: &str) -> Result<u64, SearchError> {
+        let url = self.url("/swap-indexes")?;
+        let body = serde_json::json!([{ "indexes": [a, b] }]);
+        let t: TaskRef = self.send(self.http.post(url).json(&body)).await?;
+        Ok(t.task_uid)
+    }
+
     pub async fn delete_document(&self, index: &str, id: &str) -> Result<u64, SearchError> {
         let url = self.url(&format!("/indexes/{index}/documents/{id}"))?;
         let t: TaskRef = self.send(self.http.delete(url)).await?;

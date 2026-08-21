@@ -186,6 +186,25 @@ enum Command {
         #[arg(long, default_value_t = 20)]
         limit: usize,
     },
+    /// Rebuild the search index into a staging copy and atomically swap it in (M4-T04.8).
+    ///
+    /// The zero-downtime migration: build `<index>_next` with the current code's settings, copy
+    /// every document into it, verify the count, then swap it into place in one atomic operation —
+    /// searches never see a half-built index. `--rollback` swaps back to the previous contents
+    /// (kept in the staging index). This is the drill that proves the alias machinery works before
+    /// a real settings change needs it.
+    Reindex {
+        /// Operate on this index/alias instead of the configured documents index — used to drill
+        /// against a throwaway index without touching the live one.
+        #[arg(long)]
+        index: Option<String>,
+        /// Swap back to the previous contents (undo the last reindex swap).
+        #[arg(long)]
+        rollback: bool,
+        /// Report what would happen without creating, copying, or swapping anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Show index document counts.
     Stats,
     /// Delete image vectors whose parent document is gone from the index (orphan reconciliation).
@@ -410,6 +429,11 @@ async fn main() -> Result<()> {
         Command::Dlq { action, limit } => worker::dlq(&config, &action, limit).await,
         Command::Keys { show } => cmd_keys(&client, show).await,
         Command::Stats => cmd_stats(&client, &config).await,
+        Command::Reindex {
+            index,
+            rollback,
+            dry_run,
+        } => cmd_reindex(&client, &config, index.as_deref(), rollback, dry_run).await,
         Command::ReconcileVectors { dry_run } => {
             cmd_reconcile_vectors(&client, &config, dry_run).await
         }
@@ -761,6 +785,123 @@ async fn cmd_reconcile_vectors(client: &MeiliClient, config: &Config, dry_run: b
         "deleted vectors for {deleted}/{} orphaned documents",
         orphans.len()
     );
+    Ok(())
+}
+
+/// The index-migration drill: build a staging copy, verify, atomically swap, and support rollback.
+async fn cmd_reindex(
+    client: &MeiliClient,
+    config: &Config,
+    index_override: Option<&str>,
+    rollback: bool,
+    dry_run: bool,
+) -> Result<()> {
+    // The live index (resolved through the alias) and its staging sibling.
+    let alias = index_override.unwrap_or(&config.search.documents_index);
+    let live = client
+        .resolve(alias)
+        .await
+        .unwrap_or_else(|_| alias.to_string());
+    let staging = format!("{live}_next");
+
+    if rollback {
+        // The previous contents are sitting in the staging index from the last swap; swapping again
+        // puts them back. Nothing is rebuilt — rollback is instant.
+        println!("rollback: swapping '{live}' ↔ '{staging}' to restore the previous contents");
+        if dry_run {
+            println!("dry run: no swap performed");
+            return Ok(());
+        }
+        let uid = client
+            .swap_indexes(&live, &staging)
+            .await
+            .context("swap-indexes (rollback)")?;
+        client
+            .wait_task(uid)
+            .await
+            .context("waiting for the swap")?;
+        println!("✓ rolled back");
+        return Ok(());
+    }
+
+    let live_count = client
+        .stats(&live)
+        .await
+        .map(|s| s.number_of_documents)
+        .unwrap_or(0);
+    println!("reindex: '{live}' ({live_count} docs) → build '{staging}' → verify → atomic swap");
+    if dry_run {
+        println!("dry run: would rebuild {live_count} documents into '{staging}' and swap it in");
+        return Ok(());
+    }
+
+    // Fresh staging index with the *current code's* settings (the whole point of a reindex is to
+    // apply a settings change). Delete any leftover from a prior run first; Meilisearch runs tasks
+    // in order, so the create below is applied after the delete.
+    let _ = client.delete_index(&staging).await;
+    client
+        .ensure_index(&staging, "id")
+        .await
+        .context("creating the staging index")?;
+    client
+        .apply_settings(&staging, &xustive_search::settings::documents_settings())
+        .await
+        .context("configuring the staging index")?;
+
+    // Copy every document, page by page, waiting for each write so a slow indexer cannot let the
+    // verify race ahead of the copy.
+    const PAGE: u64 = 1000;
+    let mut offset = 0u64;
+    let mut copied = 0u64;
+    loop {
+        let docs = client
+            .documents_page(&live, offset, PAGE)
+            .await
+            .context("reading a page of documents")?;
+        if docs.is_empty() {
+            break;
+        }
+        let uid = client
+            .add_documents(&staging, &docs)
+            .await
+            .context("writing a page into staging")?;
+        client.wait_task(uid).await.context("waiting for a write")?;
+        copied += docs.len() as u64;
+        offset += PAGE;
+        if copied % 10_000 == 0 {
+            println!("  copied {copied}/{live_count}");
+        }
+    }
+    println!("  copied {copied} documents into '{staging}'");
+
+    // Verify before flipping: a staging index short of the live one is a copy that failed, and
+    // swapping it in would lose documents silently.
+    let staging_count = client
+        .stats(&staging)
+        .await
+        .map(|s| s.number_of_documents)
+        .unwrap_or(0);
+    if staging_count < live_count {
+        anyhow::bail!(
+            "verify failed: staging has {staging_count} documents but live has {live_count} — not swapping"
+        );
+    }
+    println!("  verify ok: staging has {staging_count} documents (live had {live_count})");
+
+    // The atomic flip. After this, '{live}' serves the new content and '{staging}' holds the old
+    // one — which is exactly the rollback source.
+    let uid = client
+        .swap_indexes(&live, &staging)
+        .await
+        .context("swap-indexes")?;
+    client
+        .wait_task(uid)
+        .await
+        .context("waiting for the swap")?;
+    println!(
+        "✓ swapped '{staging}' into '{live}'. Previous contents kept in '{staging}' for rollback."
+    );
+    println!("  verify a search, then `reindex --rollback` to undo or delete '{staging}' when satisfied.");
     Ok(())
 }
 
