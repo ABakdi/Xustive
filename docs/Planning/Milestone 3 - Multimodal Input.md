@@ -136,8 +136,8 @@ document ([[Social Connector - Instagram]] §4.2).
 
 - [x] M3-T04.1 Magic-byte typing; pixel budget; decode timeout in `spawn_blocking`
 - [x] M3-T04.2 **EXIF auto-orient then strip**; GPS never read
-- [~] M3-T04.3 OCR preprocessing: upscale, grayscale, adaptive threshold
-- [~] M3-T04.4 `tesseract-rs` with `ara+fra+eng`, `--psm 6` with `--psm 11` retry
+- [x] M3-T04.3 OCR preprocessing: upscale, grayscale, adaptive threshold — *Otsu binarisation on the retry pass; the first pass stays grayscale (right for clean screenshots)*
+- [x] M3-T04.4 `leptess` with `ara+fra+eng`, poor-read retry — *a low-confidence/unusable first pass retries on the binarised image and keeps the better result; a PSM-mode variant would be the natural next lever*
 - [x] M3-T04.5 Confidence filtering and usability scoring
 - [x] M3-T04.6 Normalisation via `xustive-text`
 - [~] M3-T04.7 Adversarial suite: bombs, truncated, wrong extension, 1×1, CMYK
