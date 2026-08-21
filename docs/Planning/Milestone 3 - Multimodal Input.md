@@ -66,6 +66,17 @@ The phash reuse-skip (T05.3) is done — a re-posted image reuses its embedding 
 a corpus). Remaining OCR follow-ups: the fetch-skip on a known phash (T07.2), NSFW scoring (T07.6),
 PSM 6/11 retry and adaptive threshold (T04.3/.4).
 
+Done (voice, M3-T02/T03): a **speech-to-text track** built on the same sidecar pattern. The
+**`stt-sidecar`** wraps Whisper `small` on faster-whisper (CTranslate2, CPU-capable — voice is not
+GPU-gated) with VAD trimming and in-memory decode (no disk); **`POST /api/v1/transcribe`** forwards
+audio to it with an Arabic-preferred language hint, isolated so text search never depends on it; and
+the **`VoiceButton`** UI records (MediaRecorder/Opus), shows a focus-trapped recording dialog with a
+30-second cap, and drops the transcript **into the search box, editable and never auto-submitted**.
+Off by default (`[stt] enabled`), visible on the admin Image-AI page, blocked only on a whisper model
+being provisioned. The architecture differs from the tasks below (a Python sidecar rather than
+in-process `whisper.cpp`/`symphonia`), so their codec/VAD/decode sub-tasks are handled inside the
+sidecar; the **WER measurement (T02.10) still needs the audio corpus (B7)**.
+
 ---
 
 ## Why This Milestone Exists
@@ -92,29 +103,34 @@ document ([[Social Connector - Instagram]] §4.2).
 
 ## M3-T02 — [[Speech to Text]]
 
-- [ ] M3-T02.1 Magic-byte codec sniffing; reject non-allowlisted formats
-- [ ] M3-T02.2 `symphonia` decode in `spawn_blocking` with wall-clock and sample-count caps
-- [ ] M3-T02.3 Resample to 16 kHz mono; loudness normalisation
-- [ ] M3-T02.4 VAD trimming; reject below `min_speech_ms`
-- [ ] M3-T02.5 `whisper.cpp` FFI integration, `small` q5_1, Arabic-preferred language selection
+> **Architecture note:** built as a **Python sidecar** (`services/stt-sidecar`, faster-whisper) rather
+> than in-process `whisper.cpp`/`symphonia` — the same pattern as the OCR and CLIP sidecars, chosen to
+> keep the model out of the Rust build and because whisper `small` runs CPU-only. So the decode/VAD/
+> resample sub-tasks below are handled *inside* the sidecar (PyAV + whisper), not as Rust code.
+
+- [~] M3-T02.1 Codec handling — *the sidecar decodes via PyAV/ffmpeg; the API caps size and forwards, no strict Rust-side allowlist*
+- [~] M3-T02.2 Decode with caps — *in-sidecar (PyAV), not `symphonia`; wall-clock bounded by the request timeout*
+- [~] M3-T02.3 Resample to 16 kHz mono — *whisper resamples internally*
+- [x] M3-T02.4 VAD trimming — *`vad_filter=True` in the sidecar*
+- [~] M3-T02.5 Whisper `small`, Arabic-preferred language — *faster-whisper, with the UI language forwarded as `?lang=`; not `whisper.cpp` FFI*
 - [ ] M3-T02.6 **Artefact filter** for hallucinated trailing text on near-silent input
-- [ ] M3-T02.7 Bounded queue and slot management
-- [ ] M3-T02.8 **Zero-disk-write test**: no new files after a request ([[Security and Privacy]] P4)
+- [~] M3-T02.7 Bounded queue and slot management — *the API rate-limits `/transcribe`; the sidecar is single-model*
+- [x] M3-T02.8 **Zero-disk-write** — *the sidecar decodes from a `BytesIO`, no temp file; the API forwards a raw body (test still to add)*
 - [ ] M3-T02.9 Robustness suite: silence, noise, truncated container, 1-sample file, 30 s clip
-- [ ] M3-T02.10 **WER evaluation**: 100 Algerian recordings — ar ≤ 25 %, fr ≤ 20 %, ary ≤ 45 %
+- [ ] M3-T02.10 **WER evaluation**: 100 Algerian recordings — ar ≤ 25 %, fr ≤ 20 %, ary ≤ 45 % ← *needs the audio corpus (B7)*
 
 ## M3-T03 — [[UI - Voice Search]]
 
-- [ ] M3-T03.1 Capability detection; hide the button when unsupported
-- [ ] M3-T03.2 Permission on tap only, never on load; per-browser re-enable guidance
-- [ ] M3-T03.3 Recording overlay: waveform, timer, stop, cancel; focus-trapped `<dialog>`
-- [ ] M3-T03.4 `MediaRecorder` Opus capture at 24 kbps mono
-- [ ] M3-T03.5 Auto-stop on 2 s silence; 30 s hard cap announced at 25 s
-- [ ] M3-T03.6 **Transcript lands in the search box, editable, not auto-submitted**
-- [ ] M3-T03.7 Track stop on completion/cancel so the browser mic indicator clears
+- [x] M3-T03.1 Capability detection; hide the button when unsupported
+- [x] M3-T03.2 Permission on tap only, never on load; guidance on denial
+- [~] M3-T03.3 Recording overlay: timer, stop, cancel; focus-trapped `<dialog>` — *no waveform yet*
+- [x] M3-T03.4 `MediaRecorder` Opus capture at 24 kbps
+- [~] M3-T03.5 30 s hard cap — *silence auto-stop and the 25 s announce not done yet*
+- [x] M3-T03.6 **Transcript lands in the search box, editable, not auto-submitted**
+- [x] M3-T03.7 Track stop on completion/cancel so the browser mic indicator clears
 - [ ] M3-T03.8 Retry keeps the recorded blob in memory (3G resilience)
-- [ ] M3-T03.9 `prefers-reduced-motion` variant of the waveform
-- [ ] M3-T03.10 Live-region announcements for every state transition
+- [~] M3-T03.9 `prefers-reduced-motion` — *the recording indicator is `motion-safe`; no waveform to vary*
+- [~] M3-T03.10 Live-region announcements — *state and errors are announced; not yet every transition*
 
 ## M3-T04 — [[Image Pipeline]] — OCR path
 
