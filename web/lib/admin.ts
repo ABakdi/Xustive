@@ -168,3 +168,19 @@ export const setDevice = (preference: string, gpuLayers: number | null) =>
   postJSON<Record<string, unknown>>('/device', { preference, gpu_layers: gpuLayers })
 export const setPoliteness = (ignore: boolean) =>
   postJSON<Record<string, unknown>>('/politeness', { ignore_politeness: ignore })
+
+// --- image AI (OCR + vector) -----------------------------------------------------------------
+export interface MediaStatus {
+  ocr: { backend: string; healthy: boolean; sidecar_endpoint: string }
+  vector:
+    | { enabled: false }
+    | {
+        enabled: true
+        embedder_healthy: boolean
+        qdrant_reachable: boolean
+        image_vectors: number | null
+        embedder_endpoint: string
+        collection: string
+      }
+}
+export const getMedia = (signal?: AbortSignal) => getJSON<MediaStatus>('/media', signal)

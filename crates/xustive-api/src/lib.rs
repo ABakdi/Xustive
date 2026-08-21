@@ -147,6 +147,7 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/politeness", axum::routing::post(admin::set_politeness))
         .route("/status", get(admin::status))
+        .route("/media", get(admin::media))
         .route("/device", axum::routing::post(admin::set_device))
         .route("/log-level", axum::routing::post(admin::set_log_level))
         .layer(search_budget)

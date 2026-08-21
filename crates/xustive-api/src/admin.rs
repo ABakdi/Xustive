@@ -193,6 +193,58 @@ pub async fn set_device(
 }
 
 /// Resolve the current settings against the hardware actually present.
+/// Image-AI status: which OCR engine is selected and whether it and the image-similarity stack are
+/// up. Read-only — the operator's window onto the two optional sidecars and the vector index,
+/// closing the loop on "make the OCR backend visible from the admin page".
+///
+/// Health probes hit the sidecars, so this is a little slower than the plain status call; it is a
+/// deliberate operator action, not a hot path.
+pub async fn media(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    authorise(&state, peer, &headers).map_err(|d| d.json())?;
+
+    let ocr_backend = state.ocr.name();
+    // Only probe when a sidecar is actually in the path — the in-process tesseract engine is always
+    // ready, and a probe of it would just be `true` after a wasted network attempt.
+    let ocr_healthy = if ocr_backend == "tesseract" {
+        true
+    } else {
+        state.ocr.healthy().await
+    };
+
+    let vector = match &state.image_search {
+        None => json!({ "enabled": false }),
+        Some(engine) => {
+            let embedder_healthy = engine.embedder.healthy().await;
+            // A point count doubles as the Qdrant reachability probe.
+            let (qdrant_ok, points) = match engine.store.count().await {
+                Ok(n) => (true, Some(n)),
+                Err(_) => (false, None),
+            };
+            json!({
+                "enabled": true,
+                "embedder_healthy": embedder_healthy,
+                "qdrant_reachable": qdrant_ok,
+                "image_vectors": points,
+                "embedder_endpoint": state.config.vector.embedder_endpoint,
+                "collection": state.config.vector.collection,
+            })
+        }
+    };
+
+    Ok(Json(json!({
+        "ocr": {
+            "backend": ocr_backend,
+            "healthy": ocr_healthy,
+            "sidecar_endpoint": state.config.media.sidecar.endpoint,
+        },
+        "vector": vector,
+    })))
+}
+
 fn current_resolution(state: &AppState) -> device::Resolved {
     // Prefer what the engine actually resolved to at load time over a fresh probe.
     //

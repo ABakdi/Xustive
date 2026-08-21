@@ -24,6 +24,7 @@ const LINKS: [string, string, string][] = [
   ['Discovery yield', '/admin/discovery', 'per-channel funnel'],
   ['Weak coverage', '/admin/weak-coverage', 'gaps to fill'],
   ['Compute', '/admin/compute', 'device & politeness'],
+  ['Image AI', '/admin/media', 'OCR & image similarity'],
 ]
 
 export default function OverviewPage() {

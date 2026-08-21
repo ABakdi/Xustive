@@ -31,6 +31,11 @@ pub trait OcrBackend: Send + Sync {
     async fn recognise(&self, bytes: Vec<u8>) -> Result<Ocr, OcrError>;
     /// Stable identifier surfaced to the API and admin console (`"tesseract"`, `"unlimited"`).
     fn name(&self) -> &'static str;
+    /// Whether the engine is ready. In-process engines are always ready; a sidecar probes its
+    /// service. Surfaced to the admin console so an operator can see a down sidecar. Default: true.
+    async fn healthy(&self) -> bool {
+        true
+    }
 }
 
 /// In-process tesseract. Owns its configuration so it can be cloned into a blocking task.
@@ -101,13 +106,6 @@ impl Sidecar {
             endpoint: endpoint.into(),
         })
     }
-
-    /// Liveness probe against `{endpoint}/health` — used by the admin console to show whether the
-    /// optional sidecar is actually up before anyone selects it.
-    pub async fn healthy(&self) -> bool {
-        let url = format!("{}/health", self.endpoint.trim_end_matches('/'));
-        matches!(self.http.get(url).send().await, Ok(r) if r.status().is_success())
-    }
 }
 
 #[async_trait]
@@ -137,6 +135,13 @@ impl OcrBackend for Sidecar {
 
     fn name(&self) -> &'static str {
         "unlimited"
+    }
+
+    /// Liveness probe against the sidecar's `/health`, so the admin console can show a down sidecar.
+    /// The endpoint is the `/ocr` path; health lives at the service root, so strip it first.
+    async fn healthy(&self) -> bool {
+        let base = self.endpoint.trim_end_matches("/ocr").trim_end_matches('/');
+        matches!(self.http.get(format!("{base}/health")).send().await, Ok(r) if r.status().is_success())
     }
 }
 
@@ -170,6 +175,12 @@ impl OcrBackend for Fallback {
 
     fn name(&self) -> &'static str {
         self.primary.name()
+    }
+
+    /// The primary's health — that is the engine a selection of this backend points at. The fallback
+    /// staying up is what keeps requests working, but it is the primary the operator asked for.
+    async fn healthy(&self) -> bool {
+        self.primary.healthy().await
     }
 }
 

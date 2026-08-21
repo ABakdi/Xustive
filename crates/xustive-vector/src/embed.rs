@@ -24,6 +24,11 @@ use crate::{VectorError, DIM};
 #[async_trait]
 pub trait Embedder: Send + Sync {
     async fn embed(&self, image: Vec<u8>) -> Result<Vec<f32>, VectorError>;
+    /// Whether the embedder is ready, for the admin console. Default: true (an in-process embedder
+    /// is always ready); the sidecar probes its `/health`.
+    async fn healthy(&self) -> bool {
+        true
+    }
 }
 
 /// HTTP client for the CLIP embed sidecar.
@@ -53,18 +58,6 @@ impl SidecarEmbedder {
             http,
             endpoint: endpoint.into(),
         })
-    }
-
-    /// Liveness probe against `{endpoint}/health`, for the admin console.
-    pub async fn healthy(&self) -> bool {
-        let base = self
-            .endpoint
-            .trim_end_matches("/embed")
-            .trim_end_matches('/');
-        matches!(
-            self.http.get(format!("{base}/health")).send().await,
-            Ok(r) if r.status().is_success()
-        )
     }
 }
 
@@ -96,6 +89,18 @@ impl Embedder for SidecarEmbedder {
             )));
         }
         Ok(l2_normalise(reply.embedding))
+    }
+
+    /// Liveness probe against the sidecar's `/health` (the endpoint is the `/embed` path).
+    async fn healthy(&self) -> bool {
+        let base = self
+            .endpoint
+            .trim_end_matches("/embed")
+            .trim_end_matches('/');
+        matches!(
+            self.http.get(format!("{base}/health")).send().await,
+            Ok(r) if r.status().is_success()
+        )
     }
 }
 
