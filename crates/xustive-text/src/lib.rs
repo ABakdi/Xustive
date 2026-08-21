@@ -16,6 +16,7 @@
 //! - [`fold`] — aggressive. Everything `normalize` does, plus folding orthographic variants
 //!   (`أ إ آ` → `ا`, `ة` → `ه`, `ى` → `ي`). Used for the secondary match field only.
 
+pub mod metrics;
 pub mod script;
 
 use unicode_normalization::UnicodeNormalization;

@@ -198,6 +198,25 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Score transcription/OCR output against references (WER or CER) — the M3 exit-gate metric.
+    ///
+    /// Reads a JSON-Lines file of `{"reference": "...", "hypothesis": "...", "id": "..."}` and
+    /// reports the micro-averaged error rate. Decoupled from the models on purpose: produce the
+    /// hypotheses however (the STT/OCR sidecars, or by hand), then score them here. This is what
+    /// M3-T02.10 (WER ≤ 25/20/45 %) and M3-T04.8 (CER ≤ 15 %) are measured with.
+    ScoreTranscripts {
+        #[arg(long)]
+        input: PathBuf,
+        /// `wer` (word, for voice) or `cer` (character, for OCR).
+        #[arg(long, default_value = "wer")]
+        metric: String,
+        /// Fail (non-zero exit) if the corpus rate exceeds this fraction (e.g. 0.25).
+        #[arg(long)]
+        threshold: Option<f32>,
+        /// Print the worst-scoring lines too, this many of them.
+        #[arg(long, default_value_t = 0)]
+        worst: usize,
+    },
     /// Show what normalisation does to a string.
     Text { input: String },
     /// Run a search from the command line.
@@ -227,6 +246,17 @@ async fn main() -> Result<()> {
     // `text` is pure and must work with no backend running.
     if let Command::Text { input } = &args.command {
         return cmd_text(input);
+    }
+
+    // `score-transcripts` reads a file and computes a metric — no backend involved.
+    if let Command::ScoreTranscripts {
+        input,
+        metric,
+        threshold,
+        worst,
+    } = &args.command
+    {
+        return cmd_score_transcripts(input, metric, *threshold, *worst);
     }
 
     // `registry` curates a git-versioned file and needs no backend either.
@@ -392,6 +422,7 @@ async fn main() -> Result<()> {
         | Command::ParseCheck { .. }
         | Command::CommonCrawl { .. }
         | Command::Discover
+        | Command::ScoreTranscripts { .. }
         | Command::PageRank => {
             unreachable!("handled above")
         }
@@ -751,6 +782,109 @@ async fn cmd_stats(client: &MeiliClient, config: &Config) -> Result<()> {
             ),
             Err(e) => println!("{index}: unavailable ({e})"),
         }
+    }
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+struct TranscriptPair {
+    reference: String,
+    hypothesis: String,
+    #[serde(default)]
+    id: Option<String>,
+}
+
+/// Score a JSON-Lines file of (reference, hypothesis) pairs with WER or CER.
+fn cmd_score_transcripts(
+    input: &std::path::Path,
+    metric: &str,
+    threshold: Option<f32>,
+    worst: usize,
+) -> Result<()> {
+    use xustive_text::metrics::{char_counts, word_counts, Accumulator, Counts};
+
+    let is_cer = match metric.to_ascii_lowercase().as_str() {
+        "wer" => false,
+        "cer" => true,
+        other => anyhow::bail!("unknown metric '{other}' — use 'wer' or 'cer'"),
+    };
+
+    let text =
+        std::fs::read_to_string(input).with_context(|| format!("reading {}", input.display()))?;
+
+    let mut acc = Accumulator::new();
+    let mut scored: Vec<(String, Counts)> = Vec::new();
+    let mut skipped = 0usize;
+    for (n, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let pair: TranscriptPair = match serde_json::from_str(line) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("  line {}: skipped ({e})", n + 1);
+                skipped += 1;
+                continue;
+            }
+        };
+        let counts = if is_cer {
+            char_counts(&pair.reference, &pair.hypothesis)
+        } else {
+            word_counts(&pair.reference, &pair.hypothesis)
+        };
+        acc.add(counts);
+        let label = pair.id.unwrap_or_else(|| format!("line {}", n + 1));
+        scored.push((label, counts));
+    }
+
+    if acc.pairs() == 0 {
+        anyhow::bail!("no scorable pairs in {}", input.display());
+    }
+
+    let metric_name = if is_cer { "CER" } else { "WER" };
+    let rate = acc.rate();
+    println!(
+        "{metric_name}: {:.2}%  ({} edits over {} reference {}, {} pairs{})",
+        rate * 100.0,
+        acc.edits(),
+        acc.reference_len(),
+        if is_cer { "chars" } else { "words" },
+        acc.pairs(),
+        if skipped > 0 {
+            format!(", {skipped} skipped")
+        } else {
+            String::new()
+        },
+    );
+
+    if worst > 0 {
+        // Sort by per-pair rate, worst first, so the offenders are easy to inspect.
+        scored.sort_by(|a, b| {
+            b.1.rate()
+                .partial_cmp(&a.1.rate())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        println!("worst {}:", worst.min(scored.len()));
+        for (label, c) in scored.iter().take(worst) {
+            println!(
+                "  {:.1}%  {label}  ({}/{})",
+                c.rate() * 100.0,
+                c.edits,
+                c.reference_len
+            );
+        }
+    }
+
+    if let Some(limit) = threshold {
+        if rate > limit {
+            anyhow::bail!(
+                "{metric_name} {:.2}% exceeds the {:.2}% threshold",
+                rate * 100.0,
+                limit * 100.0
+            );
+        }
+        println!("within the {:.2}% threshold", limit * 100.0);
     }
     Ok(())
 }
