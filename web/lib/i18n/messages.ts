@@ -97,6 +97,21 @@ const ar = {
   off: 'مطفأة',
   enable: 'تفعيل',
   disable: 'إطفاء',
+  ocrTitle: 'صورة إلى نص',
+  ocrIntro: 'اسحب صورة، الصقها، أو اختر واحدة لاستخراج النص منها.',
+  ocrChoose: 'اختر صورة',
+  ocrCamera: 'التقط صورة',
+  ocrDrop: 'أفلت الصورة هنا',
+  ocrReading: 'جارٍ قراءة الصورة…',
+  ocrResult: 'النص المستخرج',
+  ocrEmpty: 'لم يُعثر على نص مقروء في الصورة.',
+  ocrLowConfidence: 'الثقة منخفضة — راجع النص قبل استعماله.',
+  ocrSearchThis: 'ابحث عن هذا',
+  ocrFailed: 'تعذّرت قراءة الصورة.',
+  ocrPrivacy: 'تُقرأ الصورة على هذا الخادم ولا تُحفظ أبدًا.',
+  ocrConfidence: 'الثقة',
+  ocrByImage: 'البحث بالصورة',
+  ocrEnhanced: 'قراءة محسّنة (نموذج بصري)',
 } as const
 
 /**
@@ -198,6 +213,21 @@ const fr: Messages = {
   off: 'Désactivé',
   enable: 'Activer',
   disable: 'Désactiver',
+  ocrTitle: 'Image vers texte',
+  ocrIntro: 'Glissez une image, collez-la ou choisissez-en une pour en extraire le texte.',
+  ocrChoose: 'Choisir une image',
+  ocrCamera: 'Prendre une photo',
+  ocrDrop: 'Déposez l’image ici',
+  ocrReading: 'Lecture de l’image…',
+  ocrResult: 'Texte extrait',
+  ocrEmpty: 'Aucun texte lisible trouvé dans l’image.',
+  ocrLowConfidence: 'Confiance faible — vérifiez le texte avant de l’utiliser.',
+  ocrSearchThis: 'Rechercher ceci',
+  ocrFailed: 'Impossible de lire l’image.',
+  ocrPrivacy: 'L’image est lue sur ce serveur et n’est jamais conservée.',
+  ocrConfidence: 'Confiance',
+  ocrByImage: 'Recherche par image',
+  ocrEnhanced: 'Lecture améliorée (modèle visuel)',
 }
 
 const en: Messages = {
@@ -290,6 +320,21 @@ const en: Messages = {
   off: 'Off',
   enable: 'Enable',
   disable: 'Disable',
+  ocrTitle: 'Image to text',
+  ocrIntro: 'Drag an image, paste it, or choose one to pull the text out of it.',
+  ocrChoose: 'Choose image',
+  ocrCamera: 'Take a photo',
+  ocrDrop: 'Drop the image here',
+  ocrReading: 'Reading the image…',
+  ocrResult: 'Extracted text',
+  ocrEmpty: 'No readable text found in the image.',
+  ocrLowConfidence: 'Low confidence — check the text before using it.',
+  ocrSearchThis: 'Search this',
+  ocrFailed: 'Could not read the image.',
+  ocrPrivacy: 'The image is read on this server and never stored.',
+  ocrConfidence: 'Confidence',
+  ocrByImage: 'Search by image',
+  ocrEnhanced: 'Enhanced reading (vision model)',
 }
 
 /**
@@ -373,6 +418,17 @@ const ary: Messages = {
   toolsNote: 'الأدوات المطفية ما تبانش فوق النتائج. هاد الإعداد يتسجل غير في هاد المتصفح.',
   enable: 'شعّل',
   disable: 'طفّي',
+  ocrIntro: 'جرّ صورة، الصقها، ولا اختار وحدة باش نطلعو منها النص.',
+  ocrChoose: 'اختار صورة',
+  ocrCamera: 'دير تصويرة',
+  ocrDrop: 'أفلت الصورة هنا',
+  ocrReading: 'راه يقرا الصورة…',
+  ocrEmpty: 'ما لقينا حتى نص مقروء فالصورة.',
+  ocrLowConfidence: 'الثقة ضعيفة — راجع النص قبل ما تستعملو.',
+  ocrSearchThis: 'قلب على هذا',
+  ocrFailed: 'ما قدرناش نقراو الصورة.',
+  ocrPrivacy: 'الصورة تتقرا هنا على السيرفور وما تتسجل أبدا.',
+  ocrByImage: 'قلب بالصورة',
 }
 
 const catalogues: Record<Locale, Messages> = { ar, ary, fr, en }

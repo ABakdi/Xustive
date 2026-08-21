@@ -155,6 +155,44 @@ export async function tools(): Promise<{ id: string; keyword: string }[]> {
   return body.tools ?? []
 }
 
+export interface OcrResult {
+  /** The recognised text, whitespace-collapsed and normalised. Empty when nothing usable was read. */
+  text: string
+  /** Whether the text cleared the engine's confidence and length floors. */
+  usable: boolean
+  /** Mean confidence, 0–100. Shown as a bar, never a raw number. */
+  confidence: number
+  /** Which engine produced it: `"tesseract"` or `"unlimited"`. */
+  backend: string
+}
+
+/**
+ * OCR an image.
+ *
+ * The image is sent as a raw POST body, never a form field or a query string — it is the payload,
+ * and a URL would put it in a referrer or an access log. The Rust side reads it in memory and never
+ * writes it to disk. A 422 means the image itself was unusable (not an image, too large, corrupt);
+ * anything else is a transient backend problem.
+ */
+export async function ocrImage(image: Blob, signal?: AbortSignal): Promise<OcrResult> {
+  const res = await fetch(`${BASE}/api/v1/ocr`, {
+    method: 'POST',
+    headers: { 'Content-Type': image.type || 'application/octet-stream' },
+    body: image,
+    signal,
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as ApiError | null
+    throw new SearchFailed(
+      body?.error?.code ?? 'ocr_failed',
+      body?.error?.message ?? 'OCR failed',
+      res.status,
+    )
+  }
+  return res.json() as Promise<OcrResult>
+}
+
 export type TranslateLanguage = {
   code: string
   name_ar: string
