@@ -27,6 +27,10 @@ pub struct ModelSpec {
     /// Size in MiB, used by device selection to decide whether it fits in VRAM.
     pub size_mib: u64,
     pub licence: &'static str,
+    /// Whether the licence permits **commercial** use. Not every model that is free to run locally
+    /// is free to ship: Qwen2.5-3B, for one, is under a non-commercial research licence. The engine
+    /// warns at load when a non-commercial model is selected, and the admin console shows this.
+    pub commercial_use: bool,
     /// Where it came from, so a replacement can be fetched without archaeology.
     pub source: &'static str,
     pub notes: &'static str,
@@ -34,17 +38,25 @@ pub struct ModelSpec {
 
 /// The models Xustive knows about.
 ///
-/// Qwen is the default family throughout: it has unusually strong Arabic for its size, ships
-/// permissive licences, and its small quantised variants fit the 4 GB reference card.
+/// Qwen is the default family throughout: it has unusually strong Arabic for its size and its small
+/// quantised variants fit the 4 GB reference card. **Licence is not uniform across sizes**, though —
+/// 0.5B/1.5B/7B/14B/32B are Apache-2.0, while **3B and 72B are the non-commercial `qwen-research`
+/// licence**. Each entry records the truth, and `commercial_use` is the flag callers key off.
 pub const MODELS: &[ModelSpec] = &[
     ModelSpec {
         id: "qwen2.5-3b-instruct-q4",
         role: Role::Summariser,
         file: "qwen2.5-3b-instruct-q4_k_m.gguf",
         size_mib: 2007,
-        licence: "Apache-2.0",
+        // Qwen2.5-3B is NOT Apache-2.0 — it is the non-commercial qwen-research licence, unlike the
+        // other sizes here. Verified on the model card 2026-08-21. Fine for local eval, not for a
+        // commercial launch: the engine warns when it is loaded. See models/LICENSES.md. The order
+        // is unchanged (this stays the resolve default) — switching the default is a product choice,
+        // not something to do silently under a licence fix.
+        licence: "Qwen-Research (non-commercial)",
+        commercial_use: false,
         source: "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF",
-        notes: "Default. Fits a 4 GB card with room for context.",
+        notes: "Best Arabic that fits 4 GB, but non-commercial. Pin a commercial-safe size to ship.",
     },
     ModelSpec {
         id: "qwen2.5-1.5b-instruct-q4",
@@ -52,8 +64,9 @@ pub const MODELS: &[ModelSpec] = &[
         file: "qwen2.5-1.5b-instruct-q4_k_m.gguf",
         size_mib: 1070,
         licence: "Apache-2.0",
+        commercial_use: true,
         source: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF",
-        notes: "Fallback for tighter memory or faster CPU inference. Weaker Arabic.",
+        notes: "Commercial-safe. Fits any card; faster on CPU. Weaker Arabic than 3B/7B.",
     },
     ModelSpec {
         id: "qwen2.5-7b-instruct-q4",
@@ -61,9 +74,10 @@ pub const MODELS: &[ModelSpec] = &[
         file: "qwen2.5-7b-instruct-q4_k_m.gguf",
         size_mib: 4680,
         licence: "Apache-2.0",
+        commercial_use: true,
         source: "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF",
         notes:
-            "Better Arabic synthesis. Exceeds 4 GB VRAM; needs partial offload or a bigger card.",
+            "Best Arabic and commercial-safe. Exceeds 4 GB VRAM; needs partial offload or a bigger card.",
     },
 ];
 
@@ -134,17 +148,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_model_is_permissively_licensed() {
-        // A research-only licence would invalidate the self-hosting design, and discovering
-        // that after launch is far worse than before.
+    fn commercial_use_flag_matches_the_licence() {
+        // The trap this guards against is a model *mislabelled* as permissive — which is exactly the
+        // bug found in the 3B entry (it claimed Apache-2.0 but is qwen-research). A permissive
+        // licence string must carry commercial_use=true, and anything else must carry false, so the
+        // flag can never quietly disagree with the licence it is derived from.
         for m in MODELS {
-            assert!(
-                m.licence.contains("Apache") || m.licence.contains("MIT"),
-                "{} has licence {:?}, which may not permit commercial use",
-                m.id,
-                m.licence
+            let looks_permissive = m.licence.contains("Apache") || m.licence.contains("MIT");
+            assert_eq!(
+                m.commercial_use, looks_permissive,
+                "{} licence {:?} disagrees with commercial_use={}",
+                m.id, m.licence, m.commercial_use
             );
         }
+    }
+
+    #[test]
+    fn a_commercial_safe_summariser_exists() {
+        // The self-hosting design must not be a dead end for a commercial deployment: there has to
+        // be at least one summariser an operator can actually ship.
+        assert!(
+            MODELS
+                .iter()
+                .any(|m| m.role == Role::Summariser && m.commercial_use),
+            "no commercially usable summariser is registered"
+        );
     }
 
     #[test]

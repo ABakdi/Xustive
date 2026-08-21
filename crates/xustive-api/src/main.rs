@@ -43,6 +43,16 @@ fn spawn_model_load(state: &AppState) {
         return;
     };
 
+    // A non-commercial model is fine for local evaluation but must not ship unnoticed. Shout about
+    // it at load so it is impossible to run one commercially by accident (see models/LICENSES.md).
+    if !status.spec.commercial_use {
+        tracing::warn!(
+            model = status.spec.id,
+            licence = status.spec.licence,
+            "summariser model is NOT licensed for commercial use — pin a commercial-safe size via [ml] summariser_model before launch"
+        );
+    }
+
     let device = state.device_config();
     let slots = state.config.ml.slots;
     let engine_slot = Arc::clone(&state.engine);
