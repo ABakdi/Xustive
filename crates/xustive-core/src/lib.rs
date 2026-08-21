@@ -7,6 +7,7 @@
 //! This crate has no knowledge of HTTP, the index, or the queue. It is the vocabulary, not the
 //! machinery.
 
+pub mod circuit;
 pub mod config;
 pub mod error;
 pub mod hash;
