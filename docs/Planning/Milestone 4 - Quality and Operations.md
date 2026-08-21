@@ -42,7 +42,7 @@ the entire point. Discovering it during beta is not.
 ## M4-T02 — [[Error Handling and Resilience]]
 
 - [ ] M4-T02.1 `ErrorClass`-driven retry layer applied everywhere (no string matching)
-- [~] M4-T02.2 Circuit breakers with exponential cooldown — *`xustive_core::circuit`: a fully-tested Closed/Open/HalfOpen state machine with exponential backoff (capped) and an injectable clock; wired into the STT sidecar client (fail-fast + admin visibility) as the pattern. Remaining: the shared-Redis variant for multi-instance coordination, and wiring the other call sites (Meili, other sidecars)*
+- [x] M4-T02.2 Circuit breakers with shared Redis state and exponential cooldown — *two variants: `xustive_core::circuit` (in-process, injectable clock, wired into the STT sidecar with admin visibility) and `xustive_queue::breaker::RedisBreaker` (fleet-wide, atomic Lua transitions, one half-open probe across all instances). Both fully unit/integration-tested — the Redis one verified live against a clean instance (trip → cooldown → probe → close → exponential backoff). Wiring the remaining call sites (Meili, other sidecars) is incremental follow-up*
 - [ ] M4-T02.3 Backpressure thresholds wired from queue depth to crawl dispatch
 - [ ] M4-T02.4 DLQ tooling: stats, peek, replay, retention
 - [ ] M4-T02.5 Degradation ladder verified by fault injection, step by step
@@ -81,7 +81,7 @@ the entire point. Discovering it during beta is not.
 - [ ] M4-T05.3 Decide the `translit_body` question with real numbers ([[Data Model]] §9)
 - [ ] M4-T05.4 Tune `MEILI_MAX_INDEXING_THREADS` so indexing cannot starve search
 - [ ] M4-T05.5 Qdrant at 5M vectors: memory, recall, latency
-- [ ] M4-T05.6 Redis memory profile; act on the raw-blob storage decision if needed
+- [~] M4-T05.6 Redis memory profile; act on the raw-blob storage decision if needed — *observed live: the dev Redis is **already at its 1 GB `maxmemory` cap** from crawl state, and with `noeviction` (correct — it holds queue/frontier state) that means writes start being refused (`OOM`). This is the binding constraint materialising early; the object-storage option for raw blobs (Deployment Topology) is the lever. Needs a proper profile of what occupies the 1 GB before deciding.*
 - [ ] M4-T05.7 **Re-run the full relevance evaluation on the real corpus** — M1's tuning was done on
       fixtures and will need revisiting
 
