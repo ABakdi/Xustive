@@ -30,6 +30,9 @@ pub struct ImageEmbed {
     pub embedder: std::sync::Arc<dyn Embedder>,
     pub store: Store,
     pub settings: Settings,
+    /// Optional `phash → vector` reuse cache. When present, a known image reuses its embedding
+    /// instead of calling the model again ([[Vector Index]] §5).
+    pub cache: Option<crate::embed_cache::EmbedCache>,
 }
 
 /// Embed a document's images and upsert them, and stamp each image's perceptual hash. Every failure
@@ -62,12 +65,29 @@ pub async fn embed_and_store(document: &mut Document, cfg: &ImageEmbed) {
         if document.media[i].phash.is_none() {
             document.media[i].phash = xustive_media::phash::dhash(&bytes, ocr::MAX_PIXELS);
         }
-        let vector = match cfg.embedder.embed(bytes).await {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::debug!(url = %url, error = %e, "image embed skipped");
-                continue;
-            }
+        let phash = document.media[i].phash.clone();
+
+        // Reuse the embedding of a structurally identical image if we have already computed one —
+        // the same picture reposted at another URL costs a Redis read, not a model call.
+        let cached = match (&cfg.cache, &phash) {
+            (Some(cache), Some(h)) => cache.get(h).await,
+            _ => None,
+        };
+        let vector = match cached {
+            Some(v) => v,
+            None => match cfg.embedder.embed(bytes).await {
+                Ok(v) => {
+                    // Populate the cache for the next copy of this image.
+                    if let (Some(cache), Some(h)) = (&cfg.cache, &phash) {
+                        cache.put(h, &v).await;
+                    }
+                    v
+                }
+                Err(e) => {
+                    tracing::debug!(url = %url, error = %e, "image embed skipped");
+                    continue;
+                }
+            },
         };
         points.push(Point {
             id: point_id(&url),
@@ -78,7 +98,7 @@ pub async fn embed_and_store(document: &mut Document, cfg: &ImageEmbed) {
                 source_type: Some(document.source_type.as_str().to_string()),
                 published_at: (document.published_at > 0).then_some(document.published_at),
                 is_nsfw: document.is_nsfw,
-                phash: document.media[i].phash.clone(),
+                phash,
             },
         });
     }

@@ -239,7 +239,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
     // is enabled AND both the embedder and Qdrant clients construct. CLIP embedding runs CPU-only,
     // so this is not GPU-gated — but it still fetches + embeds per image, hence opt-in.
     let image_embed = if config.vector.enabled {
-        build_image_embed(&config)
+        build_image_embed(config).await
     } else {
         None
     };
@@ -566,7 +566,7 @@ fn now_ms() -> i64 {
 /// Returns `None` (rather than failing the crawl) when the embedder or Qdrant client will not
 /// build — image embedding is an enrichment, and a crawl must run without it. The Qdrant collection
 /// is ensured lazily by the serving side's startup; the crawler only writes.
-fn build_image_embed(config: &Config) -> Option<xustive_ingest::media_embed::ImageEmbed> {
+async fn build_image_embed(config: &Config) -> Option<xustive_ingest::media_embed::ImageEmbed> {
     let v = &config.vector;
     let timeout = std::time::Duration::from_millis(v.timeout_ms);
     let key = (!v.qdrant_key.is_empty()).then(|| v.qdrant_key.clone());
@@ -574,6 +574,17 @@ fn build_image_embed(config: &Config) -> Option<xustive_ingest::media_embed::Ima
         xustive_vector::Store::new(&v.qdrant_url, key, v.collection.clone(), timeout).ok()?;
     let embedder = xustive_vector::SidecarEmbedder::new(&v.embedder_endpoint, timeout).ok()?;
     let fetcher = xustive_ingest::media_ocr::ImageFetcher::new()?;
+    // The reuse cache is optional: a missing Redis (or ttl = 0) just means every image is embedded.
+    let cache = if v.embed_cache_ttl_days > 0 {
+        xustive_ingest::embed_cache::EmbedCache::connect_in(
+            &config.queue.url,
+            "frontier",
+            std::time::Duration::from_secs(v.embed_cache_ttl_days * 86_400),
+        )
+        .await
+    } else {
+        None
+    };
     Some(xustive_ingest::media_embed::ImageEmbed {
         fetcher,
         embedder: std::sync::Arc::new(embedder),
@@ -582,6 +593,7 @@ fn build_image_embed(config: &Config) -> Option<xustive_ingest::media_embed::Ima
             max_images: config.media.max_images_per_doc,
             max_bytes: config.media.max_image_bytes,
         },
+        cache,
     })
 }
 

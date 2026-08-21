@@ -103,3 +103,6 @@ search_limit = 40
 ef_search = 64
 # Per-mille (750 = cosine 0.75). Below this, "no similar images".
 score_threshold_milli = 750
+# TTL (days) for the phash → vector reuse cache: a re-posted image reuses its embedding instead of
+# re-calling the model. 0 disables it.
+embed_cache_ttl_days = 30

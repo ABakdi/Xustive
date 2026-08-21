@@ -438,6 +438,9 @@ pub struct VectorConfig {
     /// Cosine score below which a match is dropped: below this, "no similar images". Stored as
     /// per-mille (750 = 0.75) so the whole config can stay `Eq`; use [`VectorConfig::score_threshold`].
     pub score_threshold_milli: u32,
+    /// TTL, in days, for the `phash → vector` reuse cache. 0 disables the cache (every image is
+    /// embedded). Entries age out so a hash that stops recurring does not pin memory forever.
+    pub embed_cache_ttl_days: u64,
 }
 
 impl VectorConfig {
@@ -459,6 +462,7 @@ impl Default for VectorConfig {
             search_limit: 40,
             ef_search: 64,
             score_threshold_milli: 750,
+            embed_cache_ttl_days: 30,
         }
     }
 }
