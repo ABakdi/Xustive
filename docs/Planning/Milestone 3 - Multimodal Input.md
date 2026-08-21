@@ -16,26 +16,39 @@ updated: 2026-08-21
 
 ---
 
-## Status as of 2026-08-21 — the image OCR track is up
+## Status as of 2026-08-21 — the image OCR track is up, and image *input* is a real feature
 
-The **image OCR pipeline and index-side enrichment are live.** Started with the "crawled images become
-searchable text" half of the goal, since tesseract is installed on the reference machine and it needs
-no model beyond the traineddata.
+The **image OCR pipeline, index-side enrichment, and the user-facing image tools are live.** Started
+with the "crawled images become searchable text" half of the goal, since tesseract is installed on the
+reference machine and it needs no model beyond the traineddata; then built the user-facing half on top.
 
-Done: the **`xustive-media` crate** with an in-memory OCR pipeline (decode + pixel-budget bomb guard,
-EXIF auto-orient/strip with GPS never read, upscale/grayscale, tesseract `ara+fra+eng`, confidence +
-usability scoring, `xustive-text` normalisation) — no file ever touches disk (P4 holds by
+Done (ingestion): the **`xustive-media` crate** with an in-memory OCR pipeline (decode + pixel-budget
+bomb guard, EXIF auto-orient/strip with GPS never read, upscale/grayscale, tesseract `ara+fra+eng`,
+confidence + usability scoring, `xustive-text` normalisation) — no file ever touches disk (P4 holds by
 construction), verified reading a rendered screenshot back verbatim (M3-T04.1/.2/.5/.6, partials on
 .3/.4/.7). And **index-side image enrichment** (`media_ocr` in `xustive-ingest`): the crawler fetches
 a page's images (SSRF-guarded, size-capped, bounded per doc), OCRs them, fills `media[].ocr_text`
 (searchable, weighted below body), backfills a thin body, and **a failed image never fails its
 document** (M3-T07.1/.4/.5/.7). Opt-in via `[media] image_ocr_enabled`, default off.
 
+Done (input, M3-T06): an **`OcrBackend` trait** ([[ADR-0016 - Two OCR Engines with an Optional
+Unlimited-OCR Sidecar]]) with two engines — in-process tesseract (the CPU-only default and the whole
+ingestion path) and an optional **Unlimited-OCR sidecar** (a 3B vision-language model, `services/
+ocr-sidecar`) preferred for the tools when `media.ocr_backend = "unlimited"`, with automatic fallback
+to tesseract. **`POST /api/v1/ocr`** takes a raw image body and returns the text. The **standalone
+image-to-text tool** (`/[lang]/tools/ocr`) and a **search-by-image entry** in the search box are both
+live: file picker, camera capture, paste and drag-drop; browser-side downscale to ≤ 2048 px with EXIF
+(GPS) stripped before upload; and the recognised text lands **editable and is never auto-submitted**
+(M3-T06.1/.2/.4/.7).
+
 Blocked on model/data provisioning (like M2's social track), not code: **voice/STT** (M3-T02/T03)
 needs a **whisper model** (none present) and the **audio fixture corpus** (B7); the formal **CER
-target** (M3-T04.8) needs a **labelled screenshot ground-truth set**. **CLIP + Qdrant** (M3-T05) is
-buildable next — Qdrant already runs in dev — and needs a CLIP model. Remaining OCR follow-ups:
-per-image phash dedup (T07.2), NSFW scoring (T07.6), PSM 6/11 retry and adaptive threshold (T04.3/.4).
+target** (M3-T04.8) needs a **labelled screenshot ground-truth set**; the **Unlimited-OCR sidecar**
+needs a **GPU box (≥ 8 GB) with the model** to run live — the Rust side and the service are done and
+fall back to tesseract until then. **CLIP + Qdrant** (M3-T05, the visual-similarity half of image
+search) is buildable next — Qdrant already runs in dev — and needs a CLIP model. Remaining OCR
+follow-ups: per-image phash dedup (T07.2), NSFW scoring (T07.6), PSM 6/11 retry and adaptive
+threshold (T04.3/.4).
 
 ---
 
@@ -113,14 +126,14 @@ document ([[Social Connector - Instagram]] §4.2).
 
 ## M3-T06 — [[UI - Image Search]]
 
-- [ ] M3-T06.1 Input methods: camera, file picker, paste, drag & drop
-- [ ] M3-T06.2 Client-side downscale to 2048 px + EXIF strip before upload
+- [x] M3-T06.1 Input methods: camera, file picker, paste, drag & drop
+- [x] M3-T06.2 Client-side downscale to 2048 px + EXIF strip before upload
 - [ ] M3-T06.3 Optional crop step, skippable
-- [ ] M3-T06.4 OCR result panel — **text into the search box, not auto-submitted**
-- [ ] M3-T06.5 Similarity grid with qualitative labels, not raw scores
-- [ ] M3-T06.6 Determinate upload progress; cancellable; blob retained for retry
-- [ ] M3-T06.7 Privacy statement at the preview step
-- [ ] M3-T06.8 Keyboard equivalent for drag & drop; accessible names on tiles
+- [x] M3-T06.4 OCR result panel — **text into the search box, not auto-submitted**
+- [ ] M3-T06.5 Similarity grid with qualitative labels, not raw scores ← *needs CLIP (M3-T05)*
+- [~] M3-T06.6 Determinate upload progress; cancellable; blob retained for retry ← *cancellable; progress is indeterminate*
+- [x] M3-T06.7 Privacy statement at the preview step
+- [x] M3-T06.8 Keyboard equivalent for drag & drop; accessible names on tiles
 
 ## M3-T07 — Index-side media enrichment
 
@@ -166,4 +179,5 @@ document ([[Social Connector - Instagram]] §4.2).
 ## Related
 
 [[TODO]] · [[Speech to Text]] · [[Image Pipeline]] · [[Vector Index]] · [[UI - Voice Search]] ·
-[[UI - Image Search]] · [[Security and Privacy]]
+[[UI - Image Search]] · [[Security and Privacy]] ·
+[[ADR-0016 - Two OCR Engines with an Optional Unlimited-OCR Sidecar]]
