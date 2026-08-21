@@ -64,3 +64,103 @@ groups:
             Some wilayas are failing to fetch or are being rejected by validation while others
             succeed. Check the toold logs for rejection reasons — a run of `out_of_bounds` points
             at the publisher, a run of `moved_too_far` at a real event we are refusing.
+
+  # -----------------------------------------------------------------------------------------------
+  # Serving plane. Every rule below keys off a metric the API actually emits today (see
+  # xustive-api/src/metrics.rs); the social/proxy alerts in Observability §6 wait on the metrics
+  # their features will emit and are deliberately not configured against absent series.
+  - name: serving
+    rules:
+      # The page that matters most: the API is not answering its readiness probe. `up` is
+      # Prometheus's own per-scrape liveness, so this fires even if the process is too wedged to
+      # emit anything of its own.
+      - alert: SearchDown
+        expr: up{job="xustive-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "xustive-api is down (failing scrape)"
+          description: >-
+            The API has not answered a scrape for 2 minutes. Restart it and check Meilisearch
+            health — a search engine that cannot answer is the outage everything else is secondary
+            to. Runbook: Observability §6 SearchDown.
+
+      # Latency budget breach. p95 total request time on /search past 400 ms sustained means the
+      # perceived-time budget (Performance Budgets §2) is blown for one in twenty searches.
+      - alert: SearchLatencyHigh
+        expr: >-
+          histogram_quantile(0.95,
+            sum by (le) (rate(xustive_http_duration_seconds_bucket{route="/api/v1/search"}[5m]))
+          ) > 0.4
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Search p95 is {{ $value | humanizeDuration }} (> 400 ms)"
+          description: >-
+            /search p95 has exceeded 400 ms for 10 minutes. Check Meilisearch CPU and index size;
+            this is the most likely thing to break first at scale (Performance Budgets §10).
+
+      # A spike in empty results usually means a bad index or settings deploy — the corpus did not
+      # vanish, the query path stopped matching it.
+      - alert: ZeroResultsSpike
+        expr: >-
+          sum(increase(xustive_search_zero_results_total[15m]))
+          / clamp_min(sum(increase(xustive_http_requests_total{route="/api/v1/search"}[15m])), 1) > 0.25
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of searches return nothing"
+          description: >-
+            More than a quarter of searches are returning zero results. This is almost always a bad
+            index or settings deploy rather than a real gap — check the last migrate/reindex.
+
+      # The summariser is dropping too many generations. Not user-fatal (results never wait on the
+      # summary) but a sign xustive-ml is starved or misbehaving.
+      - alert: SummaryDropHigh
+        expr: >-
+          sum(increase(xustive_summary_withheld_total[15m]))
+          / clamp_min(
+              sum(increase(xustive_summary_duration_seconds_count[15m]))
+              + sum(increase(xustive_summary_withheld_total[15m])), 1) > 0.2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of summaries are withheld"
+          description: >-
+            The summariser is dropping more than 20% of generations (validator rejections or
+            timeouts). Results are unaffected; scale or investigate xustive-ml. Runbook: §6.
+
+  # -----------------------------------------------------------------------------------------------
+  # Ingestion. Backlog and data-loss signals from the index queue.
+  - name: ingestion
+    rules:
+      # Consumer-group lag, not stream length (which is trimmed). A sustained deep backlog means the
+      # single Meilisearch writer cannot keep up with the crawl.
+      - alert: QueueBacklog
+        expr: xustive_queue_depth > 50000
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Index queue backlog is {{ $value }}"
+          description: >-
+            Over 50k documents have waited to be indexed for 30 minutes. Scale indexer workers or
+            check Meilisearch write throughput. Runbook: Observability §6 QueueBacklog.
+
+      # The dead-letter gauge only rises (replay is manual), so any sustained increase is data the
+      # index will never get without intervention — a poison-payload class to diagnose.
+      - alert: DLQGrowth
+        expr: increase(xustive_queue_dead_letters[15m]) > 10
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} documents dead-lettered in 15 min"
+          description: >-
+            The indexer is giving up on documents faster than a trickle. Inspect the DLQ
+            (`make dlq A=peek`) for a common cause — a parser regression or a schema mismatch —
+            then replay once fixed. Runbook: Observability §6 DLQGrowth.

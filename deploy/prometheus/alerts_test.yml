@@ -126,3 +126,108 @@ tests:
                 Some wilayas are failing to fetch or are being rejected by validation while others
                 succeed. Check the toold logs for rejection reasons — a run of `out_of_bounds`
                 points at the publisher, a run of `moved_too_far` at a real event we are refusing.
+
+  # --- Serving plane ------------------------------------------------------------------------------
+  # SearchDown fires when the API stops answering scrapes, and not while it is up.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="xustive-api"}'
+        values: "1x5 0x10" # up for 5 min, then down
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: SearchDown
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: SearchDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: xustive-api
+            exp_annotations:
+              summary: "xustive-api is down (failing scrape)"
+              description: "The API has not answered a scrape for 2 minutes. Restart it and check Meilisearch health — a search engine that cannot answer is the outage everything else is secondary to. Runbook: Observability §6 SearchDown."
+
+  # SearchLatencyHigh: nearly all /search requests land above 0.5 s, so p95 clears the 0.4 s budget.
+  - interval: 1m
+    input_series:
+      - series: 'xustive_http_duration_seconds_bucket{route="/api/v1/search",le="0.4"}'
+        values: "0+0x20"
+      - series: 'xustive_http_duration_seconds_bucket{route="/api/v1/search",le="0.5"}'
+        values: "0+0x20"
+      - series: 'xustive_http_duration_seconds_bucket{route="/api/v1/search",le="1"}'
+        values: "0+100x20"
+      - series: 'xustive_http_duration_seconds_bucket{route="/api/v1/search",le="+Inf"}'
+        values: "0+100x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: SearchLatencyHigh
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Search p95 is 975ms (> 400 ms)"
+              description: "/search p95 has exceeded 400 ms for 10 minutes. Check Meilisearch CPU and index size; this is the most likely thing to break first at scale (Performance Budgets §10)."
+
+  # Fast searches: p95 well under budget, nothing fires.
+  - interval: 1m
+    input_series:
+      - series: 'xustive_http_duration_seconds_bucket{route="/api/v1/search",le="0.4"}'
+        values: "0+100x20"
+      - series: 'xustive_http_duration_seconds_bucket{route="/api/v1/search",le="0.5"}'
+        values: "0+100x20"
+      - series: 'xustive_http_duration_seconds_bucket{route="/api/v1/search",le="1"}'
+        values: "0+100x20"
+      - series: 'xustive_http_duration_seconds_bucket{route="/api/v1/search",le="+Inf"}'
+        values: "0+100x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: SearchLatencyHigh
+        exp_alerts: []
+
+  # ZeroResultsSpike: 30 zero-result searches out of 40 total → 75% > 25%.
+  - interval: 1m
+    input_series:
+      - series: 'xustive_search_zero_results_total'
+        values: "0+30x40"
+      - series: 'xustive_http_requests_total{route="/api/v1/search"}'
+        values: "0+40x40"
+    alert_rule_test:
+      - eval_time: 32m
+        alertname: ZeroResultsSpike
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "75% of searches return nothing"
+              description: "More than a quarter of searches are returning zero results. This is almost always a bad index or settings deploy rather than a real gap — check the last migrate/reindex."
+
+  # --- Ingestion ----------------------------------------------------------------------------------
+  # QueueBacklog: depth held above 50k for 30 min.
+  - interval: 1m
+    input_series:
+      - series: 'xustive_queue_depth'
+        values: "60000x40"
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: QueueBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Index queue backlog is 60000"
+              description: "Over 50k documents have waited to be indexed for 30 minutes. Scale indexer workers or check Meilisearch write throughput. Runbook: Observability §6 QueueBacklog."
+
+  # DLQGrowth: the dead-letter gauge climbs by more than 10 in 15 minutes.
+  - interval: 1m
+    input_series:
+      - series: 'xustive_queue_dead_letters'
+        values: "0+2x20" # +2 per minute → +30 over 15 min
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: DLQGrowth
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "30 documents dead-lettered in 15 min"
+              description: "The indexer is giving up on documents faster than a trickle. Inspect the DLQ (`make dlq A=peek`) for a common cause — a parser regression or a schema mismatch — then replay once fixed. Runbook: Observability §6 DLQGrowth."

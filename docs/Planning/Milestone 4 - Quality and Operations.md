@@ -35,7 +35,7 @@ the entire point. Discovering it during beta is not.
 - [ ] M4-T01.3 Tracing spans and ingestion `trace_id` correlation end to end
 - [ ] M4-T01.4 Sampling: 100 % errors, 1 % successful searches, one full ingestion chain per hour
 - [ ] M4-T01.5 Six Grafana dashboards, provisioned from git
-- [ ] M4-T01.6 Every alert in its §6 configured with thresholds and severities
+- [~] M4-T01.6 Alerts configured with thresholds and severities — *the §6 alerts whose metrics the API emits today are live and **promtool-unit-tested**: `SearchDown`, `SearchLatencyHigh`, `ZeroResultsSpike`, `SummaryDropHigh`, `QueueBacklog`, `DLQGrowth` (plus the existing tool-data set). The social/proxy/signer alerts wait on the metrics their features will emit and are deliberately not configured against absent series. (promtool caught — and I fixed — a `clamp_min(rate,1)` distortion in the ratio exprs.)*
 - [ ] M4-T01.7 **`TelemetryLeak` alert wired and tested** with a deliberate synthetic leak
 - [ ] M4-T01.8 Log volume within the 2 GB/day budget at projected load
 
