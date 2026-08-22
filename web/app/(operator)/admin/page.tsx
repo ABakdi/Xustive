@@ -48,6 +48,7 @@ const LINKS: [string, string, string][] = [
   ['Compute', '/admin/compute', 'device & politeness'],
   ['Image AI', '/admin/media', 'OCR & image similarity'],
   ['Interaction', '/admin/interaction', 'anonymous use signals'],
+  ['Maintenance', '/admin/maintenance', 'takedowns & destructive actions'],
 ]
 
 export default function OverviewPage() {

@@ -230,3 +230,17 @@ export interface QueueStatus {
 }
 export const getQueue = (signal?: AbortSignal) => getJSON<QueueStatus>('/queue', signal)
 export const replayDlq = () => postJSON<{ replayed?: number }>('/queue/replay', {})
+
+// --- maintenance (takedown) ------------------------------------------------------------------
+export interface TakedownResult {
+  domain: string
+  matched?: number
+  executed: boolean
+  documents_removed?: number
+  vector_groups_removed?: number
+  raw_bodies_removed?: number
+  note?: string
+}
+/** Preview (execute:false) or run a domain takedown. `confirm` must equal `domain` to execute. */
+export const takedown = (domain: string, execute: boolean, confirm: string) =>
+  postJSON<TakedownResult>('/takedown', { domain, execute, confirm })

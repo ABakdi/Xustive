@@ -6,6 +6,7 @@
 
 pub mod admin;
 pub mod admin_crawler;
+pub mod admin_maintenance;
 pub mod admin_queue;
 pub mod dataage;
 pub mod deadline;
@@ -165,6 +166,10 @@ pub fn app(state: AppState) -> Router {
         .route("/interaction", get(admin::interaction))
         .route("/queue", get(admin_queue::status))
         .route("/queue/replay", axum::routing::post(admin_queue::replay))
+        .route(
+            "/takedown",
+            axum::routing::post(admin_maintenance::takedown),
+        )
         .route("/device", axum::routing::post(admin::set_device))
         .route("/log-level", axum::routing::post(admin::set_log_level))
         .layer(search_budget)
