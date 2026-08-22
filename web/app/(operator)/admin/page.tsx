@@ -1,8 +1,17 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 
-import { getStatus } from '@/lib/admin'
+import {
+  getStatus,
+  getCompute,
+  getMedia,
+  getInteraction,
+  getDocuments,
+  type MediaStatus,
+  type InteractionStatus,
+} from '@/lib/admin'
 import { PageHead, usePoll } from '@/components/admin/ui'
 
 function Tile({ n, label }: { n: number | string; label: string }) {
@@ -12,6 +21,18 @@ function Tile({ n, label }: { n: number | string; label: string }) {
       <span className="text-xs" style={{ color: 'var(--fg-muted)' }}>
         {label}
       </span>
+    </div>
+  )
+}
+
+/** A subsystem status chip — on/off/degraded, so the whole stack reads at a glance. */
+function Chip({ label, state, detail }: { label: string; state: 'on' | 'off' | 'warn'; detail: string }) {
+  const color = state === 'on' ? 'var(--ok, #2e7d32)' : state === 'warn' ? 'var(--warn, #b26a00)' : 'var(--fg-faint)'
+  return (
+    <div className="flex items-center gap-2 border px-3 py-2 text-sm" style={{ borderColor: 'var(--line)' }}>
+      <span aria-hidden style={{ inlineSize: 9, blockSize: 9, borderRadius: '50%', background: color, display: 'inline-block' }} />
+      <span className="font-medium">{label}</span>
+      <span style={{ color: 'var(--fg-muted)' }}>{detail}</span>
     </div>
   )
 }
@@ -30,6 +51,32 @@ const LINKS: [string, string, string][] = [
 
 export default function OverviewPage() {
   const { data: s, error } = usePoll(getStatus, 5_000)
+
+  // Subsystem statuses change rarely; fetch once (and on a slow refresh) rather than every 5s.
+  const [compute, setCompute] = useState<Record<string, unknown> | null>(null)
+  const [media, setMedia] = useState<MediaStatus | null>(null)
+  const [interaction, setInteraction] = useState<InteractionStatus | null>(null)
+  const [corpus, setCorpus] = useState<number | null>(null)
+  useEffect(() => {
+    const tick = () => {
+      getCompute().then(setCompute).catch(() => {})
+      getMedia().then(setMedia).catch(() => {})
+      getInteraction().then(setInteraction).catch(() => {})
+      // Total corpus size = the index's own estimate for an empty query.
+      getDocuments({}).then((d) => setCorpus(d.estimated_total)).catch(() => {})
+    }
+    tick()
+    const id = setInterval(tick, 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const device = (compute?.device ?? {}) as { active?: string; fell_back?: boolean }
+  // Summaries are available when a summariser model is present on disk.
+  const modelRows = (compute?.models ?? []) as { spec: { role: string }; present: boolean }[]
+  const summariesOn = modelRows.some((m) => m.spec.role === 'summariser' && m.present)
+  const vec = media?.vector
+  const stt = media?.stt
+
   return (
     <>
       <PageHead title="Overview">
@@ -43,12 +90,45 @@ export default function OverviewPage() {
         </p>
       ) : null}
 
-      <div className="mb-8 flex flex-wrap gap-3">
+      {/* The corpus and the crawler, the two numbers that answer "is it working". */}
+      <div className="mb-6 flex flex-wrap gap-3">
+        <Tile n={corpus == null ? '…' : corpus.toLocaleString()} label="documents in the index" />
         <Tile n={s ? (s.unavailable ? 'unknown' : s.state) : '…'} label="crawler state" />
         <Tile n={s?.indexed ?? 0} label="indexed (session)" />
         <Tile n={s?.waiting ?? 0} label="frontier waiting" />
         <Tile n={s?.inflight ?? 0} label="in flight" />
         <Tile n={s?.failed ?? 0} label="failed" />
+      </div>
+
+      {/* The rest of the stack, at a glance — what is on, what is off, what needs attention. */}
+      <h2 className="mb-2 text-lg font-semibold">Subsystems</h2>
+      <div className="mb-8 flex flex-wrap gap-2">
+        <Chip
+          label="Compute"
+          state={device.active === 'gpu' ? 'on' : device.fell_back ? 'warn' : 'on'}
+          detail={device.active ? `on ${device.active}${device.fell_back ? ' (GPU unused)' : ''}` : '…'}
+        />
+        <Chip label="Summaries" state={summariesOn ? 'on' : 'off'} detail={summariesOn ? 'AI summaries' : 'off'} />
+        <Chip
+          label="Image AI"
+          state={media ? (media.ocr.healthy ? 'on' : 'warn') : 'off'}
+          detail={media ? `OCR: ${media.ocr.backend}` : '…'}
+        />
+        <Chip
+          label="Image search"
+          state={vec?.enabled ? (vec.qdrant_reachable ? 'on' : 'warn') : 'off'}
+          detail={vec?.enabled ? `${vec.image_vectors?.toLocaleString() ?? '?'} vectors` : 'off'}
+        />
+        <Chip
+          label="Voice"
+          state={stt?.enabled ? (stt.healthy ? 'on' : 'warn') : 'off'}
+          detail={stt?.enabled ? (stt.healthy ? 'STT up' : 'STT down') : 'off'}
+        />
+        <Chip
+          label="Interaction"
+          state={interaction?.enabled ? 'on' : 'off'}
+          detail={interaction?.enabled ? `k=${interaction.k_anonymity}` : 'off'}
+        />
       </div>
 
       <h2 className="mb-3 text-lg font-semibold">Sections</h2>

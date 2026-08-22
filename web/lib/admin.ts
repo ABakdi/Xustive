@@ -162,12 +162,25 @@ export interface Snapshot {
 }
 export const getStatus = (signal?: AbortSignal) => getJSON<Snapshot>('/crawler/status', signal)
 
+// --- force-crawl (enqueue a URL) -------------------------------------------------------------
+/** Push a URL into the frontier now — as trusted as a seed. `front` jumps it to the head. */
+export const enqueueUrl = (url: string, front: boolean) =>
+  postJSON<{ url?: string; queued?: boolean; error?: { message?: string } }>('/crawler/enqueue', {
+    url,
+    front,
+  })
+
 // --- compute ---------------------------------------------------------------------------------
 export const getCompute = (signal?: AbortSignal) => getJSON<Record<string, unknown>>('/status', signal)
 export const setDevice = (preference: string, gpuLayers: number | null) =>
   postJSON<Record<string, unknown>>('/device', { preference, gpu_layers: gpuLayers })
 export const setPoliteness = (ignore: boolean) =>
   postJSON<Record<string, unknown>>('/politeness', { ignore_politeness: ignore })
+/** Set a temporary tracing filter (auto-reverts). `null` reverts to the baseline now. */
+export const setLogLevel = (filter: string | null) =>
+  postJSON<{ filter?: string; baseline?: string; expires_in?: number | null }>('/log-level', {
+    filter,
+  })
 
 // --- image AI (OCR + vector) -----------------------------------------------------------------
 export interface MediaStatus {

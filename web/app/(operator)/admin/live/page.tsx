@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 
 import type { Snapshot } from '@/lib/admin'
 import { PageHead, Table, Td, Th } from '@/components/admin/ui'
+import { ForceCrawl } from '@/components/admin/ForceCrawl'
 
 function Tile({ n, label }: { n: number | string; label: string }) {
   return (
@@ -46,6 +47,8 @@ export default function LivePage() {
         The crawler as it runs, one frame a second. Counters are cumulative — a number that stops
         moving is a crawler that stopped, not a dropped frame.
       </PageHead>
+
+      <ForceCrawl />
 
       {down ? (
         <p className="mb-4 text-sm" style={{ color: 'var(--warn)' }}>
