@@ -10,7 +10,8 @@
 # indexer running against a Meilisearch that has not finished starting and a crawler filling a
 # queue nobody is draining.
 #
-#   ./scripts/dev.sh                 # everything
+#   ./scripts/dev.sh                 # everything, on the GPU if a CUDA toolkit is present
+#   ./scripts/dev.sh --cpu           # force CPU, even where a GPU is available
 #   ./scripts/dev.sh --no-crawler    # without the crawler, for UI work
 #   ./scripts/dev.sh --fast          # skip the summariser, so the build is seconds not minutes
 set -uo pipefail
@@ -20,13 +21,15 @@ CONFIG="${CONFIG:-config/dev.toml}"
 
 WITH_CRAWLER=1
 API_FEATURES=""
+FORCE_CPU=0
 for arg in "$@"; do
   case "$arg" in
   --no-crawler) WITH_CRAWLER=0 ;;
   --fast) API_FEATURES="--no-default-features" ;;
+  --cpu) FORCE_CPU=1 ;;
   *)
     echo "unknown option: $arg" >&2
-    echo "usage: $0 [--no-crawler] [--fast]" >&2
+    echo "usage: $0 [--cpu] [--no-crawler] [--fast]" >&2
     exit 2
     ;;
   esac
@@ -110,8 +113,8 @@ for port in 8080 3000; do
 done
 if [ -n "$busy" ]; then
   say "something is already listening on:$busy"
-  echo "  If that is a previous 'make dev', stop it with:  make dev-stop"
-  echo "  Otherwise stop whatever owns those ports and try again."
+  echo "  Free the ports (stops a previous run and anything holding them):  make dev-down"
+  echo "  Then run 'make dev' again."
   exit 1
 fi
 
@@ -128,13 +131,21 @@ make dev-up || {
 # minutes, during which nothing would answer and it would look broken.
 say "building (the first build compiles llama.cpp — several minutes; --fast skips it)"
 # shellcheck disable=SC2086
-# GPU support is a build-time decision: the cuda feature needs nvcc, so it is chosen here by
-# detecting the toolkit rather than by config. --fast still wins — it exists to skip llama.cpp
-# entirely, and cuda would drag it straight back in.
-if [ -z "$API_FEATURES" ] && [ -x /opt/cuda/bin/nvcc ]; then
+# GPU is the default and a build-time decision: the cuda feature needs nvcc, so it is chosen here by
+# detecting the toolkit rather than by config, and the device preference is set to `gpu` so the API
+# prefers the card (falling back to CPU only if the model does not fit). `--cpu` forces CPU; `--fast`
+# also stays on CPU because it skips the summariser (and llama.cpp) entirely, which is the whole
+# point of it — cuda would drag it straight back in.
+if [ "$FORCE_CPU" -eq 1 ]; then
+  export XUSTIVE_DEVICE=cpu
+  echo "  --cpu: running on the CPU (the GPU, if any, is not used)"
+elif [ -z "$API_FEATURES" ] && [ -x /opt/cuda/bin/nvcc ]; then
   API_FEATURES="--features cuda"
   export PATH=/opt/cuda/bin:$PATH CUDA_PATH=/opt/cuda CUDACXX=/opt/cuda/bin/nvcc
-  echo "  CUDA toolkit found — building the API with GPU support"
+  export XUSTIVE_DEVICE=gpu
+  echo "  CUDA toolkit found — building the API with GPU support (use --cpu to force CPU)"
+elif [ -z "$API_FEATURES" ]; then
+  echo "  no CUDA toolkit (/opt/cuda/bin/nvcc) — building CPU-only"
 fi
 
 cargo build -p xustive-api -p xustive-cli $API_FEATURES || {

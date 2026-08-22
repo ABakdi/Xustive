@@ -53,8 +53,8 @@ dev-up: ## Start meilisearch, qdrant, redis, prometheus, grafana
 		|| { echo "meilisearch did not become ready"; exit 1; }
 
 .PHONY: dev-down
-dev-down: ## Stop infrastructure (keeps volumes)
-	$(COMPOSE) down
+dev-down: ## Stop infra AND free the dev ports (8080/3000); CLEAN=1 also deletes volumes (asks first)
+	@./scripts/dev-down.sh $(if $(CLEAN),--clean,)
 
 .PHONY: reset
 reset: ## Stop everything and DELETE all crawled data — index, frontier, queue
