@@ -109,6 +109,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     state.refresh_suggestions().await;
     // Connect the anonymous interaction store if enabled (M6). Non-fatal if Redis is down.
     state.connect_interactions().await;
+    // Connect the shared crawl-stats manager (Live page + metrics). Non-fatal; self-heals later.
+    state.connect_crawl_stats().await;
     // Create the image-similarity collection if enabled. Failure here (Qdrant down) is not fatal:
     // the endpoint returns a clean "unavailable" and text search is unaffected ([[Vector Index]] §7).
     if let Some(engine) = &state.image_search {

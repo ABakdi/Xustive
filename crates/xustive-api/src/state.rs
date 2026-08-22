@@ -90,6 +90,11 @@ pub struct AppState {
     /// Opaque search→click tokens (M6-T03): `token → (qhash, minted_at)`, in memory, swept on write.
     /// The query text never leaves the process; the click endpoint resolves a token to a qhash here.
     pub interaction_tokens: Arc<std::sync::RwLock<HashMap<String, (String, std::time::Instant)>>>,
+    /// Live crawl counters, connected **once** with a shared auto-reconnecting manager. Reused by
+    /// every `/crawler/events` SSE frame and metrics sample rather than reconnecting per call — the
+    /// per-frame reconnect was what surfaced a transient blip as "Redis unreachable" on the Live
+    /// page. `None` until the async connect runs (or if Redis is down at startup).
+    pub crawl_stats: Arc<std::sync::RwLock<Option<xustive_ingest::crawl_stats::CrawlStats>>>,
     pub metrics: Metrics,
 }
 
@@ -212,6 +217,27 @@ impl AppState {
         self.interactions.read().ok().and_then(|s| s.clone())
     }
 
+    /// Connect the shared crawl-stats manager once, at startup. Reused by the Live SSE stream and
+    /// the metrics sampler so neither reconnects per call. Non-fatal: a `None` here just means the
+    /// Live page shows "unreachable" until Redis is back and the next connect attempt succeeds.
+    pub async fn connect_crawl_stats(&self) {
+        match xustive_ingest::crawl_stats::CrawlStats::connect(&self.config.queue.url).await {
+            Some(s) => {
+                if let Ok(mut slot) = self.crawl_stats.write() {
+                    *slot = Some(s);
+                }
+            }
+            None => {
+                tracing::warn!("crawl stats: Redis unreachable at startup; Live page will retry")
+            }
+        }
+    }
+
+    /// A cheap clone of the shared crawl-stats store, if connected.
+    pub fn crawl_stats(&self) -> Option<xustive_ingest::crawl_stats::CrawlStats> {
+        self.crawl_stats.read().ok().and_then(|s| s.clone())
+    }
+
     /// The summariser, if it has finished loading.
     #[cfg(feature = "summariser")]
     pub fn summariser(&self) -> Option<Arc<xustive_ml::engine::Engine>> {
@@ -283,6 +309,7 @@ impl AppState {
             stt: crate::stt::SttClient::from_config(&stt),
             interactions: Arc::new(std::sync::RwLock::new(None)),
             interaction_tokens: Arc::new(std::sync::RwLock::new(HashMap::new())),
+            crawl_stats: Arc::new(std::sync::RwLock::new(None)),
             limiter: Arc::new(RateLimiter::new()),
             pending: Arc::new(PendingStore::default()),
             #[cfg(feature = "summariser")]

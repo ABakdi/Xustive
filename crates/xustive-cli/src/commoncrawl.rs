@@ -34,7 +34,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
     let client = CdxClient::new(&opts.index).context("building the CDX client")?;
     let frontier = Frontier::connect(&config.queue.url)
         .with_context(|| format!("no Redis at {}", config.queue.url))?;
-    let stats = CrawlStats::connect(&config.queue.url);
+    let stats = CrawlStats::connect(&config.queue.url).await;
     let progress = CcProgress::connect_in(&config.queue.url, "discovery");
 
     // Where the index says to stop, if it says. When it does not, the loop stops on the first empty

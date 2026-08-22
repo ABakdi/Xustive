@@ -182,18 +182,33 @@ impl ChannelMetrics {
     }
 }
 
+/// Live crawl counters in Redis.
+///
+/// Holds **one** auto-reconnecting [`redis::aio::ConnectionManager`], cloned per operation rather
+/// than opened per call. This matters most for the admin "Live" page: it snapshots once a second
+/// over SSE, and opening a fresh multiplexed connection each frame was both wasteful and fragile —
+/// a single transient blip during connection setup showed as "Redis unreachable" even though Redis
+/// was up (the same churn that once flooded the logs from the queue). A `ConnectionManager` hands
+/// back a shared connection instantly and re-establishes itself under the hood, so a blip
+/// self-heals instead of surfacing as an outage.
 #[derive(Clone)]
 pub struct CrawlStats {
-    client: redis::Client,
+    manager: redis::aio::ConnectionManager,
 }
 
 impl CrawlStats {
-    pub fn connect(url: &str) -> Option<Self> {
-        redis::Client::open(url).ok().map(|client| Self { client })
+    /// Connect, establishing the shared connection manager. `None` only if Redis is genuinely
+    /// unreachable at connect time; after that the manager tolerates transient drops.
+    pub async fn connect(url: &str) -> Option<Self> {
+        let client = redis::Client::open(url).ok()?;
+        let manager = client.get_connection_manager().await.ok()?;
+        Some(Self { manager })
     }
 
-    async fn conn(&self) -> Option<redis::aio::MultiplexedConnection> {
-        self.client.get_multiplexed_async_connection().await.ok()
+    /// The shared connection. Cloning a `ConnectionManager` is cheap and never fails — it is a
+    /// handle to the one managed connection, so this is `Some` for the life of the store.
+    async fn conn(&self) -> Option<redis::aio::ConnectionManager> {
+        Some(self.manager.clone())
     }
 
     /// Record that the crawler is running, stopped, or whatever else.
@@ -364,11 +379,25 @@ impl CrawlStats {
             };
         };
 
-        let counters: HashMap<String, u64> = redis::cmd("HGETALL")
+        // The first read is authoritative for reachability. With the shared connection manager the
+        // clone above never fails, so "is Redis actually answering" has to come from a real command:
+        // an **error** means unreachable (surfaced as such), while an **empty** result means the
+        // crawler simply has not counted anything yet (idle, not down). Every later read tolerates a
+        // blip with `unwrap_or_default`, since this one already decided the availability.
+        let counters: HashMap<String, u64> = match redis::cmd("HGETALL")
             .arg(K_COUNTERS)
             .query_async(&mut c)
             .await
-            .unwrap_or_default();
+        {
+            Ok(counters) => counters,
+            Err(_) => {
+                return Snapshot {
+                    unavailable: true,
+                    state: "unknown".into(),
+                    ..Snapshot::default()
+                }
+            }
+        };
         let skipped: HashMap<String, u64> = redis::cmd("HGETALL")
             .arg(K_SKIPS)
             .query_async(&mut c)

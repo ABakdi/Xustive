@@ -121,7 +121,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
         None => fetcher,
     };
 
-    let shared = CrawlStats::connect(&config.queue.url);
+    let shared = CrawlStats::connect(&config.queue.url).await;
     let mut orchestrator = Orchestrator::new(
         fetcher,
         frontier,

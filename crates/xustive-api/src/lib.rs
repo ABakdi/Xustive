@@ -499,8 +499,8 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
 /// is alive goes dark exactly when an operator is asking why. Silent on any failure — /metrics
 /// shares a port with the liveness probe.
 async fn sample_crawl_gauges(state: &AppState) {
-    let Some(stats) = xustive_ingest::crawl_stats::CrawlStats::connect(&state.config.queue.url)
-    else {
+    // Reuse the shared, once-connected store rather than reconnecting each sample.
+    let Some(stats) = state.crawl_stats() else {
         return;
     };
     let snap = stats.snapshot().await;

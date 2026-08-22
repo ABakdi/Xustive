@@ -92,7 +92,7 @@ pub async fn run(config: &Config) -> Result<()> {
     .with_context(|| format!("no Redis at {}", config.queue.url))?;
     let frontier = Frontier::connect(&config.queue.url)
         .with_context(|| format!("no Redis at {}", config.queue.url))?;
-    let stats = CrawlStats::connect(&config.queue.url);
+    let stats = CrawlStats::connect(&config.queue.url).await;
 
     // Only the k-anonymous terms, capped at the query budget — this is the spend ceiling.
     let terms = weak.weak_terms(budget).await;

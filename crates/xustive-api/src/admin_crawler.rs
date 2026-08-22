@@ -27,8 +27,15 @@ use crate::state::AppState;
 /// five-second steps reads as a stalled crawler.
 const FRAME: Duration = Duration::from_secs(1);
 
-fn stats(state: &AppState) -> Option<xustive_ingest::crawl_stats::CrawlStats> {
-    xustive_ingest::crawl_stats::CrawlStats::connect(&state.config.queue.url)
+/// The shared, once-connected crawl-stats store. If it was not connected at startup (Redis was
+/// down), try once now and cache it — so the Live page self-heals when Redis comes back without a
+/// restart, and still never reconnects per SSE frame in the healthy case.
+async fn stats(state: &AppState) -> Option<xustive_ingest::crawl_stats::CrawlStats> {
+    if let Some(s) = state.crawl_stats() {
+        return Some(s);
+    }
+    state.connect_crawl_stats().await;
+    state.crawl_stats()
 }
 
 fn frontier(state: &AppState) -> Option<xustive_ingest::frontier::Frontier> {
@@ -37,7 +44,7 @@ fn frontier(state: &AppState) -> Option<xustive_ingest::frontier::Frontier> {
 
 /// The full picture: counters, recent URLs, per-host activity, frontier depth.
 async fn snapshot(state: &AppState) -> xustive_ingest::crawl_stats::Snapshot {
-    let Some(s) = stats(state) else {
+    let Some(s) = stats(state).await else {
         return xustive_ingest::crawl_stats::Snapshot {
             unavailable: true,
             state: "unknown".into(),
@@ -304,7 +311,7 @@ pub async fn sources(
 /// shows "—" rather than a misleading 0 %. Sources with no registry entry but with counters (e.g.
 /// TSV-only seeds) are included too, so the dashboard never hides work the crawler actually did.
 async fn source_health_rows(state: &AppState) -> Vec<serde_json::Value> {
-    let metrics = match stats(state) {
+    let metrics = match stats(state).await {
         Some(s) => s.source_metrics().await,
         None => std::collections::HashMap::new(),
     };
@@ -388,7 +395,7 @@ pub async fn channels(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
-    let metrics = match stats(&state) {
+    let metrics = match stats(&state).await {
         Some(s) => s.channel_metrics().await,
         None => std::collections::HashMap::new(),
     };
