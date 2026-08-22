@@ -256,6 +256,46 @@ pub async fn media(
     })))
 }
 
+/// Interaction analytics for the operator console (M6-T07): top queries (with category), CTR
+/// leaders, and hot re-crawl targets — every figure k-anonymous by construction (the store only
+/// returns what clears the floor). Read-only; empty when interaction signals are off.
+pub async fn interaction(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    authorise(&state, peer, &headers).map_err(|d| d.json())?;
+
+    let Some(store) = state.interactions() else {
+        return Ok(Json(json!({ "enabled": false })));
+    };
+
+    let top = store.top_queries(50).await;
+    let hot = store
+        .hot_docs(state.config.interaction.hot_floor(), 50)
+        .await;
+    let top_json: Vec<serde_json::Value> = top
+        .iter()
+        .map(|s| json!({ "query": s.query, "count": s.count, "category": s.category }))
+        .collect();
+
+    // Per-category volume rollup (M6-T05.2), from the same k-anonymous rows.
+    let mut by_category: std::collections::BTreeMap<String, u32> =
+        std::collections::BTreeMap::new();
+    for s in &top {
+        *by_category.entry(s.category.clone()).or_default() += s.count;
+    }
+
+    Ok(Json(json!({
+        "enabled": true,
+        "k_anonymity": state.config.interaction.k_anonymity,
+        "window_days": state.config.interaction.window_days,
+        "top_queries": top_json,
+        "categories": by_category,
+        "hot_docs": hot,
+    })))
+}
+
 fn current_resolution(state: &AppState) -> device::Resolved {
     // Prefer what the engine actually resolved to at load time over a fresh probe.
     //

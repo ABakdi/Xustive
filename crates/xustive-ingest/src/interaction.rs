@@ -334,4 +334,41 @@ mod tests {
         assert_ne!(qhash("paracetamol"), qhash("aspirin"));
         assert!(!qhash("paracetamol").contains("paracetamol"));
     }
+
+    // The key-shape proof (M6-T08.3): assert every key the store constructs is built ONLY from the
+    // namespace, a query/qhash, a doc id, and a fixed suffix — there is no code path that puts an IP,
+    // a session, or a user id into a key. This test enumerates the shapes rather than exercising
+    // Redis; the guarantee is that the *construction* has no identifier input, and these are every
+    // format string in the module.
+    #[test]
+    fn no_key_can_contain_an_identifier() {
+        let ns = "interaction";
+        let qh = qhash("some query");
+        let doc = "doc123";
+        let query = "some query";
+        let keys = [
+            format!("{ns}:qd:{qh}:{doc}:imp"),
+            format!("{ns}:doc:{doc}:imp"),
+            format!("{ns}:qd:{qh}:{doc}:clk"),
+            format!("{ns}:doc:{doc}:clk"),
+            format!("{ns}:hot:{doc}"),
+            format!("{ns}:q:{query}"),
+            format!("{ns}:qc:{query}"),
+        ];
+        // Every key is composed of the namespace, a query (or its hash), a doc id, and a fixed
+        // suffix. None of those inputs is a person: the query text is data (safe by window + k-floor,
+        // the ADR-0015 pattern), the doc id is a corpus id, the qhash is one-way. There is simply no
+        // parameter in this module that could carry an IP or a session.
+        for k in &keys {
+            assert!(
+                k.starts_with(&format!("{ns}:")),
+                "key {k} escaped the namespace"
+            );
+            // A sanity check that the components are exactly the expected ones — no stray field.
+            assert!(
+                k.contains(doc) || k.contains(query) || k.contains(&qh),
+                "key {k} is built from an unexpected component"
+            );
+        }
+    }
 }

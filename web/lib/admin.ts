@@ -187,3 +187,15 @@ export interface MediaStatus {
     | { enabled: true; healthy: boolean; breaker: string; endpoint: string }
 }
 export const getMedia = (signal?: AbortSignal) => getJSON<MediaStatus>('/media', signal)
+
+// --- interaction analytics (M6) --------------------------------------------------------------
+export interface InteractionStatus {
+  enabled: boolean
+  k_anonymity?: number
+  window_days?: number
+  top_queries?: { query: string; count: number; category: string }[]
+  categories?: Record<string, number>
+  hot_docs?: string[]
+}
+export const getInteraction = (signal?: AbortSignal) =>
+  getJSON<InteractionStatus>('/interaction', signal)

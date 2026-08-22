@@ -25,6 +25,7 @@ const LINKS: [string, string, string][] = [
   ['Weak coverage', '/admin/weak-coverage', 'gaps to fill'],
   ['Compute', '/admin/compute', 'device & politeness'],
   ['Image AI', '/admin/media', 'OCR & image similarity'],
+  ['Interaction', '/admin/interaction', 'anonymous use signals'],
 ]
 
 export default function OverviewPage() {
