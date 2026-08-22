@@ -79,6 +79,10 @@ export function ResultCard({
           rel="noopener nofollow"
           className="no-underline hover:underline"
           style={{ color: 'var(--accent)' }}
+          // The clicked document id, read by the interaction beacon's delegated listener (M6). The
+          // href stays the real destination — no redirect, no `ping`. When interaction is off, the
+          // beacon component is absent and this attribute is simply inert.
+          data-doc={result.id}
           dangerouslySetInnerHTML={{ __html: result.title }}
         />
       </h2>

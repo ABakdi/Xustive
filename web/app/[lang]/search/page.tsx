@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import { Filters } from '@/components/search/Filters'
 import { Pagination } from '@/components/search/Pagination'
 import { ResultCard } from '@/components/search/ResultCard'
+import { InteractionBeacon } from '@/components/search/InteractionBeacon'
 import { SearchBox } from '@/components/search/SearchBox'
 import { Summary } from '@/components/search/Summary'
 import { Verticals } from '@/components/search/Verticals'
@@ -224,14 +225,30 @@ export default async function SearchPage({
             />
           )}
 
-          <ol
-            className="list-none p-0"
-            style={{ display: 'grid', gap: 'var(--result-gap)', gridTemplateColumns: 'minmax(0, 1fr)' }}
-          >
-            {data.results.map((result) => (
-              <ResultCard key={result.id} result={result} t={t} locale={lang} />
-            ))}
-          </ol>
+          {/* The result list. When interaction signals are on, the API returns an opaque token and
+              the list is wrapped in the anonymous click beacon (a single delegated listener). With
+              no token the beacon is absent entirely — no listener, nothing recorded. */}
+          {data.interaction_token ? (
+            <InteractionBeacon token={data.interaction_token}>
+              <ol
+                className="list-none p-0"
+                style={{ display: 'grid', gap: 'var(--result-gap)', gridTemplateColumns: 'minmax(0, 1fr)' }}
+              >
+                {data.results.map((result) => (
+                  <ResultCard key={result.id} result={result} t={t} locale={lang} />
+                ))}
+              </ol>
+            </InteractionBeacon>
+          ) : (
+            <ol
+              className="list-none p-0"
+              style={{ display: 'grid', gap: 'var(--result-gap)', gridTemplateColumns: 'minmax(0, 1fr)' }}
+            >
+              {data.results.map((result) => (
+                <ResultCard key={result.id} result={result} t={t} locale={lang} />
+              ))}
+            </ol>
+          )}
 
           <Pagination lang={lang} t={t} pagination={p} params={sp} q={q} />
         </>

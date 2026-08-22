@@ -53,6 +53,9 @@ export interface SearchResponse {
     expanded_terms: string[]
   }
   summary_token: string | null
+  /** Opaque token the click beacon returns to attribute a click to this query without the query
+   *  text (M6). Absent when interaction signals are off. */
+  interaction_token?: string
   /** True when the query reads as a question. Decides *where* the summary goes, not whether. */
   is_question?: boolean
   instant?: InstantAnswer
