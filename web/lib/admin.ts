@@ -220,3 +220,13 @@ export interface InteractionStatus {
 }
 export const getInteraction = (signal?: AbortSignal) =>
   getJSON<InteractionStatus>('/interaction', signal)
+
+// --- index queue & dead letters --------------------------------------------------------------
+export interface QueueStatus {
+  unavailable: boolean
+  backlog?: number
+  dead_count?: number
+  dead?: { url: string; attempts: number; reason: string; failed_at: number }[]
+}
+export const getQueue = (signal?: AbortSignal) => getJSON<QueueStatus>('/queue', signal)
+export const replayDlq = () => postJSON<{ replayed?: number }>('/queue/replay', {})
