@@ -116,6 +116,11 @@ pub struct SearchResponse {
     /// switched off, or the caller is past the first page. The client hides the block when it is
     /// absent rather than showing an empty one.
     pub summary_token: Option<String>,
+    /// Opaque token the click beacon returns so a click can be attributed to this query without the
+    /// query text (M6-T03). `None` when interaction signals are off. Never logged — `token` is a
+    /// forbidden telemetry field name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interaction_token: Option<String>,
     /// True when the query reads as a question rather than a topic.
     ///
     /// The client uses this to decide *where* the summary goes, not whether to fetch it. Someone
@@ -394,12 +399,27 @@ pub async fn handler(
             &[("stage", Stage::Rerank.as_str())],
         );
     }
+    // Anonymous CTR over the candidate ids, if interaction signals are on (M6-T04). Read before the
+    // re-rank so it can nudge ordering; empty when disabled, below the k-floor, or Redis is down —
+    // in which case rerank sees no interaction data and behaves exactly as before.
+    let interaction_of = match state.interactions() {
+        Some(store) => {
+            let ids: Vec<String> = hits
+                .hits
+                .iter()
+                .filter_map(|h| h.get("id").and_then(Value::as_str).map(str::to_string))
+                .collect();
+            store.ctr_for(&normalized, &ids).await
+        }
+        None => std::collections::HashMap::new(),
+    };
     let ranked = rank::rerank(
         &hits.hits,
         &normalized,
         xustive_core::now_unix(),
         trust,
         state.authority.as_ref(),
+        &interaction_of,
         &state.ranking,
     );
     state.metrics.observe(
@@ -474,6 +494,24 @@ pub async fn handler(
         None
     };
 
+    // Anonymous interaction capture (M6-T02/T03), best-effort, gated on the store. No client call
+    // and no new egress — the serving plane records straight into Redis. Records: an impression for
+    // each shown document, the query (k-anonymously, with its vertical as the category), and mints
+    // an opaque token the click beacon will return so a click can be attributed to this query
+    // WITHOUT the query text ever being in the click request.
+    let interaction_token = if let Some(store) = state.interactions() {
+        let page_ids: Vec<String> = results.iter().map(|c| c.id.clone()).collect();
+        if !page_ids.is_empty() {
+            store.impressions(&normalized, &page_ids).await;
+        }
+        store
+            .query_seen(&normalized, interaction_category(params.v.as_deref()))
+            .await;
+        Some(mint_interaction_token(&state, &normalized))
+    } else {
+        None
+    };
+
     // Exclusions are applied to the candidate pool, not to the whole corpus, so the engine's
     // count no longer describes what the user is being shown. Scaling by the observed survival
     // rate is an estimate, and it is marked as one — reporting the unfiltered 395 while showing a
@@ -534,6 +572,7 @@ pub async fn handler(
             corrected: None,
         },
         summary_token,
+        interaction_token,
         is_question: asked_a_question,
         instant,
         pagination: Pagination {
@@ -640,6 +679,32 @@ fn parse_filters(p: &SearchParams) -> Result<Filters, ApiError> {
 ///
 /// Highlighted text comes from Meilisearch's `_formatted` object, which contains `<em>` markers.
 /// Everything else is escaped by the client; `<em>` is the only markup it may render.
+/// The bounded, `&'static` category recorded with a query (M6-T02.2). Keyed on the search vertical,
+/// which is already an enumerable set — never free text, so query analytics stay low-cardinality.
+fn interaction_category(vertical: Option<&str>) -> &'static str {
+    match vertical {
+        Some("news") => "news",
+        Some("files") => "files",
+        _ => "web",
+    }
+}
+
+/// Mint an opaque search→click token and store it in memory against the query's hash (never the
+/// query text). Swept of expired entries on the way in, so the map cannot grow without bound
+/// (M6-T03.1). The token is a fresh ULID — it carries no information about the query.
+fn mint_interaction_token(state: &AppState, normalized_query: &str) -> String {
+    use std::time::Instant;
+    const TTL: std::time::Duration = std::time::Duration::from_secs(120);
+    let token = ulid::Ulid::new().to_string();
+    let qh = xustive_ingest::interaction::Interactions::qhash(normalized_query);
+    if let Ok(mut map) = state.interaction_tokens.write() {
+        let now = Instant::now();
+        map.retain(|_, (_, minted)| now.duration_since(*minted) < TTL);
+        map.insert(token.clone(), (qh, now));
+    }
+    token
+}
+
 pub(crate) fn to_card(hit: &Value) -> ResultCard {
     let formatted = hit.get("_formatted").unwrap_or(hit);
     let s = |v: &Value, k: &str| {

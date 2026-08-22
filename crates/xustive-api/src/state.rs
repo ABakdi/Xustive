@@ -80,6 +80,16 @@ pub struct AppState {
     /// Voice transcription, or `None` when `[stt] enabled = false`. Same posture: absence is normal
     /// and the `/transcribe` endpoint returns a clean unavailable.
     pub stt: Option<crate::stt::SttClient>,
+    /// Anonymous interaction signals (M6): a k-anonymous CTR store in Redis. `None` when
+    /// `[interaction] enabled = false` or Redis is unreachable — the search path treats absence as
+    /// "no interaction data", so ranking and capture simply skip it. Never holds a per-person record.
+    ///
+    /// Behind a lock because the store connects async (`connect_in`), after the sync `new`, the same
+    /// way the summariser engine is filled in — see [`AppState::connect_interactions`].
+    pub interactions: Arc<std::sync::RwLock<Option<xustive_ingest::interaction::Interactions>>>,
+    /// Opaque search→click tokens (M6-T03): `token → (qhash, minted_at)`, in memory, swept on write.
+    /// The query text never leaves the process; the click endpoint resolves a token to a qhash here.
+    pub interaction_tokens: Arc<std::sync::RwLock<HashMap<String, (String, std::time::Instant)>>>,
     pub metrics: Metrics,
 }
 
@@ -171,6 +181,37 @@ impl AppState {
         }
     }
 
+    /// Connect the interaction store, once, at startup — if `[interaction] enabled`. Async (the
+    /// store opens a Redis connection manager), so it runs after the sync `new`, like the model
+    /// load. Failure is non-fatal: search runs without interaction signals.
+    pub async fn connect_interactions(&self) {
+        let cfg = &self.config.interaction;
+        if !cfg.enabled {
+            return;
+        }
+        let store = xustive_ingest::interaction::Interactions::connect_in(
+            &self.config.queue.url,
+            "interaction",
+            cfg.k_anonymity,
+            Duration::from_secs(cfg.window_days * 86_400),
+        )
+        .await;
+        match store {
+            Some(s) => {
+                if let Ok(mut slot) = self.interactions.write() {
+                    *slot = Some(s);
+                }
+                tracing::info!(k = cfg.k_anonymity, "interaction signals enabled");
+            }
+            None => tracing::warn!("interaction enabled but Redis is unreachable; running without"),
+        }
+    }
+
+    /// A cheap clone of the interaction store, if connected. `None` disables the whole path.
+    pub fn interactions(&self) -> Option<xustive_ingest::interaction::Interactions> {
+        self.interactions.read().ok().and_then(|s| s.clone())
+    }
+
     /// The summariser, if it has finished loading.
     #[cfg(feature = "summariser")]
     pub fn summariser(&self) -> Option<Arc<xustive_ml::engine::Engine>> {
@@ -240,6 +281,8 @@ impl AppState {
             ocr: build_ocr_backend(&media),
             image_search: crate::image_search::ImageSearch::from_config(&vector),
             stt: crate::stt::SttClient::from_config(&stt),
+            interactions: Arc::new(std::sync::RwLock::new(None)),
+            interaction_tokens: Arc::new(std::sync::RwLock::new(HashMap::new())),
             limiter: Arc::new(RateLimiter::new()),
             pending: Arc::new(PendingStore::default()),
             #[cfg(feature = "summariser")]

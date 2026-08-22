@@ -98,7 +98,15 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
             }
         }
 
-        let ranked = rank::rerank(&hits.hits, &normalized, now, &trust, &authority, &weights);
+        let ranked = rank::rerank(
+            &hits.hits,
+            &normalized,
+            now,
+            &trust,
+            &authority,
+            &std::collections::HashMap::new(),
+            &weights,
+        );
         let results: Vec<String> = ranked
             .iter()
             .filter_map(|r| r.hit.get("id")?.as_str().map(str::to_string))

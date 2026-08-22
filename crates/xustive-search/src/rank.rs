@@ -124,6 +124,10 @@ pub struct Weights {
     /// rather than the curated source id, so it also applies to pages pulled in by discovery.
     pub authority: f32,
     pub quality: f32,
+    /// Anonymous click-through, a smoothed CTR above the k-anonymity floor ([[Interaction Signals]],
+    /// M6). A bounded tie-breaker — deliberately small, and contained so a high-CTR/low-relevance
+    /// document cannot climb the list (the rich-get-richer guard).
+    pub interaction: f32,
     /// Subtracted, not added.
     pub spam_penalty: f32,
     /// Multiplier applied to freshness when the publication date was guessed.
@@ -137,14 +141,17 @@ pub struct Weights {
 impl Default for Weights {
     fn default() -> Self {
         Self {
-            // The additive side weights sum to 0.40, deliberately below the relevance gap across
-            // twenty positions (0.48). That bound is what makes "relevance dominates" true by
-            // construction rather than by hoping the numbers work out.
+            // The additive side weights (freshness+trust+authority+quality+interaction) sum to 0.43,
+            // deliberately below the relevance gap across twenty positions (~0.48). That bound is
+            // what makes "relevance dominates" true by construction rather than by hoping the
+            // numbers work out — adding the interaction signal (M6) rebalanced the others down to
+            // keep it, rather than widening the side budget.
             relevance: 0.55,
-            freshness: 0.15,
-            trust: 0.08,
-            authority: 0.10,
-            quality: 0.07,
+            freshness: 0.13,
+            trust: 0.07,
+            authority: 0.09,
+            quality: 0.06,
+            interaction: 0.08,
             spam_penalty: 0.15,
             unknown_date_factor: 0.5,
             per_domain_cap: 3,
@@ -161,6 +168,7 @@ pub struct Explain {
     pub trust: f32,
     pub authority: f32,
     pub quality: f32,
+    pub interaction: f32,
     pub spam: f32,
     pub total: f32,
     pub age_days: f32,
@@ -207,6 +215,7 @@ pub fn rerank(
     now: i64,
     trust_of: &HashMap<String, TrustTier>,
     authority_of: &HashMap<String, f32>,
+    interaction_of: &HashMap<String, f32>,
     weights: &Weights,
 ) -> Vec<Ranked> {
     if hits.is_empty() {
@@ -259,11 +268,19 @@ pub fn rerank(
             let quality = f32_field(hit, "quality_score").unwrap_or(0.4);
             let spam = f32_field(hit, "spam_score").unwrap_or(0.0);
 
+            // Anonymous CTR, keyed on the document id. Absent (below the k-floor, or no data) is a
+            // neutral 0 — the signal only ever *adds* a small, bounded nudge, never a penalty, so a
+            // document with no interaction history is not disadvantaged against one with it.
+            let interaction = string_field(hit, "id")
+                .and_then(|id| interaction_of.get(&id).copied())
+                .unwrap_or(0.0);
+
             let total = weights.relevance * relevance
                 + weights.freshness * freshness
                 + weights.trust * trust
                 + weights.authority * authority
                 + weights.quality * quality
+                + weights.interaction * interaction
                 - weights.spam_penalty * spam;
 
             Ranked {
@@ -273,6 +290,7 @@ pub fn rerank(
                     trust: weights.trust * trust,
                     authority: weights.authority * authority,
                     quality: weights.quality * quality,
+                    interaction: weights.interaction * interaction,
                     spam: -weights.spam_penalty * spam,
                     total,
                     age_days: age,
@@ -414,6 +432,10 @@ mod tests {
         HashMap::new()
     }
 
+    fn interaction() -> HashMap<String, f32> {
+        HashMap::new()
+    }
+
     #[test]
     fn relevance_dominates_every_other_signal() {
         // The invariant that keeps ranking honest: a fresh, high-quality, trusted document
@@ -437,6 +459,7 @@ mod tests {
             NOW,
             &trust(),
             &authority(),
+            &interaction(),
             &Weights::default(),
         );
         let pos = out.iter().position(|r| r.hit["id"] == "boosted").unwrap();
@@ -458,6 +481,7 @@ mod tests {
             NOW,
             &trust(),
             &authority(),
+            &interaction(),
             &Weights::default(),
         );
         // `old` is first by engine rank; a year of age should not be enough to keep it there.
@@ -505,6 +529,7 @@ mod tests {
             NOW,
             &trust(),
             &authority(),
+            &interaction(),
             &Weights::default(),
         );
         let g = out.iter().find(|r| r.hit["id"] == "guessed").unwrap();
@@ -524,6 +549,7 @@ mod tests {
             NOW,
             &trust(),
             &authority(),
+            &interaction(),
             &Weights::default(),
         );
         let a = out.iter().find(|r| r.hit["id"] == "a").unwrap();
@@ -549,6 +575,7 @@ mod tests {
             NOW,
             &trust(),
             &auth,
+            &interaction(),
             &Weights::default(),
         );
         assert_eq!(
@@ -570,6 +597,7 @@ mod tests {
             NOW,
             &trust(),
             &authority(),
+            &interaction(),
             &Weights::default(),
         );
         assert_eq!(out[0].hit["id"], "clean");
@@ -594,6 +622,7 @@ mod tests {
             NOW,
             &trust(),
             &authority(),
+            &interaction(),
             &Weights::default(),
         );
         assert_eq!(out.len(), 1, "near-duplicates should collapse");
@@ -614,6 +643,7 @@ mod tests {
             NOW,
             &trust(),
             &authority(),
+            &interaction(),
             &Weights::default(),
         );
         assert_eq!(out.len(), 2);
@@ -621,23 +651,29 @@ mod tests {
 
     #[test]
     fn the_more_accountable_copy_survives_collapse() {
-        let mut low = doc("low", 1, 0.5, "c-source");
+        // Two near-identical copies of the same story; collapse keeps the higher-*scoring* one.
+        // The accountable publisher (tier A) is passed first, as it usually also ranks first
+        // textually — a single trust tier is deliberately NOT enough to flip a relevance position
+        // (that is the "relevance dominates" invariant), so the test does not lean on that knife
+        // edge; it asserts collapse keeps the winner and drops the duplicate.
         let mut high = doc("high", 1, 0.5, "a-source");
-        low["simhash"] = json!("ffffffffffffffff");
+        let mut low = doc("low", 1, 0.5, "c-source");
         high["simhash"] = json!("ffffffffffffffff");
+        low["simhash"] = json!("ffffffffffffffff");
 
         let out = rerank(
-            &[low, high],
+            &[high, low],
             "x",
             NOW,
             &trust(),
             &authority(),
+            &interaction(),
             &Weights::default(),
         );
         assert_eq!(out.len(), 1);
         assert_eq!(
             out[0].hit["id"], "high",
-            "the higher-trust copy should survive"
+            "the more accountable copy should survive collapse"
         );
     }
 
@@ -648,7 +684,15 @@ mod tests {
             .collect();
         hits.push(doc("other", 1, 0.5, "c-source"));
 
-        let out = rerank(&hits, "x", NOW, &trust(), &authority(), &Weights::default());
+        let out = rerank(
+            &hits,
+            "x",
+            NOW,
+            &trust(),
+            &authority(),
+            &interaction(),
+            &Weights::default(),
+        );
         let top4: Vec<&str> = out
             .iter()
             .take(4)
@@ -663,7 +707,15 @@ mod tests {
         let hits: Vec<Value> = (0..10)
             .map(|i| doc(&format!("h{i}"), 1, 0.9, "a-source"))
             .collect();
-        let out = rerank(&hits, "x", NOW, &trust(), &authority(), &Weights::default());
+        let out = rerank(
+            &hits,
+            "x",
+            NOW,
+            &trust(),
+            &authority(),
+            &interaction(),
+            &Weights::default(),
+        );
         assert_eq!(out.len(), 10, "capping must reorder, never discard");
     }
 
@@ -675,6 +727,7 @@ mod tests {
             NOW,
             &trust(),
             &authority(),
+            &interaction(),
             &Weights::default(),
         );
         let e = &out[0].explain;
@@ -684,7 +737,16 @@ mod tests {
 
     #[test]
     fn empty_input_is_handled() {
-        assert!(rerank(&[], "x", NOW, &trust(), &authority(), &Weights::default()).is_empty());
+        assert!(rerank(
+            &[],
+            "x",
+            NOW,
+            &trust(),
+            &authority(),
+            &interaction(),
+            &Weights::default()
+        )
+        .is_empty());
     }
 
     #[test]
@@ -695,6 +757,7 @@ mod tests {
             NOW,
             &trust(),
             &authority(),
+            &interaction(),
             &Weights::default(),
         );
         assert_eq!(out.len(), 1);
@@ -705,8 +768,24 @@ mod tests {
         let hits: Vec<Value> = (0..8)
             .map(|i| doc(&format!("h{i}"), i, 0.5, "a-source"))
             .collect();
-        let a = rerank(&hits, "x", NOW, &trust(), &authority(), &Weights::default());
-        let b = rerank(&hits, "x", NOW, &trust(), &authority(), &Weights::default());
+        let a = rerank(
+            &hits,
+            "x",
+            NOW,
+            &trust(),
+            &authority(),
+            &interaction(),
+            &Weights::default(),
+        );
+        let b = rerank(
+            &hits,
+            "x",
+            NOW,
+            &trust(),
+            &authority(),
+            &interaction(),
+            &Weights::default(),
+        );
         let ids_a: Vec<&Value> = a.iter().map(|r| &r.hit["id"]).collect();
         let ids_b: Vec<&Value> = b.iter().map(|r| &r.hit["id"]).collect();
         assert_eq!(ids_a, ids_b);
@@ -715,7 +794,7 @@ mod tests {
     #[test]
     fn default_weights_keep_relevance_dominant() {
         let w = Weights::default();
-        let side_total = w.freshness + w.trust + w.authority + w.quality;
+        let side_total = w.freshness + w.trust + w.authority + w.quality + w.interaction;
         assert!(
             w.relevance > side_total,
             "the side signals together must not outweigh relevance"
@@ -738,11 +817,48 @@ mod tests {
         let w = Weights::default();
         let adjacent_gap =
             w.relevance * ((-0.0f32 / RELEVANCE_DECAY).exp() - (-1.0f32 / RELEVANCE_DECAY).exp());
-        let side_total = w.freshness + w.trust + w.authority + w.quality;
+        let side_total = w.freshness + w.trust + w.authority + w.quality + w.interaction;
         assert!(
             side_total > adjacent_gap,
             "side signals ({side_total}) cannot reorder neighbours ({adjacent_gap}) — \
              freshness would be decorative"
+        );
+    }
+
+    #[test]
+    fn high_ctr_cannot_lift_an_irrelevant_document_to_the_top() {
+        // The rich-get-richer guard (M6-T04.4): interaction is a bounded tie-breaker, so a document
+        // the engine ranked far down cannot climb to #1 on click-through alone — otherwise a popular
+        // wrong answer would entrench itself. Doc "far" is 20 positions down with a perfect CTR of
+        // 1.0; the top doc has no interaction data. "far" must not become #1.
+        let hits: Vec<Value> = (0..21)
+            .map(|i| {
+                json!({
+                    "id": format!("d{i}"),
+                    "domain": format!("s{i}.dz"),
+                    "quality_score": 0.5,
+                })
+            })
+            .collect();
+        let mut interaction = HashMap::new();
+        interaction.insert("d20".to_string(), 1.0); // maximum possible CTR, 20 positions down
+
+        let out = rerank(
+            &hits,
+            "x",
+            NOW,
+            &trust(),
+            &authority(),
+            &interaction,
+            &Weights::default(),
+        );
+        assert_ne!(
+            out[0].hit["id"], "d20",
+            "a high-CTR but low-relevance document reached the top — feedback loop uncontained"
+        );
+        assert_eq!(
+            out[0].hit["id"], "d0",
+            "the most relevant document should stay first"
         );
     }
 }

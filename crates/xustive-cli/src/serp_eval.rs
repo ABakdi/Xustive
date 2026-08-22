@@ -201,7 +201,15 @@ async fn our_domains(
         .search::<Value>(index, &q)
         .await
         .with_context(|| format!("searching for {query:?}"))?;
-    let ranked = rank::rerank(&hits.hits, &normalized, now, trust, authority, weights);
+    let ranked = rank::rerank(
+        &hits.hits,
+        &normalized,
+        now,
+        trust,
+        authority,
+        &std::collections::HashMap::new(),
+        weights,
+    );
     Ok(domains_of(
         ranked
             .iter()

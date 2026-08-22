@@ -346,6 +346,20 @@ impl InteractionConfig {
             self.hot_click_floor
         }
     }
+
+    /// Refuse to start with a sub-20 k-anonymity floor outside `dev` (M6-T01.4). This is a
+    /// **structural** guarantee, not a convention: the ADR-0008 escape hatch is "k-anonymous, k ≥ 20",
+    /// so a multi-user deployment cannot silently run with a floor that de-anonymises the counts. A
+    /// single-user dev box may set k=1, which honestly means "one operator, no anonymity".
+    pub fn guard(&self, environment: &str) -> Result<(), ConfigError> {
+        if self.enabled && environment != "dev" && self.k_anonymity < 20 {
+            return Err(ConfigError::Unsafe {
+                field: "interaction.k_anonymity",
+                environment: environment.to_string(),
+            });
+        }
+        Ok(())
+    }
 }
 
 /// Index-side image enrichment ([[Enrichment Pipeline]], M3-T07): fetch a crawled page's images and
@@ -817,7 +831,46 @@ mod crawl_guard_tests {
                 "config/{env}.toml would crawl abusively: {:?}",
                 cfg.crawl
             );
+            assert!(
+                cfg.interaction.guard(&cfg.environment).is_ok(),
+                "config/{env}.toml has an unsafe interaction k-floor: {:?}",
+                cfg.interaction
+            );
         }
+    }
+
+    #[test]
+    fn a_sub_floor_k_is_refused_outside_dev() {
+        // The structural k-anonymity guarantee (M6-T01.4): enabled interaction with k < 20 must not
+        // start anywhere but dev — otherwise the "k-anonymous" claim is false.
+        let unsafe_cfg = InteractionConfig {
+            enabled: true,
+            k_anonymity: 1,
+            ..InteractionConfig::default()
+        };
+        for env in ["prod", "production", "staging", "ci"] {
+            assert!(unsafe_cfg.guard(env).is_err(), "{env} should refuse k=1");
+        }
+        assert!(
+            unsafe_cfg.guard("dev").is_ok(),
+            "dev may run single-user with k=1"
+        );
+
+        // Disabled is always fine — no counters exist to de-anonymise.
+        let off = InteractionConfig {
+            enabled: false,
+            k_anonymity: 1,
+            ..InteractionConfig::default()
+        };
+        assert!(off.guard("prod").is_ok());
+
+        // At or above the floor is fine everywhere.
+        let safe = InteractionConfig {
+            enabled: true,
+            k_anonymity: 20,
+            ..InteractionConfig::default()
+        };
+        assert!(safe.guard("prod").is_ok());
     }
 }
 

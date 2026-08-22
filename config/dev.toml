@@ -50,6 +50,19 @@ serp_max_queries_per_run = 50
 #   serp_proxy = "http://USER:PASS@gate.provider.com:7000"
 serp_proxy = ""
 
+[interaction]
+# Anonymous interaction signals (M6): impressions/clicks as k-anonymous windowed counters that feed
+# ranking (CTR) and re-crawl. Off by default — it amends ADR-0008's no-click-tracking promise, so it
+# must be an explicit choice. No query log, no per-person record; see ADR-0015.
+enabled = false
+# k-anonymity floor. 20 is the ADR-0008 public floor; a value < 20 is refused outside `dev` (the
+# guard). This is a single-user dev box, so 1 is honest ("one operator, no anonymity") — raise it to
+# 20 before any multi-user deployment.
+k_anonymity = 1
+window_days = 90
+# Clicks on a (query, doc) before the doc becomes a re-crawl freshness candidate. 0 = use k.
+hot_click_floor = 0
+
 [ml]
 # The AI summary above results. A local Qwen model — nothing leaves this machine.
 # summariser_model: empty = first present file in model_dir; or pin one from the registry. Qwen 7B

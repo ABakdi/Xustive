@@ -91,6 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // anyone notices we are in an abuse report. Failing at startup is the only feedback loop that
     // closes here.
     config.crawl.guard(&config.environment)?;
+    config.interaction.guard(&config.environment)?;
     telemetry::init(&config.telemetry);
     // Reverts any /admin/log-level override once its fifteen minutes are up.
     telemetry::spawn_override_expiry();
@@ -106,6 +107,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState::new(config)?;
     state.resolve_index().await;
     state.refresh_suggestions().await;
+    // Connect the anonymous interaction store if enabled (M6). Non-fatal if Redis is down.
+    state.connect_interactions().await;
     // Create the image-similarity collection if enabled. Failure here (Qdrant down) is not fatal:
     // the endpoint returns a clean "unavailable" and text search is unaffected ([[Vector Index]] §7).
     if let Some(engine) = &state.image_search {

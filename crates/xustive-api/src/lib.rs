@@ -10,6 +10,7 @@ pub mod dataage;
 pub mod deadline;
 pub mod error;
 pub mod image_search;
+pub mod interaction;
 pub mod metrics;
 pub mod ocr;
 pub mod ratelimit;
@@ -92,6 +93,17 @@ pub fn app(state: AppState) -> Router {
         .route("/suggest", get(suggest::handler))
         .route("/tools", get(tools::handler))
         .route("/languages", get(translate::languages))
+        .layer(middleware::from_fn_with_state(state.clone(), limit_suggest))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            Duration::from_millis(state.config.api.timeout_suggest_ms),
+        ))
+        .with_state(state.clone());
+
+    // The anonymous click beacon (M6-T03). A tiny POST, fire-and-forget; it shares the suggest-tier
+    // rate limit (a click happens far less often than a keystroke) and always answers 204.
+    let interaction_routes = Router::new()
+        .route("/interaction", axum::routing::post(interaction::handler))
         .layer(middleware::from_fn_with_state(state.clone(), limit_suggest))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::GATEWAY_TIMEOUT,
@@ -189,7 +201,10 @@ pub fn app(state: AppState) -> Router {
     let core = Router::new()
         .nest(
             "/api/v1",
-            api.merge(summary).merge(translate).merge(suggest_routes),
+            api.merge(summary)
+                .merge(translate)
+                .merge(suggest_routes)
+                .merge(interaction_routes),
         )
         .nest("/api/v1/admin", admin_api)
         .merge(ops)

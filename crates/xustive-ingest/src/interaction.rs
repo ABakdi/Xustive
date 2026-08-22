@@ -122,9 +122,22 @@ impl Interactions {
         self.bump(&keys).await;
     }
 
+    /// The opaque hash of a query, for callers (the API's click token) that must hold a query
+    /// reference without holding the query text. FNV-1a of the trimmed query — one-way and
+    /// fixed-width, so it can never be reversed to the words someone typed.
+    pub fn qhash(query: &str) -> String {
+        qhash(query)
+    }
+
     /// Record one click for `(query, doc)`.
     pub async fn click(&self, query: &str, doc: &str) {
-        let qh = qhash(query);
+        self.click_by_qhash(&qhash(query), doc).await;
+    }
+
+    /// Record one click when the query is already reduced to its [`Interactions::qhash`]. This is the
+    /// path the click endpoint uses: it resolves an opaque token to a qhash in memory, so the query
+    /// text is never in the click request at all (M6-T03).
+    pub async fn click_by_qhash(&self, qh: &str, doc: &str) {
         self.bump(&[
             format!("{}:qd:{qh}:{doc}:clk", self.namespace),
             format!("{}:doc:{doc}:clk", self.namespace),

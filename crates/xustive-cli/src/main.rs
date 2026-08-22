@@ -1283,6 +1283,7 @@ async fn cmd_search(
             xustive_core::now_unix(),
             &trust_tiers(),
             &xustive_search::authority::load(),
+            &std::collections::HashMap::new(),
             &xustive_search::rank::Weights::default(),
         ))
     } else {
