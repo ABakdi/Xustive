@@ -6,9 +6,13 @@ import { getCompute, setDevice, setPoliteness } from '@/lib/admin'
 import { PageHead } from '@/components/admin/ui'
 
 interface Resolved {
-  device?: string
+  /** The device actually in use — the API serialises this as `active` ("cpu" | "gpu"). */
+  active?: string
   reason?: string
   gpu_layers?: number
+  /** True when GPU was asked for but not used (no CUDA build, or not enough VRAM). */
+  fell_back?: boolean
+  gpu?: { name?: string; total_mib?: number; free_mib?: number } | null
 }
 
 export default function ComputePage() {
@@ -37,11 +41,28 @@ export default function ComputePage() {
       </PageHead>
 
       <p className="mb-6 text-[0.95rem]">
-        Currently running on <strong>{resolved.device ?? 'unknown'}</strong>
+        Currently running on <strong>{resolved.active ?? 'unknown'}</strong>
         {resolved.reason ? ` — ${resolved.reason}` : ''}. GPU support{' '}
         {gpuCompiled ? 'compiled in' : 'not compiled in'}; hardware{' '}
         {gpuDetected ? 'detected' : 'not detected'}.
       </p>
+
+      {/* The common misconfiguration on this hardware: a GPU is present but this binary cannot use
+          it because it was built without CUDA. Spell out the fix rather than leaving it in the
+          resolution reason, where it reads as an error rather than an instruction. */}
+      {resolved.fell_back && resolved.gpu ? (
+        <p
+          className="mb-6 max-w-2xl rounded border px-3 py-2 text-sm"
+          style={{ borderColor: 'var(--line)', background: 'var(--bg-sunk)' }}
+        >
+          A <strong>{resolved.gpu.name}</strong> is present
+          {resolved.gpu.free_mib != null ? ` (${resolved.gpu.free_mib} MB free)` : ''}, but this
+          build runs on the CPU because it was compiled without CUDA. Restart the API with{' '}
+          <code>make run-api</code> — it auto-detects the CUDA toolkit and builds with GPU support.
+          (Launching with a plain <code>cargo run</code> or the fast/no-summariser build skips CUDA,
+          which is what happened here.)
+        </p>
+      ) : null}
 
       <form
         className="mb-8 flex max-w-md flex-col gap-4"
