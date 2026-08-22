@@ -26,8 +26,20 @@ These are testable statements, not aspirations. Each has an enforcement mechanis
 | P3 | No cookies, no `localStorage` identifiers, no fingerprinting | UI ships zero third-party JS; CSP blocks external origins ([[UI Specification]]) |
 | P4 | Uploaded audio and images are never written to disk | processed from an in-memory buffer, dropped on response ([[Speech to Text]], [[Image Pipeline]]) |
 | P5 | Client IPs are not stored | rate limiter keys on `HMAC(ip/24, daily_rotating_salt)`, in-memory, 60 s TTL |
-| P6 | Aggregate query stats are k-anonymous (k ≥ 20) | [[Autocomplete Service]] drops any term seen by < 20 distinct buckets/day |
+| P6 | Aggregate query stats are k-anonymous (k ≥ 20) | [[Autocomplete Service]] drops any term seen by < 20 distinct buckets/day; the interaction store (below) is refused at startup with k < 20 outside dev ([[Interaction Signals]]) |
 | P7 | No third-party analytics, fonts, CDNs, or AI APIs | CSP `default-src 'self'`; dependency review in CI |
+| P8 | Interaction signals hold no per-person record | impressions/clicks are bare Redis counters keyed on `(query, doc)` — no IP, session, or user in any key (a key-shape unit test proves the construction has no identifier input); surfaced only above k, decaying out of a sliding window; **off by default** ([[ADR-0015 - Anonymous Interaction Signals for Ranking]], M6) |
+
+### Interaction signals (M6) reconciled against "no query logging"
+
+[[ADR-0008 - No Query Logging]] left one escape hatch: *aggregate counters, k-anonymous, default
+off*. The interaction store is that hatch and nothing more. It records how often results are shown
+and clicked, as counters keyed by the (already-normalised) query and the document id — the same
+[[weak_coverage]] pattern already in use — never by anything that identifies a person. The honest
+one-line statement of the guarantee: **no identifiable tracking; anonymous aggregate counts only,
+k-anonymous, on your own server, and off unless you turn it on.** The click beacon carries an opaque
+token and a document id — never the query text — so even the click request cannot be tied to what
+was typed.
 
 ### Verifying the promise
 

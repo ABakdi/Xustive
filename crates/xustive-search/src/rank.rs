@@ -826,6 +826,55 @@ mod tests {
     }
 
     #[test]
+    fn a_clicked_document_rises_among_near_equal_candidates() {
+        // The M6 exit-gate claim (T09.1), the positive complement of the guard below: when several
+        // candidates are near-equally relevant, the one people click climbs. Two adjacent candidates
+        // (positions 1 and 2) with equal quality; the lower one has a strong CTR. It must overtake.
+        let hits: Vec<Value> = (0..5)
+            .map(|i| json!({ "id": format!("d{i}"), "domain": format!("s{i}.dz"), "quality_score": 0.5 }))
+            .collect();
+
+        // No interaction data: d1 precedes d2 (engine order).
+        let baseline = rerank(
+            &hits,
+            "x",
+            NOW,
+            &trust(),
+            &authority(),
+            &interaction(),
+            &Weights::default(),
+        );
+        let pos = |out: &[Ranked], id: &str| out.iter().position(|r| r.hit["id"] == id).unwrap();
+        assert!(
+            pos(&baseline, "d2") > pos(&baseline, "d1"),
+            "baseline: d1 before d2"
+        );
+
+        // Replay a click stream that favours d2 (a well-clicked result).
+        let mut ctr = HashMap::new();
+        ctr.insert("d2".to_string(), 0.9);
+        let after = rerank(
+            &hits,
+            "x",
+            NOW,
+            &trust(),
+            &authority(),
+            &ctr,
+            &Weights::default(),
+        );
+        assert!(
+            pos(&after, "d2") < pos(&baseline, "d2"),
+            "the clicked document did not rise: was #{}, now #{}",
+            pos(&baseline, "d2"),
+            pos(&after, "d2")
+        );
+        assert!(
+            pos(&after, "d2") < pos(&after, "d1"),
+            "d2 should now precede d1"
+        );
+    }
+
+    #[test]
     fn high_ctr_cannot_lift_an_irrelevant_document_to_the_top() {
         // The rich-get-richer guard (M6-T04.4): interaction is a bounded tie-breaker, so a document
         // the engine ranked far down cannot climb to #1 on click-through alone — otherwise a popular
