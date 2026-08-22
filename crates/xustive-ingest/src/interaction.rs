@@ -51,6 +51,15 @@ pub struct QueryStat {
     pub category: String,
 }
 
+/// A document with its anonymous click-through, above the k-floor.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DocStat {
+    pub doc: String,
+    pub impressions: u32,
+    pub clicks: u32,
+    pub ctr: f32,
+}
+
 /// The interaction store. One shared auto-reconnecting connection (the [[Task Queue]] pattern), not
 /// one per operation.
 #[derive(Clone)]
@@ -287,6 +296,44 @@ impl Interactions {
         scored.sort_by(|a, b| b.1.cmp(&a.1));
         scored.truncate(limit);
         scored.into_iter().map(|(d, _)| d).collect()
+    }
+
+    /// The documents with the highest anonymous click-through — the "CTR leaders" for the operator
+    /// console (M6-T07). A document is only returned once its global impressions clear the k-floor,
+    /// so nothing below the anonymity threshold surfaces. Sorted by smoothed CTR, capped at `limit`.
+    pub async fn top_documents(&self, limit: usize) -> Vec<DocStat> {
+        let mut conn = self.conn();
+        // Every document with a global impression counter is a candidate.
+        let ids = self.scan_suffixes("doc").await;
+        // Suffixes look like "{doc}:imp" / "{doc}:clk"; keep the impression rows and strip ":imp".
+        let mut stats = Vec::new();
+        for suffix in ids {
+            let Some(doc) = suffix.strip_suffix(":imp") else {
+                continue;
+            };
+            let imp = self
+                .get_u32(&mut conn, &format!("{}:doc:{doc}:imp", self.namespace))
+                .await;
+            if !surfaceable(imp, self.k) {
+                continue;
+            }
+            let clk = self
+                .get_u32(&mut conn, &format!("{}:doc:{doc}:clk", self.namespace))
+                .await;
+            stats.push(DocStat {
+                doc: doc.to_string(),
+                impressions: imp,
+                clicks: clk,
+                ctr: wilson_lower_bound(clk, imp),
+            });
+        }
+        stats.sort_by(|a, b| {
+            b.ctr
+                .partial_cmp(&a.ctr)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        stats.truncate(limit);
+        stats
     }
 }
 

@@ -272,8 +272,9 @@ pub async fn interaction(
 
     let top = store.top_queries(50).await;
     let hot = store
-        .hot_docs(state.config.interaction.hot_floor(), 50)
+        .hot_docs(state.config.interaction.hot_floor(), 30)
         .await;
+    let leaders = store.top_documents(30).await;
     let top_json: Vec<serde_json::Value> = top
         .iter()
         .map(|s| json!({ "query": s.query, "count": s.count, "category": s.category }))
@@ -286,14 +287,79 @@ pub async fn interaction(
         *by_category.entry(s.category.clone()).or_default() += s.count;
     }
 
+    // Resolve the CTR-leader and hot-doc ids to titles/URLs so the console shows what people
+    // actually opened, not opaque ids. One filtered query over the union of ids.
+    let mut ids: Vec<String> = leaders.iter().map(|d| d.doc.clone()).collect();
+    ids.extend(hot.iter().cloned());
+    let titles = resolve_doc_titles(&state, &ids).await;
+
+    let leaders_json: Vec<serde_json::Value> = leaders
+        .iter()
+        .map(|d| {
+            let (title, url) = titles.get(&d.doc).cloned().unwrap_or_default();
+            json!({ "doc": d.doc, "impressions": d.impressions, "clicks": d.clicks,
+                    "ctr": d.ctr, "title": title, "url": url })
+        })
+        .collect();
+    let hot_json: Vec<serde_json::Value> = hot
+        .iter()
+        .map(|d| {
+            let (title, url) = titles.get(d).cloned().unwrap_or_default();
+            json!({ "doc": d, "title": title, "url": url })
+        })
+        .collect();
+
     Ok(Json(json!({
         "enabled": true,
         "k_anonymity": state.config.interaction.k_anonymity,
         "window_days": state.config.interaction.window_days,
         "top_queries": top_json,
         "categories": by_category,
-        "hot_docs": hot,
+        "ctr_leaders": leaders_json,
+        "hot_docs": hot_json,
     })))
+}
+
+/// Resolve document ids to `(title, url)` from the lexical index — best-effort, empty on failure.
+async fn resolve_doc_titles(
+    state: &AppState,
+    ids: &[String],
+) -> std::collections::HashMap<String, (String, String)> {
+    use serde_json::Value;
+    let mut out = std::collections::HashMap::new();
+    let unique: Vec<&String> = {
+        let mut seen = std::collections::HashSet::new();
+        ids.iter().filter(|id| seen.insert((*id).clone())).collect()
+    };
+    if unique.is_empty() {
+        return out;
+    }
+    let quoted: Vec<String> = unique.iter().map(|id| format!("\"{id}\"")).collect();
+    let query = xustive_search::Query::new("")
+        .filter(format!("id IN [{}]", quoted.join(", ")))
+        .limit(unique.len());
+    if let Ok(hits) = state
+        .search
+        .search::<Value>(&state.documents_index(), &query)
+        .await
+    {
+        for h in hits.hits {
+            if let Some(id) = h.get("id").and_then(Value::as_str) {
+                let title = h
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let url = h
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                out.insert(id.to_string(), (title, url));
+            }
+        }
+    }
+    out
 }
 
 fn current_resolution(state: &AppState) -> device::Resolved {

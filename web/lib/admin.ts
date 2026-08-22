@@ -208,7 +208,15 @@ export interface InteractionStatus {
   window_days?: number
   top_queries?: { query: string; count: number; category: string }[]
   categories?: Record<string, number>
-  hot_docs?: string[]
+  ctr_leaders?: {
+    doc: string
+    impressions: number
+    clicks: number
+    ctr: number
+    title: string
+    url: string
+  }[]
+  hot_docs?: { doc: string; title: string; url: string }[]
 }
 export const getInteraction = (signal?: AbortSignal) =>
   getJSON<InteractionStatus>('/interaction', signal)

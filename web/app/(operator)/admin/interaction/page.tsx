@@ -86,6 +86,48 @@ export default function InteractionPage() {
             )}
           </section>
 
+          <section className="mb-8">
+            <h2 className="mb-2 text-base font-semibold">CTR leaders</h2>
+            <p className="mb-2 text-xs" style={{ color: 'var(--fg-faint)' }}>
+              The results people open most, by anonymous click-through (Wilson-smoothed, above the
+              floor). These are what the interaction signal rewards in ranking.
+            </p>
+            {data.ctr_leaders && data.ctr_leaders.length > 0 ? (
+              <table className="w-full max-w-3xl border-collapse text-sm">
+                <thead>
+                  <tr style={{ color: 'var(--fg-muted)' }}>
+                    <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>result</th>
+                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>CTR</th>
+                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>clicks</th>
+                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>shown</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.ctr_leaders.map((d) => (
+                    <tr key={d.doc}>
+                      <td className="border-b py-1" style={{ borderColor: 'var(--line)' }}>
+                        {d.url ? (
+                          <a href={d.url} className="no-underline hover:underline" style={{ color: 'var(--accent)' }} dir="auto">
+                            {d.title || d.url}
+                          </a>
+                        ) : (
+                          <span className="font-mono text-xs">{d.doc}</span>
+                        )}
+                      </td>
+                      <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>
+                        {(d.ctr * 100).toFixed(0)}%
+                      </td>
+                      <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{d.clicks}</td>
+                      <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{d.impressions}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>Nothing above the floor yet.</p>
+            )}
+          </section>
+
           <section>
             <h2 className="mb-2 text-base font-semibold">Hot re-crawl targets</h2>
             <p className="mb-2 text-xs" style={{ color: 'var(--fg-faint)' }}>
@@ -94,7 +136,15 @@ export default function InteractionPage() {
             {data.hot_docs && data.hot_docs.length > 0 ? (
               <ul className="m-0 list-none p-0 text-sm">
                 {data.hot_docs.map((d) => (
-                  <li key={d} className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{d}</li>
+                  <li key={d.doc} className="border-b py-1" style={{ borderColor: 'var(--line)' }}>
+                    {d.url ? (
+                      <a href={d.url} className="no-underline hover:underline" style={{ color: 'var(--accent)' }} dir="auto">
+                        {d.title || d.url}
+                      </a>
+                    ) : (
+                      <span className="font-mono text-xs">{d.doc}</span>
+                    )}
+                  </li>
                 ))}
               </ul>
             ) : (
