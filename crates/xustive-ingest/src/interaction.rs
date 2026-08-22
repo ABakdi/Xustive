@@ -205,6 +205,89 @@ impl Interactions {
         }
         out
     }
+
+    /// Scan every key matching `pattern` with a non-blocking `SCAN` cursor. Returns the bare key
+    /// suffixes after `{namespace}:{prefix}`. Used by the analytics/re-crawl readers, which run off
+    /// the serving path (an admin page, a crawl pass), never per search.
+    async fn scan_suffixes(&self, prefix: &str) -> Vec<String> {
+        let mut conn = self.conn();
+        let full = format!("{}:{prefix}:*", self.namespace);
+        let strip = format!("{}:{prefix}:", self.namespace);
+        let mut cursor: u64 = 0;
+        let mut out = Vec::new();
+        loop {
+            let res: Result<(u64, Vec<String>), _> = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(&full)
+                .arg("COUNT")
+                .arg(500)
+                .query_async(&mut conn)
+                .await;
+            let Ok((next, keys)) = res else { break };
+            for k in keys {
+                if let Some(s) = k.strip_prefix(&strip) {
+                    out.push(s.to_string());
+                }
+            }
+            cursor = next;
+            if cursor == 0 {
+                break;
+            }
+        }
+        out
+    }
+
+    /// The most-searched queries above the k-floor, with their category (M6-T05.1). Generalises
+    /// [[weak_coverage]] from "weak only" to "all queries, above the floor" — a query below k is
+    /// never returned, so nothing personal surfaces. Sorted by count, capped at `limit`.
+    pub async fn top_queries(&self, limit: usize) -> Vec<QueryStat> {
+        let mut conn = self.conn();
+        let queries = self.scan_suffixes("q").await;
+        let mut stats = Vec::new();
+        for q in queries {
+            let count = self
+                .get_u32(&mut conn, &format!("{}:q:{q}", self.namespace))
+                .await;
+            if !surfaceable(count, self.k) {
+                continue;
+            }
+            let category: Option<String> = redis::cmd("GET")
+                .arg(format!("{}:qc:{q}", self.namespace))
+                .query_async(&mut conn)
+                .await
+                .ok()
+                .flatten();
+            stats.push(QueryStat {
+                query: q,
+                count,
+                category: category.unwrap_or_else(|| "web".into()),
+            });
+        }
+        stats.sort_by(|a, b| b.count.cmp(&a.count));
+        stats.truncate(limit);
+        stats
+    }
+
+    /// Documents whose click count clears `hot_floor` — the re-crawl freshness candidates (M6-T06.1).
+    /// Returned most-clicked-first, capped at `limit`, so a popular document can be pulled forward in
+    /// the revisit schedule without popularity owning the whole queue.
+    pub async fn hot_docs(&self, hot_floor: u32, limit: usize) -> Vec<String> {
+        let mut conn = self.conn();
+        let docs = self.scan_suffixes("hot").await;
+        let mut scored: Vec<(String, u32)> = Vec::new();
+        for d in docs {
+            let clicks = self
+                .get_u32(&mut conn, &format!("{}:hot:{d}", self.namespace))
+                .await;
+            if clicks >= hot_floor.max(1) {
+                scored.push((d, clicks));
+            }
+        }
+        scored.sort_by(|a, b| b.1.cmp(&a.1));
+        scored.truncate(limit);
+        scored.into_iter().map(|(d, _)| d).collect()
+    }
 }
 
 #[cfg(test)]

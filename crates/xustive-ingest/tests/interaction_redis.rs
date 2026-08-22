@@ -78,3 +78,43 @@ async fn a_click_by_qhash_matches_a_click_by_query() {
         "a qhash click did not register against the query"
     );
 }
+
+#[tokio::test]
+async fn analytics_readers_surface_above_the_floor() {
+    // top_queries (M6-T05) and hot_docs (M6-T06): a query/doc appears only once it clears the floor.
+    let Some(store) = Interactions::connect_in(
+        &redis_url(),
+        "test_interaction_analytics",
+        2,
+        Duration::from_secs(60),
+    )
+    .await
+    else {
+        eprintln!("skipping: Redis not reachable at {}", redis_url());
+        return;
+    };
+    let query = format!("m6-analytics-{}", std::process::id());
+    let doc = format!("hotdoc-{}", std::process::id());
+
+    // One search + one click: below the k-floor of 2, so neither reader surfaces it.
+    store.query_seen(&query, "news").await;
+    store.click(&query, &doc).await;
+    assert!(
+        !store.top_queries(50).await.iter().any(|s| s.query == query),
+        "a below-floor query surfaced in top_queries"
+    );
+
+    // A second search reaches the floor: the query now appears, with its category.
+    store.query_seen(&query, "news").await;
+    let top = store.top_queries(50).await;
+    let stat = top
+        .iter()
+        .find(|s| s.query == query)
+        .expect("query should surface at the floor");
+    assert_eq!(stat.category, "news");
+    assert!(stat.count >= 2);
+
+    // hot_docs with floor 1 surfaces the clicked doc.
+    let hot = store.hot_docs(1, 50).await;
+    assert!(hot.contains(&doc), "clicked doc missing from hot_docs");
+}
