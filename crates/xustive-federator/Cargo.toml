@@ -1,0 +1,22 @@
+[package]
+name = "xustive-federator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Federation Gateway: the one allowlisted egress hop between the serving plane and a self-hosted SearXNG."
+
+[dependencies]
+xustive-core = { path = "../xustive-core" }
+xustive-ingest = { path = "../xustive-ingest" }
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "signal", "net"] }
+clap.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

@@ -16,11 +16,14 @@
 //! that calls it; here we keep the part most likely to drift (SearXNG's JSON shape) pure and
 //! fixture-tested.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// One federated result. Carries what a blended answer needs — the destination, the aggregator's
 /// title and snippet, its rank, and which engine surfaced it (provenance).
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Serialisable both ways: the [[Federation Gateway]] serialises these in its `/federate` response,
+/// and the serving API deserialises them to blend — one shared shape, no drift between the two.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FederatedHit {
     pub url: String,
     pub title: String,
