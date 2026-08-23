@@ -180,9 +180,9 @@ Breakdown in [[Milestone 7 - Federated Retrieval and External Tools]].
 - [ ] M7-T01 Lexical retrieval quality — stemming, richer synonyms, expansion-leg trigger
 - [ ] M7-T02 Semantic recall — text embeddings + Qdrant hybrid
 - [ ] M7-T03 Term ↔ document linking — keyphrase graph, related terms
-- [~] M7-T04 [[Federation Gateway]] — gateway binary, sidecar, config, egress test done; per-tool breaker (T04.5) remains
-- [ ] M7-T05 Query-time blend — additive, budgeted, fail-open, provenance-tagged, capped
-- [ ] M7-T06 Federated results feed the crawler — converge to standalone
+- [x] M7-T04 [[Federation Gateway]] — gateway binary, sidecar, config, egress test, breaker done
+- [~] M7-T05 Query-time federation — concurrent, budgeted, fail-open "from the web" strip done; blend-share metric (T05.4) remains
+- [~] M7-T06 Crawl-feed — federated URLs → frontier (channel Federation) done; convergence proof (T06.3) remains
 - [ ] M7-T07 Learn from external ranking — offline reranker calibration
 - [ ] M7-T08 External AI summariser (Parallel-AI MCP) — opt-in, offline-preferred, default off
 - [x] M7-T09 Operator control — the `/admin/integrations` console + runtime switch

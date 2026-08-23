@@ -20,15 +20,15 @@ This milestone attacks that on two fronts at once. **First, make the index stand
 
 Read [[ADR-0017 - Query-Time Federation with External Metasearch]] and [[Federation Gateway]] first — they hold the egress, privacy, and fail-open invariants every federation task below must satisfy. The retrieval-quality tasks (T01–T03) are the durable win and lead the milestone; federation (T04–T06) delivers visible recall immediately and can proceed in parallel.
 
-## Status as of 2026-08-23 — the gateway is built and the egress boundary is sealed
+## Status as of 2026-08-23 — federation works end to end (T04–T06)
 
-**T04 is essentially complete** (only the per-tool breaker, T04.5, remains). In place: the `[federation]` config (off by default, inert without an endpoint, budget-validated); the **SearXNG client** in `xustive-ingest` (`FederatedHit`, a pure fixture-tested parser, `SearxngClient::search`); the **self-hosted SearXNG sidecar** (profile-gated, egress network only, JSON enabled); the **`xustive-federator` gateway binary** (dual-homed, `POST /federate` + `/healthz`, fail-open, no query logged); the **egress-test assertion** proving SearXNG is unreachable from `core` while the internet stays unreachable even with the bridge attached; and the **admin Integrations console** (`/admin/integrations` GET/POST + page) with a runtime on/off switch that refuses to arm without an endpoint.
+**The whole federation loop is functional and off by default.** Enable it (endpoint + runtime switch), search, and: the serving API calls the gateway's `/federate` concurrently with local retrieval on page 1; the hits come back as a separate **"from the web" strip** below the ranked results (and in the empty state, where they matter most); and every federated URL is fed to the frontier under the `Federation` channel, so the page is crawled and answered locally next time.
 
-The gateway exists and the boundary is provably sealed, but **nothing calls it yet** — the two consumers are the next work:
-- **T05 query-time blend** — the serving pipeline calls `/federate` concurrently with local retrieval, within budget, fail-open, and merges the hits. This carries a real design fork (see the task): federated URLs already in our index reinforce the local document, but genuinely-new external URLs must appear *somehow* — interleaved as synthetic results, or as a separate "from the web" strip. That choice is a UX/ranking decision worth settling before building the hot path.
-- **T06 crawl-feed** — federated URLs deposited as capped Redis crawl hints, read by the [[Crawler Orchestrator]], so the index fills in and federation's share falls. Lower-risk and independent of the blend fork.
+Built across T04–T06: `[federation]` config; the `xustive-ingest` SearXNG client; the SearXNG sidecar; the **`xustive-federator` gateway binary** (dual-homed, breaker-guarded, fail-open, no query logged); the **egress-test assertion** (SearXNG unreachable from `core`); the API's `FederatorClient` (its one outbound call, to the internal gateway); the **search-handler blend** (concurrent, budgeted, fail-open) with the **web strip** in the UI; the **crawl-feed** + `DiscoveryChannel::Federation`; and the **admin Integrations console**.
 
-Until a consumer lands, the Integrations toggle arms a switch nothing reads yet — which the page states plainly.
+**Design fork resolved:** new external URLs appear as a **separate labelled strip, not interleaved** into the ranked list — a federated hit has no relevance/trust/freshness signals to be scored among real documents, and a labelled strip keeps provenance honest. (This settles the ADR-0017 open question.)
+
+Remaining in the federation track: **T05.4** the `federation_blend_share` metric; **T06.3** the convergence proof (a re-issued query answers locally after indexing); an index-reinforce refinement so an already-indexed federated URL boosts the local doc instead of also showing in the strip; and **T08** (external summariser). The durable retrieval work (**T01–T03**) is untouched and is the next major push.
 
 ## M7-T01 — Lexical retrieval quality (the cheap, durable wins first)
 
@@ -65,20 +65,20 @@ The narrow, allowlisted egress hop that keeps the serving plane's no-egress prop
 - [x] M7-T04.2 **Self-hosted SearXNG sidecar** in compose (egress network only, `mem_limit`, no published ports, passes `lint-compose.sh`), with a pinned engine set.
 - [x] M7-T04.3 **`POST /federate`** on `core`: fan out to enabled tools within `budget_ms`, normalise to `FederatedHit{url,title,snippet,engine,rank}`, return `{hits, partial}`. Defensive, fixture-tested parsers.
 - [x] M7-T04.4 **Allowlist + per-tool config** `[federation]` in [[xustive-core]] (`enabled=false` default, endpoint, key, budget, max_hits, blend cap). Non-allowlisted target refused before dialling.
-- [ ] M7-T04.5 **Circuit breaker per external tool** (reuse `SharedBreaker`) so a failing engine is shed, not retried every request.
+- [x] M7-T04.5 **Circuit breaker per external tool** (reuse `SharedBreaker`) so a failing engine is shed, not retried every request.
 - [x] M7-T04.6 **Egress test update**: assert `xustive-api` can reach the gateway **and nothing else**; the gateway reaches only allowlisted endpoints. `scripts/test-egress.sh` green.
 
 ## M7-T05 — Query-time blend (additive, budgeted, fail-open)
 
-- [ ] M7-T05.1 **Concurrent call** from [[Query Pipeline]] to the gateway alongside local retrieval; on timeout/error/disabled, ship index-only with **no added latency** (explicit test).
-- [ ] M7-T05.2 **Blend** federated hits into the candidate pool pre-rerank, tagged `source=federation`, subject to a **cap** so external results never dominate a page; a federated URL already indexed reinforces the local doc, not a duplicate.
-- [ ] M7-T05.3 **Provenance in `Explain`** and in the response, so blended results are auditable and the console can show federation's contribution.
+- [x] M7-T05.1 **Concurrent call** from [[Query Pipeline]] to the gateway alongside local retrieval; on timeout/error/disabled, ship index-only with **no added latency** (explicit test).
+- [x] M7-T05.2 **Separate "from the web" strip** (design fork resolved: a labelled section, *not* interleaved, since a federated hit has no relevance/trust signals to rank among real documents). Bounded by `max_hits`. *Follow-up:* a federated URL already indexed should reinforce the local doc rather than also appear in the strip.
+- [x] M7-T05.3 **Provenance** (engine + `source=federation`) and in the response, so blended results are auditable and the console can show federation's contribution.
 - [ ] M7-T05.4 **`federation_blend_share` metric** — the convergence indicator, expected to fall as the crawl-feed (T06) fills the index.
 
 ## M7-T06 — Federated results feed the crawler (converge to standalone)
 
-- [ ] M7-T06.1 **Crawl hints**: each federated URL → capped/windowed `federation:hint:<url>` in Redis, through the SSRF + trap guards, read by the [[Crawler Orchestrator]] revisit/discovery pass (search plane only *writes*; crawler only *reads*, per [[ADR-0001 - Two-Plane Architecture]]).
-- [ ] M7-T06.2 **New `DiscoveryChannel::Federation`** so the discovery funnel ([[admin/discovery]]) shows federated URLs' fetch/index/yield like every other channel.
+- [x] M7-T06.1 **Crawl-feed**: each federated URL → capped/windowed `federation:hint:<url>` in Redis, through the SSRF + trap guards, read by the [[Crawler Orchestrator]] revisit/discovery pass (search plane only *writes*; crawler only *reads*, per [[ADR-0001 - Two-Plane Architecture]]).
+- [x] M7-T06.2 **New `DiscoveryChannel::Federation`** so the discovery funnel ([[admin/discovery]]) shows federated URLs' fetch/index/yield like every other channel.
 - [ ] M7-T06.3 **Convergence proof**: a federated URL, once crawled+indexed, is answered locally on the next identical query and drops its federation tag — asserted in a test and visible as a falling blend share.
 
 ## M7-T07 — Learn from external ranking (offline reranker calibration)
