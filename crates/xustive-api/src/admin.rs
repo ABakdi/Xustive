@@ -526,8 +526,11 @@ pub async fn integrations(
     Ok(Json(json!({
         "federation": {
             "enabled": state.federation_enabled.load(Ordering::Relaxed),
-            "configured": !f.searxng_url.trim().is_empty(),
+            // "Configured" from the API's side means a gateway client exists to call — which is built
+            // whenever `federator_url` is set. `searxng_url` is the gateway's concern, shown for info.
+            "configured": state.federator.is_some(),
             "searxng_url": f.searxng_url,
+            "federator_url": f.federator_url,
             "budget_ms": f.budget_ms,
             "max_hits": f.max_hits,
             "allowlist": f.allowlist,
@@ -560,12 +563,14 @@ pub async fn set_integrations(
     authorise(&state, peer, &headers).map_err(|d| d.json())?;
     match update.integration.as_str() {
         "federation" => {
-            if update.enabled && state.config.federation.searxng_url.trim().is_empty() {
+            // Refuse to arm federation with no gateway to call — the client is built only when a
+            // `federator_url` is configured, so its absence is exactly "no endpoint".
+            if update.enabled && state.federator.is_none() {
                 return Err((
                     StatusCode::BAD_REQUEST,
                     Json(json!({"error": {
                         "code": "no_endpoint",
-                        "message": "set federation.searxng_url in config before enabling federation",
+                        "message": "set federation.federator_url in config before enabling federation",
                     }})),
                 ));
             }

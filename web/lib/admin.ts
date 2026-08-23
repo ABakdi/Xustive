@@ -187,6 +187,7 @@ export interface FederationStatus {
   enabled: boolean
   configured: boolean
   searxng_url: string
+  federator_url: string
   budget_ms: number
   max_hits: number
   allowlist: string[]

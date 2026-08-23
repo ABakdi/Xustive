@@ -57,6 +57,15 @@ services:
     ports:
       - "127.0.0.1:${XUSTIVE_STT_PORT:-8093}:8093"
 
+  # Only started with `--profile federation`. Published so the host-run API reaches the gateway at
+  # the `federation.federator_url` default (http://127.0.0.1:8095). Keeps `ingest` so the gateway can
+  # still reach SearXNG on the egress network. SearXNG itself needs no host port — only the gateway
+  # talks to it, container-to-container.
+  federator:
+    networks: [core, ingest, devhost]
+    ports:
+      - "127.0.0.1:${XUSTIVE_FEDERATOR_PORT:-8095}:8095"
+
   prometheus:
     networks: [core, obs, devhost]
     ports:

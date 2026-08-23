@@ -50,6 +50,25 @@ serp_max_queries_per_run = 50
 #   serp_proxy = "http://USER:PASS@gate.provider.com:7000"
 serp_proxy = ""
 
+[federation]
+# Query-time federation with a self-hosted SearXNG aggregator (M7, ADR-0017). **Off by default** —
+# flip it on from the admin Integrations page once the `federation` compose profile is up
+# (`docker compose --profile federation up -d`). The gateway client is built whenever `federator_url`
+# is set, so the runtime toggle works without a restart, and with federation off there is zero
+# overhead. Everything is fail-open: a gateway that is down just drops the "from the web" strip.
+enabled = false
+# The gateway's SearXNG endpoint. Used by the gateway container (which reaches SearXNG on the
+# internal `ingest` network); shown on the console for reference. The API never calls this directly.
+searxng_url = "http://xustive-searxng:8080"
+# The Federation Gateway's address, which the host-run API calls — its one outbound target, an
+# internal service, so the API keeps no route to the open internet. In dev it is published on
+# localhost by docker-compose.dev.yml; in the full container topology it is http://xustive-federator:8095.
+federator_url = "http://127.0.0.1:8095"
+# Query-time latency budget. Federation runs concurrently with local retrieval and never makes the
+# answer wait past this; miss it and results ship index-only.
+budget_ms = 250
+max_hits = 10
+
 [interaction]
 # Anonymous interaction signals (M6): impressions/clicks as k-anonymous windowed counters that feed
 # ranking (CTR) and re-crawl. Off by default — it amends ADR-0008's no-click-tracking promise, so it

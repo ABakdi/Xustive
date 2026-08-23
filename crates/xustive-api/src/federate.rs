@@ -39,14 +39,16 @@ pub struct FederatorClient {
 }
 
 impl FederatorClient {
-    /// Build from `[federation]`, or `None` when the API should not federate (disabled, or no
-    /// gateway URL). The HTTP timeout is a hair above the budget so the budget, not the socket, is
-    /// what bounds a call.
+    /// Build from `[federation]`, or `None` when there is no gateway URL to call. Built whenever a
+    /// URL is configured — **even if federation is currently off** — because the client's existence
+    /// is "configured" while the runtime `federation_enabled` switch is "on/off". Gating the client
+    /// on `enabled` would mean the admin toggle could never turn federation on without a restart. The
+    /// HTTP timeout is a hair above the budget so the budget, not the socket, bounds a call.
     pub fn from_config(cfg: &xustive_core::config::FederationConfig) -> Option<Self> {
-        if !cfg.api_federation_usable() {
+        let base = cfg.federator_url.trim().trim_end_matches('/');
+        if base.is_empty() {
             return None;
         }
-        let base = cfg.federator_url.trim().trim_end_matches('/');
         let http = reqwest::Client::builder()
             .timeout(Duration::from_millis(cfg.budget_ms + 500))
             .build()

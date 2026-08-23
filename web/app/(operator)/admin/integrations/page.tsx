@@ -54,15 +54,16 @@ export default function IntegrationsPage() {
           <p className="mb-4 max-w-2xl text-sm" style={{ color: 'var(--fg-muted)' }}>
             {fed.configured ? (
               <>
-                Endpoint <code>{fed.searxng_url}</code>, budget <strong>{fed.budget_ms} ms</strong>,
+                Gateway <code>{fed.federator_url}</code>, budget <strong>{fed.budget_ms} ms</strong>,
                 up to <strong>{fed.max_hits}</strong> hits per query. Federation runs concurrently
-                with the local index and never makes the answer wait past the budget.
+                with the local index and never makes the answer wait past the budget. Start the{' '}
+                <code>federation</code> compose profile, then flip the switch.
               </>
             ) : (
               <>
-                No endpoint configured. Set <code>federation.searxng_url</code> in the config (and
-                start the <code>federation</code> compose profile) before enabling — a switch with no
-                endpoint would silently do nothing, so turning it on here is refused until it is set.
+                No gateway configured. Set <code>federation.federator_url</code> in the config before
+                enabling — a switch with no gateway to call would silently do nothing, so turning it
+                on here is refused until it is set.
               </>
             )}
           </p>
@@ -85,7 +86,8 @@ export default function IntegrationsPage() {
               {[
                 ['Configured', fed.configured ? 'yes' : 'no'],
                 ['Runtime switch', fed.enabled ? 'on' : 'off'],
-                ['Endpoint', fed.searxng_url || '—'],
+                ['Gateway (API calls this)', fed.federator_url || '—'],
+                ['SearXNG (gateway calls this)', fed.searxng_url || '—'],
                 ['Latency budget', `${fed.budget_ms} ms`],
                 ['Max hits / query', String(fed.max_hits)],
                 ['Extra allowlist', fed.allowlist.length ? fed.allowlist.join(', ') : '(SearXNG host only)'],
