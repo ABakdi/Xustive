@@ -68,6 +68,7 @@ social media posts, serving results in **Arabic, Darija, French, and English**.
 - [[Sentiment Engine]] — lexicon + transformer sentiment scoring
 - [[Deduplication Service]] — exact + near-duplicate suppression
 - [[Indexer Worker]] — batched writes into [[Search Index]] / [[Vector Index]]
+- [[Federation Gateway]] — one allowlisted egress hop for live web federation ([[ADR-0017 - Query-Time Federation with External Metasearch]])
 
 ### Collection layer
 > Added by [[ADR-0009 - Direct Collection for Social Platforms]] — direct collection for social
@@ -113,6 +114,8 @@ social media posts, serving results in **Arabic, Darija, French, and English**.
 - [[Milestone 2 - Ingestion at Scale]]
 - [[Milestone 4 - Quality and Operations]]
 - [[Milestone 5 - Beta Launch]]
+- [[Milestone 6 - Adaptive Ranking from Interaction Signals]]
+- [[Milestone 7 - Federated Retrieval and External Tools]]
 
 ---
 
