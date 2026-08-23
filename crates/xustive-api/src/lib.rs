@@ -164,6 +164,10 @@ pub fn app(state: AppState) -> Router {
         .route("/status", get(admin::status))
         .route("/media", get(admin::media))
         .route("/interaction", get(admin::interaction))
+        .route(
+            "/integrations",
+            get(admin::integrations).post(admin::set_integrations),
+        )
         .route("/queue", get(admin_queue::status))
         .route("/queue/replay", axum::routing::post(admin_queue::replay))
         .route(

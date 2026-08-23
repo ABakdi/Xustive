@@ -509,3 +509,82 @@ pub async fn set_politeness(
         "note": "takedown and global blocklists are never bypassed",
     })))
 }
+
+/// `GET /admin/integrations` — the external-tool control surface (M7-T09, [[ADR-0017]]).
+///
+/// Reports configuration and the runtime switch, not a live health probe: the serving plane cannot
+/// reach SearXNG directly — it lives on the egress network behind the [[Federation Gateway]] — so a
+/// live probe would violate the no-egress boundary this endpoint exists inside. Live health arrives
+/// with the gateway (M7-T04). Nothing here reveals a query; there is none to reveal.
+pub async fn integrations(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    authorise(&state, peer, &headers).map_err(|d| d.json())?;
+    let f = &state.config.federation;
+    Ok(Json(json!({
+        "federation": {
+            "enabled": state.federation_enabled.load(Ordering::Relaxed),
+            "configured": !f.searxng_url.trim().is_empty(),
+            "searxng_url": f.searxng_url,
+            "budget_ms": f.budget_ms,
+            "max_hits": f.max_hits,
+            "allowlist": f.allowlist,
+            // Config/status only — see the doc comment. The blend and crawl-feed that consume this
+            // flag are later increments; this is the operator control surface for them.
+            "reachable_from_api": false,
+            "note": "the serving plane never talks to SearXNG directly; the gateway does (ADR-0017)",
+        }
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct IntegrationUpdate {
+    /// Which integration to change. Only `federation` today.
+    pub integration: String,
+    pub enabled: bool,
+}
+
+/// `POST /admin/integrations` — turn an external integration on or off at runtime.
+///
+/// Toggling only flips the runtime switch the consumers read; it does not reach out. Enabling
+/// federation without a configured endpoint is refused with a reason rather than silently doing
+/// nothing, the same way an empty API key is a misconfiguration, not a mode.
+pub async fn set_integrations(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+    Json(update): Json<IntegrationUpdate>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    authorise(&state, peer, &headers).map_err(|d| d.json())?;
+    match update.integration.as_str() {
+        "federation" => {
+            if update.enabled && state.config.federation.searxng_url.trim().is_empty() {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": {
+                        "code": "no_endpoint",
+                        "message": "set federation.searxng_url in config before enabling federation",
+                    }})),
+                ));
+            }
+            state
+                .federation_enabled
+                .store(update.enabled, Ordering::Relaxed);
+            tracing::info!(peer = ?peer, enabled = update.enabled, "federation toggled via admin");
+            Ok(Json(json!({
+                "ok": true,
+                "integration": "federation",
+                "enabled": update.enabled,
+            })))
+        }
+        other => Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": {
+                "code": "unknown_integration",
+                "message": format!("unknown integration {other:?}"),
+            }})),
+        )),
+    }
+}

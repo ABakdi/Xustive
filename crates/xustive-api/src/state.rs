@@ -47,6 +47,12 @@ pub struct AppState {
     /// a restart. The config value is the startup default; production refuses to start with it on
     /// at all, so this can only ever be flipped where it is already permitted.
     pub ignore_politeness: Arc<std::sync::atomic::AtomicBool>,
+    /// Runtime federation switch, mirrored from `[federation] enabled` ([[ADR-0017]], M7-T04). Flipped
+    /// from the admin Integrations page. The consumers — the query-time blend and the crawler
+    /// crawl-feed, later increments — read it. The serving plane only *shows and toggles* it; it
+    /// never reaches SearXNG itself, which lives behind the [[Federation Gateway]] on the egress
+    /// network. Runtime as well as config so turning federation on or off is not a restart.
+    pub federation_enabled: Arc<std::sync::atomic::AtomicBool>,
     /// Searches whose summary has not been requested yet.
     pub pending: Arc<PendingStore>,
     /// The loaded summariser, once it is ready.
@@ -266,6 +272,7 @@ impl AppState {
 
     pub fn new(config: Config) -> Result<Self, SearchError> {
         let ignore_politeness = config.crawl.ignore_politeness;
+        let federation_enabled = config.federation.enabled;
         // Falls back to the alias name itself, which is also what a pre-alias deployment uses.
         // `resolve` is async and this is not, so the real lookup happens in `resolve_index`
         // below, called from main once the runtime exists.
@@ -297,6 +304,7 @@ impl AppState {
             )),
             gpu_layers: Arc::new(AtomicI64::new(gpu_layers)),
             ignore_politeness: Arc::new(std::sync::atomic::AtomicBool::new(ignore_politeness)),
+            federation_enabled: Arc::new(std::sync::atomic::AtomicBool::new(federation_enabled)),
             documents_index: Arc::new(std::sync::RwLock::new(documents_index)),
             suggest: Arc::new(std::sync::RwLock::new(Arc::new(
                 crate::suggest::PrefixIndex::build(&curated, &[]),
