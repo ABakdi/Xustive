@@ -89,14 +89,16 @@ The narrow, allowlisted egress hop that keeps the serving plane's no-egress prop
 - [ ] M7-T09.2 **Health + effectiveness**: per-tool latency, yield, breaker state, and `federation_blend_share` over time (is the index catching up?).
 - [ ] M7-T09.3 **`GET/POST /api/v1/admin/integrations`** behind admin auth, bounded-cardinality labels, no query text.
 
-## M7-T10 — Search-history visibility (extends M6)
+## M7-T10 — Anonymous search history (extends M6)
 
-What the operator asked to see — every term, its result count, its clicks — within the anonymity model, with the policy tension made explicit ([[ADR-0008 - No Query Logging]]).
+The operator asked to see every term, its result count, and its clicks. This is compatible with anonymity because **anonymity comes from what is never stored** — no IP, no user-agent, no session id, no cookie, no account — not from thresholding. A stored `(term, result_count, clicks)` row has no identifier to trace by. The design principle: **decouple storage from surfacing.** Storage is always identifier-free; the k-floor is a *multi-user-only surfacing threshold*, set to 1 on a single-operator box to see the full history, and to ≥ 20 on any shared deployment so a content-identifying rare query cannot be surfaced. The one residual risk is that query *content* can self-identify (the AOL-2006 lesson), which is exactly what k, no-session-chaining, and coarse timestamps contain on a shared deployment — and which does not apply to a single operator's own machine.
 
-- [ ] M7-T10.1 **Capture per-query result count** on the impression write (today only per-page doc ids and a Prometheus bucket exist), so the console can show "this query returned N results".
-- [ ] M7-T10.2 **Query-labelled click rollup**: join clicks to the query text above the k-floor (today per-`(query,doc)` clicks live only under `qhash`), so the console shows, for a surfaced query, which docs were opened and how often.
-- [ ] M7-T10.3 **Zero-/low-result queries in the analytics view**: fold weak-coverage terms into the search-history page so "searched but unanswered" is visible alongside "searched and answered", both k-anonymous.
-- [ ] M7-T10.4 **Policy decision + honest copy**: whether/how far to lower the k-floor for a single-operator deployment, recorded against [[ADR-0008 - No Query Logging]]; the privacy page states plainly what is and isn't captured. "Every term" below k stays structurally invisible on a multi-user deployment — say so.
+- [ ] M7-T10.1 **Identifier-free history store**: persist `(normalised term, result_count, click counts)` with **no** IP / UA / session / cookie / account anywhere in the key or value — assert it structurally, the way M6 asserts no interaction key can hold an identifier. This is the anonymity guarantee.
+- [ ] M7-T10.2 **Capture per-query result count** on the impression write (today only per-page doc ids and a Prometheus bucket exist), so the console can show "this query returned N results".
+- [ ] M7-T10.3 **Query-labelled click detail**: for a surfaced query, which docs were opened and how often (today per-`(query,doc)` clicks live only under `qhash`). Above the k-floor on multi-user; unconditional at k=1.
+- [ ] M7-T10.4 **Browsable history view** at `/admin/interaction` (or a new tab): full term list with result counts and clicks on a single-operator deployment (k=1); k-anonymous aggregate on a shared one. Zero-/low-result terms (weak-coverage) folded in so "searched but unanswered" sits beside "searched and answered".
+- [ ] M7-T10.5 **`k` and `window` as the multi-user dials**: k=1 + long/disabled window = full personal history on your own box; k≥20 + sliding window on shared deployments (config validation keeps k≥20 unless environment=dev, as M6 already enforces). **No session grouping and no fine-grained per-event timestamps** on shared deployments — chaining and precise times are what re-identify anonymous logs.
+- [ ] M7-T10.6 **Reconcile [[ADR-0008 - No Query Logging]] honestly**: durable, identifier-free history is retention of query *text* — a real amendment to "zero query retention". Record it (a new ADR superseding/amending 0008, or an 0008/0015 amendment) and state plainly on the privacy page what is stored (terms, counts, clicks — no identifiers) and what is not, per deployment mode.
 
 ## Dependencies & order
 
@@ -113,7 +115,7 @@ What the operator asked to see — every term, its result count, its clicks — 
 | Convergence | Every federated URL is queued for crawl; a re-issued query answers locally after indexing; `federation_blend_share` trends down |
 | Privacy | Telemetry lint green (no query/token field), no identifier on any federate request or crawl hint, k ≥ 20 enforced for multi-user |
 | Operator control | Every external tool is enable/disable-able, keyed, budgeted, and observable from `/admin/integrations`; all default off |
-| Search history | Console shows per-query result counts and per-query click detail, k-anonymous, with honest privacy copy |
+| Search history | History store holds no identifier (asserted structurally); console shows per-query result counts and click detail — full history at k=1 (single operator), k-anonymous aggregate at k≥20 (shared); privacy copy states exactly what is/isn't stored |
 
 ## Risks
 
@@ -125,7 +127,8 @@ What the operator asked to see — every term, its result count, its clicks — 
 | Query terms leaving the box breaks the privacy promise | Self-hosted SearXNG strips identity/IP; no query logging; the amendment is stated plainly on the privacy page ([[ADR-0017]] amends [[ADR-0008]]) |
 | The index never becomes standalone (federation as a permanent crutch) | Every federated result is crawled+indexed; blend share is watched and expected to fall; ADR-0017's "revisit when" demotes live federation once it does |
 | External summariser leaks document/query text to SaaS | Parallel-AI stays opt-in, off by default, offline-preferred, separately flagged; local model remains the default |
-| "See every term" collides with k-anonymity | T10.4 makes the policy explicit and the copy honest; below-k terms stay invisible on multi-user deployments by construction |
+| "See every term" seen as colliding with anonymity | It doesn't: anonymity is no-identifier *storage*, k is a multi-user *surfacing* floor. Single-operator (k=1) sees full history; shared deployments threshold to contain content self-identification, with no session chaining or fine timestamps (T10.1/.5) |
+| Query content self-identifies even without an IP (AOL-2006) | Only a shared-deployment risk; contained by k≥20 surfacing, no session grouping, coarse timestamps. On a single operator's own machine there is no one else to distinguish from |
 
 ## Related
 
