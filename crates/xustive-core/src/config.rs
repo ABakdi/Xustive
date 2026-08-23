@@ -297,6 +297,62 @@ impl DiscoveryConfig {
     }
 }
 
+/// Query-time federation with a self-hosted metasearch aggregator ([[ADR-0017]], [[Federation
+/// Gateway]]).
+///
+/// Unlike [[DiscoveryConfig]]'s Brave/SERP routes — which resolve *weak* terms offline on the
+/// ingestion plane — federation borrows recall for a **live** query: a self-hosted SearXNG returns a
+/// ranked, multi-source URL+snippet list, blended into the answer and fed to the crawler so the
+/// index converges to answering alone. **Off by default**, and inert without an endpoint. Reaching
+/// the aggregator is the [[Federation Gateway]]'s job — the serving plane never talks to SearXNG
+/// directly, so this config is read by the gateway/crawler, and by the API only to *show and toggle*
+/// the feature.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct FederationConfig {
+    /// Master switch. Off means no federation call is made, anywhere.
+    pub enabled: bool,
+    /// The self-hosted SearXNG JSON endpoint (e.g. `http://xustive-searxng:8080`). Empty leaves the
+    /// feature inert even when `enabled` — like an empty API key, a flag with no endpoint stays off
+    /// rather than erroring.
+    pub searxng_url: String,
+    /// Query-time latency budget in milliseconds. Federation runs concurrently with local retrieval;
+    /// miss this and the answer ships index-only. It may never make the local answer wait.
+    pub budget_ms: u64,
+    /// Hits to request per federated query. A handful of good URLs, not a full page.
+    pub max_hits: usize,
+    /// Extra outbound hosts the gateway may reach beyond `searxng_url` (an external summariser, a
+    /// mirror). Empty means "the SearXNG host and nothing else" — the allowlist is deny-by-default.
+    pub allowlist: Vec<String>,
+}
+
+fn default_federation_budget_ms() -> u64 {
+    250
+}
+fn default_federation_max_hits() -> usize {
+    10
+}
+
+impl Default for FederationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            searxng_url: String::new(),
+            budget_ms: default_federation_budget_ms(),
+            max_hits: default_federation_max_hits(),
+            allowlist: Vec::new(),
+        }
+    }
+}
+
+impl FederationConfig {
+    /// Whether federation is actually usable: switched on *and* holding an endpoint. Both are
+    /// required — a flag with no endpoint is a misconfiguration that stays inert, not an error.
+    pub fn searxng_usable(&self) -> bool {
+        self.enabled && !self.searxng_url.trim().is_empty()
+    }
+}
+
 /// Anonymous interaction signals ([[ADR-0015]], [[Interaction Signals]]). Impressions and clicks as
 /// k-anonymous, windowed Redis counters — never tied to a person — feeding ranking and re-crawl.
 ///
@@ -626,6 +682,8 @@ pub struct Config {
     #[serde(default)]
     pub discovery: DiscoveryConfig,
     #[serde(default)]
+    pub federation: FederationConfig,
+    #[serde(default)]
     pub interaction: InteractionConfig,
     #[serde(default)]
     pub media: MediaConfig,
@@ -647,6 +705,7 @@ impl Default for Config {
             queue: QueueConfig::default(),
             crawl: CrawlConfig::default(),
             discovery: DiscoveryConfig::default(),
+            federation: FederationConfig::default(),
             interaction: InteractionConfig::default(),
             media: MediaConfig::default(),
             vector: VectorConfig::default(),
@@ -753,6 +812,22 @@ impl Config {
                 msg: "must be greater than zero".into(),
             });
         }
+        if self.federation.searxng_usable()
+            && self.federation.searxng_url.parse::<url::Url>().is_err()
+        {
+            return Err(ConfigError::Value {
+                key: "federation.searxng_url".into(),
+                msg: format!("{:?} is not a url", self.federation.searxng_url),
+            });
+        }
+        if self.federation.enabled
+            && (self.federation.budget_ms == 0 || self.federation.budget_ms > 5000)
+        {
+            return Err(ConfigError::Value {
+                key: "federation.budget_ms".into(),
+                msg: "must be between 1 and 5000 — federation may never make the local answer wait long".into(),
+            });
+        }
         Ok(())
     }
 }
@@ -768,6 +843,32 @@ mod crawl_guard_tests {
         assert!(!c.ignore_politeness);
         assert!(c.respect_crawl_delay);
         assert_eq!(c.per_host_concurrency, 1);
+    }
+
+    #[test]
+    fn federation_is_off_and_inert_by_default() {
+        // Default off, and a flag with no endpoint stays inert rather than erroring — the same
+        // "both required" rule Brave uses. Query-time egress is opt-in ([[ADR-0017]]).
+        let f = FederationConfig::default();
+        assert!(!f.enabled);
+        assert!(!f.searxng_usable());
+        assert_eq!(f.budget_ms, 250);
+        // Enabled but endpointless is still inert, not an error.
+        let f = FederationConfig {
+            enabled: true,
+            ..FederationConfig::default()
+        };
+        assert!(!f.searxng_usable());
+    }
+
+    #[test]
+    fn federation_rejects_a_non_url_endpoint_when_usable() {
+        let mut c = Config::default();
+        c.federation.enabled = true;
+        c.federation.searxng_url = "not a url".into();
+        assert!(c.validate().is_err());
+        c.federation.searxng_url = "http://xustive-searxng:8080".into();
+        assert!(c.validate().is_ok());
     }
 
     #[test]
