@@ -40,9 +40,11 @@ Task id format: `M<milestone>-T<task>` → `M1-T04`. Subtasks are `M1-T04.3`.
 | **M3** | [[Milestone 3 - Multimodal Input]] | voice and image | WER/OCR targets met; image search ≤ 500 ms |
 | **M4** | [[Milestone 4 - Quality and Operations]] | make it survivable | load test passes at 10M docs; restore drill green |
 | **M5** | [[Milestone 5 - Beta Launch]] | legal, a11y, launch | legal checklist clear; a11y AA; public beta |
+| **M6** | [[Milestone 6 - Adaptive Ranking from Interaction Signals]] | learn from anonymous use | replayed clicks lift clicked docs; every privacy test green; default off |
+| **M7** | [[Milestone 7 - Federated Retrieval and External Tools]] | retrieval quality + live web federation | recall up with federation off; federation fail-open within budget; egress stays one allowlisted hop |
 
 ```
-M0 ──► M1 ──► M1B ──► M2 ──► M3 ──► M4 ──► M5
+M0 ──► M1 ──► M1B ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7
 ```
 
 **Ingestion runs before multimodal.** They are technically independent after M1 and were originally
@@ -156,6 +158,35 @@ Breakdown in [[Milestone 1B - Frontend and Instant Answers]].
 - [ ] M5-T06 Native-speaker review of all UI strings
 - [ ] M5-T07 Beta programme and feedback loop
 - [ ] M5-T08 Launch runbook and rollback plan
+
+### M6 — Adaptive Ranking from Interaction Signals
+
+Breakdown in [[Milestone 6 - Adaptive Ranking from Interaction Signals]].
+
+- [x] M6-T01 [[Interaction Signals]] store + config + k<20 guard
+- [x] M6-T02 Impression / query capture (server-side, no new egress)
+- [x] M6-T03 Click capture — opaque token + `/interaction` beacon
+- [x] M6-T04 CTR ranking signal + weight rebalance + feedback-loop guard
+- [x] M6-T05 Query analytics — `top_queries` + category rollups
+- [ ] M6-T06 Re-crawl prioritisation (ingestion reads Redis)
+- [x] M6-T07 `/admin/interaction` console + endpoints
+- [~] M6-T08 Privacy hardening & proof — egress/telemetry/key-shape green; privacy copy pending
+- [ ] M6-T09 Eval — offline replay uplift + guardrail metric
+
+### M7 — Federated Retrieval and External Tools
+
+Breakdown in [[Milestone 7 - Federated Retrieval and External Tools]].
+
+- [ ] M7-T01 Lexical retrieval quality — stemming, richer synonyms, expansion-leg trigger
+- [ ] M7-T02 Semantic recall — text embeddings + Qdrant hybrid
+- [ ] M7-T03 Term ↔ document linking — keyphrase graph, related terms
+- [ ] M7-T04 [[Federation Gateway]] — `xustive-federator`, self-hosted SearXNG, allowlist, egress test
+- [ ] M7-T05 Query-time blend — additive, budgeted, fail-open, provenance-tagged, capped
+- [ ] M7-T06 Federated results feed the crawler — converge to standalone
+- [ ] M7-T07 Learn from external ranking — offline reranker calibration
+- [ ] M7-T08 External AI summariser (Parallel-AI MCP) — opt-in, offline-preferred, default off
+- [ ] M7-T09 Operator control — the `/admin/integrations` console
+- [ ] M7-T10 Search-history visibility — result counts, per-query clicks, honest copy
 
 ---
 
