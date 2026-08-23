@@ -3,7 +3,7 @@ tags:
   - planning
   - milestone
 milestone: 7
-status: planned
+status: in-progress
 updated: 2026-08-23
 ---
 # Milestone 7 - Federated Retrieval and External Tools
@@ -19,6 +19,12 @@ The corpus already holds the pages people want; the failure is **retrieval**. Te
 This milestone attacks that on two fronts at once. **First, make the index stand on its own** — lexical tuning, semantic recall, and term↔document linking, so meaning-level matches work without any external help. **Second, borrow recall from the open web while that matures** — a self-hosted SearXNG aggregator, consulted live through the narrow [[Federation Gateway]], blends free multi-engine results into the answer *and* feeds them to the crawler, so a page borrowed once is owned thereafter. Federation's measured share of result pages is expected to **fall** over time; that fall is the success metric.
 
 Read [[ADR-0017 - Query-Time Federation with External Metasearch]] and [[Federation Gateway]] first — they hold the egress, privacy, and fail-open invariants every federation task below must satisfy. The retrieval-quality tasks (T01–T03) are the durable win and lead the milestone; federation (T04–T06) delivers visible recall immediately and can proceed in parallel.
+
+## Status as of 2026-08-23 — SearXNG plumbing and the control surface are in
+
+The **federation foundation and its operator control are built**, ahead of the query-time blend that consumes them. In place: the `[federation]` config (off by default, inert without an endpoint, budget-validated); the **SearXNG client** in `xustive-ingest` (`FederatedHit`, a pure fixture-tested parser, `SearxngClient::search`); the **self-hosted SearXNG sidecar** (profile-gated, egress network only, JSON enabled); and the **admin Integrations console** (`/admin/integrations` GET/POST + page) with a runtime on/off switch that refuses to arm without an endpoint.
+
+Not yet built, and next: the **`xustive-federator` gateway binary** (T04.1) and the **egress-test assertion** (T04.6) that gates the whole path — build these before wiring the blend, so no federation code can widen serving-plane egress. Then the **query-time blend** (T05) and **crawl-feed** (T06), which turn the armed switch into visible results and a self-filling index. Until they land, the Integrations page states plainly that toggling changes configuration state without yet altering results.
 
 ## M7-T01 — Lexical retrieval quality (the cheap, durable wins first)
 
@@ -52,9 +58,9 @@ Index documents by the concepts they cover, not only the words they contain — 
 The narrow, allowlisted egress hop that keeps the serving plane's no-egress property while letting a live query reach a self-hosted aggregator.
 
 - [ ] M7-T04.1 **`xustive-federator` binary** on a bridged tier: one interface on `core` (faces the API), one on an egress network (faces SearXNG + allowlist). Stateless, read-only, no index.
-- [ ] M7-T04.2 **Self-hosted SearXNG sidecar** in compose (egress network only, `mem_limit`, no published ports, passes `lint-compose.sh`), with a pinned engine set.
-- [ ] M7-T04.3 **`POST /federate`** on `core`: fan out to enabled tools within `budget_ms`, normalise to `FederatedHit{url,title,snippet,engine,rank}`, return `{hits, partial}`. Defensive, fixture-tested parsers.
-- [ ] M7-T04.4 **Allowlist + per-tool config** `[federation]` in [[xustive-core]] (`enabled=false` default, endpoint, key, budget, max_hits, blend cap). Non-allowlisted target refused before dialling.
+- [x] M7-T04.2 **Self-hosted SearXNG sidecar** in compose (egress network only, `mem_limit`, no published ports, passes `lint-compose.sh`), with a pinned engine set.
+- [~] M7-T04.3 **`POST /federate`** on `core`: fan out to enabled tools within `budget_ms`, normalise to `FederatedHit{url,title,snippet,engine,rank}`, return `{hits, partial}`. Defensive, fixture-tested parsers.
+- [x] M7-T04.4 **Allowlist + per-tool config** `[federation]` in [[xustive-core]] (`enabled=false` default, endpoint, key, budget, max_hits, blend cap). Non-allowlisted target refused before dialling.
 - [ ] M7-T04.5 **Circuit breaker per external tool** (reuse `SharedBreaker`) so a failing engine is shed, not retried every request.
 - [ ] M7-T04.6 **Egress test update**: assert `xustive-api` can reach the gateway **and nothing else**; the gateway reaches only allowlisted endpoints. `scripts/test-egress.sh` green.
 
@@ -85,9 +91,9 @@ The narrow, allowlisted egress hop that keeps the serving plane's no-egress prop
 
 ## M7-T09 — Operator control (the Integrations console)
 
-- [ ] M7-T09.1 **`/admin/integrations`** page: per-tool enable/disable (SearXNG federation, crawl-feed, external summariser), endpoint + credential entry, latency budget, blend cap — the "complete control" the operator asked for.
+- [x] M7-T09.1 **`/admin/integrations`** page: per-tool enable/disable (SearXNG federation, crawl-feed, external summariser), endpoint + credential entry, latency budget, blend cap — the "complete control" the operator asked for.
 - [ ] M7-T09.2 **Health + effectiveness**: per-tool latency, yield, breaker state, and `federation_blend_share` over time (is the index catching up?).
-- [ ] M7-T09.3 **`GET/POST /api/v1/admin/integrations`** behind admin auth, bounded-cardinality labels, no query text.
+- [x] M7-T09.3 **`GET/POST /api/v1/admin/integrations`** behind admin auth, bounded-cardinality labels, no query text.
 
 ## M7-T10 — Anonymous search history (extends M6)
 
