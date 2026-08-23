@@ -68,6 +68,27 @@ else
   bad "control probe failed — this test cannot distinguish 'blocked' from 'broken'"
 fi
 
+# 5. The Federation Gateway bridge must not become a back door (M7-T04.6, ADR-0017).
+#    The federator is dual-homed: `core` (serving side) and `ingest` (egress side). That is safe
+#    only because Docker does not route between a container's interfaces — the API can speak HTTP to
+#    the gateway's `/federate`, but gets no IP path to the internet, or to SearXNG, through it.
+#    Checks 2 and 3 above already prove the internet stays unreachable from `core` even with the
+#    gateway attached. This proves the other half: from `core`, SearXNG itself is unreachable, so the
+#    serving plane cannot bypass the gateway and query it directly. Only the federator, on both
+#    networks, may reach it. Skipped unless the federation profile is running.
+if docker ps --format '{{.Names}}' | grep -q '^xustive-searxng$'; then
+  docker run --rm --network "$NET_NAME" "$IMAGE" \
+    timeout 5 wget -q -O /dev/null http://xustive-searxng:8080 >/dev/null 2>&1
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    ok "SearXNG is unreachable from core — only the dual-homed gateway can reach it"
+  else
+    bad "SEARXNG REACHABLE FROM CORE — the serving plane can bypass the gateway"
+  fi
+else
+  echo "  ~ federation profile not running; skipping the gateway-bridge check" >&2
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "✓ egress test: the serving plane cannot reach the internet"
 fi

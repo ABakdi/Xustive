@@ -1,0 +1,20 @@
+# The Federation Gateway (M7-T04.1, ADR-0017).
+#
+# A separate image from the serving plane on purpose: it is dual-homed onto the egress network and
+# holds the only outbound client on the serving side. Baking that into its own image makes the
+# "the API has no egress client" separation a build-time fact, not a runtime hope.
+FROM rust:1-slim AS build
+WORKDIR /src
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY . .
+RUN cargo build --release -p xustive-federator
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --no-create-home xustive
+COPY --from=build /src/target/release/xustive-federator /usr/local/bin/xustive-federator
+# Unprivileged: it talks to SearXNG on the egress side and takes a query on the core side, nothing more.
+USER xustive
+ENTRYPOINT ["/usr/local/bin/xustive-federator"]

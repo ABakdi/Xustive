@@ -236,6 +236,30 @@ services:
     networks: [ingest]
     restart: unless-stopped
 
+  # The Federation Gateway (M7-T04.1, [[ADR-0017]]): the one allowlisted egress hop. Dual-homed —
+  # on `core` the serving API reaches it, on `ingest` it reaches the self-hosted SearXNG. It holds
+  # the only outbound client on the serving side, so `xustive-api` keeps no internet route of its
+  # own: the API can reach this gateway and nothing else. Behind the `federation` profile, off by
+  # default, no published port.
+  federator:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.federator
+    container_name: xustive-federator
+    profiles: ["federation"]
+    mem_limit: 256m
+    cpus: 0.5
+    environment:
+      FEDERATOR_BIND: 0.0.0.0:8095
+      SEARXNG_URL: http://xustive-searxng:8080
+      FEDERATION_MAX_HITS: "10"
+      FEDERATION_BUDGET_MS: "250"
+      RUST_LOG: info
+    networks: [core, ingest]
+    depends_on:
+      - searxng
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: xustive-prometheus
