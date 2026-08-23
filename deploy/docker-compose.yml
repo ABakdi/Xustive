@@ -23,9 +23,11 @@ services:
   meilisearch:
     image: getmeili/meilisearch:v1.13
     container_name: xustive-meilisearch
-    # Production ceiling is 32 GB / 8 vCPU; this is the development slice.
-    mem_limit: 4g
-    cpus: 4.0
+    # Production ceiling is 32 GB / 8 vCPU. This development slice is tuned for a 12-core host that
+    # also runs the release-mode crawler, index worker and API: Meili gets half the cores for a
+    # bulk index and the other half stays free for the fetch/parse pipeline feeding it.
+    mem_limit: 5g
+    cpus: 6.0
     environment:
       MEILI_ENV: development
       # Empty by default so development needs no setup. Set MEILI_MASTER_KEY in .env to exercise
@@ -33,9 +35,10 @@ services:
       # API at all, so search-only and index-only credentials cannot exist.
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
       MEILI_NO_ANALYTICS: "true"
-      MEILI_MAX_INDEXING_MEMORY: 2Gb
-      # Capped so a bulk index cannot starve search of CPU.
-      MEILI_MAX_INDEXING_THREADS: 2
+      MEILI_MAX_INDEXING_MEMORY: 3Gb
+      # Six of the host's twelve cores for indexing — three times the old cap, so a backlog drains
+      # fast, while the remaining six keep the crawler and worker fetching and parsing in parallel.
+      MEILI_MAX_INDEXING_THREADS: 6
       MEILI_EXPERIMENTAL_ENABLE_METRICS: "true"
     volumes:
       - meili_data:/meili_data
