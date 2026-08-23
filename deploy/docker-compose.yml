@@ -213,6 +213,29 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # Self-hosted SearXNG metasearch aggregator for query-time federation (M7-T04, [[ADR-0017]]).
+  # On the egress `ingest` network only — a user query reaches third-party engines through our own
+  # SearXNG, never carrying a client IP or identity. The serving plane cannot reach it directly; the
+  # Federation Gateway (a later increment) bridges to it. Behind the `federation` profile, so it is
+  # off unless explicitly enabled, and has no published port.
+  #
+  # `:latest` is a deliberate exception to the pin-every-image rule: SearXNG publishes only rolling
+  # date tags, and this is an off-by-default optional sidecar. JSON output is enabled via the mounted
+  # settings file (the image ships it disabled).
+  searxng:
+    image: searxng/searxng:latest
+    container_name: xustive-searxng
+    profiles: ["federation"]
+    mem_limit: 512m
+    cpus: 1.0
+    environment:
+      SEARXNG_BASE_URL: http://xustive-searxng:8080/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-xustive-dev-searxng-secret-change-me}
+    volumes:
+      - ../services/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks: [ingest]
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: xustive-prometheus

@@ -1,0 +1,22 @@
+# Minimal SearXNG override for Xustive query-time federation (M7-T04, ADR-0017).
+#
+# SearXNG runs on the egress `ingest` network only — a user query reaches third-party engines
+# through our own instance, never carrying a client IP, cookie, or identity. The serving plane
+# cannot reach it directly; the Federation Gateway bridges to it.
+#
+# `use_default_settings: true` inherits the image's full engine list and only overrides what we need.
+use_default_settings: true
+
+server:
+  # Dev-only secret. On any real deployment set SEARXNG_SECRET in deploy/.env and rotate this.
+  secret_key: "xustive-dev-searxng-secret-change-me"
+  # The only caller is our own gateway on an internal network, so the public rate-limiter is off.
+  limiter: false
+  image_proxy: false
+
+search:
+  # Federation reads JSON. The default image ships the JSON format disabled, so enable it explicitly
+  # — without this, `format=json` returns 403 and federation gets nothing.
+  formats:
+    - html
+    - json
