@@ -20,11 +20,15 @@ This milestone attacks that on two fronts at once. **First, make the index stand
 
 Read [[ADR-0017 - Query-Time Federation with External Metasearch]] and [[Federation Gateway]] first — they hold the egress, privacy, and fail-open invariants every federation task below must satisfy. The retrieval-quality tasks (T01–T03) are the durable win and lead the milestone; federation (T04–T06) delivers visible recall immediately and can proceed in parallel.
 
-## Status as of 2026-08-23 — SearXNG plumbing and the control surface are in
+## Status as of 2026-08-23 — the gateway is built and the egress boundary is sealed
 
-The **federation foundation and its operator control are built**, ahead of the query-time blend that consumes them. In place: the `[federation]` config (off by default, inert without an endpoint, budget-validated); the **SearXNG client** in `xustive-ingest` (`FederatedHit`, a pure fixture-tested parser, `SearxngClient::search`); the **self-hosted SearXNG sidecar** (profile-gated, egress network only, JSON enabled); and the **admin Integrations console** (`/admin/integrations` GET/POST + page) with a runtime on/off switch that refuses to arm without an endpoint.
+**T04 is essentially complete** (only the per-tool breaker, T04.5, remains). In place: the `[federation]` config (off by default, inert without an endpoint, budget-validated); the **SearXNG client** in `xustive-ingest` (`FederatedHit`, a pure fixture-tested parser, `SearxngClient::search`); the **self-hosted SearXNG sidecar** (profile-gated, egress network only, JSON enabled); the **`xustive-federator` gateway binary** (dual-homed, `POST /federate` + `/healthz`, fail-open, no query logged); the **egress-test assertion** proving SearXNG is unreachable from `core` while the internet stays unreachable even with the bridge attached; and the **admin Integrations console** (`/admin/integrations` GET/POST + page) with a runtime on/off switch that refuses to arm without an endpoint.
 
-Not yet built, and next: the **`xustive-federator` gateway binary** (T04.1) and the **egress-test assertion** (T04.6) that gates the whole path — build these before wiring the blend, so no federation code can widen serving-plane egress. Then the **query-time blend** (T05) and **crawl-feed** (T06), which turn the armed switch into visible results and a self-filling index. Until they land, the Integrations page states plainly that toggling changes configuration state without yet altering results.
+The gateway exists and the boundary is provably sealed, but **nothing calls it yet** — the two consumers are the next work:
+- **T05 query-time blend** — the serving pipeline calls `/federate` concurrently with local retrieval, within budget, fail-open, and merges the hits. This carries a real design fork (see the task): federated URLs already in our index reinforce the local document, but genuinely-new external URLs must appear *somehow* — interleaved as synthetic results, or as a separate "from the web" strip. That choice is a UX/ranking decision worth settling before building the hot path.
+- **T06 crawl-feed** — federated URLs deposited as capped Redis crawl hints, read by the [[Crawler Orchestrator]], so the index fills in and federation's share falls. Lower-risk and independent of the blend fork.
+
+Until a consumer lands, the Integrations toggle arms a switch nothing reads yet — which the page states plainly.
 
 ## M7-T01 — Lexical retrieval quality (the cheap, durable wins first)
 
@@ -57,12 +61,12 @@ Index documents by the concepts they cover, not only the words they contain — 
 
 The narrow, allowlisted egress hop that keeps the serving plane's no-egress property while letting a live query reach a self-hosted aggregator.
 
-- [ ] M7-T04.1 **`xustive-federator` binary** on a bridged tier: one interface on `core` (faces the API), one on an egress network (faces SearXNG + allowlist). Stateless, read-only, no index.
+- [x] M7-T04.1 **`xustive-federator` binary** on a bridged tier: one interface on `core` (faces the API), one on an egress network (faces SearXNG + allowlist). Stateless, read-only, no index.
 - [x] M7-T04.2 **Self-hosted SearXNG sidecar** in compose (egress network only, `mem_limit`, no published ports, passes `lint-compose.sh`), with a pinned engine set.
-- [~] M7-T04.3 **`POST /federate`** on `core`: fan out to enabled tools within `budget_ms`, normalise to `FederatedHit{url,title,snippet,engine,rank}`, return `{hits, partial}`. Defensive, fixture-tested parsers.
+- [x] M7-T04.3 **`POST /federate`** on `core`: fan out to enabled tools within `budget_ms`, normalise to `FederatedHit{url,title,snippet,engine,rank}`, return `{hits, partial}`. Defensive, fixture-tested parsers.
 - [x] M7-T04.4 **Allowlist + per-tool config** `[federation]` in [[xustive-core]] (`enabled=false` default, endpoint, key, budget, max_hits, blend cap). Non-allowlisted target refused before dialling.
 - [ ] M7-T04.5 **Circuit breaker per external tool** (reuse `SharedBreaker`) so a failing engine is shed, not retried every request.
-- [ ] M7-T04.6 **Egress test update**: assert `xustive-api` can reach the gateway **and nothing else**; the gateway reaches only allowlisted endpoints. `scripts/test-egress.sh` green.
+- [x] M7-T04.6 **Egress test update**: assert `xustive-api` can reach the gateway **and nothing else**; the gateway reaches only allowlisted endpoints. `scripts/test-egress.sh` green.
 
 ## M7-T05 — Query-time blend (additive, budgeted, fail-open)
 
