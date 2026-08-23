@@ -15,8 +15,13 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 COMPOSE="docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml"
-# The host ports `make dev` binds. The infra ports (redis/meili/qdrant/…) live in containers and
-# are released by `compose down`, so they are not force-killed here.
+# Tear down containers from **every** profile, not just the default set. `docker compose down` only
+# removes profile-gated services when their profile is active — so without this, the optional
+# sidecars (federation's SearXNG + gateway, and the ocr/vector/voice profiles) survive a `down` and
+# keep holding their ports. `*` selects all profiles for the teardown.
+export COMPOSE_PROFILES='*'
+# The host ports `make dev` binds. The infra ports (redis/meili/qdrant/… and the profiled sidecars)
+# live in containers and are released by `compose down`, so they are not force-killed here.
 DEV_PORTS="8080 3000"
 
 CLEAN=0

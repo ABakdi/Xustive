@@ -87,10 +87,12 @@ for pattern in "xustive-api" "xustive-cli" "xustive-toold" "next dev" "next star
 done
 sleep 2
 
-# 2. Then the data.
+# 2. Then the data. `COMPOSE_PROFILES=*` so the optional profiled sidecars (federation, ocr, vector,
+#    voice) are torn down too — `down` skips profiled services otherwise, and `-v` must delete their
+#    volumes as well.
 echo "▸ removing containers and volumes"
 make dev-down >/dev/null 2>&1 || true
-docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml down -v >/dev/null 2>&1 || true
+COMPOSE_PROFILES='*' docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml down -v >/dev/null 2>&1 || true
 
 echo
 echo "${B}Clean.${O} Nothing is running and nothing is stored."

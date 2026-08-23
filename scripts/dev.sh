@@ -20,16 +20,18 @@ cd "$(dirname "$0")/.."
 CONFIG="${CONFIG:-config/dev.toml}"
 
 WITH_CRAWLER=1
+WITH_FEDERATION=0
 API_FEATURES=""
 FORCE_CPU=0
 for arg in "$@"; do
   case "$arg" in
   --no-crawler) WITH_CRAWLER=0 ;;
+  --federation) WITH_FEDERATION=1 ;;
   --fast) API_FEATURES="--no-default-features" ;;
   --cpu) FORCE_CPU=1 ;;
   *)
     echo "unknown option: $arg" >&2
-    echo "usage: $0 [--cpu] [--no-crawler] [--fast]" >&2
+    echo "usage: $0 [--cpu] [--no-crawler] [--federation] [--fast]" >&2
     exit 2
     ;;
   esac
@@ -125,6 +127,20 @@ make dev-up || {
   exit 1
 }
 
+# Optional query-time federation (M7, ADR-0017): the self-hosted SearXNG aggregator and the gateway
+# that bridges to it. Off unless asked for — they are behind the `federation` compose profile. When
+# on, we also flip the API's federation switch via the env override so it is live from the first
+# search rather than needing a manual toggle in the console. `make dev-down` tears these down too.
+if [ "$WITH_FEDERATION" -eq 1 ]; then
+  say "starting federation (SearXNG + gateway)"
+  COMPOSE="docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml"
+  $COMPOSE --profile federation up -d searxng federator || {
+    say "federation containers failed to start"
+    exit 1
+  }
+  export XUSTIVE_FEDERATION_ENABLED=true
+fi
+
 # --- 2. build ------------------------------------------------------------------------------
 # Everything, before anything starts. A compile error after three services are up leaves a
 # half-running stack and a confusing error, and the first build links llama.cpp from source —
@@ -193,6 +209,11 @@ cat <<EOF
   Ctrl-C stops everything. Infrastructure stays up.
 
 EOF
+
+if [ "$WITH_FEDERATION" -eq 1 ]; then
+  printf '    %sFederation ON%s — "from the web" strip live; toggle at %s/admin/integrations\n\n' \
+    "$C_SYS" "$C_OFF" "http://localhost:8080"
+fi
 
 # Wait on the children. `wait` returns when any exits, so the loop keeps going until they are all
 # gone or the trap fires — a service crashing should not silently leave the rest running.

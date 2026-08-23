@@ -787,6 +787,11 @@ impl Config {
         if let Ok(v) = std::env::var("XUSTIVE_LOG_JSON") {
             self.telemetry.log_json = matches!(v.as_str(), "1" | "true" | "yes");
         }
+        // Lets `make dev --federation` start with federation on without editing the config file. The
+        // URLs still come from the config; this only flips the switch.
+        if let Ok(v) = std::env::var("XUSTIVE_FEDERATION_ENABLED") {
+            self.federation.enabled = matches!(v.as_str(), "1" | "true" | "yes");
+        }
     }
 
     fn validate(&self) -> Result<(), ConfigError> {
