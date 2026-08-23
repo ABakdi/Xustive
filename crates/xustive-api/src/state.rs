@@ -86,6 +86,11 @@ pub struct AppState {
     /// Voice transcription, or `None` when `[stt] enabled = false`. Same posture: absence is normal
     /// and the `/transcribe` endpoint returns a clean unavailable.
     pub stt: Option<crate::stt::SttClient>,
+    /// Client for the [[Federation Gateway]] (M7-T05). `Some` only when the API is configured to
+    /// federate; even then, gated at request time by the `federation_enabled` runtime switch. Every
+    /// call is fail-open, so this being absent, disabled, or broken only removes the "from the web"
+    /// strip — never the results.
+    pub federator: Option<crate::federate::FederatorClient>,
     /// Anonymous interaction signals (M6): a k-anonymous CTR store in Redis. `None` when
     /// `[interaction] enabled = false` or Redis is unreachable — the search path treats absence as
     /// "no interaction data", so ranking and capture simply skip it. Never holds a per-person record.
@@ -286,6 +291,7 @@ impl AppState {
         let media = config.media.clone();
         let vector = config.vector.clone();
         let stt = config.stt.clone();
+        let federation = config.federation.clone();
         let search = MeiliClient::new(
             &config.search.meili_url,
             &config.search.meili_key,
@@ -315,6 +321,7 @@ impl AppState {
             ocr: build_ocr_backend(&media),
             image_search: crate::image_search::ImageSearch::from_config(&vector),
             stt: crate::stt::SttClient::from_config(&stt),
+            federator: crate::federate::FederatorClient::from_config(&federation),
             interactions: Arc::new(std::sync::RwLock::new(None)),
             interaction_tokens: Arc::new(std::sync::RwLock::new(HashMap::new())),
             crawl_stats: Arc::new(std::sync::RwLock::new(None)),

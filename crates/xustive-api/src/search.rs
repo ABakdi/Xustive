@@ -144,6 +144,13 @@ pub struct SearchResponse {
     /// reads as "this search has nothing to filter by" — a different, wrong message.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub facets_degraded: bool,
+    /// The "from the web" strip (M7-T05, [[ADR-0017]]): results borrowed live from federation
+    /// (self-hosted SearXNG via the [[Federation Gateway]]), shown **separately** from — never mixed
+    /// into — the ranked index results, so a hit with no relevance/trust signals never sits among
+    /// scored documents. Empty and omitted when federation is off, returned nothing, or missed its
+    /// budget. Every URL here is also queued for crawl, so it becomes a real indexed result later.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub federated: Vec<xustive_ingest::federation::FederatedHit>,
 }
 
 /// Below this many primary hits, try the expanded leg.
@@ -323,6 +330,25 @@ pub async fn handler(
             ("script", script_label(detection.script)),
         ],
     );
+
+    // --- federation (M7-T05): borrow recall from the web, concurrently and fail-open ----------
+    // Kicked off here so it overlaps retrieval and re-ranking, and awaited at the very end. Only on
+    // page 1 (the strip belongs with the first page), only when the runtime switch is on and a
+    // gateway client exists. The call itself is fail-open — a slow, dead, or disabled gateway yields
+    // an empty strip and the search is exactly what it would be without federation.
+    let federation = if page == 1
+        && state
+            .federation_enabled
+            .load(std::sync::atomic::Ordering::Relaxed)
+    {
+        state.federator.clone().map(|client| {
+            let q = normalized.clone();
+            let budget = state.config.federation.budget_ms;
+            tokio::spawn(async move { client.federate(&q, Some(budget)).await })
+        })
+    } else {
+        None
+    };
 
     // --- retrieve -------------------------------------------------------------------
     // Pull a candidate pool rather than one page: re-ranking can only reorder what it is
@@ -560,6 +586,16 @@ pub async fn handler(
         ],
     );
 
+    // Collect the "from the web" strip (empty when off/slow/broken) and feed each URL to the
+    // crawler so a borrowed page becomes a real indexed result on a later search (M7-T06).
+    let federated = match federation {
+        Some(handle) => handle.await.unwrap_or_default(),
+        None => Vec::new(),
+    };
+    if !federated.is_empty() {
+        feed_crawler(&state, &federated);
+    }
+
     // NOTE: `normalized` is echoed to the caller who sent it, which is fine. It must never
     // reach a log line, a metric label, or a trace attribute.
     Ok(Json(SearchResponse {
@@ -588,7 +624,42 @@ pub async fn handler(
         // Facets were asked for but the deadline cut them, versus simply absent. Only the first is
         // a degradation worth signalling.
         facets_degraded: !want_facets,
+        federated,
     }))
+}
+
+/// Queue federated URLs for crawling so a borrowed page becomes a real indexed result on a later
+/// search (M7-T06). Fire-and-forget — the search response never waits on it. The search plane only
+/// *writes* the frontier; the crawler *reads* it ([[ADR-0001 - Two-Plane Architecture]]). Each URL
+/// passes the same `SafeUrl` and trap checks a discovered link does, and enters at a modest
+/// discovered-tier trust under the `Federation` channel so the discovery funnel tracks it.
+fn feed_crawler(state: &AppState, hits: &[xustive_ingest::federation::FederatedHit]) {
+    let queue_url = state.config.queue.url.clone();
+    let urls: Vec<String> = hits.iter().map(|h| h.url.clone()).collect();
+    tokio::spawn(async move {
+        let Ok(frontier) = xustive_ingest::frontier::Frontier::connect(&queue_url) else {
+            return;
+        };
+        for u in urls {
+            let Ok(safe) = xustive_core::SafeUrl::parse(&u) else {
+                continue;
+            };
+            let parsed = safe.as_url().clone();
+            if xustive_ingest::frontier::detect_trap(&parsed).is_some() {
+                continue;
+            }
+            let pending = xustive_ingest::frontier::Pending {
+                url: xustive_ingest::frontier::canonical(&parsed),
+                host: safe.authority(),
+                source_id: "federation".into(),
+                depth: 0,
+                trust: 40,
+                channel: xustive_core::DiscoveryChannel::Federation,
+                priority: xustive_ingest::frontier::priority_for(0, 40, false),
+            };
+            let _ = frontier.add(&pending).await;
+        }
+    });
 }
 
 /// Detect the query language, honouring an explicit client hint.

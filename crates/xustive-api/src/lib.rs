@@ -11,6 +11,7 @@ pub mod admin_queue;
 pub mod dataage;
 pub mod deadline;
 pub mod error;
+pub mod federate;
 pub mod image_search;
 pub mod interaction;
 pub mod metrics;
