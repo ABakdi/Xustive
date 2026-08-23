@@ -32,6 +32,9 @@ updated: 2026-08-06
 | [[ADR-0007 - API-First Social Access]] | No scraping fallback exists in the code | **superseded by 0009** | social connectors, [[Legal and Compliance]] |
 | [[ADR-0008 - No Query Logging]] | Zero query retention, enforced structurally | accepted | [[Security and Privacy]], [[Observability]] |
 | [[ADR-0009 - Direct Collection for Social Platforms]] | Direct collection is a first-class path; adds the collection layer | accepted | social connectors, [[Session Manager]], [[Fingerprint Engine]], [[Signature Service]], [[Proxy Manager]] |
+| [[ADR-0015 - Anonymous Interaction Signals for Ranking]] | k-anonymous interaction counters feed ranking and re-crawl; default off | accepted | [[Ranking and Relevance]], [[Query Pipeline]], [[Interaction Signals]], [[Observability]] |
+| [[ADR-0016 - Two OCR Engines with an Optional Unlimited-OCR Sidecar]] | dual OCR backends, optional Unlimited-OCR sidecar | accepted | OCR / multimodal ingest |
+| [[ADR-0017 - Query-Time Federation with External Metasearch]] | live web federation through one allowlisted gateway; serving-plane no-egress kept as one hop; converge to standalone | accepted | [[Federation Gateway]], [[Query Pipeline]], [[Crawler Orchestrator]], [[Ranking and Relevance]] |
 
 ---
 
