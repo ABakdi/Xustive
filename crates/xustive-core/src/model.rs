@@ -262,6 +262,9 @@ pub enum DiscoveryChannel {
     Brave,
     /// Direct SERP collection (M2-T16.9).
     Serp,
+    /// A URL a live user search borrowed from query-time federation (self-hosted SearXNG), queued so
+    /// it becomes a real indexed result on a later search (M7-T06, [[ADR-0017]]).
+    Federation,
     /// Provenance not recorded — an older document, or a path that predates this field.
     #[default]
     Unknown,
@@ -279,6 +282,7 @@ impl DiscoveryChannel {
             Self::QueryDriven => "query",
             Self::Brave => "brave",
             Self::Serp => "serp",
+            Self::Federation => "federation",
             Self::Unknown => "unknown",
         }
     }
@@ -294,6 +298,7 @@ impl DiscoveryChannel {
             "query" => Self::QueryDriven,
             "brave" => Self::Brave,
             "serp" => Self::Serp,
+            "federation" => Self::Federation,
             "unknown" => Self::Unknown,
             _ => return None,
         })

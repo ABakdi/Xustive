@@ -314,8 +314,14 @@ pub struct FederationConfig {
     pub enabled: bool,
     /// The self-hosted SearXNG JSON endpoint (e.g. `http://xustive-searxng:8080`). Empty leaves the
     /// feature inert even when `enabled` — like an empty API key, a flag with no endpoint stays off
-    /// rather than erroring.
+    /// rather than erroring. Read by the gateway (which reaches SearXNG); the serving plane never
+    /// uses this directly.
     pub searxng_url: String,
+    /// The [[Federation Gateway]]'s `core`-side URL, which the serving API calls at query time (e.g.
+    /// `http://xustive-federator:8095`). This is the *only* new outbound target the API gains, and it
+    /// is an internal address — the API still has no route to the open internet ([[ADR-0017]]). Empty
+    /// means the API does not federate even when `enabled`.
+    pub federator_url: String,
     /// Query-time latency budget in milliseconds. Federation runs concurrently with local retrieval;
     /// miss this and the answer ships index-only. It may never make the local answer wait.
     pub budget_ms: u64,
@@ -338,6 +344,7 @@ impl Default for FederationConfig {
         Self {
             enabled: false,
             searxng_url: String::new(),
+            federator_url: String::new(),
             budget_ms: default_federation_budget_ms(),
             max_hits: default_federation_max_hits(),
             allowlist: Vec::new(),
@@ -346,10 +353,17 @@ impl Default for FederationConfig {
 }
 
 impl FederationConfig {
-    /// Whether federation is actually usable: switched on *and* holding an endpoint. Both are
-    /// required — a flag with no endpoint is a misconfiguration that stays inert, not an error.
+    /// Whether federation is actually usable by the gateway: switched on *and* holding a SearXNG
+    /// endpoint. Both are required — a flag with no endpoint is a misconfiguration that stays inert,
+    /// not an error.
     pub fn searxng_usable(&self) -> bool {
         self.enabled && !self.searxng_url.trim().is_empty()
+    }
+
+    /// Whether the *serving API* should federate: switched on *and* holding a gateway URL to call.
+    /// Distinct from [`searxng_usable`] — the API talks to the gateway, never to SearXNG.
+    pub fn api_federation_usable(&self) -> bool {
+        self.enabled && !self.federator_url.trim().is_empty()
     }
 }
 
@@ -818,6 +832,14 @@ impl Config {
             return Err(ConfigError::Value {
                 key: "federation.searxng_url".into(),
                 msg: format!("{:?} is not a url", self.federation.searxng_url),
+            });
+        }
+        if !self.federation.federator_url.trim().is_empty()
+            && self.federation.federator_url.parse::<url::Url>().is_err()
+        {
+            return Err(ConfigError::Value {
+                key: "federation.federator_url".into(),
+                msg: format!("{:?} is not a url", self.federation.federator_url),
             });
         }
         if self.federation.enabled
