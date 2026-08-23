@@ -107,8 +107,13 @@ pub struct FetchConfig {
 impl Default for FetchConfig {
     fn default() -> Self {
         Self {
-            connect_timeout: Duration::from_secs(10),
-            total_timeout: Duration::from_secs(30),
+            // A worker is pinned to one fetch for as long as it runs, so a slow or dead host is
+            // stolen throughput, not just a slow page. Five seconds is generous for a TCP+TLS
+            // handshake to any live host; beyond that the host is almost never worth the wait,
+            // and freeing the worker to claim a responsive host is the better trade. The total
+            // cap stays comfortably above a large page over a slow link.
+            connect_timeout: Duration::from_secs(5),
+            total_timeout: Duration::from_secs(20),
             max_body_bytes: 10 * 1024 * 1024,
             robots_ttl: Duration::from_secs(24 * 3600),
             politeness_margin: Duration::from_millis(200),
