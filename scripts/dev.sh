@@ -148,7 +148,10 @@ elif [ -z "$API_FEATURES" ]; then
   echo "  no CUDA toolkit (/opt/cuda/bin/nvcc) — building CPU-only"
 fi
 
-cargo build -p xustive-api -p xustive-cli $API_FEATURES || {
+# The crawler and worker are the throughput-critical, CPU-bound paths (HTML parse, dedup,
+# batch submission), so build them optimised — a debug crawler/indexer runs many times slower
+# for no dev benefit. The API stays debug for fast iteration (and its CUDA build is heavy).
+cargo build -p xustive-api $API_FEATURES && cargo build --release -p xustive-cli || {
   say "build failed — nothing started"
   exit 1
 }
@@ -171,11 +174,11 @@ done
 say "api ready"
 
 start "web    " "$C_WEB" npm --prefix web run dev
-start "worker " "$C_WORK" cargo run -q -p xustive-cli -- --config "$CONFIG" worker
+start "worker " "$C_WORK" cargo run -q --release -p xustive-cli -- --config "$CONFIG" worker
 start "toold  " "$C_TOOL" cargo run -q -p xustive-toold -- --once
 
 if [ "$WITH_CRAWLER" -eq 1 ]; then
-  start "crawler" "$C_CRAWL" cargo run -q -p xustive-cli -- --config "$CONFIG" crawld
+  start "crawler" "$C_CRAWL" cargo run -q --release -p xustive-cli -- --config "$CONFIG" crawld
 fi
 
 cat <<EOF
