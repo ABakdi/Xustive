@@ -18,6 +18,7 @@ pub mod dedup;
 pub mod embed_cache;
 pub mod enrichment;
 pub mod exclusion;
+pub mod federation;
 pub mod fetch;
 pub mod fingerprint;
 pub mod frontier;
