@@ -84,8 +84,15 @@ const BACKPRESSURE_PAUSE: Duration = Duration::from_secs(10);
 /// is nothing here a GPU could help with.
 ///
 /// Bounded by hosts, not by cores. Past the number of distinct hosts that are due, extra workers
-/// find nothing to claim and idle — so this is set near the seed count and rises with it.
-pub const DEFAULT_WORKERS: usize = 16;
+/// find nothing to claim and idle — so this rises with the breadth of the frontier. With a
+/// frontier spanning hundreds of hosts (steady state, once discovery has run), the old value of
+/// 16 was the ceiling: 16 hosts in flight against a 1.5s per-host delay caps throughput near
+/// ~9 fetches/sec no matter how much work is queued. Sixty-four lifts that ceiling roughly
+/// fourfold while every individual host still sees the same one-at-a-time, delay-respecting
+/// pacing — the extra concurrency is spent entirely on *more distinct hosts*, never on hitting
+/// one host harder. Each idle worker is a parked async task (a few KB), so overshooting the
+/// due-host count costs almost nothing.
+pub const DEFAULT_WORKERS: usize = 64;
 
 pub struct Options {
     pub workers: usize,
