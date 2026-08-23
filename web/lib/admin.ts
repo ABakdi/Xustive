@@ -182,6 +182,26 @@ export const setLogLevel = (filter: string | null) =>
     filter,
   })
 
+// --- integrations (external tools) -----------------------------------------------------------
+export interface FederationStatus {
+  enabled: boolean
+  configured: boolean
+  searxng_url: string
+  budget_ms: number
+  max_hits: number
+  allowlist: string[]
+  reachable_from_api: boolean
+  note: string
+}
+export const getIntegrations = (signal?: AbortSignal) =>
+  getJSON<{ federation: FederationStatus }>('/integrations', signal)
+/** Toggle one integration on or off at runtime. Only `federation` today. */
+export const setIntegration = (integration: string, enabled: boolean) =>
+  postJSON<{ ok: boolean; integration: string; enabled: boolean }>('/integrations', {
+    integration,
+    enabled,
+  })
+
 // --- image AI (OCR + vector) -----------------------------------------------------------------
 export interface MediaStatus {
   ocr: { backend: string; healthy: boolean; sidecar_endpoint: string }
