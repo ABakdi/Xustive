@@ -36,7 +36,11 @@ export function ForceCrawl() {
   }
 
   return (
-    <form onSubmit={submit} className="mb-6 flex flex-wrap items-end gap-2">
+    // Password-manager extensions (1Password, LastPass, Dashlane…) inject `form_signature` /
+    // `field_signature` attributes onto forms and inputs after the server HTML arrives but before
+    // React hydrates, which React reports as a mismatch. It is not ours to fix — this suppresses the
+    // warning for the element's own attributes only, exactly as the search box does.
+    <form onSubmit={submit} className="mb-6 flex flex-wrap items-end gap-2" suppressHydrationWarning>
       <label className="flex flex-col gap-1 text-sm">
         Force-crawl a URL
         <input
@@ -45,8 +49,10 @@ export function ForceCrawl() {
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://example.dz/page"
           dir="ltr"
+          autoComplete="off"
           className="min-h-10 min-w-[280px] rounded border px-3 py-1.5 text-sm"
           style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }}
+          suppressHydrationWarning
         />
       </label>
       <label className="flex items-center gap-1.5 pb-2 text-sm">

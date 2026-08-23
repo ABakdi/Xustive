@@ -76,8 +76,10 @@ export default function MaintenancePage() {
             }}
             placeholder="example.dz"
             dir="ltr"
+            autoComplete="off"
             className="min-h-10 min-w-[260px] rounded border px-3 py-1.5"
             style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }}
+            suppressHydrationWarning
           />
         </label>
         <button
@@ -106,8 +108,10 @@ export default function MaintenancePage() {
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   dir="ltr"
+                  autoComplete="off"
                   className="min-h-10 min-w-[260px] rounded border px-3 py-1.5"
                   style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }}
+                  suppressHydrationWarning
                 />
               </label>
               <button

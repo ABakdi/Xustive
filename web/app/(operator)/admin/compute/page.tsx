@@ -214,6 +214,7 @@ export default function ComputePage() {
       </p>
       <form
         className="mb-8 flex flex-wrap items-end gap-2"
+        suppressHydrationWarning
         onSubmit={async (e) => {
           e.preventDefault()
           setMsg('applying…')
@@ -233,8 +234,10 @@ export default function ComputePage() {
             value={logFilter}
             onChange={(e) => setLogFilter(e.target.value)}
             placeholder="debug"
+            autoComplete="off"
             className="min-h-10 min-w-[240px] rounded border px-3 py-1.5"
             style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }}
+            suppressHydrationWarning
           />
         </label>
         <button type="submit" disabled={!logFilter.trim()} className="min-h-10 self-end rounded border px-4 text-sm" style={{ borderColor: 'var(--line)', color: 'var(--fg)' }}>
