@@ -36,10 +36,14 @@ use crate::{Delivery, Queue, QueueError};
 
 /// Documents per submission.
 ///
-/// Meilisearch indexes in a single writer, so oversized batches hold that writer and stall
-/// search. Five hundred is small enough to keep the index responsive and large enough that
-/// per-batch overhead disappears.
-pub const MAX_BATCH: usize = 500;
+/// Every batch costs one `add_documents` + `wait_task` round-trip, so the drain rate under a
+/// backlog is (batch size) / (per-task latency) — a bigger batch amortises that fixed latency
+/// over more documents. Meilisearch indexes in a single writer, but it searches concurrently
+/// with indexing, so a larger batch drains faster without making queries wait. The
+/// `MAX_BATCH_BYTES` cap below is the real guard against an oversized hold: a batch of long
+/// articles trips it well before this count. A thousand is the assert ceiling and the sweet
+/// spot for short documents, where the byte cap never binds.
+pub const MAX_BATCH: usize = 1000;
 
 /// Bytes per submission. A batch of long articles hits this well before the count.
 pub const MAX_BATCH_BYTES: usize = 4 * 1024 * 1024;
