@@ -47,7 +47,7 @@ export default function InteractionPage() {
             <p className="mb-2 text-xs" style={{ color: 'var(--fg-faint)' }}>
               Every term searched, how many results it returned, and how many of those were clicked.
               Anonymous by construction — no IP, user-agent, or session is stored, only the term and
-              its counts{data.k_anonymity > 1 ? `, surfaced only above the k-floor of ${data.k_anonymity}` : ''}.
+              its counts{(data.k_anonymity ?? 1) > 1 ? `, surfaced only above the k-floor of ${data.k_anonymity ?? 1}` : ''}.
             </p>
             {data.top_queries && data.top_queries.length > 0 ? (
               <table className="w-full max-w-2xl border-collapse text-sm">
@@ -74,7 +74,7 @@ export default function InteractionPage() {
               </table>
             ) : (
               <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>
-                No searches recorded yet{data.k_anonymity > 1 ? ' above the anonymity floor' : ''}.
+                No searches recorded yet{(data.k_anonymity ?? 1) > 1 ? ' above the anonymity floor' : ''}.
               </p>
             )}
           </section>

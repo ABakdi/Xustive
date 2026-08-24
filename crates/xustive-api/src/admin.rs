@@ -539,6 +539,37 @@ pub async fn integrations(
         Some(c) => (c.healthy().await, c.breaker_state()),
         None => (false, "none"),
     };
+
+    // Semantic (dense) text search (M7-T02): a whole retrieval path that otherwise had no console.
+    // Probe the embedder sidecar (on `core`) and count the vectors in the text collection.
+    let v = &state.config.vector;
+    let semantic = match &state.text_search {
+        Some(ts) => json!({
+            "enabled": true,
+            "configured": true,
+            "embedder_endpoint": v.text_embedder_endpoint,
+            "collection": v.text_collection,
+            "dim": v.text_dim,
+            "reachable": ts.healthy().await,
+            "breaker": ts.embedder.breaker_state(),
+            "documents_embedded": ts.store.count().await.ok(),
+        }),
+        None => json!({ "enabled": v.text_enabled, "configured": false }),
+    };
+
+    // Image similarity (M3): the CLIP path. Same shape, so the console shows both vector engines.
+    let image = match &state.image_search {
+        Some(is) => json!({
+            "enabled": true,
+            "configured": true,
+            "embedder_endpoint": v.embedder_endpoint,
+            "collection": v.collection,
+            "reachable": is.embedder.healthy().await,
+            "images_embedded": is.store.count().await.ok(),
+        }),
+        None => json!({ "enabled": v.enabled, "configured": false }),
+    };
+
     Ok(Json(json!({
         "federation": {
             "enabled": state.federation_enabled.load(Ordering::Relaxed),
@@ -555,7 +586,9 @@ pub async fn integrations(
             // never talks to SearXNG directly — the gateway does (ADR-0017).
             "reachable_from_api": reachable,
             "breaker": breaker,
-        }
+        },
+        "semantic": semantic,
+        "image": image,
     })))
 }
 

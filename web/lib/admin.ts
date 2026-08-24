@@ -210,8 +210,32 @@ export interface FederationStatus {
   /** The gateway's circuit-breaker state: closed | open | half-open | none. */
   breaker: string
 }
+/** Semantic (dense) text search status (M7-T02). */
+export interface SemanticStatus {
+  enabled: boolean
+  configured: boolean
+  embedder_endpoint?: string
+  collection?: string
+  dim?: number
+  reachable?: boolean
+  breaker?: string
+  /** Documents embedded into the text vector collection, or null if Qdrant is unreachable. */
+  documents_embedded?: number | null
+}
+/** Image-similarity (CLIP) vector status (M3). */
+export interface ImageVectorStatus {
+  enabled: boolean
+  configured: boolean
+  embedder_endpoint?: string
+  collection?: string
+  reachable?: boolean
+  images_embedded?: number | null
+}
 export const getIntegrations = (signal?: AbortSignal) =>
-  getJSON<{ federation: FederationStatus }>('/integrations', signal)
+  getJSON<{ federation: FederationStatus; semantic: SemanticStatus; image: ImageVectorStatus }>(
+    '/integrations',
+    signal,
+  )
 /** Toggle one integration on or off at runtime. Only `federation` today. */
 export const setIntegration = (integration: string, enabled: boolean) =>
   postJSON<{ ok: boolean; integration: string; enabled: boolean }>('/integrations', {

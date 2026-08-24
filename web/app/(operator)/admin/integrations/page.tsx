@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-import { getIntegrations, setIntegration, type FederationStatus } from '@/lib/admin'
+import {
+  getIntegrations,
+  setIntegration,
+  type FederationStatus,
+  type SemanticStatus,
+  type ImageVectorStatus,
+} from '@/lib/admin'
 import { PageHead } from '@/components/admin/ui'
 
 /**
@@ -15,12 +21,18 @@ import { PageHead } from '@/components/admin/ui'
  */
 export default function IntegrationsPage() {
   const [fed, setFed] = useState<FederationStatus | null>(null)
+  const [semantic, setSemantic] = useState<SemanticStatus | null>(null)
+  const [image, setImage] = useState<ImageVectorStatus | null>(null)
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(() => {
     getIntegrations()
-      .then((d) => setFed(d.federation))
+      .then((d) => {
+        setFed(d.federation)
+        setSemantic(d.semantic)
+        setImage(d.image)
+      })
       .catch((e) => setMsg((e as Error).message))
   }, [])
   useEffect(() => load(), [load])
@@ -118,6 +130,70 @@ export default function IntegrationsPage() {
       ) : (
         <p className="mb-6 text-sm" style={{ color: 'var(--fg-faint)' }}>Loading…</p>
       )}
+
+      {/* Semantic (dense) text search — a whole retrieval path that otherwise had no console. */}
+      <h2 className="mb-2 mt-8 text-lg font-semibold">Semantic search (dense text)</h2>
+      {semantic ? (
+        semantic.configured ? (
+          <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
+            <tbody>
+              {[
+                ['Enabled', semantic.enabled ? 'yes' : 'no (configured, switch off)'],
+                ['Embedder', semantic.embedder_endpoint ?? '—'],
+                ['Reachable', semantic.reachable ? 'yes — healthy' : 'no — start the semantic profile'],
+                ['Circuit breaker', semantic.breaker ?? '—'],
+                ['Collection', `${semantic.collection ?? '—'} (${semantic.dim ?? '?'}-d)`],
+                [
+                  'Documents embedded',
+                  semantic.documents_embedded == null
+                    ? 'Qdrant unreachable'
+                    : semantic.documents_embedded.toLocaleString(),
+                ],
+              ].map(([k, v]) => (
+                <tr key={k}>
+                  <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
+                  <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="mb-6 text-sm" style={{ color: 'var(--fg-muted)' }}>
+            Off. Enable <code>[vector] text_enabled</code> and start the <code>semantic</code> compose
+            profile (bge-m3 embedder) to match queries by meaning, not just words.
+          </p>
+        )
+      ) : null}
+
+      {/* Image similarity (CLIP) — the other vector engine, shown for parity. */}
+      <h2 className="mb-2 mt-4 text-lg font-semibold">Image similarity (CLIP)</h2>
+      {image ? (
+        image.configured ? (
+          <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
+            <tbody>
+              {[
+                ['Embedder', image.embedder_endpoint ?? '—'],
+                ['Reachable', image.reachable ? 'yes — healthy' : 'no — start the vector profile'],
+                ['Collection', image.collection ?? '—'],
+                [
+                  'Images embedded',
+                  image.images_embedded == null ? 'Qdrant unreachable' : image.images_embedded.toLocaleString(),
+                ],
+              ].map(([k, v]) => (
+                <tr key={k}>
+                  <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
+                  <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="mb-6 text-sm" style={{ color: 'var(--fg-muted)' }}>
+            Off. Enable <code>[vector] enabled</code> and start the <code>vector</code> compose profile
+            (CLIP embedder) for reverse-image / search-by-image.
+          </p>
+        )
+      ) : null}
 
       {msg ? <p className="text-sm" style={{ color: 'var(--warn)' }}>{msg}</p> : null}
     </>

@@ -12,8 +12,12 @@ const SECTIONS: { group: string; label: string; href: string }[] = [
   { group: 'CRAWLER', label: 'Source health', href: '/admin/sources/health' },
   { group: 'CRAWLER', label: 'Discovery yield', href: '/admin/discovery' },
   { group: 'CRAWLER', label: 'Weak coverage', href: '/admin/weak-coverage' },
+  { group: 'SEARCH', label: 'Integrations', href: '/admin/integrations' },
+  { group: 'SEARCH', label: 'Search history', href: '/admin/interaction' },
+  { group: 'SEARCH', label: 'Media & voice', href: '/admin/media' },
   { group: 'SYSTEM', label: 'Compute', href: '/admin/compute' },
-  { group: 'SYSTEM', label: 'Integrations', href: '/admin/integrations' },
+  { group: 'SYSTEM', label: 'Index queue', href: '/admin/queue' },
+  { group: 'SYSTEM', label: 'Maintenance', href: '/admin/maintenance' },
 ]
 
 export function AdminSidebar() {
