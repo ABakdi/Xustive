@@ -2,18 +2,34 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-import { getDocuments, type DocumentsPage } from '@/lib/admin'
+import {
+  getDocuments,
+  CRAWLER_CHANNELS,
+  EXTERNAL_CHANNELS,
+  type DocumentsPage,
+} from '@/lib/admin'
 import { PageHead, StatusLine, Table, Td, Th } from '@/components/admin/ui'
+
+const ALL_CHANNELS = [...CRAWLER_CHANNELS, ...EXTERNAL_CHANNELS] as const
+const EXTERNAL = new Set<string>(EXTERNAL_CHANNELS)
 
 export default function DocumentsPage() {
   const [q, setQ] = useState('')
   const [host, setHost] = useState('')
   const [lang, setLang] = useState('')
+  const [channel, setChannel] = useState('')
   // The *applied* filters, updated only on submit — so typing does not refetch per keystroke.
-  const [applied, setApplied] = useState({ q: '', host: '', lang: '' })
+  const [applied, setApplied] = useState({ q: '', host: '', lang: '', channel: '' })
   const [page, setPage] = useState(1)
   const [data, setData] = useState<DocumentsPage | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Apply a channel filter immediately (from a composition chip), bypassing the submit button.
+  const pickChannel = (c: string) => {
+    setChannel(c)
+    setPage(1)
+    setApplied((a) => ({ ...a, channel: c }))
+  }
 
   const load = useCallback(() => {
     const controller = new AbortController()
@@ -34,6 +50,17 @@ export default function DocumentsPage() {
   const total = data?.estimated_total ?? 0
   const totalPages = Math.max(1, Math.min(100, Math.ceil(total / perPage)))
 
+  // Index composition by provenance: what the crawler found directly vs what came through external
+  // tools (federation, SERP, Brave). Unknown/legacy channels are counted under the crawler total.
+  const comp = data?.composition ?? {}
+  const externalTotal = Object.entries(comp)
+    .filter(([c]) => EXTERNAL.has(c))
+    .reduce((n, [, v]) => n + v, 0)
+  const crawlerTotal = Object.entries(comp)
+    .filter(([c]) => !EXTERNAL.has(c))
+    .reduce((n, [, v]) => n + v, 0)
+  const orderedComp = ALL_CHANNELS.filter((c) => comp[c])
+
   return (
     <>
       <PageHead title="Documents">
@@ -42,12 +69,58 @@ export default function DocumentsPage() {
         four hundred copies of one calendar page.
       </PageHead>
 
+      {/* Index composition by provenance (M7): crawler vs external tools, with a per-channel chip
+          you can click to drill the list into that source. */}
+      <div
+        className="mb-4 rounded border px-3 py-3 text-sm"
+        style={{ borderColor: 'var(--line)', background: 'var(--bg-sunk)' }}
+      >
+        <div className="mb-2 flex flex-wrap gap-x-6 gap-y-1">
+          <span>
+            <strong className="tabular-nums">{crawlerTotal.toLocaleString()}</strong> from your{' '}
+            <strong>crawler</strong>
+          </span>
+          <span>
+            <strong className="tabular-nums">{externalTotal.toLocaleString()}</strong> from{' '}
+            <strong>external tools</strong>
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => pickChannel('')}
+            className="rounded border px-2 py-0.5 text-xs"
+            style={{
+              borderColor: applied.channel === '' ? 'var(--accent)' : 'var(--line)',
+              color: 'var(--fg-muted)',
+            }}
+          >
+            all
+          </button>
+          {orderedComp.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => pickChannel(c)}
+              className="rounded border px-2 py-0.5 text-xs tabular-nums"
+              style={{
+                borderColor: applied.channel === c ? 'var(--accent)' : 'var(--line)',
+                color: EXTERNAL.has(c) ? 'var(--accent)' : 'var(--fg-muted)',
+              }}
+              title={EXTERNAL.has(c) ? 'external tool' : 'crawler'}
+            >
+              {c} {(comp[c] ?? 0).toLocaleString()}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <form
         className="mb-3 flex flex-wrap items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault()
           setPage(1)
-          setApplied({ q, host, lang })
+          setApplied({ q, host, lang, channel })
         }}
       >
         <input
@@ -78,6 +151,21 @@ export default function DocumentsPage() {
           <option value="fr">Français</option>
           <option value="en">English</option>
         </select>
+        <select
+          value={channel}
+          onChange={(e) => setChannel(e.target.value)}
+          className="min-h-10 rounded border px-3 py-2"
+          style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }}
+          title="provenance: crawler vs external tools"
+        >
+          <option value="">any source</option>
+          {ALL_CHANNELS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+              {EXTERNAL.has(c) ? ' (external)' : ''}
+            </option>
+          ))}
+        </select>
         <button
           type="submit"
           className="min-h-10 rounded border px-4"
@@ -104,6 +192,7 @@ export default function DocumentsPage() {
           <>
             <Th>title</Th>
             <Th>domain</Th>
+            <Th>source</Th>
             <Th>language</Th>
             <Th num>length</Th>
             <Th>published</Th>
@@ -118,6 +207,22 @@ export default function DocumentsPage() {
               </a>
             </Td>
             <Td>{h.domain || ''}</Td>
+            <Td>
+              {h.discovery && h.discovery !== 'unknown' ? (
+                <span
+                  className="rounded px-1.5 py-0.5 text-xs"
+                  style={{
+                    background: 'var(--bg-sunk)',
+                    color: EXTERNAL.has(h.discovery) ? 'var(--accent)' : 'var(--fg-muted)',
+                  }}
+                  title={EXTERNAL.has(h.discovery) ? 'external tool' : 'crawler'}
+                >
+                  {h.discovery}
+                </span>
+              ) : (
+                <span style={{ color: 'var(--fg-faint)' }}>—</span>
+              )}
+            </Td>
             <Td>{h.language || ''}</Td>
             <Td num>{h.body_len ?? (h.excerpt ? h.excerpt.length : '')}</Td>
             <Td>

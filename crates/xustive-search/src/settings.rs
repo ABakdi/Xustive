@@ -49,6 +49,10 @@ pub fn documents_settings() -> Value {
             // precision, not the timestamp — so it must be filterable (M3 verticals).
             "published_at_precision",
             "quality_score", "spam_score", "geo.wilaya", "topics", "robots_indexable",
+            // The discovery channel that found each URL, so the admin console can facet the index by
+            // provenance — what the crawler found directly vs what came through external tools like
+            // federation (M7). Facetable = filterable in Meilisearch.
+            "discovery",
             // So the repass job (M2-T06.9) can find documents that were enriched under load.
             "enrichment_level",
             // The fetched MIME, so a "Files" vertical can select PDFs (M2-T14.3).
@@ -64,6 +68,8 @@ pub fn documents_settings() -> Value {
             "id", "title", "url", "canonical_url", "excerpt", "source_type", "source_id",
             "domain", "author", "published_at", "published_at_precision", "sentiment",
             "engagement", "language", "media", "simhash", "quality_score", "comments_count",
+            // Shown in the admin document list as a provenance badge (crawler vs external tools).
+            "discovery",
             // The extracted body's length. Not shown to searchers — it is here so the admin
             // console can tell an article from a navigation page at a glance, which the excerpt
             // cannot: the excerpt is capped, so measuring it measures the truncation.

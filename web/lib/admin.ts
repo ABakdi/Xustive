@@ -93,24 +93,34 @@ export interface DocHit {
   body_len?: number
   excerpt?: string
   published_at?: number
+  /** Discovery channel that found this document — its provenance (M7). */
+  discovery?: string
 }
 export interface DocumentsPage {
   hits: DocHit[]
   estimated_total: number
   page: number
   per_page: number
+  /** Index composition by discovery channel within the current scope: `{ federation: 12, seed: 340 }`. */
+  composition: Record<string, number>
 }
 export function getDocuments(
-  params: { q?: string; host?: string; lang?: string; page?: number },
+  params: { q?: string; host?: string; lang?: string; channel?: string; page?: number },
   signal?: AbortSignal,
 ) {
   const p = new URLSearchParams()
   if (params.q) p.set('q', params.q)
   if (params.host) p.set('host', params.host)
   if (params.lang) p.set('lang', params.lang)
+  if (params.channel) p.set('channel', params.channel)
   p.set('page', String(params.page ?? 1))
   return getJSON<DocumentsPage>(`/crawler/documents?${p}`, signal)
 }
+
+/** Discovery channels grouped by provenance, for the index-composition view. `crawler` = found
+ *  directly by our crawler; `external` = came through an external tool (federation, SERP, Brave). */
+export const CRAWLER_CHANNELS = ['seed', 'link', 'sitemap', 'cc'] as const
+export const EXTERNAL_CHANNELS = ['federation', 'serp', 'brave', 'query'] as const
 
 // --- sources (seed list) ---------------------------------------------------------------------
 export interface Seed {

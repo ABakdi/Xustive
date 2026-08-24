@@ -114,6 +114,9 @@ pub struct DocumentQuery {
     pub host: Option<String>,
     #[serde(default)]
     pub lang: Option<String>,
+    /// Discovery channel, e.g. `federation`, `seed`, `link` — provenance filter (M7). Empty = all.
+    #[serde(default)]
+    pub channel: Option<String>,
     #[serde(default)]
     pub page: Option<usize>,
 }
@@ -152,15 +155,50 @@ pub async fn documents(
     if let Some(lang) = params.lang.as_deref().filter(|l| !l.is_empty()) {
         filters.push(format!("language = {lang:?}"));
     }
+    // The provenance filter is kept *separate* from the scope filters (host/lang) on purpose: the
+    // composition facet is computed over the scope alone, so it always shows every channel to pick
+    // from, while the document list drills into the chosen one. Applying the channel filter to the
+    // facet too would collapse the breakdown to a single bar.
+    let channel_filter = params
+        .channel
+        .as_deref()
+        .filter(|c| !c.is_empty())
+        .map(|c| format!("discovery = {c:?}"));
+    let scope = filters.join(" AND ");
+    let q = params.q.clone().unwrap_or_default();
 
-    // The product's own typed query, not a raw body. A second, hand-built search path would drift
-    // from the one users hit — and the point of this section is to see what they would see.
-    let mut query = xustive_search::Query::new(params.q.clone().unwrap_or_default())
+    // 1. Composition: facet the index by `discovery` within the scope, no documents needed. This is
+    //    the "crawler vs external tools" breakdown the console shows.
+    let mut composition_q = xustive_search::Query::new(q.clone())
+        .limit(0)
+        .facets(&["discovery"]);
+    if !scope.is_empty() {
+        composition_q = composition_q.filter(scope.clone());
+    }
+    let composition = match state
+        .search
+        .search::<serde_json::Value>(&state.documents_index(), &composition_q)
+        .await
+    {
+        Ok(h) => h.facet_distribution,
+        // A facet failure must not sink the whole page — the list below is the primary content.
+        Err(e) => {
+            tracing::warn!(error = %e, "index composition facet failed");
+            json!({})
+        }
+    };
+
+    // 2. The document page, with scope + the optional channel drill-in.
+    let mut list_filters = filters.clone();
+    if let Some(cf) = &channel_filter {
+        list_filters.push(cf.clone());
+    }
+    let mut query = xustive_search::Query::new(q)
         .limit(per_page)
         .offset((page - 1) * per_page)
         .sort(&["crawled_at:desc"]);
-    if !filters.is_empty() {
-        query = query.filter(filters.join(" AND "));
+    if !list_filters.is_empty() {
+        query = query.filter(list_filters.join(" AND "));
     }
 
     match state
@@ -173,6 +211,8 @@ pub async fn documents(
             "estimated_total": hits.estimated_total_hits,
             "page": page,
             "per_page": per_page,
+            // `{ "discovery": { "federation": 12, "seed": 340, ... } }` — the index by provenance.
+            "composition": composition.get("discovery").cloned().unwrap_or_else(|| json!({})),
         }))),
         Err(e) => {
             tracing::warn!(error = %e, "admin document list failed");
