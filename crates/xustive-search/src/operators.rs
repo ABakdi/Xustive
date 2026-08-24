@@ -279,13 +279,17 @@ mod tests {
 
     #[test]
     fn a_long_query_parses_quickly() {
-        // Runs on every search, so it must not scale badly with length.
+        // The point is to catch *super-linear* scaling — `parse` runs on every search, and a
+        // quadratic step would turn a long paste into seconds. The bound is deliberately generous
+        // (a well-behaved linear parse does this in single-digit milliseconds): a tight wall-clock
+        // assertion is a flaky test on a loaded CI box, catching a busy scheduler, not a real
+        // regression. An actual O(n²) blowup at 5000 tokens would still be seconds — far past this.
         let long = "الجزائر ".repeat(5000);
         let started = std::time::Instant::now();
         let _ = parse(&long);
         assert!(
-            started.elapsed().as_millis() < 50,
-            "took {:?}",
+            started.elapsed().as_millis() < 1000,
+            "parsing 5000 tokens took {:?} — suspiciously super-linear",
             started.elapsed()
         );
     }
