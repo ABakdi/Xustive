@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use clap::Parser;
+use xustive_federation::SearxngClient;
 use xustive_federator::{app, AppState};
-use xustive_ingest::federation::SearxngClient;
 
 #[derive(Parser, Debug)]
 #[command(

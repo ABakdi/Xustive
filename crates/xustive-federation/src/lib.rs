@@ -6,7 +6,7 @@
 //! egress network — see [[Federation Gateway]]), so a user query reaches third-party engines only
 //! *through our SearXNG*, carrying no client identity, IP, cookie, or session.
 //!
-//! Unlike [[crate::brave]], which takes only URLs for offline discovery, federation keeps the
+//! Unlike the Brave connector (`xustive_ingest::brave`), which takes only URLs for offline discovery, federation keeps the
 //! **title and snippet** too: a federated hit is blended into the live answer and its URL is fed to
 //! the crawler so the page is indexed and, thereafter, answered locally. The engine name rides along
 //! as provenance, so a blended result stays distinguishable in ranking and on the console.

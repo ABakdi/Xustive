@@ -7,8 +7,9 @@ license.workspace = true
 description = "Federation Gateway: the one allowlisted egress hop between the serving plane and a self-hosted SearXNG."
 
 [dependencies]
-xustive-core = { path = "../xustive-core" }
-xustive-ingest = { path = "../xustive-ingest" }
+# Only the federation leaf crate — deliberately NOT xustive-ingest, whose native OCR deps
+# (leptonica/tesseract) the gateway has no use for and which broke its Docker build.
+xustive-federation = { path = "../xustive-federation" }
 axum.workspace = true
 serde.workspace = true
 serde_json.workspace = true

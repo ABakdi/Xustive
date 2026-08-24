@@ -18,7 +18,10 @@ pub mod dedup;
 pub mod embed_cache;
 pub mod enrichment;
 pub mod exclusion;
-pub mod federation;
+/// The SearXNG federation client, extracted into the leaf crate [`xustive_federation`] so the
+/// gateway binary can depend on it without pulling in the crawler's native deps (OCR/leptonica).
+/// Re-exported here as `xustive_ingest::federation` so existing call sites keep resolving.
+pub use xustive_federation as federation;
 pub mod fetch;
 pub mod fingerprint;
 pub mod frontier;

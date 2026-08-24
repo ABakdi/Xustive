@@ -3812,6 +3812,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "xustive-federation"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+]
+
+[[package]]
 name = "xustive-federator"
 version = "0.1.0"
 dependencies = [
@@ -3823,8 +3834,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "xustive-core",
- "xustive-ingest",
+ "xustive-federation",
 ]
 
 [[package]]
@@ -3848,6 +3858,7 @@ dependencies = [
  "tracing",
  "url",
  "xustive-core",
+ "xustive-federation",
  "xustive-lang",
  "xustive-media",
  "xustive-text",

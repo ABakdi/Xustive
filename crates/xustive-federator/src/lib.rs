@@ -21,7 +21,7 @@ use axum::extract::State;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
-use xustive_ingest::federation::{FederatedHit, SearxngClient};
+use xustive_federation::{FederatedHit, SearxngClient};
 
 /// Shared gateway state: the SearXNG client (absent when unconfigured) and the default budget.
 #[derive(Clone)]
