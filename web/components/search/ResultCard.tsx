@@ -49,6 +49,16 @@ export function ResultCard({
         >
           {sourceLabel}
         </span>
+        {/* A live web (SearXNG) result, not yet in the local index — badged so it is honest about
+            provenance. It is indexed in the background and becomes a normal result next time. */}
+        {result.from_web ? (
+          <span
+            className="rounded-[var(--radius-sm)] px-2 py-0.5"
+            style={{ background: 'var(--bg-sunk)', color: 'var(--accent)' }}
+          >
+            {t.fromTheWeb}
+          </span>
+        ) : null}
         {/* Isolated: a URL inside an RTL line is reordered into nonsense without this. */}
         <bdi className="max-w-full truncate">{result.display_url}</bdi>
         {/* Isolated for the same reason as the URL above. A formatted date is digits joined by

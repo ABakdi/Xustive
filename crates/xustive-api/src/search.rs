@@ -103,6 +103,11 @@ pub struct ResultCard {
     /// Near-duplicates folded into this result, shown as "+N similar".
     #[serde(skip_serializing_if = "is_zero")]
     pub similar_count: usize,
+    /// True when this result came from live federation (SearXNG), not yet the local index (M7). Shown
+    /// with a "web" badge; it is indexed in the background under the same URL-derived id, so a later
+    /// search returns it as a normal local result and this flag disappears.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub from_web: bool,
 }
 
 fn is_zero(n: &usize) -> bool {
@@ -144,13 +149,6 @@ pub struct SearchResponse {
     /// reads as "this search has nothing to filter by" — a different, wrong message.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub facets_degraded: bool,
-    /// The "from the web" strip (M7-T05, [[ADR-0017]]): results borrowed live from federation
-    /// (self-hosted SearXNG via the [[Federation Gateway]]), shown **separately** from — never mixed
-    /// into — the ranked index results, so a hit with no relevance/trust signals never sits among
-    /// scored documents. Empty and omitted when federation is off, returned nothing, or missed its
-    /// budget. Every URL here is also queued for crawl, so it becomes a real indexed result later.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub federated: Vec<xustive_ingest::federation::FederatedHit>,
 }
 
 /// Below this many primary hits, try the expanded leg.
@@ -516,6 +514,20 @@ pub async fn handler(
         rerank_started.elapsed().as_secs_f64(),
     );
 
+    // Best-effort live federation hits (M7): wait up to the strip budget for the detached fetch, to
+    // MIX into the page below. The fetch keeps running and eager-indexes regardless, so whatever is
+    // not ready in time still becomes a normal local result on the next search.
+    let federated_hits = match federation {
+        Some(mut handle) => {
+            let wait = Duration::from_millis(state.config.federation.budget_ms);
+            match tokio::time::timeout(wait, &mut handle).await {
+                Ok(Ok(hits)) => hits,
+                _ => Vec::new(),
+            }
+        }
+        None => Vec::new(),
+    };
+
     // --- shape ----------------------------------------------------------------------
     // `-term` is applied here rather than in the engine query: Meilisearch has no negation in
     // its query syntax, and expressing it as a filter would need every excluded word to be a
@@ -549,7 +561,7 @@ pub async fn handler(
             .collect()
     };
 
-    let results: Vec<ResultCard> = ranked
+    let mut results: Vec<ResultCard> = ranked
         .iter()
         .skip(offset)
         .take(hits_per_page)
@@ -560,6 +572,25 @@ pub async fn handler(
             card
         })
         .collect();
+
+    // Mix live web results into the page (M7): federated hits that are not already a local result,
+    // each flagged `from_web`. Deduped by the URL-derived id — the same id the eager index uses — so
+    // once a URL has been crawled it appears as a normal local result and its web card drops out. The
+    // ids also flow into impression/click capture below, so interaction ranking (M6) covers them too.
+    if page == 1 && !federated_hits.is_empty() {
+        let mut seen: std::collections::HashSet<String> =
+            results.iter().map(|c| c.id.clone()).collect();
+        for hit in &federated_hits {
+            let Ok(safe) = xustive_core::SafeUrl::parse(&hit.url) else {
+                continue;
+            };
+            let canonical = xustive_ingest::frontier::canonical(safe.as_url());
+            let id = xustive_core::id_for_url(&canonical);
+            if seen.insert(id.clone()) {
+                results.push(federated_card(hit, &canonical, id));
+            }
+        }
+    }
     // Register the top documents for a summary the browser will ask for separately. Built from
     // the re-ranked head rather than the page the user is on: a summary of page 7 is not what
     // anyone means by "summarise these results".
@@ -647,21 +678,6 @@ pub async fn handler(
         ],
     );
 
-    // Best-effort "from the web" strip: wait only `budget_ms` for the detached fetch. If it has
-    // answered, show its hits; if not, ship without the strip — the task keeps running and indexes
-    // the results anyway (metrics + eager-index + crawl-feed all happen inside it), so they appear on
-    // the next search. Dropping the handle on timeout does not cancel the task.
-    let federated = match federation {
-        Some(mut handle) => {
-            let strip_wait = Duration::from_millis(state.config.federation.budget_ms);
-            match tokio::time::timeout(strip_wait, &mut handle).await {
-                Ok(Ok(hits)) => hits,
-                _ => Vec::new(),
-            }
-        }
-        None => Vec::new(),
-    };
-
     // NOTE: `normalized` is echoed to the caller who sent it, which is fine. It must never
     // reach a log line, a metric label, or a trace attribute.
     Ok(Json(SearchResponse {
@@ -690,7 +706,6 @@ pub async fn handler(
         // Facets were asked for but the deadline cut them, versus simply absent. Only the first is
         // a degradation worth signalling.
         facets_degraded: !want_facets,
-        federated,
     }))
 }
 
@@ -1008,6 +1023,41 @@ pub(crate) fn to_card(hit: &Value) -> ResultCard {
         matched_comments: Vec::new(),
         score: 0.0,
         similar_count: 0,
+        from_web: false,
+    }
+}
+
+/// Build a result card from a live federation hit (M7): its SearXNG title, snippet and engine. The id
+/// is the URL-derived id the eager index uses, so an impression or click on this card attributes to
+/// the same document once it is crawled — and so it dedups against the local result for the same URL.
+fn federated_card(
+    hit: &xustive_ingest::federation::FederatedHit,
+    canonical: &str,
+    id: String,
+) -> ResultCard {
+    ResultCard {
+        id,
+        title: if hit.title.is_empty() {
+            canonical.to_string()
+        } else {
+            hit.title.clone()
+        },
+        url: canonical.to_string(),
+        display_url: display_url(canonical),
+        excerpt: hit.snippet.clone(),
+        source_type: "web".into(),
+        source_name: hit.engine.clone(),
+        author: Value::Null,
+        published_at: 0,
+        published_at_precision: "unknown".into(),
+        sentiment: None,
+        engagement: Value::Null,
+        language: String::new(),
+        thumbnail_url: None,
+        matched_comments: Vec::new(),
+        score: 0.0,
+        similar_count: 0,
+        from_web: true,
     }
 }
 

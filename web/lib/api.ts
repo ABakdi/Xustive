@@ -31,6 +31,9 @@ export interface ResultCard {
   language: string
   score: number
   similar_count?: number
+  /** True when this result came live from the web (SearXNG), not yet the local index (M7). Shown
+   *  with a "web" badge; it is indexed in the background and becomes a normal result next time. */
+  from_web?: boolean
 }
 
 export interface InstantAnswer {
@@ -71,18 +74,6 @@ export interface SearchResponse {
   facets: Record<string, Record<string, number>>
   /** True when facets were dropped under load, not genuinely empty. */
   facets_degraded?: boolean
-  /** The "from the web" strip (M7): results borrowed live from federation, shown separately from —
-   *  never mixed into — the ranked index results. Absent when federation is off or returned nothing. */
-  federated?: FederatedHit[]
-}
-
-/** One federated ("from the web") result: a URL, its title/snippet, and the engine that surfaced it. */
-export interface FederatedHit {
-  url: string
-  title: string
-  snippet: string
-  engine: string
-  rank: number
 }
 
 export interface Suggestion {

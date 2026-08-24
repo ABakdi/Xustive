@@ -3,7 +3,6 @@ import { notFound, redirect } from 'next/navigation'
 import { Filters } from '@/components/search/Filters'
 import { Pagination } from '@/components/search/Pagination'
 import { ResultCard } from '@/components/search/ResultCard'
-import { FederatedStrip } from '@/components/search/FederatedStrip'
 import { InteractionBeacon } from '@/components/search/InteractionBeacon'
 import { SearchBox } from '@/components/search/SearchBox'
 import { Summary } from '@/components/search/Summary'
@@ -201,11 +200,6 @@ export default async function SearchPage({
             </>
           )}
         </div>
-        {/* Federation matters most exactly here — the index came up empty but the web may not have.
-            Still queued for crawl, so next time the answer can be local. */}
-        {data.federated?.length ? (
-          <FederatedStrip hits={data.federated} label={t.fromTheWeb} />
-        ) : null}
         </>
       ) : (
         <>
@@ -257,10 +251,6 @@ export default async function SearchPage({
               ))}
             </ol>
           )}
-
-          {data.federated?.length ? (
-            <FederatedStrip hits={data.federated} label={t.fromTheWeb} />
-          ) : null}
 
           <Pagination lang={lang} t={t} pagination={p} params={sp} q={q} />
         </>

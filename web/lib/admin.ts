@@ -117,10 +117,11 @@ export function getDocuments(
   return getJSON<DocumentsPage>(`/crawler/documents?${p}`, signal)
 }
 
-/** Discovery channels grouped by provenance, for the index-composition view. `crawler` = found
- *  directly by our crawler; `external` = came through an external tool (federation, SERP, Brave). */
-export const CRAWLER_CHANNELS = ['seed', 'link', 'sitemap', 'cc'] as const
-export const EXTERNAL_CHANNELS = ['federation', 'serp', 'brave', 'query'] as const
+/** Discovery channels grouped for the index-composition view. `federation` is what a user search
+ *  pulled from SearXNG and we indexed; everything else the crawler found on its own (seeds, followed
+ *  links, sitemaps, Common Crawl, and query-driven SERP/Brave discovery). */
+export const SEARX_CHANNELS = ['federation'] as const
+export const DISCOVERED_CHANNELS = ['seed', 'link', 'sitemap', 'cc', 'serp', 'brave', 'query'] as const
 
 // --- sources (seed list) ---------------------------------------------------------------------
 export interface Seed {

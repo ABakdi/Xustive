@@ -4,14 +4,15 @@ import { useCallback, useEffect, useState } from 'react'
 
 import {
   getDocuments,
-  CRAWLER_CHANNELS,
-  EXTERNAL_CHANNELS,
+  SEARX_CHANNELS,
+  DISCOVERED_CHANNELS,
   type DocumentsPage,
 } from '@/lib/admin'
 import { PageHead, StatusLine, Table, Td, Th } from '@/components/admin/ui'
 
-const ALL_CHANNELS = [...CRAWLER_CHANNELS, ...EXTERNAL_CHANNELS] as const
-const EXTERNAL = new Set<string>(EXTERNAL_CHANNELS)
+// SearXNG-sourced first (accent-tinted), then the crawler's own discovery.
+const ALL_CHANNELS = [...SEARX_CHANNELS, ...DISCOVERED_CHANNELS] as const
+const FROM_SEARX = new Set<string>(SEARX_CHANNELS)
 
 export default function DocumentsPage() {
   const [q, setQ] = useState('')
@@ -50,14 +51,14 @@ export default function DocumentsPage() {
   const total = data?.estimated_total ?? 0
   const totalPages = Math.max(1, Math.min(100, Math.ceil(total / perPage)))
 
-  // Index composition by provenance: what the crawler found directly vs what came through external
-  // tools (federation, SERP, Brave). Unknown/legacy channels are counted under the crawler total.
+  // Index composition by provenance: what a user search pulled from SearXNG and we indexed, vs what
+  // the crawler discovered on its own. Unknown/legacy channels count under the crawler total.
   const comp = data?.composition ?? {}
-  const externalTotal = Object.entries(comp)
-    .filter(([c]) => EXTERNAL.has(c))
+  const searxTotal = Object.entries(comp)
+    .filter(([c]) => FROM_SEARX.has(c))
     .reduce((n, [, v]) => n + v, 0)
   const crawlerTotal = Object.entries(comp)
-    .filter(([c]) => !EXTERNAL.has(c))
+    .filter(([c]) => !FROM_SEARX.has(c))
     .reduce((n, [, v]) => n + v, 0)
   const orderedComp = ALL_CHANNELS.filter((c) => comp[c])
 
@@ -69,20 +70,22 @@ export default function DocumentsPage() {
         four hundred copies of one calendar page.
       </PageHead>
 
-      {/* Index composition by provenance (M7): crawler vs external tools, with a per-channel chip
-          you can click to drill the list into that source. */}
+      {/* Index composition by provenance (M7): what came from SearXNG (a user's searches) vs what
+          the crawler discovered on its own, with a per-channel chip you can click to drill in. */}
       <div
         className="mb-4 rounded border px-3 py-3 text-sm"
         style={{ borderColor: 'var(--line)', background: 'var(--bg-sunk)' }}
       >
         <div className="mb-2 flex flex-wrap gap-x-6 gap-y-1">
           <span>
-            <strong className="tabular-nums">{crawlerTotal.toLocaleString()}</strong> from your{' '}
-            <strong>crawler</strong>
+            <strong className="tabular-nums" style={{ color: 'var(--accent)' }}>
+              {searxTotal.toLocaleString()}
+            </strong>{' '}
+            indexed from <strong>SearXNG</strong> (your searches)
           </span>
           <span>
-            <strong className="tabular-nums">{externalTotal.toLocaleString()}</strong> from{' '}
-            <strong>external tools</strong>
+            <strong className="tabular-nums">{crawlerTotal.toLocaleString()}</strong> discovered by
+            the <strong>crawler</strong>
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -105,9 +108,9 @@ export default function DocumentsPage() {
               className="rounded border px-2 py-0.5 text-xs tabular-nums"
               style={{
                 borderColor: applied.channel === c ? 'var(--accent)' : 'var(--line)',
-                color: EXTERNAL.has(c) ? 'var(--accent)' : 'var(--fg-muted)',
+                color: FROM_SEARX.has(c) ? 'var(--accent)' : 'var(--fg-muted)',
               }}
-              title={EXTERNAL.has(c) ? 'external tool' : 'crawler'}
+              title={FROM_SEARX.has(c) ? 'from SearXNG' : 'crawler-discovered'}
             >
               {c} {(comp[c] ?? 0).toLocaleString()}
             </button>
@@ -156,13 +159,13 @@ export default function DocumentsPage() {
           onChange={(e) => setChannel(e.target.value)}
           className="min-h-10 rounded border px-3 py-2"
           style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }}
-          title="provenance: crawler vs external tools"
+          title="provenance: SearXNG vs crawler"
         >
           <option value="">any source</option>
           {ALL_CHANNELS.map((c) => (
             <option key={c} value={c}>
               {c}
-              {EXTERNAL.has(c) ? ' (external)' : ''}
+              {FROM_SEARX.has(c) ? ' (SearXNG)' : ''}
             </option>
           ))}
         </select>
@@ -213,9 +216,9 @@ export default function DocumentsPage() {
                   className="rounded px-1.5 py-0.5 text-xs"
                   style={{
                     background: 'var(--bg-sunk)',
-                    color: EXTERNAL.has(h.discovery) ? 'var(--accent)' : 'var(--fg-muted)',
+                    color: FROM_SEARX.has(h.discovery) ? 'var(--accent)' : 'var(--fg-muted)',
                   }}
-                  title={EXTERNAL.has(h.discovery) ? 'external tool' : 'crawler'}
+                  title={FROM_SEARX.has(h.discovery) ? 'from SearXNG' : 'crawler-discovered'}
                 >
                   {h.discovery}
                 </span>
