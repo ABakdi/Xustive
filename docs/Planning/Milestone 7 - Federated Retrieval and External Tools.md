@@ -73,7 +73,7 @@ The narrow, allowlisted egress hop that keeps the serving plane's no-egress prop
 - [x] M7-T05.1 **Concurrent call** from [[Query Pipeline]] to the gateway alongside local retrieval; on timeout/error/disabled, ship index-only with **no added latency** (explicit test).
 - [x] M7-T05.2 **Separate "from the web" strip** (design fork resolved: a labelled section, *not* interleaved, since a federated hit has no relevance/trust signals to rank among real documents). Bounded by `max_hits`. *Follow-up:* a federated URL already indexed should reinforce the local doc rather than also appear in the strip.
 - [x] M7-T05.3 **Provenance** (engine + `source=federation`) and in the response, so blended results are auditable and the console can show federation's contribution.
-- [ ] M7-T05.4 **`federation_blend_share` metric** — the convergence indicator, expected to fall as the crawl-feed (T06) fills the index.
+- [x] M7-T05.4 **Federation metrics** — `federation_searches_total{outcome=hits|empty}` (the live-contribution ratio, expected to fall) and `federation_urls_fed_total`. Live gateway health + breaker state on the Integrations console.
 
 ## M7-T06 — Federated results feed the crawler (converge to standalone)
 
