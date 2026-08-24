@@ -28,7 +28,9 @@ Built across T04–T06: `[federation]` config; the `xustive-ingest` SearXNG clie
 
 **Design fork resolved:** new external URLs appear as a **separate labelled strip, not interleaved** into the ranked list — a federated hit has no relevance/trust/freshness signals to be scored among real documents, and a labelled strip keeps provenance honest. (This settles the ADR-0017 open question.)
 
-Remaining in the federation track: **T05.4** the `federation_blend_share` metric; **T06.3** the convergence proof (a re-issued query answers locally after indexing); an index-reinforce refinement so an already-indexed federated URL boosts the local doc instead of also showing in the strip; and **T08** (external summariser). The durable retrieval work (**T01–T03**) is untouched and is the next major push.
+Federated URLs are **front-promoted** into the frontier so a page a user just searched for is crawled next, not buried — and `process()` fetches directly-enqueued URLs regardless of `--discover`, so the loop reaches indexing. Observability is in: `federation_searches_total{outcome}`, `federation_urls_fed_total`, and a live gateway health probe + breaker state on the console.
+
+Remaining in the federation track: **T06.3** the convergence proof (a re-issued query answers locally after indexing); an index-reinforce refinement so an already-indexed federated URL boosts the local doc instead of also showing in the strip; and **T08** (external summariser). The durable retrieval work (**T01–T03**) is untouched and is the next major push.
 
 ## M7-T01 — Lexical retrieval quality (the cheap, durable wins first)
 
