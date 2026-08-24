@@ -589,6 +589,16 @@ pub async fn integrations(
         },
         "semantic": semantic,
         "image": image,
+        // Effectiveness counters, read straight from the same registry Prometheus exports (M7), so the
+        // console shows the payoff without a Grafana round-trip: how often federation contributed,
+        // how many URLs it fed the index, and whether the dense leg added recall or just reinforced.
+        "effectiveness": {
+            "federation_searches_hits": state.metrics.counter_where(crate::metrics::FEDERATION_SEARCHES, "outcome", "hits"),
+            "federation_searches_empty": state.metrics.counter_where(crate::metrics::FEDERATION_SEARCHES, "outcome", "empty"),
+            "federation_urls_fed": state.metrics.counter_total(crate::metrics::FEDERATION_FED),
+            "semantic_fused_recall": state.metrics.counter_where(crate::metrics::SEMANTIC_FUSED, "kind", "recall"),
+            "semantic_fused_reinforce": state.metrics.counter_where(crate::metrics::SEMANTIC_FUSED, "kind", "reinforce"),
+        },
     })))
 }
 

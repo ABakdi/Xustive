@@ -8,6 +8,7 @@ import {
   type FederationStatus,
   type SemanticStatus,
   type ImageVectorStatus,
+  type IntegrationEffectiveness,
 } from '@/lib/admin'
 import { PageHead } from '@/components/admin/ui'
 
@@ -23,6 +24,7 @@ export default function IntegrationsPage() {
   const [fed, setFed] = useState<FederationStatus | null>(null)
   const [semantic, setSemantic] = useState<SemanticStatus | null>(null)
   const [image, setImage] = useState<ImageVectorStatus | null>(null)
+  const [eff, setEff] = useState<IntegrationEffectiveness | null>(null)
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -32,6 +34,7 @@ export default function IntegrationsPage() {
         setFed(d.federation)
         setSemantic(d.semantic)
         setImage(d.image)
+        setEff(d.effectiveness)
       })
       .catch((e) => setMsg((e as Error).message))
   }, [])
@@ -193,6 +196,37 @@ export default function IntegrationsPage() {
             (CLIP embedder) for reverse-image / search-by-image.
           </p>
         )
+      ) : null}
+
+      {/* Effectiveness — read from the metrics registry, so it matches Prometheus/Grafana exactly. */}
+      {eff ? (
+        <>
+          <h2 className="mb-2 mt-4 text-lg font-semibold">Effectiveness (since API start)</h2>
+          <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
+            <tbody>
+              {[
+                [
+                  'Federation contributed',
+                  `${eff.federation_searches_hits.toLocaleString()} searches with hits · ${eff.federation_searches_empty.toLocaleString()} empty`,
+                ],
+                ['URLs fed to the index', eff.federation_urls_fed.toLocaleString()],
+                [
+                  'Semantic added recall',
+                  `${eff.semantic_fused_recall.toLocaleString()} searches · ${eff.semantic_fused_reinforce.toLocaleString()} only reinforced lexical`,
+                ],
+              ].map(([k, v]) => (
+                <tr key={k}>
+                  <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
+                  <td className="border-b py-1 tabular-nums" style={{ borderColor: 'var(--line)' }}>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mb-6 text-xs" style={{ color: 'var(--fg-faint)' }}>
+            Counters since the API last started. Full time-series live in Grafana (dev:{' '}
+            <code>localhost:3001</code>).
+          </p>
+        </>
       ) : null}
 
       {msg ? <p className="text-sm" style={{ color: 'var(--warn)' }}>{msg}</p> : null}

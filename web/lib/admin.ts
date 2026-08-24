@@ -231,11 +231,21 @@ export interface ImageVectorStatus {
   reachable?: boolean
   images_embedded?: number | null
 }
+/** Effectiveness counters, read from the metrics registry (M7). */
+export interface IntegrationEffectiveness {
+  federation_searches_hits: number
+  federation_searches_empty: number
+  federation_urls_fed: number
+  semantic_fused_recall: number
+  semantic_fused_reinforce: number
+}
 export const getIntegrations = (signal?: AbortSignal) =>
-  getJSON<{ federation: FederationStatus; semantic: SemanticStatus; image: ImageVectorStatus }>(
-    '/integrations',
-    signal,
-  )
+  getJSON<{
+    federation: FederationStatus
+    semantic: SemanticStatus
+    image: ImageVectorStatus
+    effectiveness: IntegrationEffectiveness
+  }>('/integrations', signal)
 /** Toggle one integration on or off at runtime. Only `federation` today. */
 export const setIntegration = (integration: string, enabled: boolean) =>
   postJSON<{ ok: boolean; integration: string; enabled: boolean }>('/integrations', {
