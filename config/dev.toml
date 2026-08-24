@@ -64,9 +64,12 @@ searxng_url = "http://xustive-searxng:8080"
 # internal service, so the API keeps no route to the open internet. In dev it is published on
 # localhost by docker-compose.dev.yml; in the full container topology it is http://xustive-federator:8095.
 federator_url = "http://127.0.0.1:8095"
-# Query-time latency budget. Federation runs concurrently with local retrieval and never makes the
-# answer wait past this; miss it and results ship index-only.
-budget_ms = 250
+# How long the response waits for the live "from the web" strip. The background fetch (below) runs
+# detached and indexes results regardless, so this is only the strip's latency cap, not the fetch.
+budget_ms = 1500
+# How long the background federation fetch may run — a real metasearch aggregation takes seconds.
+# Detached from the response, so a generous value never slows a search.
+fetch_budget_ms = 6000
 max_hits = 10
 # Index each federated result immediately as a thin document (its title + snippet) so it shows as a
 # real result within seconds; the full-page crawl then overwrites it (same URL-derived id). On for

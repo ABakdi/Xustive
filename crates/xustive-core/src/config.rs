@@ -322,9 +322,16 @@ pub struct FederationConfig {
     /// is an internal address — the API still has no route to the open internet ([[ADR-0017]]). Empty
     /// means the API does not federate even when `enabled`.
     pub federator_url: String,
-    /// Query-time latency budget in milliseconds. Federation runs concurrently with local retrieval;
-    /// miss this and the answer ships index-only. It may never make the local answer wait.
+    /// How long the search response waits for the "from the web" strip, in milliseconds. Federation
+    /// runs concurrently with local retrieval; if the gateway has not answered within this, the
+    /// response ships without the strip and the background fetch keeps going (indexing the results
+    /// for the next search). This is the user-visible latency cap, not the fetch timeout.
     pub budget_ms: u64,
+    /// How long the **background** federation fetch may run, in milliseconds — the real time a
+    /// metasearch aggregation needs (seconds), independent of the response budget. The fetch runs
+    /// detached, so this never delays a search; it only bounds how long we wait for SearXNG before
+    /// giving up on indexing this query's results.
+    pub fetch_budget_ms: u64,
     /// Hits to request per federated query. A handful of good URLs, not a full page.
     pub max_hits: usize,
     /// **Eager indexing** (M7): index each federated result *immediately* as a thin document (its
@@ -339,7 +346,15 @@ pub struct FederationConfig {
 }
 
 fn default_federation_budget_ms() -> u64 {
-    250
+    // The response's strip wait. Long enough that a reasonably quick SearXNG shows the strip live,
+    // short enough that a slow one does not stall the search — the background fetch indexes it either
+    // way, so this is only about the *live* strip.
+    1500
+}
+fn default_federation_fetch_budget_ms() -> u64 {
+    // A real metasearch aggregation over several engines takes seconds. This runs detached from the
+    // response, so it can be generous without ever slowing a search.
+    6000
 }
 fn default_federation_max_hits() -> usize {
     10
@@ -352,6 +367,7 @@ impl Default for FederationConfig {
             searxng_url: String::new(),
             federator_url: String::new(),
             budget_ms: default_federation_budget_ms(),
+            fetch_budget_ms: default_federation_fetch_budget_ms(),
             max_hits: default_federation_max_hits(),
             eager_index: false,
             allowlist: Vec::new(),
@@ -880,7 +896,15 @@ impl Config {
         {
             return Err(ConfigError::Value {
                 key: "federation.budget_ms".into(),
-                msg: "must be between 1 and 5000 — federation may never make the local answer wait long".into(),
+                msg: "must be between 1 and 5000 — the strip wait may never make the local answer wait long".into(),
+            });
+        }
+        if self.federation.enabled
+            && (self.federation.fetch_budget_ms == 0 || self.federation.fetch_budget_ms > 30_000)
+        {
+            return Err(ConfigError::Value {
+                key: "federation.fetch_budget_ms".into(),
+                msg: "must be between 1 and 30000".into(),
             });
         }
         Ok(())
@@ -907,7 +931,8 @@ mod crawl_guard_tests {
         let f = FederationConfig::default();
         assert!(!f.enabled);
         assert!(!f.searxng_usable());
-        assert_eq!(f.budget_ms, 250);
+        assert_eq!(f.budget_ms, 1500);
+        assert_eq!(f.fetch_budget_ms, 6000);
         // Enabled but endpointless is still inert, not an error.
         let f = FederationConfig {
             enabled: true,

@@ -331,11 +331,13 @@ pub async fn handler(
         ],
     );
 
-    // --- federation (M7-T05): borrow recall from the web, concurrently and fail-open ----------
-    // Kicked off here so it overlaps retrieval and re-ranking, and awaited at the very end. Only on
-    // page 1 (the strip belongs with the first page), only when the runtime switch is on and a
-    // gateway client exists. The call itself is fail-open — a slow, dead, or disabled gateway yields
-    // an empty strip and the search is exactly what it would be without federation.
+    // --- federation (M7-T05): borrow recall from the web, off the response's critical path --------
+    // A real metasearch aggregation takes seconds, which the response cannot wait on. So the fetch
+    // runs **detached** with a generous budget and, on results, eager-indexes them and feeds the
+    // crawler — so they become real results within seconds and the next search finds them. The
+    // response then waits only briefly (`budget_ms`) for a best-effort "from the web" strip; if the
+    // fetch has not answered by then, the task keeps running and indexes it anyway. Only on page 1,
+    // only when the runtime switch is on and a gateway client exists.
     let federation = if page == 1
         && state
             .federation_enabled
@@ -343,8 +345,27 @@ pub async fn handler(
     {
         state.federator.clone().map(|client| {
             let q = normalized.clone();
-            let budget = state.config.federation.budget_ms;
-            tokio::spawn(async move { client.federate(&q, Some(budget)).await })
+            let bg = state.clone();
+            let fetch_budget = state.config.federation.fetch_budget_ms;
+            tokio::spawn(async move {
+                let hits = client.federate(&q, Some(fetch_budget)).await;
+                bg.metrics.incr(
+                    metrics::FEDERATION_SEARCHES,
+                    metrics::FEDERATION_SEARCHES_HELP,
+                    &[("outcome", if hits.is_empty() { "empty" } else { "hits" })],
+                );
+                if !hits.is_empty() {
+                    bg.metrics.incr_by(
+                        metrics::FEDERATION_FED,
+                        metrics::FEDERATION_FED_HELP,
+                        &[],
+                        hits.len() as u64,
+                    );
+                    // Index (eager) + queue for full crawl. Runs regardless of the strip timeout.
+                    ingest_federated(&bg, &hits, language);
+                }
+                hits
+            })
         })
     } else {
         None
@@ -626,36 +647,20 @@ pub async fn handler(
         ],
     );
 
-    // Collect the "from the web" strip (empty when off/slow/broken) and feed each URL to the
-    // crawler so a borrowed page becomes a real indexed result on a later search (M7-T06).
-    let attempted_federation = federation.is_some();
+    // Best-effort "from the web" strip: wait only `budget_ms` for the detached fetch. If it has
+    // answered, show its hits; if not, ship without the strip — the task keeps running and indexes
+    // the results anyway (metrics + eager-index + crawl-feed all happen inside it), so they appear on
+    // the next search. Dropping the handle on timeout does not cancel the task.
     let federated = match federation {
-        Some(handle) => handle.await.unwrap_or_default(),
+        Some(mut handle) => {
+            let strip_wait = Duration::from_millis(state.config.federation.budget_ms);
+            match tokio::time::timeout(strip_wait, &mut handle).await {
+                Ok(Ok(hits)) => hits,
+                _ => Vec::new(),
+            }
+        }
         None => Vec::new(),
     };
-    if attempted_federation {
-        // `hits` vs `empty` is federation's live contribution — the ratio is expected to fall as the
-        // crawl-feed fills the index. No query label: the outcome is all that is safe to record.
-        let outcome = if federated.is_empty() {
-            "empty"
-        } else {
-            "hits"
-        };
-        state.metrics.incr(
-            metrics::FEDERATION_SEARCHES,
-            metrics::FEDERATION_SEARCHES_HELP,
-            &[("outcome", outcome)],
-        );
-    }
-    if !federated.is_empty() {
-        state.metrics.incr_by(
-            metrics::FEDERATION_FED,
-            metrics::FEDERATION_FED_HELP,
-            &[],
-            federated.len() as u64,
-        );
-        ingest_federated(&state, &federated, language);
-    }
 
     // NOTE: `normalized` is echoed to the caller who sent it, which is fine. It must never
     // reach a log line, a metric label, or a trace attribute.

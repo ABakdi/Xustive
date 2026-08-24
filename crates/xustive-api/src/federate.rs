@@ -49,8 +49,13 @@ impl FederatorClient {
         if base.is_empty() {
             return None;
         }
+        // A generous socket timeout — the *per-call* `budget_ms` argument is what actually bounds a
+        // request (via `tokio::time::timeout`), so this only has to be looser than the largest budget
+        // a caller might pass. A tight timeout here silently capped every call at ~budget+500 ms,
+        // which is far below the 1–4 s a real metasearch aggregation takes, so federation returned
+        // nothing on every search.
         let http = reqwest::Client::builder()
-            .timeout(Duration::from_millis(cfg.budget_ms + 500))
+            .timeout(Duration::from_secs(30))
             .build()
             .ok()?;
         let breaker = xustive_core::circuit::SharedBreaker::new(xustive_core::circuit::Config {
