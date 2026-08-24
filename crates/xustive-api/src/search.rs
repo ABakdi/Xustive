@@ -652,6 +652,15 @@ pub async fn handler(
         let page_ids: Vec<String> = results.iter().map(|c| c.id.clone()).collect();
         if !page_ids.is_empty() {
             store.impressions(&normalized, &page_ids).await;
+            // Note each shown document's URL so the crawler's hot-doc re-crawl (M6-T06.1) can resolve
+            // a clicked doc id back to a URL to revisit. A local (non-web) card only — a federated
+            // card is not yet an indexed document to re-crawl.
+            let urls: Vec<(String, String)> = results
+                .iter()
+                .filter(|c| !c.from_web && !c.url.is_empty())
+                .map(|c| (c.id.clone(), c.url.clone()))
+                .collect();
+            store.note_urls(&urls).await;
         }
         store
             .query_seen(

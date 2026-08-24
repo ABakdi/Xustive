@@ -50,6 +50,10 @@ const HEARTBEAT: Duration = Duration::from_secs(60);
 /// avoids. Six hours keeps a news site's new articles found within a fraction of a day while
 /// costing one request per host per poll.
 const SITEMAP_POLL_EVERY: Duration = Duration::from_secs(6 * 3600);
+/// How often the hot-document re-crawl pulls frequently-clicked pages forward (M6-T06.1).
+const HOT_RECRAWL_EVERY: Duration = Duration::from_secs(30 * 60);
+/// Cap per pass, so popularity can pull pages forward without owning the frontier.
+const HOT_RECRAWL_LIMIT: usize = 200;
 /// How often the background query-driven discovery run fires (M2-T16.4).
 const DISCOVER_EVERY: Duration = Duration::from_secs(5 * 60);
 
@@ -490,6 +494,69 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                             "sitemap poll"
                         );
                     }
+                }
+            }
+        });
+    }
+
+    // Hot-document re-crawl (M6-T06.1): pages people click often are pulled forward for a revisit, so
+    // the corpus stays freshest where attention actually is. Gated on interaction being enabled —
+    // with it off there is nothing to read. The search plane writes the click counts and the
+    // doc→URL map to Redis; this only reads them and defers the URL into the frontier's due set, per
+    // the one-way cross-plane rule ([[ADR-0001]]). Popular ≠ owning the queue: it is capped per pass
+    // and a revisit answers 304 cheaply when the page has not changed.
+    if config.interaction.enabled {
+        let frontier = orchestrator.frontier().clone();
+        let stop = stop.clone();
+        let redis_url = config.queue.url.clone();
+        let k = config.interaction.k_anonymity;
+        let hot_floor = config.interaction.hot_floor();
+        let window = Duration::from_secs(config.interaction.window_days * 86_400);
+        tasks.spawn(async move {
+            let Some(interactions) = xustive_ingest::interaction::Interactions::connect_in(
+                &redis_url,
+                "interaction",
+                k,
+                window,
+            )
+            .await
+            else {
+                return;
+            };
+            let mut ticker = tokio::time::interval(HOT_RECRAWL_EVERY);
+            ticker.tick().await; // skip the immediate first tick so startup is not a burst
+            loop {
+                ticker.tick().await;
+                if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                let hot = interactions
+                    .hot_docs_to_recrawl(hot_floor, HOT_RECRAWL_LIMIT)
+                    .await;
+                let now_ms = xustive_core::now_unix().saturating_mul(1000);
+                let mut pulled = 0usize;
+                for (_doc, url) in hot {
+                    let Ok(u) = url::Url::parse(&url) else {
+                        continue;
+                    };
+                    let host = u.host_str().unwrap_or_default().to_string();
+                    if host.is_empty() {
+                        continue;
+                    }
+                    let pending = xustive_ingest::frontier::Pending {
+                        url: xustive_ingest::frontier::canonical(&u),
+                        host,
+                        source_id: "hot".into(),
+                        depth: 1,
+                        trust: 60,
+                        channel: xustive_core::DiscoveryChannel::Link,
+                        priority: xustive_ingest::frontier::priority_for(1, 60, true),
+                    };
+                    frontier.defer(&pending, now_ms).await;
+                    pulled += 1;
+                }
+                if pulled > 0 {
+                    tracing::info!(pulled, "hot-doc re-crawl: pulled clicked pages forward");
                 }
             }
         });

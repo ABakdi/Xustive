@@ -123,4 +123,13 @@ async fn analytics_readers_surface_above_the_floor() {
     // hot_docs with floor 1 surfaces the clicked doc.
     let hot = store.hot_docs(1, 50).await;
     assert!(hot.contains(&doc), "clicked doc missing from hot_docs");
+
+    // M6-T06.1: with the doc→URL note in place, the re-crawl reader resolves the hot doc to its URL.
+    let url = format!("https://example.dz/{}", std::process::id());
+    store.note_urls(&[(doc.clone(), url.clone())]).await;
+    let recrawl = store.hot_docs_to_recrawl(1, 50).await;
+    assert!(
+        recrawl.iter().any(|(d, u)| d == &doc && u == &url),
+        "hot doc did not resolve to its URL for re-crawl"
+    );
 }

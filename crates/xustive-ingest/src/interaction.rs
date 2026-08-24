@@ -325,6 +325,49 @@ impl Interactions {
         scored.into_iter().map(|(d, _)| d).collect()
     }
 
+    /// Record each shown document's URL alongside its id (M6-T06.1). The re-crawl pass keys on doc
+    /// id but the crawler revisits URLs, and the crawler cannot read the search index to resolve one
+    /// to the other — so the search plane, which has both in hand at impression time, notes the
+    /// mapping here (last-write-wins, windowed like every other counter). It is the document's own
+    /// public URL, not anything about a person.
+    pub async fn note_urls(&self, pairs: &[(String, String)]) {
+        if pairs.is_empty() {
+            return;
+        }
+        let mut conn = self.conn();
+        let mut pipe = redis::pipe();
+        for (doc, url) in pairs {
+            let key = format!("{}:docurl:{doc}", self.namespace);
+            pipe.cmd("SET").arg(&key).arg(url).ignore();
+            pipe.cmd("EXPIRE")
+                .arg(&key)
+                .arg(self.window_secs())
+                .ignore();
+        }
+        let _: Result<(), _> = pipe.query_async::<()>(&mut conn).await;
+    }
+
+    /// Hot documents paired with their URL, for the crawler's re-crawl pass (M6-T06.1). Reads
+    /// [`hot_docs`] and resolves each to the URL the search plane noted via [`note_urls`]; a hot
+    /// document with no known URL (never noted, or the mapping decayed) is skipped — there is nothing
+    /// to revisit. Most-clicked first.
+    pub async fn hot_docs_to_recrawl(&self, hot_floor: u32, limit: usize) -> Vec<(String, String)> {
+        let mut conn = self.conn();
+        let mut out = Vec::new();
+        for doc in self.hot_docs(hot_floor, limit).await {
+            let url: Option<String> = redis::cmd("GET")
+                .arg(format!("{}:docurl:{doc}", self.namespace))
+                .query_async(&mut conn)
+                .await
+                .ok()
+                .flatten();
+            if let Some(url) = url.filter(|u| !u.trim().is_empty()) {
+                out.push((doc, url));
+            }
+        }
+        out
+    }
+
     /// The documents with the highest anonymous click-through — the "CTR leaders" for the operator
     /// console (M6-T07). A document is only returned once its global impressions clear the k-floor,
     /// so nothing below the anonymity threshold surfaces. Sorted by smoothed CTR, capped at `limit`.
