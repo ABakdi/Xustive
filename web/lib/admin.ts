@@ -191,8 +191,10 @@ export interface FederationStatus {
   budget_ms: number
   max_hits: number
   allowlist: string[]
+  /** Live health probe of the gateway (on the core network — not internet egress). */
   reachable_from_api: boolean
-  note: string
+  /** The gateway's circuit-breaker state: closed | open | half-open | none. */
+  breaker: string
 }
 export const getIntegrations = (signal?: AbortSignal) =>
   getJSON<{ federation: FederationStatus }>('/integrations', signal)

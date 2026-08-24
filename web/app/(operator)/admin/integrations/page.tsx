@@ -91,7 +91,8 @@ export default function IntegrationsPage() {
                 ['Latency budget', `${fed.budget_ms} ms`],
                 ['Max hits / query', String(fed.max_hits)],
                 ['Extra allowlist', fed.allowlist.length ? fed.allowlist.join(', ') : '(SearXNG host only)'],
-                ['Reachable from serving API', fed.reachable_from_api ? 'yes' : 'no (by design — behind the gateway)'],
+                ['Gateway reachable', fed.reachable_from_api ? 'yes — healthy' : 'no — start the federation profile'],
+                ['Circuit breaker', fed.breaker],
               ].map(([k, v]) => (
                 <tr key={k}>
                   <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>

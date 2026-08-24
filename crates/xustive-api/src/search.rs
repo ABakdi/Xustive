@@ -588,11 +588,32 @@ pub async fn handler(
 
     // Collect the "from the web" strip (empty when off/slow/broken) and feed each URL to the
     // crawler so a borrowed page becomes a real indexed result on a later search (M7-T06).
+    let attempted_federation = federation.is_some();
     let federated = match federation {
         Some(handle) => handle.await.unwrap_or_default(),
         None => Vec::new(),
     };
+    if attempted_federation {
+        // `hits` vs `empty` is federation's live contribution — the ratio is expected to fall as the
+        // crawl-feed fills the index. No query label: the outcome is all that is safe to record.
+        let outcome = if federated.is_empty() {
+            "empty"
+        } else {
+            "hits"
+        };
+        state.metrics.incr(
+            metrics::FEDERATION_SEARCHES,
+            metrics::FEDERATION_SEARCHES_HELP,
+            &[("outcome", outcome)],
+        );
+    }
     if !federated.is_empty() {
+        state.metrics.incr_by(
+            metrics::FEDERATION_FED,
+            metrics::FEDERATION_FED_HELP,
+            &[],
+            federated.len() as u64,
+        );
         feed_crawler(&state, &federated);
     }
 
@@ -648,16 +669,22 @@ fn feed_crawler(state: &AppState, hits: &[xustive_ingest::federation::FederatedH
             if xustive_ingest::frontier::detect_trap(&parsed).is_some() {
                 continue;
             }
+            let host = safe.authority();
             let pending = xustive_ingest::frontier::Pending {
                 url: xustive_ingest::frontier::canonical(&parsed),
-                host: safe.authority(),
+                host: host.clone(),
                 source_id: "federation".into(),
                 depth: 0,
+                // Trust stays modest — an arbitrary web page is not a curated seed, and trust feeds
+                // ranking. Crawl *priority* is separate: a user asked for this page right now, so
+                // promote it to the front of its host queue rather than let it sit behind a backlog.
                 trust: 40,
                 channel: xustive_core::DiscoveryChannel::Federation,
                 priority: xustive_ingest::frontier::priority_for(0, 40, false),
             };
-            let _ = frontier.add(&pending).await;
+            if frontier.add(&pending).await.is_ok() {
+                frontier.promote(&host, &pending.url).await;
+            }
         }
     });
 }

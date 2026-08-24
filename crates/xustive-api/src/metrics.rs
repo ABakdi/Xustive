@@ -333,6 +333,13 @@ pub const LANG_DETECTED_HELP: &str =
 pub const BUILD_INFO: &str = "xustive_build_info";
 pub const BUILD_INFO_HELP: &str = "Always 1; presence indicates the process is up";
 
+pub const FEDERATION_SEARCHES: &str = "xustive_federation_searches_total";
+pub const FEDERATION_SEARCHES_HELP: &str =
+    "Searches that consulted federation, by outcome: `hits` (the gateway returned results), `empty` (on, but nothing came back — a miss, a timeout, or the gateway down). The ratio is federation's live contribution, expected to fall as the crawl-feed fills the index.";
+pub const FEDERATION_FED: &str = "xustive_federation_urls_fed_total";
+pub const FEDERATION_FED_HELP: &str =
+    "Federated URLs queued for crawling — the crawl-feed that converges the index toward answering locally. Each becomes a real result once the crawler reaches it.";
+
 pub const QUEUE_DEPTH: &str = "xustive_queue_depth";
 pub const QUEUE_DEPTH_HELP: &str =
     "Documents waiting to be indexed. Consumer-group lag, not stream length: the stream is capped and trimmed, so its length stops rising long before the backlog does and would read as a healthy queue during exactly the incident this is meant to catch.";

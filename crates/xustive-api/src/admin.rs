@@ -523,6 +523,13 @@ pub async fn integrations(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     authorise(&state, peer, &headers).map_err(|d| d.json())?;
     let f = &state.config.federation;
+    // A live probe of the *gateway* is fine: it sits on `core`, which the API may reach — this is not
+    // internet egress. The gateway, in turn, is the only thing that reaches SearXNG. If a client
+    // exists, probe it and report its breaker state so the operator can see federation is wired.
+    let (reachable, breaker) = match &state.federator {
+        Some(c) => (c.healthy().await, c.breaker_state()),
+        None => (false, "none"),
+    };
     Ok(Json(json!({
         "federation": {
             "enabled": state.federation_enabled.load(Ordering::Relaxed),
@@ -534,10 +541,10 @@ pub async fn integrations(
             "budget_ms": f.budget_ms,
             "max_hits": f.max_hits,
             "allowlist": f.allowlist,
-            // Config/status only — see the doc comment. The blend and crawl-feed that consume this
-            // flag are later increments; this is the operator control surface for them.
-            "reachable_from_api": false,
-            "note": "the serving plane never talks to SearXNG directly; the gateway does (ADR-0017)",
+            // A live health probe of the gateway (on `core`), plus its circuit-breaker state. The API
+            // never talks to SearXNG directly — the gateway does (ADR-0017).
+            "reachable_from_api": reachable,
+            "breaker": breaker,
         }
     })))
 }
