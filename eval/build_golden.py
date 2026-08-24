@@ -134,9 +134,9 @@ def judge(docs, terms, lang):
     graded = {}
     wanted = [fold(t.lower()) for t in terms]
     for d in docs:
-        haystack = fold(
-            f"{d.get('title', '')} {d.get('body', '')} {d.get('excerpt', '')}"
-        ).lower()
+        # Pre-folded once in main() (`_hay`); judging every query against every document used to
+        # re-fold the full body per query — O(queries × corpus × body), minutes at corpus scale.
+        haystack = d["_hay"]
         hits = sum(1 for t in wanted if t in haystack)
         if hits == 0:
             continue
@@ -257,6 +257,14 @@ def main():
         print("no documents in the index; crawl or seed first", file=sys.stderr)
         return 1
     print(f"corpus: {len(docs)} documents", file=sys.stderr)
+
+    # Fold each document's haystack ONCE — title, excerpt, and the topical head of the body. Judging
+    # is term-containment, and topical terms sit near the top of a page, so the head is enough; a cap
+    # also bounds memory on a large corpus. This turns judging from minutes into seconds.
+    for d in docs:
+        d["_hay"] = fold(
+            f"{d.get('title', '')} {d.get('excerpt', '')} {d.get('body', '')[:2000]}"
+        ).lower()
 
     queries, counts = build(docs, args.target)
     if not queries:
