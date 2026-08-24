@@ -55,10 +55,10 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
         config.search.meili_url
     );
 
-    let mut observations = Vec::with_capacity(golden.len());
-    for g in golden {
-        // The candidate pool, not one page. Recall@50 cannot be measured from ten results, and
-        // re-ranking can only reorder what it is given.
+    // Retrieve each query's candidate pool once — Meili is the expensive step. Re-ranking is cheap,
+    // so it runs twice below: a baseline, and again with a replayed interaction signal (M6-T09.1).
+    let mut retrieved: Vec<(&GoldenQuery, Vec<Value>)> = Vec::with_capacity(golden.len());
+    for g in &golden {
         let normalized = xustive_text::normalize(&g.query);
         let pool = config.search.candidate_pool.max(50);
         let query = Query::new(&normalized).limit(pool);
@@ -67,9 +67,9 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
             .await
             .with_context(|| format!("searching for {:?}", g.id))?;
 
-        // The same expanded leg the API runs. A harness that skips it measures a pipeline
-        // nobody uses — which is how the Arabizi failure looked like a ranking problem for a
-        // while rather than a missing retrieval step.
+        // The same expanded leg the API runs. A harness that skips it measures a pipeline nobody
+        // uses — which is how the Arabizi failure looked like a ranking problem for a while rather
+        // than a missing retrieval step.
         if hits.hits.len() < 5 {
             let detected = detector.detect(&normalized);
             let expansion = expander.expand(&normalized, detected.lang);
@@ -97,35 +97,90 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
                 }
             }
         }
+        retrieved.push((g, hits.hits));
+    }
 
-        let ranked = rank::rerank(
-            &hits.hits,
-            &normalized,
-            now,
-            &trust,
-            &authority,
-            &std::collections::HashMap::new(),
-            &weights,
-        );
-        let results: Vec<String> = ranked
-            .iter()
-            .filter_map(|r| r.hit.get("id")?.as_str().map(str::to_string))
-            .collect();
-        let published: Vec<i64> = ranked
-            .iter()
-            .filter_map(|r| r.hit.get("published_at")?.as_i64())
-            .collect();
-
-        observations.push(Observed {
-            golden: g,
+    // Pass 1 — baseline re-rank (no interaction), and a replayed click stream over its top results.
+    // Each shown result is an impression; expected clicks scale with the result's true relevance and,
+    // mildly, its position — so a relevant-but-mid-ranked document still earns clicks and the signal
+    // can lift it, rather than only ever reinforcing the baseline's order.
+    let empty: HashMap<String, f32> = HashMap::new();
+    let mut clicks: HashMap<String, f32> = HashMap::new();
+    let mut impressions: HashMap<String, f32> = HashMap::new();
+    let mut baseline_obs: Vec<Observed> = Vec::with_capacity(retrieved.len());
+    for (g, hits) in &retrieved {
+        let normalized = xustive_text::normalize(&g.query);
+        let (results, published) =
+            rerank_ids(hits, &normalized, now, &trust, &authority, &empty, &weights);
+        for (rank_i, id) in results.iter().take(10).enumerate() {
+            *impressions.entry(id.clone()).or_insert(0.0) += 1.0;
+            let rel = (g.grade(id) as f32 / 3.0).clamp(0.0, 1.0);
+            let pos = 1.0 / (rank_i as f32 + 1.0);
+            *clicks.entry(id.clone()).or_insert(0.0) += rel * (0.5 + 0.5 * pos);
+        }
+        baseline_obs.push(Observed {
+            golden: (*g).clone(),
             results,
             published,
         });
     }
 
-    let mut report = eval::score(&observations, now);
+    // Smoothed CTR per document from the replayed stream — a Bayesian prior so one impression is not
+    // a CTR of 1.0. This is the shape `Interactions::ctr_for` produces at runtime.
+    const CTR_PRIOR_N: f32 = 5.0;
+    let mut interaction: HashMap<String, f32> = HashMap::new();
+    for (id, imp) in &impressions {
+        let c = clicks.get(id).copied().unwrap_or(0.0);
+        interaction.insert(id.clone(), c / (imp + CTR_PRIOR_N));
+    }
+
+    // Pass 2 — re-rank again with the replayed interaction signal.
+    let mut interaction_obs: Vec<Observed> = Vec::with_capacity(retrieved.len());
+    for (g, hits) in &retrieved {
+        let normalized = xustive_text::normalize(&g.query);
+        let (results, published) = rerank_ids(
+            hits,
+            &normalized,
+            now,
+            &trust,
+            &authority,
+            &interaction,
+            &weights,
+        );
+        interaction_obs.push(Observed {
+            golden: (*g).clone(),
+            results,
+            published,
+        });
+    }
+    let interaction_report = eval::score(&interaction_obs, now);
+
+    let mut report = eval::score(&baseline_obs, now);
     report.generated_at = opts.date.clone();
     print_report(&report);
+
+    // The interaction uplift (M6-T09.1) + the guardrail (T09.2). A replayed click stream should lift
+    // the relevant documents people would click, and — since interaction only reorders — must never
+    // raise the zero-result rate.
+    let uplift = interaction_report.ndcg_at_10 - report.ndcg_at_10;
+    println!();
+    println!("Interaction replay (M6-T09):");
+    println!("  nDCG@10 baseline       {:.4}", report.ndcg_at_10);
+    println!(
+        "  nDCG@10 + interaction  {:.4}",
+        interaction_report.ndcg_at_10
+    );
+    println!("  uplift                 {uplift:+.4}");
+    println!(
+        "  zero-result guardrail  {:.4} → {:.4}{}",
+        report.zero_result_rate,
+        interaction_report.zero_result_rate,
+        if interaction_report.zero_result_rate > report.zero_result_rate {
+            "  ⚠ interaction raised zero-results (should be impossible — it only reorders)"
+        } else {
+            "  ok"
+        }
+    );
 
     let live = client
         .stats(&index)
@@ -203,6 +258,38 @@ fn check_corpus_drift(judged_against: Option<usize>, live: usize) -> bool {
         "    Judgements are frozen, so documents added since count as irrelevant and pull\n             nDCG down. Regenerate with `make golden` before treating this as a regression."
     );
     true
+}
+
+/// Re-rank one query's candidate hits and return the ordered document ids and their publish dates.
+/// Factored out so the harness can re-rank the same retrieved pool twice — baseline and with a
+/// replayed interaction signal — without re-fetching from Meili.
+fn rerank_ids(
+    hits: &[Value],
+    normalized: &str,
+    now: i64,
+    trust: &HashMap<String, xustive_core::TrustTier>,
+    authority: &HashMap<String, f32>,
+    interaction: &HashMap<String, f32>,
+    weights: &rank::Weights,
+) -> (Vec<String>, Vec<i64>) {
+    let ranked = rank::rerank(
+        hits,
+        normalized,
+        now,
+        trust,
+        authority,
+        interaction,
+        weights,
+    );
+    let results = ranked
+        .iter()
+        .filter_map(|r| r.hit.get("id")?.as_str().map(str::to_string))
+        .collect();
+    let published = ranked
+        .iter()
+        .filter_map(|r| r.hit.get("published_at")?.as_i64())
+        .collect();
+    (results, published)
 }
 
 fn print_report(r: &eval::Report) {

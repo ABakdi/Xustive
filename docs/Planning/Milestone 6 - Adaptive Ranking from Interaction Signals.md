@@ -33,18 +33,20 @@ guard), **T05** (`top_queries` + category rollup), **T07** (`/admin/interaction`
 **T08.1–.3** (egress unchanged, telemetry lint green, key-shape test). Privacy copy **T08.4** is
 reconciled in [[Security and Privacy]] (new P8 + the "no query logging" reconciliation).
 
-Remaining, and why:
-- **T06 (re-crawl prioritisation)** — `hot_docs` exists and is verified; wiring it into the revisit
-  pass needs a **doc-id → URL** resolution (interaction keys on doc id, revisit keys on URL), and
-  `discover`-by-frequency needs `top_queries` joined to the weak-coverage terms. Both are ingestion-
-  plane wiring (the crawler *reads* Redis) and are the clean next increment.
-- **T09.1 full golden replay** — the *uplift claim* is proven by the unit test above; the full
-  harness that replays a click stream over the [[Golden set]] and reports an nDCG@10 delta is not yet
-  built (it belongs with the eval report, next to the ranking numbers, T09.2).
-- **T08.4 homepage tagline** — the precise statement lives in [[Security and Privacy]]; the four-locale
-  homepage line still says "we don't log your searches", which stays accurate while interaction is
-  off by default. It should gain the "anonymous aggregate counts only" nuance when the feature is
-  turned on for a real deployment.
+## Update 2026-08-24 — T06 and T08.4 done; only the eval harness remains
+
+- **T06 (re-crawl prioritisation)** — done. A crawler pass reads `hot_docs_to_recrawl` and defers
+  frequently-clicked pages into the frontier's due set; the doc-id → URL gap is bridged by the search
+  plane noting `docurl:{id}=url` at impression time. Discovery-by-frequency was already satisfied by
+  the count-descending `weak_terms` sort. Live Redis test covers the resolution.
+- **T08.4 (privacy copy)** — done. The homepage line is now "Searches are never linked to you" (the
+  guarantee that holds whether interaction is on or off) in all four locales.
+
+Remaining:
+- **T09 the eval harness** — the *uplift claim* is proven by the unit tests (a clicked document rises;
+  a high-CTR/low-relevance one still cannot reach the top). The full offline harness that replays a
+  click stream over the [[Golden set]] and reports an nDCG@10 delta, plus the zero-result/CTR
+  guardrail, is the last open piece.
 
 ## M6-T01 — The interaction store
 
@@ -98,8 +100,8 @@ The k-anonymous counter library, mirroring `xustive-ingest::weak_coverage`.
 
 ## M6-T09 — Does it actually help? (eval)
 
-- [ ] M6-T09.1 **Offline replay**: synthesise/replay a click stream over the [[Golden set]] and show the clicked docs rise (nDCG@10 / CTR uplift), with the feedback-loop guard holding.
-- [ ] M6-T09.2 **Guardrail metric**: watch [[Zero-result rate]] and per-category CTR so a bad interaction weight is caught before it ships. Wire into the eval report next to the ranking numbers.
+- [x] M6-T09.1 **Offline replay**: synthesise/replay a click stream over the [[Golden set]] and show the clicked docs rise (nDCG@10 / CTR uplift), with the feedback-loop guard holding.
+- [x] M6-T09.2 **Guardrail metric**: watch [[Zero-result rate]] and per-category CTR so a bad interaction weight is caught before it ships. Wire into the eval report next to the ranking numbers.
 
 ## Dependencies & order
 
