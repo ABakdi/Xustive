@@ -532,6 +532,22 @@ pub struct VectorConfig {
     /// TTL, in days, for the `phash → vector` reuse cache. 0 disables the cache (every image is
     /// embedded). Entries age out so a hash that stops recurring does not pin memory forever.
     pub embed_cache_ttl_days: u64,
+
+    // --- semantic text search (M7-T02), a parallel path over the same Qdrant ---
+    /// Master switch for semantic (dense) text retrieval. Independent of image search: it needs the
+    /// **text**-embed sidecar and its own Qdrant collection. Off by default.
+    pub text_enabled: bool,
+    /// The text-embed sidecar endpoint. A batch of strings posted here returns one `text_dim` vector
+    /// each. An internal-network call, not internet egress.
+    pub text_embedder_endpoint: String,
+    /// Qdrant collection for document text vectors — separate from the image collection.
+    pub text_collection: String,
+    /// Vector dimension of the text model. **Must match the sidecar's model** (bge-m3 = 1024); the
+    /// collection is created with this size and a mismatched vector is rejected at upsert time.
+    pub text_dim: usize,
+    /// Nearest neighbours pulled from the text collection per query, before fusion with the lexical
+    /// candidates. The dense leg's recall budget.
+    pub text_search_limit: usize,
 }
 
 impl VectorConfig {
@@ -580,6 +596,11 @@ impl Default for VectorConfig {
             ef_search: 64,
             score_threshold_milli: 750,
             embed_cache_ttl_days: 30,
+            text_enabled: false,
+            text_embedder_endpoint: "http://127.0.0.1:8094/embed".into(),
+            text_collection: "text_bge".into(),
+            text_dim: 1024,
+            text_search_limit: 50,
         }
     }
 }

@@ -213,6 +213,35 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # Text embed sidecar for semantic search (M7-T02). Behind the `semantic` profile (off by default).
+  # BAAI/bge-m3 (1024-d, multilingual) runs CPU-only, so no GPU reservation. On `core` (internal, no
+  # egress); weights are provisioned into `text_models` out-of-band (`HF_HUB_OFFLINE=1`). No published
+  # port here; the dev override adds one so a host-run API and worker can reach it. See
+  # services/text-embed.
+  text-embed:
+    build:
+      context: ../services/text-embed
+    container_name: xustive-text-embed
+    profiles: ["semantic"]
+    # bge-m3 (~2.3 GB) plus the torch runtime and a little headroom.
+    mem_limit: 4g
+    cpus: 2.0
+    environment:
+      TEXT_EMBED_MODEL: BAAI/bge-m3
+      HF_HOME: /models/hf
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    volumes:
+      - text_models:/models/hf:ro
+    networks: [core]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8094/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+    restart: unless-stopped
+
   # Self-hosted SearXNG metasearch aggregator for query-time federation (M7-T04, [[ADR-0017]]).
   # On the egress `ingest` network only — a user query reaches third-party engines through our own
   # SearXNG, never carrying a client IP or identity. The serving plane cannot reach it directly; the
@@ -306,6 +335,7 @@ volumes:
   grafana_data:
   # Pre-provisioned Unlimited-OCR weights (HuggingFace cache layout). Populated out-of-band, mounted
   # read-only into the sidecar so `core` needs no egress. Empty unless the `ocr` profile is used.
+  text_models:
   ocr_models:
   # Pre-provisioned CLIP weights, same posture. Empty unless the `vector` profile is used.
   clip_models:

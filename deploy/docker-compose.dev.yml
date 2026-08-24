@@ -57,6 +57,13 @@ services:
     ports:
       - "127.0.0.1:${XUSTIVE_STT_PORT:-8093}:8093"
 
+  # Only started with `--profile semantic`. Published so the host-run API and worker reach it at the
+  # `vector.text_embedder_endpoint` default (http://127.0.0.1:8094/embed).
+  text-embed:
+    networks: [core, devhost]
+    ports:
+      - "127.0.0.1:${XUSTIVE_TEXT_EMBED_PORT:-8094}:8094"
+
   # Only started with `--profile federation`. Published so the host-run API reaches the gateway at
   # the `federation.federator_url` default (http://127.0.0.1:8095). Keeps `ingest` so the gateway can
   # still reach SearXNG on the egress network. SearXNG itself needs no host port — only the gateway

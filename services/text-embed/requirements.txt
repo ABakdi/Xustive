@@ -1,0 +1,8 @@
+# Multilingual sentence embeddings via sentence-transformers. Default model BAAI/bge-m3 (1024-d,
+# Apache-2.0, strong on Arabic/French). CPU wheels are fine — install the CUDA-matched torch if a
+# GPU is present (see README). Weights are provisioned into a mounted HF cache, not baked in.
+torch==2.10.0
+sentence-transformers==3.3.*
+transformers==4.57.1
+fastapi==0.115.*
+uvicorn[standard]==0.32.*

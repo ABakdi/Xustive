@@ -21,11 +21,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 pub mod embed;
-pub use embed::{Embedder, SidecarEmbedder};
+pub mod text;
+pub use embed::{l2_normalise, Embedder, SidecarEmbedder};
+pub use text::TextEmbedder;
 
 pub const DEFAULT_COLLECTION: &str = "image_clip";
 /// CLIP ViT-B/32 embedding dimensionality.
 pub const DIM: usize = 512;
+
+/// Default text collection + dimension for semantic search (M7-T02), matching the bge-m3 default in
+/// the text-embed sidecar. Override both together via `[vector] text_collection` / `text_dim`.
+pub const DEFAULT_TEXT_COLLECTION: &str = "text_bge";
+pub const DEFAULT_TEXT_DIM: usize = 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum VectorError {
@@ -129,15 +136,30 @@ pub struct Store {
     base: String,
     collection: String,
     api_key: Option<String>,
+    /// Vector dimension the collection is created with. Parameterised (not the crate `DIM` const) so
+    /// the same client serves both the 512-d image collection and the 1024-d text collection (M7-T02)
+    /// — a mismatch between this and the embedder is rejected by Qdrant at upsert time.
+    dim: usize,
 }
 
 impl Store {
-    /// Build a client. Does not connect — the first request does. `api_key` is sent as
-    /// `api-key` on every request when present ([[Vector Index]] §10).
+    /// Build a client for the default (image) collection at [`DIM`]. Does not connect — the first
+    /// request does. `api_key` is sent as `api-key` on every request when present.
     pub fn new(
         url: &str,
         api_key: Option<String>,
         collection: impl Into<String>,
+        timeout: std::time::Duration,
+    ) -> Result<Self, VectorError> {
+        Self::with_dim(url, api_key, collection, DIM, timeout)
+    }
+
+    /// Build a client for a collection of a given vector dimension ([[Vector Index]] §10).
+    pub fn with_dim(
+        url: &str,
+        api_key: Option<String>,
+        collection: impl Into<String>,
+        dim: usize,
         timeout: std::time::Duration,
     ) -> Result<Self, VectorError> {
         let http = reqwest::Client::builder()
@@ -149,6 +171,7 @@ impl Store {
             base: url.trim_end_matches('/').to_string(),
             collection: collection.into(),
             api_key,
+            dim,
         })
     }
 
@@ -171,7 +194,7 @@ impl Store {
         // int8 scalar quantisation with always_ram: 512×int8 = 512 B/vector resident; float32 stays
         // on disk for rescoring the top candidates ([[Vector Index]] §4).
         let body = json!({
-            "vectors": { "size": DIM, "distance": "Cosine", "on_disk": true },
+            "vectors": { "size": self.dim, "distance": "Cosine", "on_disk": true },
             "hnsw_config": { "m": 16, "ef_construct": 128, "full_scan_threshold": 10000, "on_disk": true },
             "optimizers_config": { "default_segment_number": 4, "indexing_threshold": 20000 },
             "quantization_config": { "scalar": { "type": "int8", "quantile": 0.99, "always_ram": true } }
