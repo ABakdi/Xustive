@@ -23,6 +23,7 @@ pub mod stt;
 pub mod suggest;
 pub mod summary;
 pub mod telemetry;
+pub mod text_search;
 pub mod tools;
 pub mod translate;
 pub mod weather;

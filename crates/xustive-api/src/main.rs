@@ -119,6 +119,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(e) => tracing::warn!(error = %e, "image similarity enabled but Qdrant unreachable"),
         }
     }
+    // The semantic text collection (M7-T02). The crawler only writes vectors; creating the collection
+    // is the serving side's job, here. Non-fatal: a failure means dense retrieval is unavailable and
+    // search runs lexical-only.
+    if let Some(engine) = &state.text_search {
+        match engine.store.ensure_collection().await {
+            Ok(()) => tracing::info!("semantic text collection ready"),
+            Err(e) => tracing::warn!(error = %e, "semantic search enabled but Qdrant unreachable"),
+        }
+    }
     spawn_model_load(&state);
     // Publishes how old the cached tool data is, on a timer rather than on request. A fetcher
     // that stops silently leaves the last values in place and every card keeps rendering, so

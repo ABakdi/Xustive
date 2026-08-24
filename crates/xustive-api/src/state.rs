@@ -83,6 +83,10 @@ pub struct AppState {
     /// Image-similarity search, or `None` when `[vector] enabled = false`. Its absence is a normal
     /// state — the `/search/image` endpoint returns a clean unavailable and text search is untouched.
     pub image_search: Option<crate::image_search::ImageSearch>,
+    /// Semantic (dense) text retrieval for search (M7-T02). `Some` only when `[vector] text_enabled`.
+    /// Every use is fail-open, so its absence or an outage only removes semantic recall, never
+    /// results.
+    pub text_search: Option<crate::text_search::TextSearch>,
     /// Voice transcription, or `None` when `[stt] enabled = false`. Same posture: absence is normal
     /// and the `/transcribe` endpoint returns a clean unavailable.
     pub stt: Option<crate::stt::SttClient>,
@@ -320,6 +324,7 @@ impl AppState {
             tool_cache: xustive_toold::store::Store::connect(&queue_url).ok(),
             ocr: build_ocr_backend(&media),
             image_search: crate::image_search::ImageSearch::from_config(&vector),
+            text_search: crate::text_search::TextSearch::from_config(&vector),
             stt: crate::stt::SttClient::from_config(&stt),
             federator: crate::federate::FederatorClient::from_config(&federation),
             interactions: Arc::new(std::sync::RwLock::new(None)),

@@ -339,6 +339,9 @@ pub const FEDERATION_SEARCHES_HELP: &str =
 pub const FEDERATION_FED: &str = "xustive_federation_urls_fed_total";
 pub const FEDERATION_FED_HELP: &str =
     "Federated URLs queued for crawling — the crawl-feed that converges the index toward answering locally. Each becomes a real result once the crawler reaches it.";
+pub const SEMANTIC_FUSED: &str = "xustive_semantic_fused_total";
+pub const SEMANTIC_FUSED_HELP: &str =
+    "Searches where the dense (semantic) leg contributed candidates, by kind: `recall` (it added documents the lexical leg missed) or `reinforce` (its top ids were all already lexical hits). The `recall` share is semantic search earning its keep.";
 
 pub const QUEUE_DEPTH: &str = "xustive_queue_depth";
 pub const QUEUE_DEPTH_HELP: &str =

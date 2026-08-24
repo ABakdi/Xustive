@@ -413,6 +413,46 @@ pub async fn handler(
         retrieval_started.elapsed().as_secs_f64(),
     );
 
+    // --- semantic (dense) recall + fusion (M7-T02) ----------------------------------
+    // Embed the query, k-NN the text collection, and fuse those candidates with the lexical ones by
+    // reciprocal-rank fusion — so a query worded differently from a document can still reach it.
+    // Fail-open: no engine, or any error, leaves `hits.hits` exactly as lexical retrieval produced
+    // it. Runs before the interaction and re-rank stages so they see the fused candidate set.
+    if let Some(dense) = &state.text_search {
+        let dense_ids = dense.candidates(&normalized).await;
+        if !dense_ids.is_empty() {
+            let lex_ids: std::collections::HashSet<&str> = hits
+                .hits
+                .iter()
+                .filter_map(|h| h.get("id").and_then(Value::as_str))
+                .collect();
+            let missing: Vec<String> = dense_ids
+                .iter()
+                .filter(|id| !lex_ids.contains(id.as_str()))
+                .cloned()
+                .collect();
+            let dense_docs = fetch_by_ids(&state, &index, &missing).await;
+            state.metrics.incr(
+                metrics::SEMANTIC_FUSED,
+                metrics::SEMANTIC_FUSED_HELP,
+                &[(
+                    "kind",
+                    if dense_docs.is_empty() {
+                        "reinforce"
+                    } else {
+                        "recall"
+                    },
+                )],
+            );
+            hits.hits = crate::text_search::rrf_fuse(
+                std::mem::take(&mut hits.hits),
+                &dense_ids,
+                dense_docs,
+                pool,
+            );
+        }
+    }
+
     // --- re-rank --------------------------------------------------------------------
     let rerank_started = Instant::now();
     let trust = state.trust_tiers.as_ref();
@@ -647,6 +687,31 @@ pub async fn handler(
         facets_degraded: !want_facets,
         federated,
     }))
+}
+
+/// Fetch documents by id from the index, for the semantic fusion leg (M7-T02). Order is whatever the
+/// engine returns — the fuser re-orders by fused rank. Fail-open: an index error yields an empty
+/// list, so the dense leg simply contributes nothing and search proceeds on the lexical candidates.
+async fn fetch_by_ids(state: &AppState, index: &str, ids: &[String]) -> Vec<Value> {
+    if ids.is_empty() {
+        return Vec::new();
+    }
+    // Ids are `u-<hex>` or ULIDs — `{:?}` quotes them safely for the filter expression.
+    let list = ids
+        .iter()
+        .map(|id| format!("{id:?}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let query = Query::new("")
+        .filter(format!("id IN [{list}]"))
+        .limit(ids.len());
+    match state.search.search::<Value>(index, &query).await {
+        Ok(h) => h.hits,
+        Err(e) => {
+            tracing::debug!(error = %e, "semantic fusion: fetching dense documents failed");
+            Vec::new()
+        }
+    }
 }
 
 /// Ingest federated hits (M7). Fire-and-forget — the search response never waits on it.
