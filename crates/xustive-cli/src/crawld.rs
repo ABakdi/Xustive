@@ -251,6 +251,15 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
         None
     };
 
+    // Text embedding into the vector index for semantic search (M7-T02). Off unless `[vector]
+    // text_enabled` AND both the text-embed sidecar and Qdrant clients construct. One embed call per
+    // document, so opt-in; fail-open, so a sidecar outage never stalls the crawl.
+    let text_embed = if config.vector.text_enabled {
+        build_text_embed(config)
+    } else {
+        None
+    };
+
     for id in 0..workers {
         let frontier = orchestrator.frontier().clone();
         let queue = queue.clone();
@@ -264,6 +273,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
         let raw_ttl_days = config.crawl.raw_ttl_days;
         let media_ocr = media_ocr.clone();
         let image_embed = image_embed.clone();
+        let text_embed = text_embed.clone();
 
         tasks.spawn(async move {
             let Ok(fetcher) = Fetcher::new(FetchConfig {
@@ -312,6 +322,9 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             }
             if let Some(embed) = image_embed {
                 orch = orch.with_image_embed(embed);
+            }
+            if let Some(embed) = text_embed {
+                orch = orch.with_text_embed(embed);
             }
             let dedup = xustive_ingest::dedup::Dedup::connect_in(&redis_url, "frontier");
 
@@ -605,5 +618,30 @@ async fn build_image_embed(config: &Config) -> Option<xustive_ingest::media_embe
             max_bytes: config.media.max_image_bytes,
         },
         cache,
+    })
+}
+
+/// Build the index-time text embedder (M7-T02), or `None` (crawl continues) if a client fails to
+/// build. The Qdrant text collection is ensured by the serving side at startup; the crawler only
+/// writes. `text_dim` must match the sidecar's model, or Qdrant rejects the upserts.
+fn build_text_embed(config: &Config) -> Option<xustive_ingest::text_embed::TextEmbed> {
+    let v = &config.vector;
+    let timeout = std::time::Duration::from_millis(v.timeout_ms);
+    let key = (!v.qdrant_key.is_empty()).then(|| v.qdrant_key.clone());
+    let store = xustive_vector::Store::with_dim(
+        &v.qdrant_url,
+        key,
+        v.text_collection.clone(),
+        v.text_dim,
+        timeout,
+    )
+    .ok()?;
+    let embedder = xustive_vector::TextEmbedder::new(&v.text_embedder_endpoint, timeout).ok()?;
+    Some(xustive_ingest::text_embed::TextEmbed {
+        embedder,
+        store,
+        // The head of a page carries its topic; a few thousand characters is plenty for a retrieval
+        // embedding and keeps the per-document embed bounded.
+        max_chars: 4000,
     })
 }

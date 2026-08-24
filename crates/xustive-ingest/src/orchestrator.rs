@@ -137,6 +137,9 @@ pub struct Orchestrator {
     /// Image embedding into the vector index, when enabled. Independent of OCR: either, both, or
     /// neither can be on.
     image_embed: Option<crate::media_embed::ImageEmbed>,
+    /// Text embedding into the vector index for semantic search (M7-T02). Independent of image
+    /// embedding — either, both, or neither can be on.
+    text_embed: Option<crate::text_embed::TextEmbed>,
     last_promote: std::time::Instant,
 }
 
@@ -157,6 +160,7 @@ impl Orchestrator {
             link_graph: None,
             media_ocr: None,
             image_embed: None,
+            text_embed: None,
             last_promote: std::time::Instant::now(),
         }
     }
@@ -181,6 +185,12 @@ impl Orchestrator {
     /// unless set.
     pub fn with_image_embed(mut self, embed: crate::media_embed::ImageEmbed) -> Self {
         self.image_embed = Some(embed);
+        self
+    }
+
+    /// Embed a page's text into the vector index so it is findable by meaning (M7-T02). Off unless set.
+    pub fn with_text_embed(mut self, embed: crate::text_embed::TextEmbed) -> Self {
+        self.text_embed = Some(embed);
         self
     }
 
@@ -476,6 +486,13 @@ impl Orchestrator {
         // duplicating it. Only for the federation channel — other channels keep their per-fetch id.
         if claim.channel == xustive_core::DiscoveryChannel::Federation {
             parsed.document.id = xustive_core::id_for_url(&claim.url);
+        }
+
+        // Embed the document's text into the vector index for semantic search (M7-T02). After the id
+        // is final, so the point is keyed on the same id the document is indexed under. Fail-open —
+        // a missing vector only means this page is not yet findable by meaning, never a lost document.
+        if let Some(te) = &self.text_embed {
+            crate::text_embed::embed_and_store(&parsed.document, te).await;
         }
 
         // Links are followed unless the page asked otherwise. A `noindex` page is still worth

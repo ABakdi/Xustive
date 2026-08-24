@@ -45,6 +45,7 @@ pub mod simhash_index;
 pub mod sitemap;
 pub mod sitemap_poll;
 pub mod spam;
+pub mod text_embed;
 pub mod topics;
 pub mod weak_coverage;
 
