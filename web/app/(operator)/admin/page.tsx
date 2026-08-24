@@ -8,6 +8,7 @@ import {
   getCompute,
   getMedia,
   getInteraction,
+  getIntegrations,
   getDocuments,
   type MediaStatus,
   type InteractionStatus,
@@ -58,12 +59,14 @@ export default function OverviewPage() {
   const [compute, setCompute] = useState<Record<string, unknown> | null>(null)
   const [media, setMedia] = useState<MediaStatus | null>(null)
   const [interaction, setInteraction] = useState<InteractionStatus | null>(null)
+  const [integrations, setIntegrations] = useState<Awaited<ReturnType<typeof getIntegrations>> | null>(null)
   const [corpus, setCorpus] = useState<number | null>(null)
   useEffect(() => {
     const tick = () => {
       getCompute().then(setCompute).catch(() => {})
       getMedia().then(setMedia).catch(() => {})
       getInteraction().then(setInteraction).catch(() => {})
+      getIntegrations().then(setIntegrations).catch(() => {})
       // Total corpus size = the index's own estimate for an empty query.
       getDocuments({}).then((d) => setCorpus(d.estimated_total)).catch(() => {})
     }
@@ -130,6 +133,40 @@ export default function OverviewPage() {
           label="Interaction"
           state={interaction?.enabled ? 'on' : 'off'}
           detail={interaction?.enabled ? `k=${interaction.k_anonymity}` : 'off'}
+        />
+        <Chip
+          label="Federation"
+          state={
+            integrations?.federation?.enabled
+              ? integrations.federation.reachable_from_api
+                ? 'on'
+                : 'warn'
+              : 'off'
+          }
+          detail={
+            integrations?.federation?.enabled
+              ? integrations.federation.reachable_from_api
+                ? 'SearXNG live'
+                : 'gateway down'
+              : 'off'
+          }
+        />
+        <Chip
+          label="Semantic search"
+          state={
+            integrations?.semantic?.configured
+              ? integrations.semantic.reachable
+                ? 'on'
+                : 'warn'
+              : 'off'
+          }
+          detail={
+            integrations?.semantic?.configured
+              ? integrations.semantic.documents_embedded == null
+                ? 'embedder down'
+                : `${integrations.semantic.documents_embedded.toLocaleString()} vectors`
+              : 'off'
+          }
         />
       </div>
 
