@@ -81,8 +81,8 @@ The k-anonymous counter library, mirroring `xustive-ingest::weak_coverage`.
 
 ## M6-T06 — Re-crawl prioritisation (ingestion reads Redis)
 
-- [ ] M6-T06.1 **`hot_docs(limit)`** → the revisit pass pulls each doc's `Visit` forward (`interval_secs=0`), the mechanism `Visits::apply_sitemap` already uses. Capped per run so popularity cannot own the queue (the [[Crawler Orchestrator]] revisit ethic).
-- [ ] M6-T06.2 **Discovery order by frequency**: `discover` resolves weak terms most-searched-first, using `top_queries`. Search plane only *writes* Redis; the crawler only *reads* it ([[ADR-0001 - Two-Plane Architecture]]).
+- [x] M6-T06.1 **`hot_docs` → re-crawl** — a crawler pass (every 30 min, capped, gated on interaction) reads `hot_docs_to_recrawl` and defers each URL into the frontier's due set. The doc-id → URL gap is bridged by the search plane noting `docurl:{id}=url` at impression time (the crawler cannot read the index); a revisit answers 304 cheaply when unchanged. Search plane writes, crawler reads.
+- [x] M6-T06.2 **Discovery order by frequency** — satisfied by the existing `weak_terms` sort: it returns terms **count-descending** (how often searched *and* under-served), and `discover::run` resolves them in that order within its budget. That is a sharper signal than `top_queries` — the budget goes to terms that are both frequent and unanswered.
 
 ## M6-T07 — Operator console
 
@@ -94,7 +94,7 @@ The k-anonymous counter library, mirroring `xustive-ingest::weak_coverage`.
 - [x] M6-T08.1 **Egress test** still passes (`xustive-api` no route out) — the interaction path adds no outbound call.
 - [x] M6-T08.2 **Telemetry lint** green: no `query`/`token`/`normalized_query` field in any span or metric added here.
 - [x] M6-T08.3 **Key-shape test**: assert no interaction Redis key can contain an IP, session, or user component — there is no code path that constructs one.
-- [ ] M6-T08.4 **Privacy copy**: update the privacy line / page from "we don't log your searches" to the honest, precise statement ("no identifiable tracking; anonymous aggregate counts only, k-anonymous, on your own server"). Reconcile [[Security and Privacy]] and [[Observability]].
+- [x] M6-T08.4 **Privacy copy**: update the privacy line / page from "we don't log your searches" to the honest, precise statement ("no identifiable tracking; anonymous aggregate counts only, k-anonymous, on your own server"). Reconcile [[Security and Privacy]] and [[Observability]].
 
 ## M6-T09 — Does it actually help? (eval)
 
