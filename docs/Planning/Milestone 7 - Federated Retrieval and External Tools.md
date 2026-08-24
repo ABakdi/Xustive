@@ -46,10 +46,12 @@ Close the word-mismatch gap with no new infrastructure, tuning [[Search Index]] 
 
 Give the engine meaning-level matching so a sentence finds pages by concept, reusing the Qdrant already deployed for images.
 
-- [ ] M7-T02.1 **Text embedding path** in `xustive-vector`: embed document `title`+`body` (and `translit_body`) with a CPU/GPU-switchable model (Qwen-family, per [[xustive-hardware-target]]), written to a Qdrant text collection at index time by the [[Indexer Worker]].
-- [ ] M7-T02.2 **Query embedding + dense retrieval** leg: embed the query, k-NN against the text collection, producing a second candidate set alongside the lexical one.
-- [ ] M7-T02.3 **Hybrid fusion**: merge lexical + dense candidates (reciprocal-rank fusion or a scored blend) *before* the re-ranker, so [[Ranking and Relevance]] sees one pool. Dense is additive recall, bounded so it cannot swamp exact lexical matches.
-- [ ] M7-T02.4 **Cost control**: embedding is opt-in and batched; the dense leg runs within the query deadline and fails open to lexical-only, like every other optional leg.
+> **Built 2026-08-24 (off by default, `[vector] text_enabled`).** A `text-embed` sidecar runs BAAI/bge-m3 (multilingual, 1024-d) on the internal `core` network; `xustive_vector::TextEmbedder` + a dimension-parameterised `Store` speak to it and a separate Qdrant text collection. The crawler embeds each document's title+body at index time (`xustive_ingest::text_embed`, fail-open); the search handler embeds the query, k-NN the collection, and **reciprocal-rank-fuses** the dense candidates with the lexical ones before re-rank (`text_search::rrf_fuse`, unit-tested). Remaining: batching the index-time embed and a deadline gate on the query leg (**T02.4**).
+
+- [x] M7-T02.1 **Text embedding path** in `xustive-vector`: embed document `title`+`body` (and `translit_body`) with a CPU/GPU-switchable model (Qwen-family, per [[xustive-hardware-target]]), written to a Qdrant text collection at index time by the [[Indexer Worker]].
+- [x] M7-T02.2 **Query embedding + dense retrieval** leg: embed the query, k-NN against the text collection, producing a second candidate set alongside the lexical one.
+- [x] M7-T02.3 **Hybrid fusion**: merge lexical + dense candidates (reciprocal-rank fusion or a scored blend) *before* the re-ranker, so [[Ranking and Relevance]] sees one pool. Dense is additive recall, bounded so it cannot swamp exact lexical matches.
+- [~] M7-T02.4 **Cost control**: embedding is opt-in and batched; the dense leg runs within the query deadline and fails open to lexical-only, like every other optional leg.
 
 ## M7-T03 — Term ↔ document linking
 

@@ -142,6 +142,17 @@ score_threshold_milli = 750
 # TTL (days) for the phash → vector reuse cache: a re-posted image reuses its embedding instead of
 # re-calling the model. 0 disables it.
 embed_cache_ttl_days = 30
+# Semantic (dense) text search (M7-T02) — the durable fix for "the index has the page but the words
+# don't match". Off by default: needs Qdrant AND the text-embed sidecar (services/text-embed) with
+# its model provisioned. Turn on once `docker compose --profile semantic up -d` is running and the
+# bge-m3 weights are in the text_models volume.
+text_enabled = false
+text_embedder_endpoint = "http://127.0.0.1:8094/embed"
+text_collection = "text_bge"
+# Must match the sidecar's model: bge-m3 = 1024. Change both together (e.g. multilingual-e5-small = 384).
+text_dim = 1024
+# Nearest neighbours pulled from the text collection per query before fusion with lexical results.
+text_search_limit = 50
 
 [stt]
 # Voice search. Off by default: needs the STT sidecar (services/stt-sidecar) and its whisper model.
