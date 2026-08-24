@@ -10,6 +10,7 @@
 pub mod detect;
 pub mod expand;
 pub mod lexicon;
+pub mod morph;
 pub mod question;
 pub mod sentiment;
 pub mod translit;
