@@ -470,6 +470,14 @@ impl Orchestrator {
         // claim — so it is set here, the one place both the claim and the document are in hand.
         parsed.document.discovery = claim.channel;
 
+        // A federated URL may already be in the index as a *thin* eager document (M7): the search
+        // path indexed its SearXNG title+snippet for immediacy, keyed by `id_for_url(claim.url)`.
+        // Give this full-page crawl the same id so it overwrites that placeholder rather than
+        // duplicating it. Only for the federation channel — other channels keep their per-fetch id.
+        if claim.channel == xustive_core::DiscoveryChannel::Federation {
+            parsed.document.id = xustive_core::id_for_url(&claim.url);
+        }
+
         // Links are followed unless the page asked otherwise. A `noindex` page is still worth
         // crawling *through* — that combination is how sites let a crawler reach content behind a
         // section they do not want listed.

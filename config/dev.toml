@@ -68,6 +68,10 @@ federator_url = "http://127.0.0.1:8095"
 # answer wait past this; miss it and results ship index-only.
 budget_ms = 250
 max_hits = 10
+# Index each federated result immediately as a thin document (its title + snippet) so it shows as a
+# real result within seconds; the full-page crawl then overwrites it (same URL-derived id). On for
+# this personal dev engine, where immediacy is wanted; only fires when federation is switched on.
+eager_index = true
 
 [interaction]
 # Anonymous interaction signals (M6): impressions/clicks as k-anonymous windowed counters that feed

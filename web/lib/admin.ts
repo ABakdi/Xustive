@@ -200,6 +200,9 @@ export interface FederationStatus {
   federator_url: string
   budget_ms: number
   max_hits: number
+  /** When true, federated results are indexed immediately as thin docs (title+snippet), then the
+   *  full crawl overwrites them. When false, only the crawl-feed runs (slower to appear). */
+  eager_index: boolean
   allowlist: string[]
   /** Live health probe of the gateway (on the core network — not internet egress). */
   reachable_from_api: boolean

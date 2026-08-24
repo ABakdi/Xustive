@@ -614,7 +614,7 @@ pub async fn handler(
             &[],
             federated.len() as u64,
         );
-        feed_crawler(&state, &federated);
+        ingest_federated(&state, &federated, language);
     }
 
     // NOTE: `normalized` is echoed to the caller who sent it, which is fine. It must never
@@ -649,41 +649,119 @@ pub async fn handler(
     }))
 }
 
-/// Queue federated URLs for crawling so a borrowed page becomes a real indexed result on a later
-/// search (M7-T06). Fire-and-forget — the search response never waits on it. The search plane only
-/// *writes* the frontier; the crawler *reads* it ([[ADR-0001 - Two-Plane Architecture]]). Each URL
-/// passes the same `SafeUrl` and trap checks a discovered link does, and enters at a modest
-/// discovered-tier trust under the `Federation` channel so the discovery funnel tracks it.
-fn feed_crawler(state: &AppState, hits: &[xustive_ingest::federation::FederatedHit]) {
+/// Ingest federated hits (M7). Fire-and-forget — the search response never waits on it.
+///
+/// Two effects, both keyed on the *same* URL-derived id so they converge on one document:
+/// 1. **Eager index** (when `federation.eager_index` is on): each hit is indexed *immediately* as a
+///    thin document — its SearXNG title and snippet — so it appears as a real result within seconds
+///    rather than only after a full crawl. Low `quality_score`, so a placeholder never outranks a
+///    real page.
+/// 2. **Crawl-feed** (always): the URL is queued for a full-page crawl, front-promoted since a user
+///    just asked for it. That crawl produces the same id (`id_for_url`, set in the orchestrator for
+///    the federation channel), so it **overwrites** the thin document instead of duplicating it.
+///
+/// The search plane only *writes* Redis (the index queue and the frontier); the crawler *reads* the
+/// frontier ([[ADR-0001 - Two-Plane Architecture]]). Each URL passes the same `SafeUrl` and trap
+/// checks a discovered link does.
+fn ingest_federated(
+    state: &AppState,
+    hits: &[xustive_ingest::federation::FederatedHit],
+    language: xustive_core::Lang,
+) {
     let queue_url = state.config.queue.url.clone();
-    let urls: Vec<String> = hits.iter().map(|h| h.url.clone()).collect();
-    tokio::spawn(async move {
-        let Ok(frontier) = xustive_ingest::frontier::Frontier::connect(&queue_url) else {
-            return;
+    let index_stream = state.config.queue.index_stream.clone();
+    let eager = state.config.federation.eager_index;
+    let now = xustive_core::now_unix();
+
+    // Canonicalise once, synchronously, so the eager id and the crawl-feed id are identical.
+    struct Entry {
+        curl: String,
+        host: String,
+        title: String,
+        snippet: String,
+    }
+    let mut entries: Vec<Entry> = Vec::new();
+    for h in hits {
+        let Ok(safe) = xustive_core::SafeUrl::parse(&h.url) else {
+            continue;
         };
-        for u in urls {
-            let Ok(safe) = xustive_core::SafeUrl::parse(&u) else {
-                continue;
-            };
-            let parsed = safe.as_url().clone();
-            if xustive_ingest::frontier::detect_trap(&parsed).is_some() {
-                continue;
+        let parsed = safe.as_url().clone();
+        if xustive_ingest::frontier::detect_trap(&parsed).is_some() {
+            continue;
+        }
+        entries.push(Entry {
+            curl: xustive_ingest::frontier::canonical(&parsed),
+            host: safe.authority(),
+            title: h.title.clone(),
+            snippet: h.snippet.clone(),
+        });
+    }
+    if entries.is_empty() {
+        return;
+    }
+
+    tokio::spawn(async move {
+        // 1. Eager index — thin documents to the index queue, overwritten later by the full crawl.
+        if eager {
+            if let Ok(producer) =
+                xustive_queue::Queue::connect_producer(&queue_url, &index_stream).await
+            {
+                let jobs: Vec<xustive_queue::indexer::IndexJob> = entries
+                    .iter()
+                    .map(|e| {
+                        let body = if e.snippet.trim().is_empty() {
+                            e.title.clone()
+                        } else {
+                            e.snippet.clone()
+                        };
+                        let mut doc = xustive_core::Document::new(
+                            xustive_core::id_for_url(&e.curl),
+                            e.curl.clone(),
+                            xustive_core::SourceType::Web,
+                        );
+                        doc.title = e.title.clone();
+                        doc.body_len = body.split_whitespace().count();
+                        doc.excerpt = body.clone();
+                        doc.content_hash = xustive_core::hash::content_hash(&body);
+                        doc.body = body;
+                        doc.discovery = xustive_core::DiscoveryChannel::Federation;
+                        doc.source_id = "federation".into();
+                        doc.language = language;
+                        doc.crawled_at = now;
+                        doc.indexed_at = now;
+                        // A placeholder from a snippet, not a crawled page — kept low so it never
+                        // outranks a real document, and replaced the moment the crawl lands.
+                        doc.quality_score = 0.1;
+                        // Only the minimum ran — the full crawl owes it the optional enrichment,
+                        // which the repass or the crawl itself will do.
+                        doc.enrichment_level = xustive_core::EnrichmentLevel::Partial;
+                        xustive_queue::indexer::IndexJob {
+                            document: serde_json::to_value(&doc).unwrap_or_default(),
+                            index: None,
+                        }
+                    })
+                    .collect();
+                if let Err(e) = producer.produce_many(&jobs).await {
+                    tracing::warn!(error = %e, "eager federation index submit failed");
+                }
             }
-            let host = safe.authority();
-            let pending = xustive_ingest::frontier::Pending {
-                url: xustive_ingest::frontier::canonical(&parsed),
-                host: host.clone(),
-                source_id: "federation".into(),
-                depth: 0,
-                // Trust stays modest — an arbitrary web page is not a curated seed, and trust feeds
-                // ranking. Crawl *priority* is separate: a user asked for this page right now, so
-                // promote it to the front of its host queue rather than let it sit behind a backlog.
-                trust: 40,
-                channel: xustive_core::DiscoveryChannel::Federation,
-                priority: xustive_ingest::frontier::priority_for(0, 40, false),
-            };
-            if frontier.add(&pending).await.is_ok() {
-                frontier.promote(&host, &pending.url).await;
+        }
+
+        // 2. Crawl-feed — full-page crawl, front-promoted, sharing the eager id so it overwrites.
+        if let Ok(frontier) = xustive_ingest::frontier::Frontier::connect(&queue_url) {
+            for e in &entries {
+                let pending = xustive_ingest::frontier::Pending {
+                    url: e.curl.clone(),
+                    host: e.host.clone(),
+                    source_id: "federation".into(),
+                    depth: 0,
+                    trust: 40,
+                    channel: xustive_core::DiscoveryChannel::Federation,
+                    priority: xustive_ingest::frontier::priority_for(0, 40, false),
+                };
+                if frontier.add(&pending).await.is_ok() {
+                    frontier.promote(&e.host, &pending.url).await;
+                }
             }
         }
     });

@@ -30,6 +30,18 @@ pub fn new_id() -> String {
     ulid::Ulid::new().to_string()
 }
 
+/// A deterministic document id derived from a URL, so the same URL always maps to the same document.
+///
+/// Used where a document must be **idempotent by URL** rather than unique per fetch: the eager
+/// federation index (M7) and the crawl of the same URL both compute this, so the full-page crawl
+/// overwrites the thin eager document instead of creating a duplicate. Meilisearch ids allow only
+/// `[a-zA-Z0-9_-]`, so this is a hex digest with a prefix — never the `b3:` form `hash` uses, whose
+/// colon Meilisearch rejects. The caller passes an already-canonicalised URL, so two spellings of
+/// the same address do not become two ids.
+pub fn id_for_url(url: &str) -> String {
+    format!("u-{}", blake3::hash(url.trim().as_bytes()).to_hex())
+}
+
 /// Current unix timestamp in seconds.
 pub fn now_unix() -> i64 {
     std::time::SystemTime::now()
@@ -50,6 +62,26 @@ mod tests {
         assert_ne!(a, b);
         // ULIDs are lexicographically ordered by time.
         assert!(a < b, "{a} should sort before {b}");
+    }
+
+    #[test]
+    fn id_for_url_is_stable_and_meili_safe() {
+        // Same URL → same id, so an eager doc and its later crawl converge on one document.
+        assert_eq!(
+            id_for_url("https://example.dz/a"),
+            id_for_url("https://example.dz/a")
+        );
+        assert_ne!(
+            id_for_url("https://example.dz/a"),
+            id_for_url("https://example.dz/b")
+        );
+        // Meilisearch ids allow only [a-zA-Z0-9_-]; the `b3:` colon form would be rejected.
+        let id = id_for_url("https://example.dz/a");
+        assert!(
+            id.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+            "id has an invalid character: {id}"
+        );
     }
 
     #[test]

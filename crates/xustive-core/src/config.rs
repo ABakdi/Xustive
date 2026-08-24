@@ -327,6 +327,12 @@ pub struct FederationConfig {
     pub budget_ms: u64,
     /// Hits to request per federated query. A handful of good URLs, not a full page.
     pub max_hits: usize,
+    /// **Eager indexing** (M7): index each federated result *immediately* as a thin document (its
+    /// SearXNG title + snippet) so it appears as a real result within seconds, instead of waiting for
+    /// the crawler to fetch the full page. The full crawl still runs and overwrites the thin document
+    /// with the real page (same URL-derived id). Off by default — it puts external, un-crawled text
+    /// into the index, which is a deliberate trade of quality for immediacy.
+    pub eager_index: bool,
     /// Extra outbound hosts the gateway may reach beyond `searxng_url` (an external summariser, a
     /// mirror). Empty means "the SearXNG host and nothing else" — the allowlist is deny-by-default.
     pub allowlist: Vec<String>,
@@ -347,6 +353,7 @@ impl Default for FederationConfig {
             federator_url: String::new(),
             budget_ms: default_federation_budget_ms(),
             max_hits: default_federation_max_hits(),
+            eager_index: false,
             allowlist: Vec::new(),
         }
     }
