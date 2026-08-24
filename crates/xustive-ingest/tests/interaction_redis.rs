@@ -97,7 +97,7 @@ async fn analytics_readers_surface_above_the_floor() {
     let doc = format!("hotdoc-{}", std::process::id());
 
     // One search + one click: below the k-floor of 2, so neither reader surfaces it.
-    store.query_seen(&query, "news").await;
+    store.query_seen(&query, "news", 42).await;
     store.click(&query, &doc).await;
     assert!(
         !store.top_queries(50).await.iter().any(|s| s.query == query),
@@ -105,7 +105,7 @@ async fn analytics_readers_surface_above_the_floor() {
     );
 
     // A second search reaches the floor: the query now appears, with its category.
-    store.query_seen(&query, "news").await;
+    store.query_seen(&query, "news", 42).await;
     let top = store.top_queries(50).await;
     let stat = top
         .iter()
@@ -113,6 +113,12 @@ async fn analytics_readers_surface_above_the_floor() {
         .expect("query should surface at the floor");
     assert_eq!(stat.category, "news");
     assert!(stat.count >= 2);
+    // M7-T10: the row carries the last result count and this query's total clicks.
+    assert_eq!(stat.result_count, 42, "result count not recorded");
+    assert_eq!(
+        stat.clicks, 1,
+        "the one click was not attributed to the query"
+    );
 
     // hot_docs with floor 1 surfaces the clicked doc.
     let hot = store.hot_docs(1, 50).await;

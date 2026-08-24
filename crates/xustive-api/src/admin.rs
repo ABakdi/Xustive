@@ -277,7 +277,16 @@ pub async fn interaction(
     let leaders = store.top_documents(30).await;
     let top_json: Vec<serde_json::Value> = top
         .iter()
-        .map(|s| json!({ "query": s.query, "count": s.count, "category": s.category }))
+        .map(|s| {
+            json!({
+                "query": s.query,
+                "count": s.count,
+                "category": s.category,
+                // M7-T10 search history: how many results the query returned, and its total clicks.
+                "result_count": s.result_count,
+                "clicks": s.clicks,
+            })
+        })
         .collect();
 
     // Per-category volume rollup (M6-T05.2), from the same k-anonymous rows.

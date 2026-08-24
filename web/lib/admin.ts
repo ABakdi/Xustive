@@ -243,7 +243,13 @@ export interface InteractionStatus {
   enabled: boolean
   k_anonymity?: number
   window_days?: number
-  top_queries?: { query: string; count: number; category: string }[]
+  top_queries?: {
+    query: string
+    count: number
+    category: string
+    result_count?: number
+    clicks?: number
+  }[]
   categories?: Record<string, number>
   ctr_leaders?: {
     doc: string

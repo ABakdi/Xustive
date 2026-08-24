@@ -612,28 +612,11 @@ pub async fn handler(
         None
     };
 
-    // Anonymous interaction capture (M6-T02/T03), best-effort, gated on the store. No client call
-    // and no new egress — the serving plane records straight into Redis. Records: an impression for
-    // each shown document, the query (k-anonymously, with its vertical as the category), and mints
-    // an opaque token the click beacon will return so a click can be attributed to this query
-    // WITHOUT the query text ever being in the click request.
-    let interaction_token = if let Some(store) = state.interactions() {
-        let page_ids: Vec<String> = results.iter().map(|c| c.id.clone()).collect();
-        if !page_ids.is_empty() {
-            store.impressions(&normalized, &page_ids).await;
-        }
-        store
-            .query_seen(&normalized, interaction_category(params.v.as_deref()))
-            .await;
-        Some(mint_interaction_token(&state, &normalized))
-    } else {
-        None
-    };
-
-    // Exclusions are applied to the candidate pool, not to the whole corpus, so the engine's
-    // count no longer describes what the user is being shown. Scaling by the observed survival
-    // rate is an estimate, and it is marked as one — reporting the unfiltered 395 while showing a
-    // filtered list is simply false, and the user has no way to tell.
+    // The result count this search returned — computed here so the interaction capture below can
+    // record it (M7-T10). Exclusions are applied to the candidate pool, not the whole corpus, so the
+    // engine's count no longer describes what the user is shown; scale it by the observed survival
+    // rate and mark it an estimate. Reporting the unfiltered 395 while showing a filtered list is
+    // simply false, and the user has no way to tell.
     let (total_hits, estimated) = if excluded.is_empty() || pool_before == 0 {
         (hits.estimated_total_hits, hits.estimated_total_hits > 0)
     } else {
@@ -644,6 +627,28 @@ pub async fn handler(
         )
     };
     let total_pages = total_hits.div_ceil(hits_per_page).min(100);
+
+    // Anonymous interaction capture (M6-T02/T03 + M7-T10 search history), best-effort, gated on the
+    // store. No client call and no new egress — the serving plane records straight into Redis.
+    // Records: an impression for each shown document; the query with its **result count** and coarse
+    // category (k-anonymously); and an opaque token the click beacon returns so a click can be
+    // attributed to this query WITHOUT the query text ever being in the click request.
+    let interaction_token = if let Some(store) = state.interactions() {
+        let page_ids: Vec<String> = results.iter().map(|c| c.id.clone()).collect();
+        if !page_ids.is_empty() {
+            store.impressions(&normalized, &page_ids).await;
+        }
+        store
+            .query_seen(
+                &normalized,
+                interaction_category(params.v.as_deref()),
+                total_hits as u32,
+            )
+            .await;
+        Some(mint_interaction_token(&state, &normalized))
+    } else {
+        None
+    };
 
     if results.is_empty() {
         state.metrics.incr(

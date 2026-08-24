@@ -43,12 +43,18 @@ pub fn wilson_lower_bound(clicks: u32, impressions: u32) -> f32 {
     (((centre - margin) / denom).clamp(0.0, 1.0)) as f32
 }
 
-/// A query with its k-anonymous frequency and coarse category.
+/// A query with its k-anonymous frequency, coarse category, last result count, and total clicks —
+/// the anonymous search-history row (M6-T05 + M7-T10).
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueryStat {
     pub query: String,
     pub count: u32,
     pub category: String,
+    /// Results the query last returned (M7-T10). 0 if never recorded (older rows).
+    pub result_count: u32,
+    /// Clicks across all of this query's results (M7-T10), keyed by the query hash so no query text
+    /// is needed at click time.
+    pub clicks: u32,
 }
 
 /// A document with its anonymous click-through, above the k-floor.
@@ -151,24 +157,36 @@ impl Interactions {
             format!("{}:qd:{qh}:{doc}:clk", self.namespace),
             format!("{}:doc:{doc}:clk", self.namespace),
             format!("{}:hot:{doc}", self.namespace),
+            // Total clicks for this query, keyed by hash (M7-T10). The search-history reader has the
+            // query text and computes the same hash to read it — so the query text is never needed at
+            // click time, keeping it out of the click request as M6-T03 requires.
+            format!("{}:qk:{qh}", self.namespace),
         ])
         .await;
     }
 
-    /// Record that `query` was searched, with its coarse `category`.
-    pub async fn query_seen(&self, query: &str, category: &str) {
+    /// Record that `query` was searched, with its coarse `category` and how many results it returned
+    /// (M7-T10 search history). The count is a last-write-wins value beside the frequency counter.
+    pub async fn query_seen(&self, query: &str, category: &str, result_count: u32) {
         let query = query.trim();
         if query.is_empty() {
             return;
         }
         self.bump(&[format!("{}:q:{query}", self.namespace)]).await;
-        // Category is a last-write-wins string beside the counter, with the same expiry.
+        // Category and the last result count are last-write-wins strings beside the counter, with the
+        // same expiry — SET+EXPIRE so they never outlive the window either.
         let mut conn = self.conn();
-        let key = format!("{}:qc:{query}", self.namespace);
+        let cat_key = format!("{}:qc:{query}", self.namespace);
+        let n_key = format!("{}:qn:{query}", self.namespace);
         let mut pipe = redis::pipe();
-        pipe.cmd("SET").arg(&key).arg(category).ignore();
+        pipe.cmd("SET").arg(&cat_key).arg(category).ignore();
         pipe.cmd("EXPIRE")
-            .arg(&key)
+            .arg(&cat_key)
+            .arg(self.window_secs())
+            .ignore();
+        pipe.cmd("SET").arg(&n_key).arg(result_count).ignore();
+        pipe.cmd("EXPIRE")
+            .arg(&n_key)
             .arg(self.window_secs())
             .ignore();
         let _: Result<(), _> = pipe.query_async::<()>(&mut conn).await;
@@ -267,10 +285,19 @@ impl Interactions {
                 .await
                 .ok()
                 .flatten();
+            let result_count = self
+                .get_u32(&mut conn, &format!("{}:qn:{q}", self.namespace))
+                .await;
+            // Clicks are keyed by the query hash, which we recompute from the text we hold here.
+            let clicks = self
+                .get_u32(&mut conn, &format!("{}:qk:{}", self.namespace, qhash(&q)))
+                .await;
             stats.push(QueryStat {
                 query: q,
                 count,
                 category: category.unwrap_or_else(|| "web".into()),
+                result_count,
+                clicks,
             });
         }
         stats.sort_by(|a, b| b.count.cmp(&a.count));

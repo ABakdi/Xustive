@@ -43,14 +43,21 @@ export default function InteractionPage() {
           </p>
 
           <section className="mb-8">
-            <h2 className="mb-2 text-base font-semibold">Top queries</h2>
+            <h2 className="mb-2 text-base font-semibold">Search history</h2>
+            <p className="mb-2 text-xs" style={{ color: 'var(--fg-faint)' }}>
+              Every term searched, how many results it returned, and how many of those were clicked.
+              Anonymous by construction — no IP, user-agent, or session is stored, only the term and
+              its counts{data.k_anonymity > 1 ? `, surfaced only above the k-floor of ${data.k_anonymity}` : ''}.
+            </p>
             {data.top_queries && data.top_queries.length > 0 ? (
-              <table className="w-full max-w-xl border-collapse text-sm">
+              <table className="w-full max-w-2xl border-collapse text-sm">
                 <thead>
                   <tr style={{ color: 'var(--fg-muted)' }}>
-                    <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>Query</th>
+                    <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>Term</th>
                     <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>Category</th>
-                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>Count</th>
+                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>Searches</th>
+                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>Results</th>
+                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>Clicks</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -59,13 +66,15 @@ export default function InteractionPage() {
                       <td className="border-b py-1" style={{ borderColor: 'var(--line)' }} dir="auto">{q.query}</td>
                       <td className="border-b py-1" style={{ borderColor: 'var(--line)' }}>{q.category}</td>
                       <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{q.count}</td>
+                      <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{q.result_count ?? '—'}</td>
+                      <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{q.clicks ?? 0}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             ) : (
               <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>
-                Nothing has crossed the anonymity floor yet.
+                No searches recorded yet{data.k_anonymity > 1 ? ' above the anonymity floor' : ''}.
               </p>
             )}
           </section>

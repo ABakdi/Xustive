@@ -77,10 +77,12 @@ max_hits = 10
 eager_index = true
 
 [interaction]
-# Anonymous interaction signals (M6): impressions/clicks as k-anonymous windowed counters that feed
-# ranking (CTR) and re-crawl. Off by default — it amends ADR-0008's no-click-tracking promise, so it
-# must be an explicit choice. No query log, no per-person record; see ADR-0015.
-enabled = false
+# Anonymous interaction signals + search history (M6 + M7-T10): searches, result counts, impressions
+# and clicks as windowed counters that feed CTR ranking, re-crawl, and the admin search-history view.
+# On for this personal dev engine so it collects your searches. It stores NO identifier — no IP, no
+# user-agent, no session — so it is anonymous by construction; on a multi-user deployment set k to 20
+# (the guard refuses < 20 outside `dev`). See ADR-0008/ADR-0015.
+enabled = true
 # k-anonymity floor. 20 is the ADR-0008 public floor; a value < 20 is refused outside `dev` (the
 # guard). This is a single-user dev box, so 1 is honest ("one operator, no anonymity") — raise it to
 # 20 before any multi-user deployment.
