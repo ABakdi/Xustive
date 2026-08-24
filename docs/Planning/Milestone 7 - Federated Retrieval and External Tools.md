@@ -36,7 +36,7 @@ Remaining in the federation track: **T06.3** the convergence proof (a re-issued 
 
 Close the word-mismatch gap with no new infrastructure, tuning [[Search Index]] settings and the [[Query Expander]].
 
-- [ ] M7-T01.1 **Stemming / light morphology** for Arabic (prefix/suffix stripping, root-aware folding) and French/English, so `الكتاب`/`كتاب` and plural/verb forms match without leaning on typo tolerance. Measured against the golden set, not assumed.
+- [x] M7-T01.1 **Stemming / light morphology** for Arabic (prefix/suffix stripping, root-aware folding) and French/English, so `الكتاب`/`كتاب` and plural/verb forms match without leaning on typo tolerance. Measured against the golden set, not assumed.
 - [ ] M7-T01.2 **Grow the synonym + expansion lexicon** and make it data-driven — mine candidate pairs from the corpus and from federated co-occurrence (T07), reviewed before they land in `data/expansion/*.tsv`.
 - [ ] M7-T01.3 **Fix the expansion-leg trigger**: today it only runs below five hits. Let it also fire when the primary leg's *top* results are weak (low rerank score), not only when they are few, within the deadline.
 - [ ] M7-T01.4 **Searchable-attribute + ranking-rule review**: confirm `title`/`excerpt`/`entities`/`body` weighting and the `exactness`→custom-rule order still serve recall after stemming; adjust with a golden-set A/B, not by feel.

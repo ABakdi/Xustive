@@ -437,7 +437,22 @@ pub async fn handler(
     // reciprocal-rank fusion — so a query worded differently from a document can still reach it.
     // Fail-open: no engine, or any error, leaves `hits.hits` exactly as lexical retrieval produced
     // it. Runs before the interaction and re-rank stages so they see the fused candidate set.
-    if let Some(dense) = &state.text_search {
+    //
+    // Deadline-gated (M7-T02.4): the dense leg costs a query embed + a Qdrant round-trip, so under
+    // time pressure it degrades like the expansion leg — dropped rather than blowing the budget, and
+    // the search still returns its lexical results.
+    if state.text_search.is_some() && !deadline.allows(Stage::Expansion) {
+        state.metrics.incr(
+            metrics::DEGRADED,
+            metrics::DEGRADED_HELP,
+            &[("stage", "semantic")],
+        );
+    }
+    if let Some(dense) = state
+        .text_search
+        .as_ref()
+        .filter(|_| deadline.allows(Stage::Expansion))
+    {
         let dense_ids = dense.candidates(&normalized).await;
         if !dense_ids.is_empty() {
             let lex_ids: std::collections::HashSet<&str> = hits
