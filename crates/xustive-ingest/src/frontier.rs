@@ -737,142 +737,222 @@ impl Frontier {
         Some(manager)
     }
 
-    /// Add a URL, unless it is already known.
-    ///
-    /// Returns whether it was added. Dedup is checked and set in the same call path so two workers
-    /// discovering the same link do not both queue it. Every growth bound is enforced here
-    /// (PROB-001): the per-host queue cap, the host's lifetime page budget, and the global ceiling
-    /// — which admits the new URL by **evicting the worst-priority tail** rather than refusing it.
-    /// A Redis failure is `Rejected::Backend`, never mistaken for "already seen": at the memory
-    /// wall the old code read every OOM as a duplicate and the crawl died silently.
+    /// Add a URL, unless it is already known. See [`Frontier::add_batch`] — this is the
+    /// one-element case of the same policy, kept as a wrapper so there is exactly one code path
+    /// for the growth bounds.
     pub async fn add(&self, pending: &Pending) -> Result<bool, Rejected> {
+        self.add_batch(std::slice::from_ref(pending))
+            .await
+            .pop()
+            .unwrap_or(Err(Rejected::Backend))
+    }
+
+    /// Add a page's worth of URLs in three pipelines (PROB-002), enforcing every growth bound
+    /// (PROB-001) exactly as one-at-a-time adds would:
+    ///
+    /// 1. **Read**: membership (previous generation + legacy set) per URL, budget + queued count
+    ///    per distinct host, and the global count — one round trip for the whole batch, where the
+    ///    per-URL path cost ~3 round trips *per link* (and its predecessor five).
+    /// 2. **Arbitrate**: `SADD` the dedup slot per surviving candidate; the return value decides
+    ///    races between workers discovering the same URL concurrently.
+    /// 3. **Write**: queue entry, metadata, and host registration per winner, plus one `INCRBY`
+    ///    for the global count.
+    ///
+    /// Per-host caps count the batch's own admissions too, so a 64-link page cannot blow through
+    /// a nearly-full host queue in one call. At the global ceiling, the worst-priority queued URL
+    /// is evicted per admission — dropping the least promising, never refusing the newest. A
+    /// Redis failure is `Rejected::Backend`, never mistaken for "already seen".
+    ///
+    /// Results align with the input order.
+    pub async fn add_batch(&self, pendings: &[Pending]) -> Vec<Result<bool, Rejected>> {
+        if pendings.is_empty() {
+            return Vec::new();
+        }
         let Some(mut conn) = self.conn().await else {
-            return Err(Rejected::Backend);
+            return vec![Err(Rejected::Backend); pendings.len()];
         };
         let now_ms = now_millis();
         let (seen_cur, seen_prev) = self.k_seen_gens(now_ms);
-        let hash = seen_hash(&pending.url);
+        let hashes: Vec<String> = pendings.iter().map(|p| seen_hash(&p.url)).collect();
 
-        // One read pipeline: membership (previous generation + legacy full-URL set), the host's
-        // lifetime budget, its queued count, and the global count.
-        let read: Result<(bool, bool, Option<u64>, usize, Option<i64>), _> = redis::pipe()
-            .cmd("SISMEMBER")
-            .arg(&seen_prev)
-            .arg(&hash)
-            .cmd("SISMEMBER")
-            .arg(self.k_seen_legacy())
-            .arg(&pending.url)
-            .cmd("GET")
-            .arg(self.k_host_pages(&pending.host))
-            .cmd("ZCARD")
-            .arg(self.host_queue(&pending.host))
-            .cmd("GET")
-            .arg(self.k_count())
-            .query_async(&mut conn)
-            .await;
-        let (in_prev, in_legacy, host_pages, queued_for_host, total) = match read {
+        // Distinct hosts, first-seen order.
+        let mut hosts: Vec<&str> = Vec::new();
+        for p in pendings {
+            if !hosts.contains(&p.host.as_str()) {
+                hosts.push(&p.host);
+            }
+        }
+
+        // ── 1. Read pipeline ────────────────────────────────────────────────────────────────
+        let mut read = redis::pipe();
+        for (p, hash) in pendings.iter().zip(&hashes) {
+            read.cmd("SISMEMBER").arg(&seen_prev).arg(hash);
+            read.cmd("SISMEMBER").arg(self.k_seen_legacy()).arg(&p.url);
+        }
+        for host in &hosts {
+            read.cmd("GET").arg(self.k_host_pages(host));
+            read.cmd("ZCARD").arg(self.host_queue(host));
+        }
+        read.cmd("GET").arg(self.k_count());
+        let vals: Vec<redis::Value> = match read.query_async(&mut conn).await {
             Ok(v) => v,
             Err(e) => {
-                tracing::warn!(error = %e, "frontier read failed; URL not queued");
-                return Err(Rejected::Backend);
+                tracing::warn!(error = %e, "frontier batch read failed; page's URLs not queued");
+                return vec![Err(Rejected::Backend); pendings.len()];
             }
         };
-        if in_prev || in_legacy {
-            return Ok(false);
-        }
-        if self.limits.max_pages_per_host > 0
-            && host_pages.unwrap_or(0) >= self.limits.max_pages_per_host
-        {
-            // The host has spent its lifetime budget. Deliberately checked BEFORE the seen write,
-            // so the URL stays discoverable once the budget window rotates.
-            return Err(Rejected::HostBudget);
-        }
-        if queued_for_host >= self.limits.max_per_host {
-            return Err(Rejected::Full);
-        }
-        if total.unwrap_or(0).max(0) as usize >= self.limits.max_total {
-            // At the global ceiling: make room by dropping the least promising queued URL. Only if
-            // nothing can be evicted (empty/stale queues) does the new URL get refused.
-            if !self.evict_worst(&mut conn, now_ms).await {
-                return Err(Rejected::Full);
+        let as_i64 = |v: &redis::Value| -> i64 {
+            match v {
+                redis::Value::Int(n) => *n,
+                redis::Value::BulkString(b) => std::str::from_utf8(b)
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0),
+                _ => 0,
             }
+        };
+        let host_base = pendings.len() * 2;
+        let mut host_pages = std::collections::HashMap::new();
+        let mut host_queued = std::collections::HashMap::new();
+        for (i, host) in hosts.iter().enumerate() {
+            host_pages.insert(*host, as_i64(&vals[host_base + i * 2]) as u64);
+            host_queued.insert(*host, as_i64(&vals[host_base + i * 2 + 1]) as usize);
+        }
+        let mut total = as_i64(&vals[host_base + hosts.len() * 2]).max(0) as usize;
+
+        // ── 2. Decide, evicting at the ceiling ──────────────────────────────────────────────
+        let mut results: Vec<Result<bool, Rejected>> = Vec::with_capacity(pendings.len());
+        // Indices into `pendings` that advance to the SADD arbitration.
+        let mut survivors: Vec<usize> = Vec::new();
+        for (i, p) in pendings.iter().enumerate() {
+            if as_i64(&vals[i * 2]) != 0 || as_i64(&vals[i * 2 + 1]) != 0 {
+                results.push(Ok(false));
+                continue;
+            }
+            if self.limits.max_pages_per_host > 0
+                && host_pages.get(p.host.as_str()).copied().unwrap_or(0)
+                    >= self.limits.max_pages_per_host
+            {
+                // Budget spent — refused BEFORE any seen write, so the URL stays discoverable
+                // once the budget window rotates.
+                results.push(Err(Rejected::HostBudget));
+                continue;
+            }
+            let queued = host_queued.entry(p.host.as_str()).or_insert(0);
+            if *queued >= self.limits.max_per_host {
+                results.push(Err(Rejected::Full));
+                continue;
+            }
+            if total >= self.limits.max_total {
+                // Make room by dropping the least promising queued URL; refuse only when nothing
+                // is evictable (empty/stale queues).
+                if self.evict_worst(&mut conn, now_ms).await {
+                    total = total.saturating_sub(1);
+                } else {
+                    results.push(Err(Rejected::Full));
+                    continue;
+                }
+            }
+            // Tentatively admitted — the batch's own admissions count against the caps too.
+            *queued += 1;
+            total += 1;
+            survivors.push(i);
+            results.push(Ok(true)); // provisional; SADD arbitration below may demote to Ok(false)
+        }
+        if survivors.is_empty() {
+            return results;
         }
 
-        // Claim the dedup slot. SADD's return arbitrates racing workers; the expiry (set only when
-        // the key has none) is what makes the generation self-cleaning.
-        let fresh: Result<(i64,), _> = redis::pipe()
-            .cmd("SADD")
-            .arg(&seen_cur)
-            .arg(&hash)
-            .cmd("EXPIRE")
+        // ── 3. SADD arbitration ─────────────────────────────────────────────────────────────
+        // SADD's return decides races between workers discovering the same URL concurrently; the
+        // expiry (set only when the key has none) is what makes the generation self-cleaning.
+        let mut arb = redis::pipe();
+        for &i in &survivors {
+            arb.cmd("SADD").arg(&seen_cur).arg(&hashes[i]);
+        }
+        arb.cmd("EXPIRE")
             .arg(&seen_cur)
             .arg(self.seen_ttl_secs())
             .arg("NX")
-            .ignore()
-            .query_async(&mut conn)
-            .await;
-        match fresh {
-            Ok((1,)) => {}
-            Ok(_) => return Ok(false),
+            .ignore();
+        let fresh: Vec<i64> = match arb.query_async(&mut conn).await {
+            Ok(v) => v,
             Err(e) => {
-                tracing::warn!(error = %e, "frontier dedup write failed; URL not queued");
-                return Err(Rejected::Backend);
+                tracing::warn!(error = %e, "frontier dedup write failed; page's URLs not queued");
+                for &i in &survivors {
+                    results[i] = Err(Rejected::Backend);
+                }
+                return results;
             }
+        };
+        let winners: Vec<usize> = survivors
+            .iter()
+            .zip(&fresh)
+            .filter_map(|(&i, &f)| {
+                if f == 1 {
+                    Some(i)
+                } else {
+                    results[i] = Ok(false); // another worker won the race
+                    None
+                }
+            })
+            .collect();
+        if winners.is_empty() {
+            return results;
         }
 
-        // The enqueue proper, one pipeline. Depth travels with the URL, not with the worker that
-        // found it; `NX` on the hosts set so an existing due-time is never pushed backwards — a
-        // host that is due now must stay due, or a steady trickle of links would starve it forever.
-        let write: Result<(), _> = redis::pipe()
-            .cmd("ZADD")
-            .arg(self.host_queue(&pending.host))
-            .arg(pending.priority)
-            .arg(&pending.url)
-            .ignore()
-            .cmd("HSET")
-            .arg(self.k_meta())
-            .arg(&pending.url)
-            .arg(encode_meta(
-                pending.depth,
-                pending.trust,
-                pending.channel,
-                &pending.source_id,
-            ))
-            .ignore()
-            .cmd("ZADD")
-            .arg(self.k_hosts())
-            .arg("NX")
-            .arg(0)
-            .arg(&pending.host)
-            .ignore()
-            .query_async(&mut conn)
-            .await;
-        if let Err(e) = write {
-            // Undo the dedup claim so the URL can be discovered again — one transient Redis error
-            // must not become a permanent hole in the crawl. (Observed before this rollback
-            // existed: a source added from the console landed in `seen` with nothing queued, and
-            // the endpoint reported success.)
-            let _: Result<(), _> = redis::pipe()
-                .cmd("SREM")
-                .arg(&seen_cur)
-                .arg(&hash)
-                .ignore()
-                .cmd("HDEL")
+        // ── 4. Write pipeline ───────────────────────────────────────────────────────────────
+        // Depth travels with the URL, not with the worker that found it; `NX` on the hosts set so
+        // an existing due-time is never pushed backwards — a host that is due now must stay due.
+        let mut write = redis::pipe();
+        for &i in &winners {
+            let p = &pendings[i];
+            write
+                .cmd("ZADD")
+                .arg(self.host_queue(&p.host))
+                .arg(p.priority)
+                .arg(&p.url)
+                .ignore();
+            write
+                .cmd("HSET")
                 .arg(self.k_meta())
-                .arg(&pending.url)
-                .ignore()
-                .query_async::<()>(&mut conn)
-                .await;
-            tracing::warn!(url = %pending.url, error = %e, "could not queue; will be retried");
-            return Err(Rejected::Backend);
+                .arg(&p.url)
+                .arg(encode_meta(p.depth, p.trust, p.channel, &p.source_id))
+                .ignore();
+            write
+                .cmd("ZADD")
+                .arg(self.k_hosts())
+                .arg("NX")
+                .arg(0)
+                .arg(&p.host)
+                .ignore();
         }
-        // Count drift from a crash between the write and this INCR is healed by the periodic
-        // reconcile; the cap check above tolerates being off by a little.
-        let _: Result<(), _> = redis::cmd("INCR")
+        write
+            .cmd("INCRBY")
             .arg(self.k_count())
-            .query_async::<()>(&mut conn)
-            .await;
-        Ok(true)
+            .arg(winners.len())
+            .ignore();
+        if let Err(e) = write.query_async::<()>(&mut conn).await {
+            // Undo the dedup claims so the URLs can be discovered again — one transient Redis
+            // error must not become a permanent hole in the crawl. (Observed before this rollback
+            // existed: a source added from the console landed in `seen` with nothing queued, and
+            // the endpoint reported success.) Any queue entries that did land are harmless: a
+            // later re-add ZADDs the same member, which overwrites rather than duplicates.
+            let mut undo = redis::pipe();
+            for &i in &winners {
+                undo.cmd("SREM").arg(&seen_cur).arg(&hashes[i]).ignore();
+                undo.cmd("HDEL")
+                    .arg(self.k_meta())
+                    .arg(&pendings[i].url)
+                    .ignore();
+            }
+            let _: Result<(), _> = undo.query_async::<()>(&mut conn).await;
+            tracing::warn!(error = %e, "could not queue a page's URLs; they will be retried");
+            for &i in &winners {
+                results[i] = Err(Rejected::Backend);
+            }
+        }
+        results
     }
 
     /// Drop the worst-priority queued URL to make room at the global ceiling. Samples a few hosts

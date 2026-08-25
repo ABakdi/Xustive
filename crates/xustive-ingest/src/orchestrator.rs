@@ -229,6 +229,25 @@ impl Orchestrator {
         }
     }
 
+    /// Publish a counted increment — one stats round trip for a whole page's discoveries
+    /// (PROB-002), where per-event publishes were a round trip per link.
+    async fn publish_n(&self, field: &str, n: usize) {
+        if let Some(s) = &self.shared {
+            s.incr(field, n as u64).await;
+        }
+    }
+
+    async fn publish_channel_n(
+        &self,
+        channel: xustive_core::DiscoveryChannel,
+        metric: &str,
+        n: usize,
+    ) {
+        if let Some(s) = &self.shared {
+            s.incr_channel(channel.token(), metric, n as u64).await;
+        }
+    }
+
     async fn publish_skip(&self, reason: &str) {
         if let Some(s) = &self.shared {
             s.incr_skip(reason).await;
@@ -693,26 +712,44 @@ impl Orchestrator {
             self.stats.skip_n("outlink_cap", dropped);
         }
 
-        for pending in &candidates {
-            match self.frontier.add(pending).await {
+        // One batched call for the whole page (PROB-002): ~3 pipelined round trips total, where
+        // per-link adds cost ~3 round trips EACH — a link-rich page went from hundreds of serial
+        // Redis round trips to a handful.
+        let outcomes = self.frontier.add_batch(&candidates).await;
+        let mut backend_failures = 0usize;
+        let mut newly_discovered = 0usize;
+        for (pending, outcome) in candidates.iter().zip(&outcomes) {
+            match outcome {
                 Ok(true) => {
                     self.stats.discovered += 1;
-                    self.publish("discovered").await;
-                    self.publish_channel(xustive_core::DiscoveryChannel::Link, "discovered")
-                        .await;
+                    newly_discovered += 1;
                 }
                 Ok(false) => self.stats.skip("seen"),
-                // A backend failure is not bookkeeping — it is the crawl losing discoveries. Loud,
-                // but throttled to the skip counter plus one warn per page at most.
+                // A backend failure is not bookkeeping — it is the crawl losing discoveries.
                 Err(frontier::Rejected::Backend) => {
                     self.stats.skip("frontier_backend_error");
-                    tracing::warn!(
-                        host = %pending.host,
-                        "frontier backend refused a discovery — check Redis memory/health"
-                    );
+                    backend_failures += 1;
+                    let _ = pending; // host named in the single warn below
                 }
                 Err(r) => self.stats.skip(r.as_str()),
             }
+        }
+        if backend_failures > 0 {
+            tracing::warn!(
+                failures = backend_failures,
+                "frontier backend refused discoveries — check Redis memory/health"
+            );
+        }
+        // Publish once per page with the count, not once per link — the stats channel was itself
+        // a per-link round trip.
+        if newly_discovered > 0 {
+            self.publish_n("discovered", newly_discovered).await;
+            self.publish_channel_n(
+                xustive_core::DiscoveryChannel::Link,
+                "discovered",
+                newly_discovered,
+            )
+            .await;
         }
     }
 

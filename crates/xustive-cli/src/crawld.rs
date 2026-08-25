@@ -83,6 +83,11 @@ const BACKPRESSURE_PAUSE: Duration = Duration::from_secs(10);
 /// every Redis write already fails and the pause could no longer help.
 const MEMORY_HIGH_WATER: f64 = 0.85;
 
+/// How often each worker re-probes the guards (indexer lag, memory). Between probes the last
+/// verdict stands — the values change on the scale of seconds, and probing per claim added two
+/// Redis round trips to every fetch across 64 workers (PROB-002).
+const PROBE_EVERY: Duration = Duration::from_secs(2);
+
 /// Concurrent fetch workers.
 ///
 /// **This is the throughput lever, and it costs no politeness at all.** Crawl-delay is per host,
@@ -306,6 +311,9 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             // A handle of our own for the memory backstop below — `frontier` moves into the
             // orchestrator on the next line.
             let mem_frontier = frontier.clone();
+            // Guard-probe state (PROB-002): start expired so the first step probes immediately.
+            let mut last_probe = std::time::Instant::now() - PROBE_EVERY;
+            let mut probe_paused = false;
             let mut orch = Orchestrator::new(
                 fetcher,
                 frontier,
@@ -361,33 +369,47 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                 // Fails **open** — a crawler that stops on a Redis blip is worse than one that
                 // briefly runs ahead — but the failure is logged, because a backpressure check
                 // that silently never fires is indistinguishable from one that is not there.
-                match queue.depth_of(xustive_queue::INDEXER_GROUP).await {
-                    Ok(backlog) if backlog >= BACKPRESSURE_AT => {
-                        tracing::debug!(worker = id, backlog, "indexer behind; pausing");
-                        tokio::time::sleep(BACKPRESSURE_PAUSE).await;
-                        continue;
-                    }
-                    Ok(_) => {}
-                    Err(e) => tracing::warn!(
-                        worker = id,
-                        error = %e,
-                        "cannot read the queue depth; not pausing"
-                    ),
-                }
-                // The memory backstop (PROB-001): above the high-water mark, stop producing.
-                // Loud — the old failure mode was every write silently failing at the wall while
-                // the crawler looked merely idle.
-                if let Some((used, max)) = mem_frontier.memory_usage().await {
-                    if max > 0 && (used as f64 / max as f64) > MEMORY_HIGH_WATER {
-                        tracing::warn!(
+                // The guard probes (indexer lag + the PROB-001 memory backstop) run at most every
+                // couple of seconds per worker, not per step (PROB-002): 64 workers probing on
+                // every claim added two Redis round trips per fetch for a value that changes on
+                // the scale of seconds. Between probes, the last verdict stands.
+                if last_probe.elapsed() >= PROBE_EVERY {
+                    last_probe = std::time::Instant::now();
+                    probe_paused = false;
+                    match queue.depth_of(xustive_queue::INDEXER_GROUP).await {
+                        Ok(backlog) if backlog >= BACKPRESSURE_AT => {
+                            tracing::debug!(worker = id, backlog, "indexer behind; pausing");
+                            probe_paused = true;
+                        }
+                        Ok(_) => {}
+                        Err(e) => tracing::warn!(
                             worker = id,
-                            used_mb = used / 1_048_576,
-                            max_mb = max / 1_048_576,
-                            "redis memory past high water; crawl paused until it drains"
-                        );
-                        tokio::time::sleep(BACKPRESSURE_PAUSE).await;
-                        continue;
+                            error = %e,
+                            "cannot read the queue depth; not pausing"
+                        ),
                     }
+                    // The memory backstop (PROB-001): above the high-water mark, stop producing.
+                    // Loud — the old failure mode was every write silently failing at the wall
+                    // while the crawler looked merely idle.
+                    if !probe_paused {
+                        if let Some((used, max)) = mem_frontier.memory_usage().await {
+                            if max > 0 && (used as f64 / max as f64) > MEMORY_HIGH_WATER {
+                                tracing::warn!(
+                                    worker = id,
+                                    used_mb = used / 1_048_576,
+                                    max_mb = max / 1_048_576,
+                                    "redis memory past high water; crawl paused until it drains"
+                                );
+                                probe_paused = true;
+                            }
+                        }
+                    }
+                }
+                if probe_paused {
+                    tokio::time::sleep(BACKPRESSURE_PAUSE).await;
+                    // Re-probe immediately after a pause so recovery is noticed promptly.
+                    last_probe = std::time::Instant::now() - PROBE_EVERY;
+                    continue;
                 }
 
                 if let Some(max) = max {

@@ -54,6 +54,14 @@ pub const MAX_BATCH_BYTES: usize = 4 * 1024 * 1024;
 /// which on a small site is never.
 pub const BATCH_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// How long a small first read may wait for top-ups before shipping (PROB-002). Two seconds of
+/// added indexing latency, paid only under light flow, buys far fewer Meilisearch tasks — its
+/// single writer amortises large batches and drowns in tiny ones.
+pub const BATCH_DWELL: Duration = Duration::from_secs(2);
+/// Block per top-up read inside the dwell. Short, so a gone-quiet producer releases the batch
+/// well before the dwell expires.
+pub const DWELL_TOPUP_BLOCK: Duration = Duration::from_millis(300);
+
 /// How long to wait for Meilisearch to finish a task before giving up.
 pub const TASK_TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -233,12 +241,31 @@ impl<S: Sink> Indexer<S> {
         }
 
         loop {
-            let batch: Vec<Delivery<IndexJob>> = self
+            let mut batch: Vec<Delivery<IndexJob>> = self
                 .queue
                 .consume(&self.consumer, MAX_BATCH, BATCH_TIMEOUT)
                 .await?;
             if batch.is_empty() {
                 return Ok(stats);
+            }
+            // Batch dwell (PROB-002): XREADGROUP returns the moment ANY entries exist, so a
+            // steady trickle produced tiny batches, each paying a full add_documents + task-wait
+            // cycle against Meilisearch's single writer. When the first read comes back small,
+            // top it up with short follow-up reads — bounded by the dwell window — so Meilisearch
+            // sees few large payloads (its own documented best practice) instead of many tiny
+            // tasks. Costs at most the dwell in latency, only when flow is light.
+            let dwell_deadline = std::time::Instant::now() + BATCH_DWELL;
+            while batch.len() < MAX_BATCH / 2 && std::time::Instant::now() < dwell_deadline {
+                let more: Vec<Delivery<IndexJob>> = self
+                    .queue
+                    .consume(&self.consumer, MAX_BATCH - batch.len(), DWELL_TOPUP_BLOCK)
+                    .await?;
+                if more.is_empty() {
+                    // The producer has gone quiet — ship what we have rather than idle out
+                    // the full dwell.
+                    break;
+                }
+                batch.extend(more);
             }
             self.process(batch, &mut stats).await?;
         }

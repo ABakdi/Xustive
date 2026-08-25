@@ -24,6 +24,15 @@ pub const UA_TOKEN: &str = "xustivebot";
 /// Applied when `robots.txt` states no `Crawl-delay`.
 pub const DEFAULT_CRAWL_DELAY: Duration = Duration::from_millis(1500);
 
+/// The floor a robots-silent host can EARN by behaving (PROB-002): after a sustained run of clean
+/// responses, pacing may relax to one request per second — squarely within accepted practice —
+/// instead of the conservative default. A declared `Crawl-delay` is always honoured as-is, and a
+/// single 429/5xx resets the earned trust; grow-fast/shrink-slow stays the rule.
+pub const EARNED_MIN_DELAY: Duration = Duration::from_millis(1000);
+
+/// Consecutive clean responses before the earned floor applies.
+pub const HEALTHY_STREAK: u32 = 20;
+
 /// Ceiling on a declared `Crawl-delay`. Beyond this a site is effectively uncrawlable, and we
 /// reduce visit frequency instead of blocking a worker for minutes.
 pub const MAX_CRAWL_DELAY: Duration = Duration::from_secs(60);
@@ -217,6 +226,12 @@ impl Robots {
             .unwrap_or(DEFAULT_CRAWL_DELAY)
             .min(MAX_CRAWL_DELAY)
     }
+
+    /// The delay the site itself asked for, if any — `None` means robots is silent and the
+    /// adaptive pacing may use the earned floor (PROB-002) rather than the default.
+    pub fn declared_crawl_delay(&self) -> Option<Duration> {
+        self.group.crawl_delay.map(|d| d.min(MAX_CRAWL_DELAY))
+    }
 }
 
 /// `robots.txt` path matching: `*` is any run of characters, `$` anchors the end.
@@ -312,6 +327,8 @@ struct HostState {
     next_allowed: Instant,
     /// Grown by 429 and 503 responses, shrunk slowly by success.
     adaptive_delay: Duration,
+    /// Consecutive clean responses — the earned-floor evidence (PROB-002). Reset by any 429/5xx.
+    success_streak: u32,
 }
 
 impl Politeness {
@@ -361,12 +378,18 @@ impl Politeness {
                 fetched_at: Instant::now(),
                 next_allowed: Instant::now(),
                 adaptive_delay: delay,
+                success_streak: 0,
             },
         );
     }
 
     pub fn rules(&self, host: &str) -> Option<&Robots> {
         self.hosts.get(host).map(|s| &s.robots)
+    }
+
+    /// The current adaptive delay for a host — diagnostics and tests.
+    pub fn adaptive_delay_of(&self, host: &str) -> Option<Duration> {
+        self.hosts.get(host).map(|s| s.adaptive_delay)
     }
 
     /// Whether the cached rules are older than `ttl` and should be refetched.
@@ -447,16 +470,27 @@ impl Politeness {
         };
         match status {
             429 => {
+                s.success_streak = 0;
                 s.adaptive_delay = retry_after
                     .unwrap_or(s.adaptive_delay * 4)
                     .max(Duration::from_secs(60))
                     .min(Duration::from_secs(600));
             }
             500..=599 => {
+                s.success_streak = 0;
                 s.adaptive_delay = (s.adaptive_delay * 2).min(Duration::from_secs(300));
             }
             200..=399 => {
-                let floor = s.robots.crawl_delay();
+                s.success_streak = s.success_streak.saturating_add(1);
+                // The floor a host relaxes toward (PROB-002): its own declared Crawl-delay always
+                // wins; a robots-silent host that has EARNED trust with a clean streak may relax
+                // to one request per second; anything else keeps the conservative default. A
+                // single error resets the streak, so the earned rate is continuously re-proven.
+                let floor = match s.robots.declared_crawl_delay() {
+                    Some(declared) => declared,
+                    None if s.success_streak >= HEALTHY_STREAK => EARNED_MIN_DELAY,
+                    None => DEFAULT_CRAWL_DELAY,
+                };
                 let relaxed = s.adaptive_delay.mul_f32(0.9);
                 s.adaptive_delay = if relaxed < floor { floor } else { relaxed };
             }
@@ -544,6 +578,42 @@ mod tests {
         let txt = "Sitemap: https://a.dz/sitemap.xml\nUser-agent: *\nSitemap: https://a.dz/n.xml\n";
         let r = Robots::parse(txt);
         assert_eq!(r.sitemaps.len(), 2);
+    }
+
+    #[test]
+    fn a_clean_streak_earns_the_one_second_floor_and_an_error_revokes_it() {
+        // PROB-002: robots-silent hosts start at the conservative default; sustained clean
+        // responses earn 1 rps; one bad response re-proves from scratch. A DECLARED Crawl-delay
+        // is never undercut.
+        let mut p = Politeness::default();
+        p.set_rules("earned.dz", Robots::parse(""));
+        for _ in 0..HEALTHY_STREAK + 60 {
+            p.observe("earned.dz", 200, None);
+        }
+        assert_eq!(
+            p.adaptive_delay_of("earned.dz"),
+            Some(EARNED_MIN_DELAY),
+            "a clean streak relaxes to the earned floor"
+        );
+        p.observe("earned.dz", 503, None);
+        assert!(
+            p.adaptive_delay_of("earned.dz").unwrap() > DEFAULT_CRAWL_DELAY,
+            "an error both grows the delay and revokes the streak"
+        );
+
+        let mut p = Politeness::default();
+        p.set_rules(
+            "declared.dz",
+            Robots::parse("User-agent: *\nCrawl-delay: 3"),
+        );
+        for _ in 0..HEALTHY_STREAK + 60 {
+            p.observe("declared.dz", 200, None);
+        }
+        assert_eq!(
+            p.adaptive_delay_of("declared.dz"),
+            Some(Duration::from_secs(3)),
+            "a declared Crawl-delay is the floor, never undercut by earned trust"
+        );
     }
 
     #[test]
