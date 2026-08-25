@@ -111,8 +111,14 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &MineOptions) -> R
         let n = page.len() as u64;
         for doc in &page {
             if let Some(title) = doc.get("title").and_then(Value::as_str) {
-                let domain = doc.get("domain").and_then(Value::as_str).unwrap_or("");
-                count_title(&mut counts, title, domain_hash(domain), false);
+                // A doc with no domain gets no attribution rather than a shared fake "" domain —
+                // otherwise every domainless doc corroborates every other (BUG-012).
+                let domain = doc
+                    .get("domain")
+                    .and_then(Value::as_str)
+                    .filter(|d| !d.is_empty())
+                    .map(domain_hash);
+                count_title(&mut counts, title, domain, false);
             }
         }
         offset += n;
@@ -127,15 +133,18 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &MineOptions) -> R
         let rows = crate::calibrate::load_reference(path)?;
         for row in &rows {
             // The query and each external title form one co-occurrence context: what the user asked,
-            // next to what the web calls the answer. Federated rows count as one shared pseudo-domain
-            // — they are evidence of a different *kind*, not of a different site.
-            for title in &row.titles {
-                count_title(
-                    &mut counts,
-                    &format!("{} {}", row.query, title),
-                    domain_hash("\u{0}federated"),
-                    true,
-                );
+            // next to what the web calls the answer. Each title's evidence is attributed to its real
+            // source host (BUG-012) — a shared pseudo-domain both blocked federated-only pairs from
+            // ever clearing the domain floor and let one template site corroborate itself through
+            // its own SearXNG appearance. Titles from captures predating `title_hosts` count as
+            // evidence but attribute no domain.
+            for (i, title) in row.titles.iter().enumerate() {
+                let host = row
+                    .title_hosts
+                    .get(i)
+                    .filter(|h| !h.is_empty())
+                    .map(|h| domain_hash(h));
+                count_title(&mut counts, &format!("{} {}", row.query, title), host, true);
             }
         }
         println!(
@@ -232,8 +241,9 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &MineOptions) -> R
 }
 
 /// Count one title's tokens: bump each token's frequency and every cross-script pair once per title,
-/// remembering which domain the evidence came from.
-fn count_title(counts: &mut Counts, title: &str, domain_hash: u64, federated: bool) {
+/// remembering which domain the evidence came from — `None` when the source is unknown, which
+/// counts as evidence but never toward the distinct-domain floor.
+fn count_title(counts: &mut Counts, title: &str, domain: Option<u64>, federated: bool) {
     let normalized = xustive_text::normalize(title);
     let mut arabic: Vec<String> = Vec::new();
     let mut latin: Vec<String> = Vec::new();
@@ -263,7 +273,9 @@ fn count_title(counts: &mut Counts, title: &str, domain_hash: u64, federated: bo
         for l in &latin {
             let ev = counts.pair.entry((a.clone(), l.clone())).or_default();
             ev.count += 1;
-            ev.note_domain(domain_hash);
+            if let Some(h) = domain {
+                ev.note_domain(h);
+            }
             if federated {
                 ev.federated += 1;
             }
@@ -328,7 +340,7 @@ mod tests {
         count_title(
             &mut c,
             "سونلغاز sonelgaz سونلغاز coupure",
-            domain_hash("a.dz"),
+            Some(domain_hash("a.dz")),
             false,
         );
         assert_eq!(c.titles, 1);
@@ -354,11 +366,16 @@ mod tests {
         count_title(
             &mut c,
             "coupure electricite oran",
-            domain_hash("a.dz"),
+            Some(domain_hash("a.dz")),
             false,
         );
         assert!(c.pair.is_empty(), "latin-only titles produce no pairs");
-        count_title(&mut c, "انقطاع الكهرباء وهران", domain_hash("a.dz"), false);
+        count_title(
+            &mut c,
+            "انقطاع الكهرباء وهران",
+            Some(domain_hash("a.dz")),
+            false,
+        );
         assert!(c.pair.is_empty(), "arabic-only titles produce no pairs");
     }
 
@@ -371,7 +388,7 @@ mod tests {
             count_title(
                 &mut c,
                 "سونلغاز sonelgaz",
-                domain_hash("one-site.dz"),
+                Some(domain_hash("one-site.dz")),
                 false,
             );
         }
@@ -382,8 +399,38 @@ mod tests {
             1,
             "one site is one domain, however loud"
         );
-        count_title(&mut c, "سونلغاز sonelgaz", domain_hash("other.dz"), false);
+        count_title(
+            &mut c,
+            "سونلغاز sonelgaz",
+            Some(domain_hash("other.dz")),
+            false,
+        );
         assert!(c.pair[&key].domains.len() >= MIN_DOMAINS);
+    }
+
+    #[test]
+    fn federated_evidence_carries_its_real_domains() {
+        // BUG-012 both ways. Federated titles from two distinct hosts clear the floor on their
+        // own; unknown-source evidence (old captures, domainless docs) counts but never
+        // corroborates.
+        let mut c = Counts::default();
+        count_title(&mut c, "سونلغاز sonelgaz", Some(domain_hash("a.dz")), true);
+        count_title(&mut c, "سونلغاز sonelgaz", Some(domain_hash("b.dz")), true);
+        let key = ("سونلغاز".to_string(), "sonelgaz".to_string());
+        assert!(c.pair[&key].domains.len() >= MIN_DOMAINS);
+        assert_eq!(c.pair[&key].federated, 2);
+
+        let mut c = Counts::default();
+        count_title(&mut c, "سونلغاز sonelgaz", None, true);
+        count_title(&mut c, "سونلغاز sonelgaz", None, false);
+        assert_eq!(
+            c.pair[&key].count, 2,
+            "unknown-source evidence still counts"
+        );
+        assert!(
+            c.pair[&key].domains.is_empty(),
+            "but it never clears the domain floor"
+        );
     }
 
     #[test]

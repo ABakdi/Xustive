@@ -237,7 +237,7 @@ pub(crate) fn domains_of<'a>(items: impl Iterator<Item = &'a str>, k: usize) -> 
 }
 
 /// A URL or a bare host down to a comparable host string: scheme dropped, `www.` stripped, lowercased.
-fn normalize_domain(s: &str) -> Option<String> {
+pub(crate) fn normalize_domain(s: &str) -> Option<String> {
     let s = s.trim();
     if s.is_empty() {
         return None;

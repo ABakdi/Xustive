@@ -88,7 +88,7 @@ with the catalogue's Algerian conventions (still flagged for native review, B7).
 The printed M6 uplift number doesn't predict the live feature. Fix: replay with the same Wilson
 shape, keyed per query.
 
-### BUG-012 — Miner's federated pseudo-domain breaks the domain floor both ways — **open**
+### BUG-012 — Miner's federated pseudo-domain breaks the domain floor both ways — **fixed**
 `crates/xustive-cli/src/mine.rs`: all federated evidence shares one pseudo-domain, so (a) a
 federated-only pair can never clear `MIN_DOMAINS=2` — the T07.3 channel cannot propose alone — and
 (b) one template site plus its own appearance in a SearXNG capture counts as two "domains",

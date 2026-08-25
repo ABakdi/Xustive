@@ -62,6 +62,12 @@ pub(crate) struct ReferenceRow {
     /// calibration itself never reads them. Defaulted so captures from before this field load.
     #[serde(default)]
     pub(crate) titles: Vec<String>,
+    /// Each title's source host, parallel to `titles` (BUG-012): the miner's distinct-domain floor
+    /// needs to know *which site* a federated title came from — one shared pseudo-domain both
+    /// blocked federated-only pairs and let a template site corroborate itself. Defaulted so older
+    /// captures load; the miner simply cannot attribute their titles to a domain.
+    #[serde(default)]
+    pub(crate) title_hosts: Vec<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -332,17 +338,25 @@ async fn capture_reference(
             }
         };
         let domains = domains_of(hits.iter().map(|h| h.url.as_str()), k);
-        let titles: Vec<String> = hits
+        // Title + source host together, so mining can attribute each title's evidence to the site
+        // it came from (BUG-012).
+        let (titles, title_hosts): (Vec<String>, Vec<String>) = hits
             .iter()
-            .map(|h| h.title.trim().to_string())
-            .filter(|t| !t.is_empty())
+            .filter(|h| !h.title.trim().is_empty())
             .take(k)
-            .collect();
+            .map(|h| {
+                (
+                    h.title.trim().to_string(),
+                    crate::serp_eval::normalize_domain(&h.url).unwrap_or_default(),
+                )
+            })
+            .unzip();
         println!("  {q:<40}  {} domains", domains.len());
         rows.push(ReferenceRow {
             query: q.clone(),
             domains,
             titles,
+            title_hosts,
         });
     }
 
