@@ -22,6 +22,8 @@ const ar = {
     'على خادم بمُشغِّل واحد، هذا السجل خاص بك وحدك على جهازك. على خادم مُشترك، لا يظهر إلا مُجمّعاً فوق عتبة، دون ربط الجلسات ودون توقيتات دقيقة.',
   privacyExternalNote:
     'إذا فعّل المشغّل خدمة التلخيص الخارجية الاختيارية، تُرسل كلمات البحث ومقتطفات النتائج إلى مزوّد ذكاء اصطناعي خارجي لتوليد الملخص — دون أي شيء يعرّف بك. هذه الخدمة معطّلة افتراضياً، والملخصات تُولَّد محلياً على هذا الخادم.',
+  privacyFederationNote:
+    'إذا فعّل المشغّل البحث الموسّع الاختياري عبر الويب، تُرسل كلمات بحثك — عبر مجمّعنا الخاص، دون عنوانك أو أي شيء يعرّف بك — إلى محركات بحث خارجية لجلب نتائج إضافية. هذه الخدمة معطّلة افتراضياً.',
   privacyBack: 'العودة إلى البحث',
   resultsCount: 'نتيجة',
   resultsApprox: 'حوالي',
@@ -167,6 +169,8 @@ const fr: Messages = {
     'Sur une instance à opérateur unique, cet historique n’est qu’à vous, sur votre propre machine. Sur une instance partagée, il n’apparaît qu’agrégé au-dessus d’un seuil, sans regroupement de sessions ni horodatage précis.',
   privacyExternalNote:
     'Si l’opérateur active le résumé externe optionnel, les termes recherchés et les extraits de résultats sont envoyés à un fournisseur d’IA tiers pour générer le résumé — jamais rien qui vous identifie. Ce service est désactivé par défaut : les résumés sont générés localement, sur ce serveur.',
+  privacyFederationNote:
+    'Si l’opérateur active la recherche web fédérée optionnelle, vos termes de recherche sont transmis — via notre propre agrégateur, sans votre adresse ni rien qui vous identifie — à des moteurs de recherche externes pour ramener des résultats supplémentaires. Désactivée par défaut.',
   privacyBack: 'Retour à la recherche',
   resultsCount: 'résultats',
   resultsApprox: 'environ',
@@ -303,6 +307,8 @@ const en: Messages = {
     'On a single-operator instance this history is yours alone, on your own machine. On a shared instance it appears only in aggregate above a threshold, with no session grouping and no fine-grained timestamps.',
   privacyExternalNote:
     'If the operator enables the optional external summariser, the search terms and result excerpts of summarised searches are sent to a third-party AI provider to write the summary — never anything that identifies you. It is off by default: summaries are generated locally, on this server.',
+  privacyFederationNote:
+    'If the operator enables the optional federated web search, your search terms are sent — through our own aggregator, without your address or anything that identifies you — to external search engines to fetch extra results. It is off by default.',
   privacyBack: 'Back to search',
   resultsCount: 'results',
   resultsApprox: 'about',
@@ -470,6 +476,8 @@ const ary: Messages = {
     'في سيرفور بمستعمل واحد، هاد التاريخ تاعك وحدك في جهازك. في سيرفور مشترك، ما يبانش غير مجمّع فوق عتبة، بلا ربط تاع الجلسات وبلا أوقات دقيقة.',
   privacyExternalNote:
     'إذا فعّل المشغّل التلخيص الخارجي الاختياري، كلمات البحث ومقتطفات النتائج يتبعثو لمزوّد ذكاء اصطناعي خارجي باش يكتب الملخص — بلا حتى حاجة تعرّف بيك. هاد الخدمة مطفية افتراضياً: الملخصات يتصنعو محلياً في هاد السيرفور.',
+  privacyFederationNote:
+    'إذا فعّل المشغّل البحث الموسّع الاختياري عبر الويب، كلمات بحثك يتبعثو — عبر المجمّع تاعنا، بلا عنوانك وبلا حتى حاجة تعرّف بيك — لمحركات بحث خارجية باش يجيبو نتائج زيادة. هاد الخدمة مطفية افتراضياً.',
   privacyBack: 'رجع للبحث',
   resultsCount: 'نتيجة',
   resultsApprox: 'تقريبا',

@@ -39,8 +39,11 @@ export default async function Privacy({ params }: { params: Promise<{ lang: stri
         <p>{t.privacyStored}</p>
         <p>{t.privacyNotStored}</p>
         <p style={{ color: 'var(--fg-faint)' }}>{t.privacyModeNote}</p>
-        {/* The one optional third-party egress (M7-T08), documented plainly per ADR-0017/T08.3:
-            what leaves, to whom, and that it is off unless the operator turns it on. */}
+        {/* BOTH optional third-party egresses, documented plainly (ADR-0017/T08.3, BUG-037): what
+            leaves, to whom, and that each is off unless the operator turns it on. Presenting the
+            summariser as the only one, while federation also sends query text outward, was a lie
+            by omission on the one page whose job is precision. */}
+        <p style={{ color: 'var(--fg-faint)' }}>{t.privacyFederationNote}</p>
         <p style={{ color: 'var(--fg-faint)' }}>{t.privacyExternalNote}</p>
       </div>
 

@@ -221,7 +221,7 @@ admits the spec'd salted HMAC is unimplemented. Fix: keyed blake3 with a deploy 
 (`interaction.salt` / `XUSTIVE_QHASH_SALT`), required on non-dev deployments by config validation;
 unsalted FNV remains the dev fallback with an honest comment.
 
-### BUG-037 [med] — Privacy page omits the federation egress — **open**
+### BUG-037 [med] — Privacy page omits the federation egress — **fixed**
 The page presents the external summariser as the one optional third-party egress, but enabling
 federation sends every query's text to SearXNG and onward to upstream engines. Fix: a federation
 clause parallel to `privacyExternalNote`, all four locales.
