@@ -155,6 +155,12 @@ pub async fn handler(
     // itself is rebuilt per attempt inside `generate` (it is cheap and each attempt consumes one).
     let cited = built.cited.clone();
 
+    // One deadline for the whole request, shared between the external attempt and the local
+    // fallback (BUG-005): two full budgets in sequence meant enabling the external summariser could
+    // *double* the worst-case latency. The external leg gets at most half, so a hung provider can
+    // never starve the local model of its shot; the local leg gets whatever actually remains.
+    let overall = Duration::from_millis(state.config.ml.deadline_ms);
+
     // The external summariser first, when the operator has switched it on (M7-T08): the same
     // prompt, carried out by the LLM behind the Federation Gateway, held to the same validator —
     // an external model does not get to skip citations or switch language. Every failure falls
@@ -164,7 +170,7 @@ pub async fn handler(
         .external_summaries
         .load(std::sync::atomic::Ordering::Relaxed)
     {
-        generate_external(&state, &built, &cited, pending.lang).await
+        generate_external(&state, &built, &cited, pending.lang, overall / 2).await
     } else {
         None
     };
@@ -172,7 +178,10 @@ pub async fn handler(
 
     let outcome = match external {
         Some(summary) => Ok(summary),
-        None => generate(&state, &pending, &cited).await,
+        None => {
+            let remaining = overall.saturating_sub(started.elapsed());
+            generate(&state, &pending, &cited, remaining).await
+        }
     };
     let took_ms = started.elapsed().as_millis() as u64;
 
@@ -217,12 +226,13 @@ async fn generate_external(
     built: &prompt::Prompt,
     cited: &[prompt::Cited],
     lang: OutputLang,
+    budget: Duration,
 ) -> Option<validate::Summary> {
     let federator = state.federator.as_ref()?;
     // One chat message carrying the same system rules + grounded passages the local model gets.
     let prompt_text = format!("{}\n\n{}", built.system, built.user);
     let text = federator
-        .summarise(&prompt_text, state.config.ml.deadline_ms)
+        .summarise(&prompt_text, budget.as_millis() as u64)
         .await;
     let outcome = match text {
         Some(text) => match validate::check(&text, cited, lang) {
@@ -253,6 +263,7 @@ async fn generate(
     state: &AppState,
     pending: &Pending,
     cited: &[prompt::Cited],
+    overall: Duration,
 ) -> Result<validate::Summary, &'static str> {
     use xustive_ml::engine::{EngineError, Sampling};
 
@@ -260,12 +271,12 @@ async fn generate(
         return Err("model_not_loaded");
     };
 
-    // Up to two attempts within one overall budget. The first is faithful (low temperature); if it
-    // is withheld for a reason a different sample could fix — a forgotten citation, a language the
-    // model slipped out of — a second, more varied attempt often clears it. The retry is gated on
-    // time remaining, so on slow CPU (where the first attempt eats the budget) there is simply no
-    // second try, while on GPU (where a generation is seconds) the retry comes for free.
-    let overall = Duration::from_millis(state.config.ml.deadline_ms);
+    // Up to two attempts within the budget the caller has left (BUG-005: this used to be a fresh
+    // full deadline even after an external attempt had spent one). The first is faithful (low
+    // temperature); if it is withheld for a reason a different sample could fix — a forgotten
+    // citation, a language the model slipped out of — a second, more varied attempt often clears
+    // it. The retry is gated on time remaining, so on slow CPU (where the first attempt eats the
+    // budget) there is simply no second try, while on GPU the retry comes for free.
     let start = Instant::now();
     let mut last = "generation_failed";
 
@@ -324,6 +335,7 @@ async fn generate(
     _state: &AppState,
     _pending: &Pending,
     _cited: &[prompt::Cited],
+    _overall: Duration,
 ) -> Result<validate::Summary, &'static str> {
     Err("summariser_not_compiled")
 }

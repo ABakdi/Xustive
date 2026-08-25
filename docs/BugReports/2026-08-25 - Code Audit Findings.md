@@ -49,7 +49,7 @@ it except the admin display. The gateway reaches whatever `SEARXNG_URL`/`EXTERNA
 Fix: remove the dead field and the false claim; state honestly that gateway egress is bounded by
 its two env-configured endpoints (and drop the admin/web display of it).
 
-### BUG-005 — Enabling the external summariser doubles the worst-case summary time — **open**
+### BUG-005 — Enabling the external summariser doubles the worst-case summary time — **fixed**
 `crates/xustive-api/src/summary.rs`: `generate_external` spends up to `ml.deadline_ms`, then the
 local `generate` starts a fresh `deadline_ms` of its own — up to ~2× the budget end to end,
 contradicting "turning this on only changes who writes the summary". Fix: one shared deadline —
