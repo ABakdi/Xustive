@@ -26,6 +26,8 @@ const K_SKIPS: &str = "crawl:skips";
 const K_RECENT: &str = "crawl:recent";
 const K_HOSTS: &str = "crawl:hosts";
 const K_STATE: &str = "crawl:state";
+/// Operator pause flag (PROB-003): set from the admin console, honoured by every crawl worker.
+const K_PAUSED: &str = "crawl:paused";
 /// Per-source counters live in one hash, field `"<source_id>:<metric>"`. One hash rather than a key
 /// per source keeps reset a single `DEL` and the dashboard read a single `HGETALL` — the same shape
 /// as every other counter here. Source ids are slugs (`[a-z0-9-]`) so `:` never collides.
@@ -57,6 +59,8 @@ pub struct RecentUrl {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Snapshot {
     pub state: String,
+    /// Operator pause flag (PROB-003) — the crawl is deliberately held, not idle or broken.
+    pub paused: bool,
     pub fetched: u64,
     /// Of `fetched`, the revisits. `fetched - revisited` is fresh discovery — the two halves of the
     /// crawl budget, so the console can show whether it is keeping the corpus current or growing it.
@@ -223,6 +227,40 @@ impl CrawlStats {
             .await;
     }
 
+    /// Set or clear the operator pause (PROB-003). The workers poll this in their guard probe,
+    /// so a pause takes effect within seconds and survives console restarts — it lives beside the
+    /// crawl state, not in any process's memory.
+    pub async fn set_paused(&self, paused: bool) {
+        let Some(mut c) = self.conn().await else {
+            return;
+        };
+        if paused {
+            let _: Result<(), _> = redis::cmd("SET")
+                .arg(K_PAUSED)
+                .arg(1)
+                .query_async::<()>(&mut c)
+                .await;
+        } else {
+            let _: Result<(), _> = redis::cmd("DEL")
+                .arg(K_PAUSED)
+                .query_async::<()>(&mut c)
+                .await;
+        }
+    }
+
+    /// Whether the operator has paused the crawl.
+    pub async fn is_paused(&self) -> bool {
+        let Some(mut c) = self.conn().await else {
+            return false;
+        };
+        redis::cmd("EXISTS")
+            .arg(K_PAUSED)
+            .query_async::<i64>(&mut c)
+            .await
+            .map(|n| n > 0)
+            .unwrap_or(false)
+    }
+
     /// Add to a counter.
     pub async fn incr(&self, field: &str, by: u64) {
         let Some(mut c) = self.conn().await else {
@@ -375,6 +413,7 @@ impl CrawlStats {
             return Snapshot {
                 unavailable: true,
                 state: "unknown".into(),
+                paused: false,
                 ..Snapshot::default()
             };
         };
@@ -394,6 +433,7 @@ impl CrawlStats {
                 return Snapshot {
                     unavailable: true,
                     state: "unknown".into(),
+                    paused: false,
                     ..Snapshot::default()
                 }
             }
@@ -425,6 +465,7 @@ impl CrawlStats {
             // No state key at all means the crawler has never run, which is different from stopped
             // and worth saying differently.
             state: state.unwrap_or_else(|| "never started".into()),
+            paused: self.is_paused().await,
             // Filled by the caller that holds a Frontier; the stats store does not know about
             // the due set and should not — it would be a second reader disagreeing with the first.
             deferred: 0,

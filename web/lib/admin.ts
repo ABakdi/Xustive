@@ -84,6 +84,9 @@ export interface WeakCoverage {
 }
 export const getWeakCoverage = (signal?: AbortSignal) =>
   getJSON<WeakCoverage>('/crawler/weak-coverage', signal)
+/** Dismiss one weak term. If the gap is real it re-accumulates past the k-floor on its own. */
+export const forgetWeakTerm = (term: string) =>
+  postJSON<{ ok?: boolean }>('/crawler/weak-coverage/forget', { term })
 
 // --- documents -------------------------------------------------------------------------------
 export interface DocHit {
@@ -159,6 +162,8 @@ export const removeSource = (url: string) =>
 // --- live snapshot ---------------------------------------------------------------------------
 export interface Snapshot {
   state: string
+  /** Operator pause (PROB-003): held deliberately, distinct from idle or broken. */
+  paused?: boolean
   fetched: number
   revisited: number
   parsed: number
@@ -174,6 +179,9 @@ export interface Snapshot {
   unavailable: boolean
 }
 export const getStatus = (signal?: AbortSignal) => getJSON<Snapshot>('/crawler/status', signal)
+/** Hold or release the crawl. Takes effect within seconds; in-flight fetches finish. */
+export const setCrawlPaused = (paused: boolean) =>
+  postJSON<{ ok?: boolean; paused?: boolean }>('/crawler/pause', { paused })
 
 // --- force-crawl (enqueue a URL) -------------------------------------------------------------
 /** Push a URL into the frontier now — as trusted as a seed. `front` jumps it to the head.

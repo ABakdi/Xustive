@@ -148,6 +148,10 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/crawler/weak-coverage", get(admin_crawler::weak_coverage))
         .route(
+            "/crawler/weak-coverage/forget",
+            axum::routing::post(admin_crawler::weak_forget),
+        )
+        .route(
             "/crawler/sources",
             get(admin_crawler::sources).post(admin_crawler::add_source),
         )
@@ -162,6 +166,7 @@ pub fn app(state: AppState) -> Router {
             "/crawler/enqueue",
             axum::routing::post(admin_crawler::enqueue),
         )
+        .route("/crawler/pause", axum::routing::post(admin_crawler::pause))
         .route("/politeness", axum::routing::post(admin::set_politeness))
         .route("/status", get(admin::status))
         .route("/config", get(admin::config))

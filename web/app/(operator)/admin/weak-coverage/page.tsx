@@ -1,10 +1,13 @@
 'use client'
 
-import { getWeakCoverage } from '@/lib/admin'
+import { useState } from 'react'
+
+import { forgetWeakTerm, getWeakCoverage } from '@/lib/admin'
 import { PageHead, StatusLine, Table, Td, Th, usePoll } from '@/components/admin/ui'
 
 export default function WeakCoveragePage() {
   const { data, error } = usePoll(getWeakCoverage, 15_000)
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const k = data?.k_anonymity ?? 20
   const terms = data?.terms ?? []
   return (
@@ -49,14 +52,33 @@ export default function WeakCoveragePage() {
             <>
               <Th>term</Th>
               <Th num>searches</Th>
+              <Th>{''}</Th>
             </>
           }
         >
-          {terms.map((t) => (
+          {terms.filter((t) => !dismissed.has(t.term)).map((t) => (
             <tr key={t.term}>
               {/* The term is a user's search text — React escapes it by rendering as a text node. */}
               <Td>{t.term}</Td>
               <Td num>{t.count}</Td>
+              <Td>
+                {/* Dismissal, not suppression (PROB-003): a real gap re-accumulates on its own. */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await forgetWeakTerm(t.term)
+                      setDismissed((d) => new Set(d).add(t.term))
+                    } catch {
+                      // The next poll shows the truth either way.
+                    }
+                  }}
+                  className="rounded border px-2 py-0.5 text-xs"
+                  style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}
+                >
+                  forget
+                </button>
+              </Td>
             </tr>
           ))}
         </Table>

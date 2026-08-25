@@ -242,6 +242,78 @@ pub struct EnqueueRequest {
 /// Reorders; does not grant. The URL passes `SafeUrl` and the trap detectors exactly as a
 /// discovered link does — an admin form that could fetch anything would be an SSRF hole with a
 /// login page in front of it, and the login is not the part that stops it.
+/// `POST /admin/crawler/pause` — hold or release the crawl (PROB-003).
+///
+/// The one control the console lacked entirely: state was displayed everywhere and changeable
+/// nowhere. The flag lives in Redis beside the crawl state, every worker polls it in its guard
+/// probe (effect within seconds), and it survives restarts of both the console and the crawler.
+/// Pausing holds claims only — in-flight fetches finish, nothing is dropped, and the frontier is
+/// untouched, so resuming costs nothing.
+/// `POST /admin/crawler/weak-coverage/forget` — dismiss one weak-coverage term (PROB-003).
+///
+/// `WeakCoverage::forget` existed in code with no endpoint: an operator who judged a term not
+/// worth chasing (a typo, a name, noise) could only wait out its window. If the gap is real, the
+/// term re-accumulates past the k-floor on its own — forgetting is dismissal, not suppression.
+pub async fn weak_forget(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
+    let Some(term) = body.get("term").and_then(|v| v.as_str()).map(str::trim) else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": {"code": "missing_term", "message": "pass {\"term\": \"...\"}"}})),
+        ));
+    };
+    if term.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": {"code": "missing_term", "message": "term must not be empty"}})),
+        ));
+    }
+    let disc = &state.config.discovery;
+    let Some(store) = xustive_ingest::weak_coverage::WeakCoverage::connect_in(
+        state.config.queue.signals_url(),
+        "discovery",
+        disc.effective_k(),
+        std::time::Duration::from_secs(disc.weak_coverage_window_days * 86_400),
+    ) else {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(
+                json!({"error": {"code": "redis_unavailable", "message": "cannot reach the signals store"}}),
+            ),
+        ));
+    };
+    store.forget(term).await;
+    Ok(Json(json!({ "ok": true })))
+}
+
+pub async fn pause(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
+    let paused = body.get("paused").and_then(|v| v.as_bool()).unwrap_or(true);
+    let Some(stats) =
+        xustive_ingest::crawl_stats::CrawlStats::connect(&state.config.queue.url).await
+    else {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(
+                json!({"error": {"code": "redis_unavailable", "message": "cannot reach the crawl state store"}}),
+            ),
+        ));
+    };
+    stats.set_paused(paused).await;
+    tracing::warn!(paused, "crawl pause toggled by operator");
+    Ok(Json(json!({ "ok": true, "paused": paused })))
+}
+
 pub async fn enqueue(
     State(state): State<AppState>,
     Peer(peer): Peer,

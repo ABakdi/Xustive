@@ -388,6 +388,15 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                             "cannot read the queue depth; not pausing"
                         ),
                     }
+                    // The operator pause (PROB-003): held deliberately from the console.
+                    if !probe_paused {
+                        if let Some(st) = &shared {
+                            if st.is_paused().await {
+                                tracing::debug!(worker = id, "crawl paused by operator");
+                                probe_paused = true;
+                            }
+                        }
+                    }
                     // The memory backstop (PROB-001): above the high-water mark, stop producing.
                     // Loud — the old failure mode was every write silently failing at the wall
                     // while the crawler looked merely idle.

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 
-import type { Snapshot } from '@/lib/admin'
+import { setCrawlPaused, type Snapshot } from '@/lib/admin'
 import { PageHead, Table, Td, Th } from '@/components/admin/ui'
 import { ForceCrawl } from '@/components/admin/ForceCrawl'
 
@@ -18,6 +18,7 @@ function Tile({ n, label }: { n: number | string; label: string }) {
 }
 
 export default function LivePage() {
+  const [pauseBusy, setPauseBusy] = useState(false)
   const [snap, setSnap] = useState<Snapshot | null>(null)
   const [down, setDown] = useState(false)
 
@@ -61,8 +62,36 @@ export default function LivePage() {
         </p>
       ) : null}
 
+      {/* The pause control (PROB-003): state was displayed everywhere and changeable nowhere.
+          Pausing holds new claims only — in-flight fetches finish, the frontier is untouched. */}
+      <div className="mb-4 flex items-center gap-3">
+        {s?.paused ? (
+          <p className="m-0 rounded border px-3 py-1.5 text-sm" style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}>
+            Crawl paused by operator — workers hold new claims until resumed.
+          </p>
+        ) : null}
+        <button
+          type="button"
+          disabled={pauseBusy}
+          onClick={async () => {
+            setPauseBusy(true)
+            try {
+              await setCrawlPaused(!s?.paused)
+            } catch {
+              // The next SSE frame reflects reality either way.
+            } finally {
+              setPauseBusy(false)
+            }
+          }}
+          className="min-h-10 rounded border px-4 text-sm"
+          style={{ borderColor: s?.paused ? 'var(--line)' : 'var(--warn)', color: 'var(--fg)' }}
+        >
+          {pauseBusy ? '…' : s?.paused ? 'Resume crawl' : 'Pause crawl'}
+        </button>
+      </div>
+
       <div className="mb-6 mt-1 flex flex-wrap gap-3">
-        <Tile n={s?.state ?? '…'} label="state" />
+        <Tile n={s?.paused ? 'paused' : (s?.state ?? '…')} label="state" />
         <Tile n={s?.fetched ?? 0} label="fetched" />
         <Tile n={s?.revisited ?? 0} label="revisited" />
         <Tile n={s?.parsed ?? 0} label="parsed" />
