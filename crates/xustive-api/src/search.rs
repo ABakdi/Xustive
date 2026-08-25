@@ -463,7 +463,13 @@ pub async fn handler(
     // Conditional rather than always-on: expansion costs a round trip, and for a query that
     // already retrieved well it adds only weaker matches that the re-ranker then has to push
     // back down.
-    let few_or_weak = hits.hits.len() < EXPANSION_THRESHOLD || top_result_is_weak(&hits.hits);
+    // The weak-score half of the trigger reads the *first engine hit*, which is only the best
+    // match in relevance order — under an explicit sort it is merely the newest (or whatever the
+    // sort puts first), whose score says nothing about match quality, and the leg fired on nearly
+    // every recency-sorted search (BUG-013). The count half stays: too few results is too few
+    // results in any order.
+    let few_or_weak = hits.hits.len() < EXPANSION_THRESHOLD
+        || (sort.is_empty() && top_result_is_weak(&hits.hits));
     let expanded_terms = if few_or_weak && deadline.allows(Stage::Expansion) {
         expand_and_merge(
             &state,

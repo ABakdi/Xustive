@@ -95,7 +95,7 @@ federated-only pair can never clear `MIN_DOMAINS=2` — the T07.3 channel cannot
 re-opening the boilerplate flood the floor exists to stop. Fix: capture per-hit source domains
 alongside titles and attribute federated evidence to its real domain.
 
-### BUG-013 — Weak-top expansion trigger misfires under explicit sort — **open**
+### BUG-013 — Weak-top expansion trigger misfires under explicit sort — **fixed**
 `search.rs` `top_result_is_weak` reads the first hit in engine order; under `?sort=recency` that is
 the newest document, not the best match, so the expansion leg fires on nearly every recency-sorted
 search. Fix: apply the weak-score check only when no explicit sort is set.
