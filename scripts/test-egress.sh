@@ -89,6 +89,23 @@ else
   echo "  ~ federation profile not running; skipping the gateway-bridge check" >&2
 fi
 
+# 6. Probe from inside a REAL serving-plane container, not only a fresh one (BUG-009).
+#    Checks 2-3 attach a throwaway container to `core` alone — but the dev overlay multi-homes the
+#    real containers onto the `devhost` ingress bridge, and a NAT-ing bridge would grant them
+#    egress the fresh-container probe can never see. Redis is the probe host: it is always running,
+#    alpine-based (busybox wget), and joined to `devhost` in dev.
+if docker ps --format '{{.Names}}' | grep -q '^xustive-redis$'; then
+  docker exec xustive-redis timeout 5 wget -q -O /dev/null http://example.com >/dev/null 2>&1
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    ok "real container (redis, all its networks) cannot reach the internet"
+  else
+    bad "A REAL CONTAINER REACHED THE INTERNET — a joined network (devhost?) is NAT-ing egress"
+  fi
+else
+  echo "  ~ xustive-redis not running; skipping the real-container probe" >&2
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "✓ egress test: the serving plane cannot reach the internet"
 fi

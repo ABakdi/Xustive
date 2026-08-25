@@ -82,7 +82,7 @@ the dev-overlay exception explicitly in the script output.
 `ديالك` (Moroccan possessive) contradict the same catalogue's own `تاعك`/`تاع` forms. Fix: align
 with the catalogue's Algerian conventions (still flagged for native review, B7).
 
-### BUG-011 — Interaction-uplift replay doesn't match the runtime signal — **open**
+### BUG-011 — Interaction-uplift replay doesn't match the runtime signal — **fixed**
 `crates/xustive-cli/src/eval.rs` replay uses global per-doc `clicks/(imp+5)`; runtime
 (`xustive-ingest/src/interaction.rs`) serves per-(query,doc) Wilson lower bounds with fallback.
 The printed M6 uplift number doesn't predict the live feature. Fix: replay with the same Wilson

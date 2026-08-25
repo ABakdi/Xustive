@@ -86,3 +86,11 @@ services:
 networks:
   devhost:
     driver: bridge
+    # Ingress-only, enforced rather than assumed (BUG-009). A default bridge NATs outbound, so
+    # joining `devhost` would quietly hand every dev container full internet egress — the exact
+    # property the base topology exists to deny. Disabling IP masquerade removes the outbound NAT:
+    # container-originated packets to the internet leave un-translated and unroutable, while
+    # published-port ingress (host → DNAT/docker-proxy → container) does not need masquerade and
+    # keeps working. `make egress-test` verifies this from inside a real dev container.
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"

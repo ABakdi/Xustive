@@ -66,22 +66,31 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
     }
 
     // Pass 1 — baseline re-rank (no interaction), and a replayed click stream over its top results.
-    // Each shown result is an impression; expected clicks scale with the result's true relevance and,
-    // mildly, its position — so a relevant-but-mid-ranked document still earns clicks and the signal
-    // can lift it, rather than only ever reinforcing the baseline's order.
+    // The stream simulates a **cohort of users per query** so the counts feed the very signal shape
+    // runtime serves (BUG-011): `Interactions::ctr_for` returns a per-(query, doc) Wilson lower
+    // bound above the k floor, so the replay produces per-query integer impression/click counts and
+    // scores them with the same `wilson_lower_bound` — not the global fractional CTR this used to
+    // fake, whose magnitude and curve matched nothing in production. Each cohort member impresses
+    // every top-10 result; expected clicks scale with the result's true relevance and, mildly, its
+    // position — so a relevant-but-mid-ranked document still earns clicks and the signal can lift
+    // it, rather than only ever reinforcing the baseline's order.
+    //
+    // COHORT of 20 = the ADR-0015 k floor, so every shown (query, doc) pair clears `surfaceable`
+    // and takes the qd path — which is why the doc-global fallback needs no simulation here.
+    const COHORT: u32 = 20;
     let empty: HashMap<String, f32> = HashMap::new();
-    let mut clicks: HashMap<String, f32> = HashMap::new();
-    let mut impressions: HashMap<String, f32> = HashMap::new();
+    // Per-query replayed counts: query index → doc id → (impressions, clicks).
+    let mut counts: Vec<HashMap<String, (u32, u32)>> = vec![HashMap::new(); retrieved.len()];
     let mut baseline_obs: Vec<Observed> = Vec::with_capacity(retrieved.len());
-    for (g, hits) in &retrieved {
+    for (qi, (g, hits)) in retrieved.iter().enumerate() {
         let normalized = xustive_text::normalize(&g.query);
         let (results, published) =
             rerank_ids(hits, &normalized, now, &trust, &authority, &empty, &weights);
         for (rank_i, id) in results.iter().take(10).enumerate() {
-            *impressions.entry(id.clone()).or_insert(0.0) += 1.0;
             let rel = (g.grade(id) as f32 / 3.0).clamp(0.0, 1.0);
             let pos = 1.0 / (rank_i as f32 + 1.0);
-            *clicks.entry(id.clone()).or_insert(0.0) += rel * (0.5 + 0.5 * pos);
+            let clicks = (COHORT as f32 * rel * (0.5 + 0.5 * pos)).round() as u32;
+            counts[qi].insert(id.clone(), (COHORT, clicks.min(COHORT)));
         }
         baseline_obs.push(Observed {
             golden: (*g).clone(),
@@ -90,19 +99,20 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
         });
     }
 
-    // Smoothed CTR per document from the replayed stream — a Bayesian prior so one impression is not
-    // a CTR of 1.0. This is the shape `Interactions::ctr_for` produces at runtime.
-    const CTR_PRIOR_N: f32 = 5.0;
-    let mut interaction: HashMap<String, f32> = HashMap::new();
-    for (id, imp) in &impressions {
-        let c = clicks.get(id).copied().unwrap_or(0.0);
-        interaction.insert(id.clone(), c / (imp + CTR_PRIOR_N));
-    }
-
-    // Pass 2 — re-rank again with the replayed interaction signal.
+    // Pass 2 — re-rank again, each query under its own replayed signal, exactly as the API feeds
+    // `ctr_for(query, docs)` into the ranker at runtime.
     let mut interaction_obs: Vec<Observed> = Vec::with_capacity(retrieved.len());
-    for (g, hits) in &retrieved {
+    for (qi, (g, hits)) in retrieved.iter().enumerate() {
         let normalized = xustive_text::normalize(&g.query);
+        let interaction: HashMap<String, f32> = counts[qi]
+            .iter()
+            .map(|(id, &(imp, clk))| {
+                (
+                    id.clone(),
+                    xustive_ingest::interaction::wilson_lower_bound(clk, imp),
+                )
+            })
+            .collect();
         let (results, published) = rerank_ids(
             hits,
             &normalized,
