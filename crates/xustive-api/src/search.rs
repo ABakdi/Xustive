@@ -163,6 +163,21 @@ pub struct SearchResponse {
 /// answer it were never reached.
 const EXPANSION_THRESHOLD: usize = 5;
 
+/// Below this Meilisearch `_rankingScore`, even the best result is a weak match — worth widening the
+/// query with the expansion leg even when it returned plenty of hits (M7-T01.3). A strong exact match
+/// scores near 1.0; a page where only some query terms matched scores well below.
+const WEAK_TOP_SCORE: f64 = 0.6;
+
+/// Whether the top result is a weak match — the signal that a query returned *hits* but not good
+/// ones, which the count-only trigger misses. Absent scores (an older index) read as not-weak, so the
+/// behaviour is unchanged where the score is unavailable.
+fn top_result_is_weak(hits: &[Value]) -> bool {
+    hits.first()
+        .and_then(|h| h.get("_rankingScore"))
+        .and_then(Value::as_f64)
+        .is_some_and(|s| s < WEAK_TOP_SCORE)
+}
+
 /// Retrieve again with expanded terms and merge into `hits`.
 ///
 /// Returns the terms tried, for the response's `expanded_terms`. Failures are swallowed on
@@ -385,6 +400,7 @@ pub async fn handler(
     let mut query = Query::new(&normalized)
         .limit(pool)
         .offset(0)
+        .ranking_score(true)
         .highlight(&["excerpt", "title"]);
     if want_facets {
         query = query.facets(&["source_type", "sentiment.label", "language"]);
@@ -414,21 +430,21 @@ pub async fn handler(
     // Conditional rather than always-on: expansion costs a round trip, and for a query that
     // already retrieved well it adds only weaker matches that the re-ranker then has to push
     // back down.
-    let expanded_terms =
-        if hits.hits.len() < EXPANSION_THRESHOLD && deadline.allows(Stage::Expansion) {
-            expand_and_merge(
-                &state,
-                &normalized,
-                language,
-                &index,
-                &mut hits,
-                &filters,
-                &sort,
-            )
-            .await
-        } else {
-            Vec::new()
-        };
+    let few_or_weak = hits.hits.len() < EXPANSION_THRESHOLD || top_result_is_weak(&hits.hits);
+    let expanded_terms = if few_or_weak && deadline.allows(Stage::Expansion) {
+        expand_and_merge(
+            &state,
+            &normalized,
+            language,
+            &index,
+            &mut hits,
+            &filters,
+            &sort,
+        )
+        .await
+    } else {
+        Vec::new()
+    };
 
     state.metrics.observe(
         metrics::SEARCH_DURATION,
@@ -1266,6 +1282,18 @@ mod tests {
         assert_eq!(count_bucket(5), "1-10");
         assert_eq!(count_bucket(50), "11-100");
         assert_eq!(count_bucket(5_000), "1000+");
+    }
+
+    #[test]
+    fn a_weak_top_score_triggers_expansion() {
+        // A strong exact match scores near 1.0 and must not trigger the widen.
+        assert!(!top_result_is_weak(&[json!({"_rankingScore": 0.95})]));
+        // A partial match below the floor should.
+        assert!(top_result_is_weak(&[json!({"_rankingScore": 0.42})]));
+        // No hits, and an index that returns no score, both read as not-weak — the count-only
+        // trigger stays in charge where the score is unavailable.
+        assert!(!top_result_is_weak(&[]));
+        assert!(!top_result_is_weak(&[json!({"title": "no score here"})]));
     }
 
     #[test]

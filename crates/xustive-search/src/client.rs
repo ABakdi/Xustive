@@ -72,6 +72,10 @@ pub struct Query {
     pub attributes_to_crop: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub crop_length: Option<usize>,
+    /// Ask Meilisearch to return `_rankingScore` (0–1) on each hit, so the pipeline can tell a page
+    /// of strong matches from a page of weak ones and decide whether to widen the query (M7-T01.3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_ranking_score: Option<bool>,
 }
 
 impl Query {
@@ -126,6 +130,12 @@ impl Query {
 
     pub fn sort(mut self, s: &[&str]) -> Self {
         self.sort = s.iter().map(|x| x.to_string()).collect();
+        self
+    }
+
+    /// Return `_rankingScore` on each hit (M7-T01.3).
+    pub fn ranking_score(mut self, on: bool) -> Self {
+        self.show_ranking_score = on.then_some(true);
         self
     }
 }
