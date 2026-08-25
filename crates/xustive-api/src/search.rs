@@ -906,6 +906,10 @@ fn ingest_federated(state: &AppState, hits: &[xustive_ingest::federation::Federa
     let queue_url = state.config.queue.url.clone();
     let index_stream = state.config.queue.index_stream.clone();
     let stream_max_len = state.config.queue.index_stream_max_len;
+    // The crawl-feed enforces the same frontier ceilings as the crawler itself (PROB-001) — a
+    // federated URL is a discovery like any other and gets no bypass around the bounds.
+    let frontier_limits =
+        xustive_ingest::frontier::FrontierLimits::from_config(&state.config.crawl);
     let eager = state.config.federation.eager_index;
     let now = xustive_core::now_unix();
 
@@ -994,7 +998,9 @@ fn ingest_federated(state: &AppState, hits: &[xustive_ingest::federation::Federa
         }
 
         // 2. Crawl-feed — full-page crawl, front-promoted, sharing the eager id so it overwrites.
-        if let Ok(frontier) = xustive_ingest::frontier::Frontier::connect(&queue_url) {
+        if let Ok(frontier) = xustive_ingest::frontier::Frontier::connect(&queue_url)
+            .map(|f| f.with_limits(frontier_limits.clone()))
+        {
             for e in &entries {
                 let pending = xustive_ingest::frontier::Pending {
                     url: e.curl.clone(),

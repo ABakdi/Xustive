@@ -39,7 +39,13 @@ async fn stats(state: &AppState) -> Option<xustive_ingest::crawl_stats::CrawlSta
 }
 
 fn frontier(state: &AppState) -> Option<xustive_ingest::frontier::Frontier> {
-    xustive_ingest::frontier::Frontier::connect(&state.config.queue.url).ok()
+    xustive_ingest::frontier::Frontier::connect(&state.config.queue.url)
+        .ok()
+        .map(|f| {
+            f.with_limits(xustive_ingest::frontier::FrontierLimits::from_config(
+                &state.config.crawl,
+            ))
+        })
 }
 
 /// The full picture: counters, recent URLs, per-host activity, frontier depth.

@@ -55,10 +55,43 @@ export default function QueuePage() {
         <p className="mb-4 text-sm" style={{ color: 'var(--warn)' }}>The queue is unreachable (Redis down).</p>
       ) : null}
 
-      <div className="mb-8 flex flex-wrap gap-3">
+      <div className="mb-4 flex flex-wrap gap-3">
         <Tile n={data ? (data.unavailable ? 'unknown' : (data.backlog ?? 0)) : '…'} label="backlog (waiting to index)" />
         <Tile n={data ? (data.unavailable ? 'unknown' : (data.dead_count ?? 0)) : '…'} label="dead letters" />
+        <Tile
+          n={data?.capacity ? `${data.capacity.frontier_waiting.toLocaleString()}` : '…'}
+          label="frontier (queued URLs)"
+        />
+        <Tile
+          n={data?.capacity ? `${data.capacity.frontier_deferred.toLocaleString()}` : '…'}
+          label="deferred (revisits due later)"
+        />
+        <Tile
+          n={
+            data?.capacity
+              ? data.capacity.redis_pct != null
+                ? `${data.capacity.redis_pct}%`
+                : 'uncapped'
+              : '…'
+          }
+          label="Redis memory used"
+        />
       </div>
+
+      {/* The capacity alarm (PROB-001): loud well before the wall. At 100% every Redis write fails
+          and the crawl freezes looking merely idle — the state this warning exists to prevent. */}
+      {data?.capacity?.redis_pct != null && data.capacity.redis_pct >= 80 ? (
+        <p className="mb-8 rounded border px-3 py-2 text-sm" style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}>
+          Redis is at {data.capacity.redis_pct}% of its memory ceiling
+          {data.capacity.redis_used_bytes != null && data.capacity.redis_max_bytes != null
+            ? ` (${Math.round(data.capacity.redis_used_bytes / 1048576)} / ${Math.round(data.capacity.redis_max_bytes / 1048576)} MB)`
+            : ''}
+          . The crawler pauses itself at 85%. Drain the backlog (run the worker) or raise{' '}
+          <code>maxmemory</code> before the wall.
+        </p>
+      ) : (
+        <div className="mb-4" />
+      )}
 
       <div className="mb-8">
         <h2 className="mb-2 text-lg font-semibold">Dead letters</h2>

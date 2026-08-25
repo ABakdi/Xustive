@@ -318,6 +318,15 @@ export interface QueueStatus {
   backlog?: number
   dead_count?: number
   dead?: { url: string; attempts: number; reason: string; failed_at: number }[]
+  /** The capacity alarm (PROB-001): Redis memory vs its ceiling + frontier size. Null when the
+   *  frontier store is unreachable; pct null when Redis runs uncapped. */
+  capacity?: {
+    redis_used_bytes: number | null
+    redis_max_bytes: number | null
+    redis_pct: number | null
+    frontier_waiting: number
+    frontier_deferred: number
+  } | null
 }
 export const getQueue = (signal?: AbortSignal) => getJSON<QueueStatus>('/queue', signal)
 export const replayDlq = () => postJSON<{ replayed?: number }>('/queue/replay', {})

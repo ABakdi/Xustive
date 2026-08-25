@@ -76,6 +76,13 @@ const BACKPRESSURE_AT: usize = 5_000;
 /// untouched, so this costs nothing but time.
 const BACKPRESSURE_PAUSE: Duration = Duration::from_secs(10);
 
+/// Redis memory fraction above which the crawl pauses (PROB-001) — the universal backstop. Every
+/// other bound (stream cap, frontier ceiling, host budgets) keeps normal operation far below this;
+/// the high-water pause is what makes the OOM wall structurally unreachable by the crawler's own
+/// writes even if something new starts growing. Well under 1.0 on purpose: at the wall itself
+/// every Redis write already fails and the pause could no longer help.
+const MEMORY_HIGH_WATER: f64 = 0.85;
+
 /// Concurrent fetch workers.
 ///
 /// **This is the throughput lever, and it costs no politeness at all.** Crawl-delay is per host,
@@ -113,7 +120,10 @@ pub struct Options {
 
 pub async fn run(config: &Config, opts: &Options) -> Result<()> {
     let frontier = Frontier::connect(&config.queue.url)
-        .with_context(|| format!("no Redis at {}", config.queue.url))?;
+        .with_context(|| format!("no Redis at {}", config.queue.url))?
+        .with_limits(xustive_ingest::frontier::FrontierLimits::from_config(
+            &config.crawl,
+        ));
     if opts.reset {
         tracing::warn!("clearing the frontier; this discards discovery and re-fetches from seeds");
         frontier.clear().await;
@@ -143,6 +153,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
             // The daemon runs indefinitely, so it is the one that keeps the corpus fresh.
             // `crawl --max N` stays bounded and does not schedule anything.
             revisit: true,
+            max_outlinks_per_page: config.crawl.max_outlinks_per_page,
             ..OrchestratorConfig::default()
         },
     );
@@ -274,6 +285,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
         let max = opts.max_documents;
         let discover = opts.discover_new_hosts;
         let ignore_politeness = config.crawl.ignore_politeness;
+        let max_outlinks_per_page = config.crawl.max_outlinks_per_page;
         let redis_url = config.queue.url.clone();
         let raw_ttl_days = config.crawl.raw_ttl_days;
         let media_ocr = media_ocr.clone();
@@ -291,6 +303,9 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                 Some(cache) => fetcher.with_shared_cache(cache),
                 None => fetcher,
             };
+            // A handle of our own for the memory backstop below — `frontier` moves into the
+            // orchestrator on the next line.
+            let mem_frontier = frontier.clone();
             let mut orch = Orchestrator::new(
                 fetcher,
                 frontier,
@@ -301,6 +316,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                     max_documents: None,
                     discover_new_hosts: discover,
                     revisit: true,
+                    max_outlinks_per_page,
                     ..OrchestratorConfig::default()
                 },
             );
@@ -357,6 +373,21 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                         error = %e,
                         "cannot read the queue depth; not pausing"
                     ),
+                }
+                // The memory backstop (PROB-001): above the high-water mark, stop producing.
+                // Loud — the old failure mode was every write silently failing at the wall while
+                // the crawler looked merely idle.
+                if let Some((used, max)) = mem_frontier.memory_usage().await {
+                    if max > 0 && (used as f64 / max as f64) > MEMORY_HIGH_WATER {
+                        tracing::warn!(
+                            worker = id,
+                            used_mb = used / 1_048_576,
+                            max_mb = max / 1_048_576,
+                            "redis memory past high water; crawl paused until it drains"
+                        );
+                        tokio::time::sleep(BACKPRESSURE_PAUSE).await;
+                        continue;
+                    }
                 }
 
                 if let Some(max) = max {
@@ -605,13 +636,23 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
                 break;
             }
             _ = ticker.tick() => {
-                let (waiting, inflight) = orchestrator.frontier().depth().await;
+                // Reconcile the frontier's global counter from ground truth (PROB-001) — the
+                // cheap self-heal for any drift a crash left between a queue write and its INCR.
+                let waiting = orchestrator.frontier().reconcile_count().await;
+                let (_, inflight) = orchestrator.frontier().depth().await;
                 let backlog = queue.depth_of(xustive_queue::INDEXER_GROUP).await.unwrap_or(0);
+                let memory_pct = orchestrator
+                    .frontier()
+                    .memory_usage()
+                    .await
+                    .filter(|(_, max)| *max > 0)
+                    .map(|(used, max)| (used as f64 / max as f64 * 100.0).round() as u64);
                 tracing::info!(
                     queued = produced.load(std::sync::atomic::Ordering::Relaxed),
                     waiting,
                     inflight,
                     backlog,
+                    redis_memory_pct = memory_pct,
                     workers,
                     "crawling"
                 );

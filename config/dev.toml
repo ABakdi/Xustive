@@ -23,6 +23,15 @@ url = "redis://127.0.0.1:6390"
 # persistent queue Redis, re-inheriting its AOF.
 signals_url = "redis://127.0.0.1:6391"
 
+[crawl]
+# Frontier growth bounds (PROB-001) — the defaults are deliberate and enforced; shown here so the
+# knobs are discoverable. The frontier is a WORKING SET with a ceiling, not an archive:
+#   frontier_max_urls    = 200000  # global ceiling; at the ceiling the worst-priority tail is evicted
+#   max_pages_per_host   = 20000   # lifetime crawl budget per host (0 = unlimited); resets over ~2 rotations
+#   max_outlinks_per_page = 64     # the BEST-scoring K outlinks enter the frontier, not the first 200
+#   seen_rotate_days     = 45      # URL-dedup generations expire after 2 windows — "seen" is bounded
+# The crawler also pauses itself when Redis passes 85% of maxmemory — the universal backstop.
+
 [search]
 meili_url = "http://localhost:7700"
 meili_key = ""

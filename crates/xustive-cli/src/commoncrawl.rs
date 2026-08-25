@@ -33,6 +33,11 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
     let filter = build_filter(&opts.registry_path)?;
     let client = CdxClient::new(&opts.index).context("building the CDX client")?;
     let frontier = Frontier::connect(&config.queue.url)
+        .map(|f| {
+            f.with_limits(xustive_ingest::frontier::FrontierLimits::from_config(
+                &config.crawl,
+            ))
+        })
         .with_context(|| format!("no Redis at {}", config.queue.url))?;
     let stats = CrawlStats::connect(&config.queue.url).await;
     let progress = CcProgress::connect_in(&config.queue.url, "discovery");

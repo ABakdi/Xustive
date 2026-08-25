@@ -440,3 +440,154 @@ async fn a_sitemap_lastmod_updates_the_schedule_without_a_fetch() {
 
     visits.forget(key).await;
 }
+
+// ── PROB-001: the growth bounds ─────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn the_global_ceiling_evicts_the_worst_not_the_newest() {
+    // At the ceiling, a new discovery is admitted by dropping the worst-priority queued URL —
+    // bounding by shedding the least promising, never by refusing what was just found.
+    let Some(f) = frontier("global_ceiling") else {
+        eprintln!("skipping: no Redis");
+        return;
+    };
+    let f = f.with_limits(xustive_ingest::frontier::FrontierLimits {
+        max_total: 3,
+        ..Default::default()
+    });
+    f.clear().await;
+
+    assert_eq!(
+        f.add(&pending("a.dz", "https://a.dz/best", 0)).await,
+        Ok(true)
+    );
+    assert_eq!(
+        f.add(&pending("a.dz", "https://a.dz/good", 100)).await,
+        Ok(true)
+    );
+    assert_eq!(
+        f.add(&pending("a.dz", "https://a.dz/worst", 9_000)).await,
+        Ok(true)
+    );
+    // The frontier is at its ceiling of 3. The next add must evict, not refuse.
+    assert_eq!(
+        f.add(&pending("a.dz", "https://a.dz/new", 50)).await,
+        Ok(true)
+    );
+
+    // Claim everything claimable: the worst-priority URL must be the one that is gone.
+    let mut claimed = std::collections::HashSet::new();
+    let mut now = 1_000_000_000_000i64;
+    for _ in 0..4 {
+        if let Some(c) = f.claim(now, Duration::from_millis(1)).await {
+            claimed.insert(c.url);
+        }
+        now += 10;
+    }
+    assert!(claimed.contains("https://a.dz/best"));
+    assert!(
+        claimed.contains("https://a.dz/new"),
+        "the new URL was admitted"
+    );
+    assert!(
+        !claimed.contains("https://a.dz/worst"),
+        "the worst-priority URL was evicted to make room"
+    );
+    f.clear().await;
+}
+
+#[tokio::test]
+async fn an_evicted_url_may_be_discovered_again() {
+    // Eviction is a capacity decision, not a judgement: the URL was never crawled, so when room
+    // exists later a fresh discovery must be able to queue it again.
+    let Some(f) = frontier("evict_rediscover") else {
+        eprintln!("skipping: no Redis");
+        return;
+    };
+    let f = f.with_limits(xustive_ingest::frontier::FrontierLimits {
+        max_total: 1,
+        ..Default::default()
+    });
+    f.clear().await;
+
+    assert_eq!(
+        f.add(&pending("a.dz", "https://a.dz/one", 500)).await,
+        Ok(true)
+    );
+    // Admitting /two evicts /one (the only, hence worst, entry).
+    assert_eq!(
+        f.add(&pending("a.dz", "https://a.dz/two", 100)).await,
+        Ok(true)
+    );
+    // /one was evicted, so rediscovering it must succeed (evicting /two in turn).
+    assert_eq!(
+        f.add(&pending("a.dz", "https://a.dz/one", 500)).await,
+        Ok(true),
+        "an evicted URL must not be permanently 'seen'"
+    );
+    f.clear().await;
+}
+
+#[tokio::test]
+async fn a_host_that_spent_its_lifetime_budget_gets_no_new_urls() {
+    use xustive_ingest::frontier::Rejected;
+    let Some(f) = frontier("host_budget") else {
+        eprintln!("skipping: no Redis");
+        return;
+    };
+    let f = f.with_limits(xustive_ingest::frontier::FrontierLimits {
+        max_pages_per_host: 2,
+        ..Default::default()
+    });
+    f.clear().await;
+
+    // Crawl two pages (the budget) end to end: add → claim → complete.
+    for (i, url) in ["https://b.dz/p1", "https://b.dz/p2"].iter().enumerate() {
+        assert_eq!(f.add(&pending("b.dz", url, 0)).await, Ok(true));
+        let c = f
+            .claim(
+                2_000_000_000_000 + (i as i64) * 10_000,
+                Duration::from_millis(1),
+            )
+            .await
+            .expect("claimable");
+        f.complete(&c.url).await;
+    }
+
+    // The budget is spent: new discoveries for this host are refused — and NOT marked seen,
+    // so they stay discoverable once the budget window rotates.
+    assert_eq!(
+        f.add(&pending("b.dz", "https://b.dz/p3", 0)).await,
+        Err(Rejected::HostBudget)
+    );
+    // Another host is unaffected.
+    assert_eq!(
+        f.add(&pending("c.dz", "https://c.dz/p1", 0)).await,
+        Ok(true)
+    );
+    f.clear().await;
+}
+
+#[tokio::test]
+async fn seen_generations_rotate_and_dedup_holds_across_the_boundary() {
+    // With a rotation window, dedup must hold against BOTH the current and the previous
+    // generation — and the sets carry expiries, which is what makes "seen" bounded (PROB-001).
+    let Some(f) = frontier("seen_rotation") else {
+        eprintln!("skipping: no Redis");
+        return;
+    };
+    let f = f.with_limits(xustive_ingest::frontier::FrontierLimits {
+        // A short window for the test; config validation keeps prod ≥ 7 days.
+        seen_rotate: Duration::from_secs(3600),
+        ..Default::default()
+    });
+    f.clear().await;
+
+    assert_eq!(f.add(&pending("d.dz", "https://d.dz/x", 0)).await, Ok(true));
+    // Same URL again: deduped by the current generation.
+    assert_eq!(
+        f.add(&pending("d.dz", "https://d.dz/x", 0)).await,
+        Ok(false)
+    );
+    f.clear().await;
+}

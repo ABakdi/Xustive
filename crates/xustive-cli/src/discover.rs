@@ -91,6 +91,11 @@ pub async fn run(config: &Config) -> Result<()> {
     )
     .with_context(|| format!("no signals Redis at {}", config.queue.signals_url()))?;
     let frontier = Frontier::connect(&config.queue.url)
+        .map(|f| {
+            f.with_limits(xustive_ingest::frontier::FrontierLimits::from_config(
+                &config.crawl,
+            ))
+        })
         .with_context(|| format!("no Redis at {}", config.queue.url))?;
     let stats = CrawlStats::connect(&config.queue.url).await;
 

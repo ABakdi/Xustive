@@ -38,6 +38,25 @@ pub async fn status(
 
     let depth = q.depth_of(xustive_queue::INDEXER_GROUP).await.unwrap_or(0);
     let dead_count = q.dead_count().await.unwrap_or(0);
+    // The capacity alarm (PROB-001): Redis memory against its ceiling, and the frontier's size.
+    // The one signal whose absence let the last OOM arrive with no warning anywhere in admin.
+    let capacity = match xustive_ingest::frontier::Frontier::connect(&state.config.queue.url) {
+        Ok(f) => {
+            let memory = f.memory_usage().await;
+            let (frontier_waiting, _) = f.depth().await;
+            let deferred = f.deferred().await;
+            json!({
+                "redis_used_bytes": memory.map(|(u, _)| u),
+                "redis_max_bytes": memory.map(|(_, m)| m),
+                "redis_pct": memory
+                    .filter(|(_, m)| *m > 0)
+                    .map(|(u, m)| (u as f64 / m as f64 * 100.0).round() as u64),
+                "frontier_waiting": frontier_waiting,
+                "frontier_deferred": deferred,
+            })
+        }
+        Err(_) => json!(null),
+    };
     let dead = q.peek_dead(20).await.unwrap_or_default();
     let dead_json: Vec<serde_json::Value> = dead
         .iter()
@@ -59,6 +78,7 @@ pub async fn status(
         "backlog": depth,
         "dead_count": dead_count,
         "dead": dead_json,
+        "capacity": capacity,
     })))
 }
 

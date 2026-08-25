@@ -64,6 +64,10 @@ impl Stats {
     fn skip(&mut self, reason: &'static str) {
         *self.skipped.entry(reason).or_insert(0) += 1;
     }
+
+    fn skip_n(&mut self, reason: &'static str, n: usize) {
+        *self.skipped.entry(reason).or_insert(0) += n;
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +89,9 @@ pub struct OrchestratorConfig {
     /// Off by default so a bounded one-shot crawl stays bounded: `crawl --max 50` should fetch
     /// fifty pages and stop, not fifty and then whatever came due while it ran.
     pub revisit: bool,
+    /// How many of a page's outlinks may enter the frontier — the best-scoring K, not the first K
+    /// (PROB-001; `crawl.max_outlinks_per_page`). The branching factor of the whole crawl.
+    pub max_outlinks_per_page: usize,
 }
 
 impl Default for OrchestratorConfig {
@@ -95,6 +102,7 @@ impl Default for OrchestratorConfig {
             max_documents: None,
             discover_new_hosts: false,
             revisit: false,
+            max_outlinks_per_page: 64,
         }
     }
 }
@@ -626,6 +634,12 @@ impl Orchestrator {
             return;
         }
 
+        // Filter and SCORE every candidate first, then enqueue only the best K (PROB-001): the
+        // per-page branching factor is the exponent of the whole crawl's growth, and "the first
+        // 200 links in document order" was both too many and the wrong ones. Nutch's equivalent
+        // (`db.max.outlinks.per.page`) defaults to 100; here the cap is `max_outlinks_per_page`
+        // and the K kept are the K the priority function likes most.
+        let mut candidates: Vec<Pending> = Vec::new();
         for link in links {
             let Ok(u) = url::Url::parse(link) else {
                 continue;
@@ -654,7 +668,7 @@ impl Orchestrator {
             // before. A link off a tier-A ministry site is a better bet than one off a page we
             // reached by accident, and with depth now real the two compose the way priority
             // intends.
-            let pending = Pending {
+            candidates.push(Pending {
                 url: frontier::canonical(&u),
                 host,
                 source_id: source_id.to_string(),
@@ -667,8 +681,20 @@ impl Orchestrator {
                     from.trust,
                     frontier::looks_like_article(u.path()),
                 ),
-            };
-            match self.frontier.add(&pending).await {
+            });
+        }
+        let cap = self.config.max_outlinks_per_page.max(1);
+        if candidates.len() > cap {
+            // Best K by the same priority the frontier orders by (lower is better); ties broken by
+            // document order, which sort_by_key preserves (stable sort).
+            candidates.sort_by_key(|p| p.priority);
+            let dropped = candidates.len() - cap;
+            candidates.truncate(cap);
+            self.stats.skip_n("outlink_cap", dropped);
+        }
+
+        for pending in &candidates {
+            match self.frontier.add(pending).await {
                 Ok(true) => {
                     self.stats.discovered += 1;
                     self.publish("discovered").await;
@@ -676,6 +702,15 @@ impl Orchestrator {
                         .await;
                 }
                 Ok(false) => self.stats.skip("seen"),
+                // A backend failure is not bookkeeping — it is the crawl losing discoveries. Loud,
+                // but throttled to the skip counter plus one warn per page at most.
+                Err(frontier::Rejected::Backend) => {
+                    self.stats.skip("frontier_backend_error");
+                    tracing::warn!(
+                        host = %pending.host,
+                        "frontier backend refused a discovery — check Redis memory/health"
+                    );
+                }
                 Err(r) => self.stats.skip(r.as_str()),
             }
         }
