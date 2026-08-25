@@ -60,7 +60,7 @@ the local fallback gets what the external attempt left.
 provider sheds federation and a dead SearXNG sheds external summaries. Fix: one breaker per
 endpoint.
 
-### BUG-007 — The same URL can appear as both a local result and a web card — **open**
+### BUG-007 — The same URL can appear as both a local result and a web card — **fixed**
 `search.rs` `merge_federated` dedups only by `id_for_url`, but documents discovered by non-
 federation channels carry ULID ids: a SearXNG hit for an already-indexed URL passes the id check
 and duplicates the result on page 1. Fix: dedup by canonical URL as well as id.

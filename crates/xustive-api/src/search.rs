@@ -1177,18 +1177,31 @@ fn merge_federated(
     results: &mut Vec<ResultCard>,
     federated_hits: &[xustive_ingest::federation::FederatedHit],
 ) {
-    let mut seen: std::collections::HashSet<String> =
+    let mut seen_ids: std::collections::HashSet<String> =
         results.iter().map(|c| c.id.clone()).collect();
+    // Also dedup by canonical URL (BUG-007): the URL-derived id only matches documents the
+    // *federation* channel indexed — a page the crawler discovered on its own carries a ULID id,
+    // so an id-only check let the same URL appear twice, once local and once "from the web".
+    let mut seen_urls: std::collections::HashSet<String> = results
+        .iter()
+        .filter_map(|c| canonical_of(&c.url))
+        .collect();
     for hit in federated_hits {
-        let Ok(safe) = xustive_core::SafeUrl::parse(&hit.url) else {
+        let Some(canonical) = canonical_of(&hit.url) else {
             continue;
         };
-        let canonical = xustive_ingest::frontier::canonical(safe.as_url());
         let id = xustive_core::id_for_url(&canonical);
-        if seen.insert(id.clone()) {
+        if seen_ids.insert(id.clone()) && seen_urls.insert(canonical.clone()) {
             results.push(federated_card(hit, &canonical, id));
         }
     }
+}
+
+/// A result URL folded to the same canonical form the frontier and the eager index key on, so the
+/// federation merge compares like with like. `None` for anything unparseable.
+fn canonical_of(url: &str) -> Option<String> {
+    let safe = xustive_core::SafeUrl::parse(url).ok()?;
+    Some(xustive_ingest::frontier::canonical(safe.as_url()))
 }
 
 /// Build a result card from a live federation hit (M7): its SearXNG title, snippet and engine. The id
@@ -1415,6 +1428,20 @@ mod tests {
             .find(|c| c.id == id_of("https://example.dz/b"))
             .expect("the new federated URL is added");
         assert!(b.from_web);
+    }
+
+    #[test]
+    fn a_url_indexed_under_another_channel_does_not_duplicate() {
+        // BUG-007. A page the *crawler* discovered carries a ULID id, not the URL-derived one, so
+        // an id-only dedup let the same URL show twice — local result + "from the web" card. The
+        // merge must recognise the URL itself.
+        let url = "https://example.dz/organic";
+        let mut results = vec![local_card("01ARZ3NDEKTSV4RRFFQ69G5FAV".into(), url)];
+
+        merge_federated(&mut results, &[fed_hit(url)]);
+
+        assert_eq!(results.len(), 1, "same URL must not appear twice");
+        assert!(!results[0].from_web, "the local result wins");
     }
 
     #[test]
