@@ -554,6 +554,13 @@ pub struct Visits {
     namespace: String,
 }
 
+/// How long a page's revisit record lives past its last write (PROB-001). The adaptive interval
+/// caps at 30 days, so any page still in rotation refreshes its record long before this; a record
+/// idle for 90 days belongs to a page the crawl has lost interest in, and forgetting it costs one
+/// floor-interval fetch if the page ever returns. This is what keeps the visit store bounded by
+/// the *active* crawl rather than growing with every URL ever fetched.
+const VISIT_TTL_SECS: i64 = 90 * 86_400;
+
 impl Visits {
     pub fn connect_in(url: &str, namespace: &str) -> Option<Self> {
         Some(Self {
@@ -562,8 +569,14 @@ impl Visits {
         })
     }
 
-    fn key(&self) -> String {
+    /// The legacy all-URLs hash — read as a fallback during the transition to per-key records,
+    /// never written. It was unbounded: one field per URL ever fetched, forever.
+    fn legacy_key(&self) -> String {
         format!("{}:visits", self.namespace)
+    }
+
+    fn key_for(&self, url: &str) -> String {
+        format!("{}:visit:{url}", self.namespace)
     }
 
     async fn conn(&self) -> Option<redis::aio::MultiplexedConnection> {
@@ -574,20 +587,30 @@ impl Visits {
     /// change, not as "unchanged", so a page we have never read cannot back off to the ceiling.
     pub async fn get(&self, url: &str) -> Option<Visit> {
         let mut conn = self.conn().await?;
-        let raw: Option<String> = redis::cmd("HGET")
-            .arg(self.key())
+        let raw: Option<String> = redis::cmd("GET")
+            .arg(self.key_for(url))
+            .query_async(&mut conn)
+            .await
+            .ok()?;
+        if let Some(raw) = raw {
+            return serde_json::from_str(&raw).ok();
+        }
+        // Transition fallback: a record written before per-key storage. The next `put` migrates it.
+        let legacy: Option<String> = redis::cmd("HGET")
+            .arg(self.legacy_key())
             .arg(url)
             .query_async(&mut conn)
             .await
             .ok()?;
-        serde_json::from_str(&raw?).ok()
+        serde_json::from_str(&legacy?).ok()
     }
 
     /// Store what we learned. Best-effort on purpose.
     ///
     /// A failed write costs one page's scheduling memory: it looks unvisited next time and is
     /// fetched at its floor. Failing the crawl over bookkeeping would be the wrong trade — the same
-    /// reasoning as the robots cache failing open.
+    /// reasoning as the robots cache failing open. Every record carries the TTL, so the store is
+    /// bounded by the active crawl (PROB-001), not by every URL ever fetched.
     pub async fn put(&self, url: &str, visit: &Visit) {
         let Some(mut conn) = self.conn().await else {
             return;
@@ -595,10 +618,18 @@ impl Visits {
         let Ok(encoded) = serde_json::to_string(visit) else {
             return;
         };
-        let _: Result<(), _> = redis::cmd("HSET")
-            .arg(self.key())
-            .arg(url)
+        let _: Result<(), _> = redis::pipe()
+            .cmd("SET")
+            .arg(self.key_for(url))
             .arg(encoded)
+            .arg("EX")
+            .arg(VISIT_TTL_SECS)
+            .ignore()
+            // Migrate away from the legacy hash as pages are revisited, so it drains to nothing.
+            .cmd("HDEL")
+            .arg(self.legacy_key())
+            .arg(url)
+            .ignore()
             .query_async::<()>(&mut conn)
             .await;
     }
@@ -608,23 +639,50 @@ impl Visits {
         let Some(mut conn) = self.conn().await else {
             return;
         };
-        let _: Result<(), _> = redis::cmd("HDEL")
-            .arg(self.key())
+        let _: Result<(), _> = redis::pipe()
+            .cmd("DEL")
+            .arg(self.key_for(url))
+            .ignore()
+            .cmd("HDEL")
+            .arg(self.legacy_key())
             .arg(url)
+            .ignore()
             .query_async::<()>(&mut conn)
             .await;
     }
 
-    /// How many URLs have revisit state.
+    /// How many URLs have revisit state. A SCAN-based count — test/diagnostic use, not a hot path.
     pub async fn len(&self) -> usize {
         let Some(mut conn) = self.conn().await else {
             return 0;
         };
-        redis::cmd("HLEN")
-            .arg(self.key())
+        let legacy: usize = redis::cmd("HLEN")
+            .arg(self.legacy_key())
             .query_async(&mut conn)
             .await
-            .unwrap_or(0)
+            .unwrap_or(0);
+        let mut count = legacy;
+        let pattern = format!("{}:visit:*", self.namespace);
+        let mut cursor: u64 = 0;
+        loop {
+            let Ok((next, keys)): Result<(u64, Vec<String>), _> = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(&pattern)
+                .arg("COUNT")
+                .arg(500)
+                .query_async(&mut conn)
+                .await
+            else {
+                break;
+            };
+            count += keys.len();
+            cursor = next;
+            if cursor == 0 {
+                break;
+            }
+        }
+        count
     }
 
     pub async fn is_empty(&self) -> bool {
