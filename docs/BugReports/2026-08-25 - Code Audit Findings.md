@@ -26,7 +26,7 @@ deadline-degraded throws `TypeError` in the Server Component and the whole resul
 the exact path `facets_degraded` exists to soften. Fix both sides: API emits `{}` instead of
 `null`; web types `facets` as nullable and guards.
 
-### BUG-002 — Deep pagination serves empty pages while advertising 100 — **open**
+### BUG-002 — Deep pagination serves empty pages while advertising 100 — **fixed**
 `search.rs`: the engine query always fetches `candidate_pool` (200) from offset 0 and the page is
 `skip(offset)` over that pool, so pages past `pool / hits_per_page` are empty; `total_pages` still
 advertises up to 100 and the pagination UI offers the dead pages. Also increments the zero-result

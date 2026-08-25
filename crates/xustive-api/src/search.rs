@@ -429,7 +429,14 @@ pub async fn handler(
     // Pull a candidate pool rather than one page: re-ranking can only reorder what it is
     // given, so paging at the engine would freeze the engine's ordering into the result.
     let offset = (page - 1) * hits_per_page;
-    let pool = cfg.candidate_pool.max(hits_per_page);
+    // The pool must reach past the requested page: paging happens *after* re-ranking, by skipping
+    // into the ranked pool, so a pool that stops at `candidate_pool` made every page past
+    // `candidate_pool / hits_per_page` silently empty while the pagination advertised it
+    // (BUG-002). Deep pages fetch a deeper pool, bounded by the engine's own maxTotalHits.
+    let pool = cfg
+        .candidate_pool
+        .max(offset + hits_per_page)
+        .min(xustive_search::settings::MAX_TOTAL_HITS);
     // Facets are given up before re-ranking: losing the filter chips costs less than losing
     // result quality.
     let want_facets = deadline.allows(Stage::Facets);
@@ -735,7 +742,14 @@ pub async fn handler(
             true,
         )
     };
-    let total_pages = total_hits.div_ceil(hits_per_page).min(100);
+    // Advertise only pages that can actually be served: the UI's own cap of 100, and the engine's
+    // deep-pagination bound — a pool can never exceed maxTotalHits, so a page needing an offset
+    // past it would always come back empty (BUG-002). Honest beats impressive.
+    let servable_pages = xustive_search::settings::MAX_TOTAL_HITS / hits_per_page;
+    let total_pages = total_hits
+        .div_ceil(hits_per_page)
+        .min(100)
+        .min(servable_pages.max(1));
 
     // Anonymous interaction capture (M6-T02/T03 + M7-T10 search history), best-effort, gated on the
     // store. No client call and no new egress — the serving plane records straight into Redis.

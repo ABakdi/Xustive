@@ -11,6 +11,11 @@ pub const DOCUMENTS: &str = "documents";
 pub const COMMENTS: &str = "comments";
 pub const SOURCES: &str = "sources";
 
+/// The engine's deep-pagination bound (`pagination.maxTotalHits` on the documents index), shared
+/// with the query handler so the pages the API *advertises* never exceed the pages the engine can
+/// *serve* — the two drifting apart is how dead pagination links happen (BUG-002).
+pub const MAX_TOTAL_HITS: usize = 2000;
+
 /// The tokeniser stop words, shared between the index settings below and the query handler.
 ///
 /// One source of truth on purpose: the API's short-query guard (M7-T01.5) needs to recognise a
@@ -117,7 +122,7 @@ pub fn documents_settings() -> Value {
             "sortFacetValuesBy": { "*": "count" }
         },
         // Bounds deep-pagination cost. The UI caps at page 100 regardless.
-        "pagination": { "maxTotalHits": 2000 },
+        "pagination": { "maxTotalHits": MAX_TOTAL_HITS },
         "separatorTokens": ["|", "·", "—", "–"],
         // Keep handles and hashtags as single tokens.
         "nonSeparatorTokens": ["@", "#", "_"],
