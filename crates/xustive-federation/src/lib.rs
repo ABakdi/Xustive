@@ -95,9 +95,20 @@ pub fn parse_results(body: &str) -> Vec<FederatedHit> {
 #[derive(Debug, thiserror::Error)]
 pub enum FederationError {
     #[error("searxng request failed: {0}")]
-    Http(#[from] reqwest::Error),
+    Http(reqwest::Error),
     #[error("searxng returned {status}")]
     Status { status: u16 },
+}
+
+/// The URL is stripped off every wrapped transport error (BUG-033). reqwest embeds the full
+/// request URL in its `Display` — and the SearXNG request carries the **query text** as a `?q=`
+/// parameter — so a plain `#[from]` meant every `error = %e` log line during an outage printed the
+/// user's query verbatim, the exact thing ADR-0008 forbids. Scrubbing here, at the one conversion
+/// boundary, makes the leak inexpressible downstream rather than a per-call-site discipline.
+impl From<reqwest::Error> for FederationError {
+    fn from(e: reqwest::Error) -> Self {
+        Self::Http(e.without_url())
+    }
 }
 
 /// A client for a self-hosted SearXNG instance. Holds the endpoint and a per-query hit cap.
@@ -190,5 +201,25 @@ mod tests {
         assert!(SearxngClient::new("http://xustive-searxng:8080", 10, t).is_some());
         // Trailing slash is normalised so the `/search` join never doubles it.
         assert!(SearxngClient::new("http://xustive-searxng:8080/", 10, t).is_some());
+    }
+
+    #[tokio::test]
+    async fn a_transport_error_never_renders_the_query() {
+        // BUG-033 regression. The SearXNG request carries the query as `?q=`, and reqwest embeds
+        // the request URL in its error Display — so an unscrubbed error rendered the query text
+        // into every `error = %e` log line during an outage. Port 9 (discard) refuses immediately:
+        // a real transport error, offline and fast.
+        let client =
+            SearxngClient::new("http://127.0.0.1:9", 10, std::time::Duration::from_secs(2))
+                .expect("client builds");
+        let err = client
+            .search("SECRET_QUERY_MARKER")
+            .await
+            .expect_err("connection to port 9 must fail");
+        let rendered = format!("{err} / {err:?}");
+        assert!(
+            !rendered.contains("SECRET_QUERY_MARKER"),
+            "query text leaked into the rendered error: {rendered}"
+        );
     }
 }

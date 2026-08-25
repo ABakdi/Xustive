@@ -61,11 +61,21 @@ pub fn parse_results(body: &str) -> Vec<BraveResult> {
 #[derive(Debug, thiserror::Error)]
 pub enum BraveError {
     #[error("brave request failed: {0}")]
-    Http(#[from] reqwest::Error),
+    Http(reqwest::Error),
     #[error("brave api {status}")]
     Status { status: u16 },
     #[error("no api key configured")]
     NoKey,
+}
+
+/// The URL is stripped off every wrapped transport error (BUG-033): the Brave request carries the
+/// search term as `?q=`, reqwest's error Display embeds the request URL, and the discover loop
+/// logs `error = %e` — an unscrubbed error printed weak-coverage terms into the logs whenever
+/// Brave was unreachable. Scrubbed once here so no call site has to remember.
+impl From<reqwest::Error> for BraveError {
+    fn from(e: reqwest::Error) -> Self {
+        Self::Http(e.without_url())
+    }
 }
 
 /// A client for the Brave Search API. Holds the subscription token and nothing else.

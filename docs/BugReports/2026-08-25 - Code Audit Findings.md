@@ -189,7 +189,7 @@ sub-`min_count` pairs periodically during the scan.
 
 ## Privacy class — initially excluded, reopened by operator decision later the same day
 
-### BUG-033 [high] — Query text leaks into logs via reqwest error URLs — **open**
+### BUG-033 [high] — Query text leaks into logs via reqwest error URLs — **fixed**
 `SearxngClient::search` and the Brave client send the query as a GET `?q=` parameter; reqwest
 transport errors carry the full request URL in their `Display`, and `federate_inner` /
 `discover.rs` log `error = %e` — so with SearXNG (or Brave DNS) down, every live query is written
