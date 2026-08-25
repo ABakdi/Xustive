@@ -40,7 +40,7 @@ Close the word-mismatch gap with no new infrastructure, tuning [[Search Index]] 
 - [ ] M7-T01.2 **Grow the synonym + expansion lexicon** and make it data-driven — mine candidate pairs from the corpus and from federated co-occurrence (T07), reviewed before they land in `data/expansion/*.tsv`.
 - [x] M7-T01.3 **Fix the expansion-leg trigger**: today it only runs below five hits. Let it also fire when the primary leg's *top* results are weak (low rerank score), not only when they are few, within the deadline.
 - [ ] M7-T01.4 **Searchable-attribute + ranking-rule review**: confirm `title`/`excerpt`/`entities`/`body` weighting and the `exactness`→custom-rule order still serve recall after stemming; adjust with a golden-set A/B, not by feel.
-- [ ] M7-T01.5 **Stop-word / short-query guard**: a short function-word query must not lose all its terms to the stop-word list and return nothing.
+- [x] M7-T01.5 **Stop-word / short-query guard**: a short function-word query must not lose all its terms to the stop-word list and return nothing.
 
 ## M7-T02 — Semantic recall (hybrid lexical + dense)
 

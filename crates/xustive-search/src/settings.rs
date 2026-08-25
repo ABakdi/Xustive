@@ -11,6 +11,17 @@ pub const DOCUMENTS: &str = "documents";
 pub const COMMENTS: &str = "comments";
 pub const SOURCES: &str = "sources";
 
+/// The tokeniser stop words, shared between the index settings below and the query handler.
+///
+/// One source of truth on purpose: the API's short-query guard (M7-T01.5) needs to recognise a
+/// query that Meilisearch will strip to nothing — which it can only do if it sees the *same* list
+/// the index was configured with. A second hand-copied list would drift and reintroduce the bug.
+pub const STOP_WORDS: &[&str] = &[
+    "من", "في", "على", "الى", "إلى", "عن", "مع", "هذا", "هذه", "التي", "الذي", "le", "la", "les",
+    "de", "des", "du", "et", "un", "une", "pour", "dans", "the", "and", "of", "to", "in", "for",
+    "a", "is",
+];
+
 /// Generate the `synonyms` setting from the expansion lexicon.
 ///
 /// The lexicon is the single source of truth: the same file feeds both this and the query-time
@@ -115,11 +126,7 @@ pub fn documents_settings() -> Value {
             "سونلغاز", "الجزائر", "Sonelgaz", "CNAS", "ANEM", "Seaal",
             "Ooredoo", "Djezzy", "Mobilis", "Naftal", "Sonatrach"
         ],
-        "stopWords": [
-            "من", "في", "على", "الى", "إلى", "عن", "مع", "هذا", "هذه", "التي", "الذي",
-            "le", "la", "les", "de", "des", "du", "et", "un", "une", "pour", "dans",
-            "the", "and", "of", "to", "in", "for", "a", "is"
-        ],
+        "stopWords": STOP_WORDS,
         // Generated from data/expansion/*.tsv, the same files the query-time expander reads.
         "synonyms": synonyms()
     })

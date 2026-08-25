@@ -178,6 +178,34 @@ fn top_result_is_weak(hits: &[Value]) -> bool {
         .is_some_and(|s| s < WEAK_TOP_SCORE)
 }
 
+/// Longest all-stop-word query we will rescue as a phrase. A genuine short function-word query
+/// ("who is the", "the and") is a handful of tokens; beyond that, an exact match on a long stop-word
+/// run is vanishingly unlikely and not worth a second round trip.
+const MAX_STOPWORD_PHRASE_TOKENS: usize = 6;
+
+/// Whether every token of `query` is a tokeniser stop word — the case where Meilisearch strips the
+/// whole query and returns nothing (M7-T01.5). Uses the *same* list the index was configured with,
+/// so the two cannot drift. Empty or over-long queries return false: there is nothing to rescue, or
+/// it is not the short-query case this guard is for.
+fn is_all_stop_words(query: &str) -> bool {
+    let mut tokens = query.split_whitespace().peekable();
+    if tokens.peek().is_none() {
+        return false;
+    }
+    let mut count = 0;
+    for tok in tokens {
+        count += 1;
+        if count > MAX_STOPWORD_PHRASE_TOKENS {
+            return false;
+        }
+        let lower = tok.to_lowercase();
+        if !xustive_search::settings::STOP_WORDS.contains(&lower.as_str()) {
+            return false;
+        }
+    }
+    true
+}
+
 /// Retrieve again with expanded terms and merge into `hits`.
 ///
 /// Returns the terms tried, for the response's `expanded_terms`. Failures are swallowed on
@@ -419,6 +447,33 @@ pub async fn handler(
         .search::<Value>(&index, &query)
         .await
         .map_err(ApiError::from)?;
+
+    // --- short-query stop-word guard (M7-T01.5) -------------------------------------------
+    // A query made entirely of stop words ("the and", "من في") is stripped to nothing by the
+    // tokeniser, so the primary leg returns zero hits — not because the corpus lacks those words
+    // but because the engine threw them away. Meilisearch keeps stop words *inside a phrase*, so we
+    // re-issue the query quoted. It matches the exact run of function words where it occurs, which
+    // is the only sensible reading of such a query, instead of an empty page.
+    if hits.hits.is_empty() && is_all_stop_words(&normalized) {
+        let phrase = format!("\"{normalized}\"");
+        let mut retry = Query::new(&phrase)
+            .limit(pool)
+            .offset(0)
+            .ranking_score(true)
+            .highlight(&["excerpt", "title"]);
+        if want_facets {
+            retry = retry.facets(&["source_type", "sentiment.label", "language"]);
+        }
+        if let Some(expr) = filters.to_expression(SPAM_THRESHOLD) {
+            retry = retry.filter(expr);
+        }
+        if !sort.is_empty() {
+            retry = retry.sort(&sort);
+        }
+        if let Ok(recovered) = state.search.search::<Value>(&index, &retry).await {
+            hits = recovered;
+        }
+    }
 
     // --- expanded leg ---------------------------------------------------------------------
     //
@@ -1294,6 +1349,20 @@ mod tests {
         // trigger stays in charge where the score is unavailable.
         assert!(!top_result_is_weak(&[]));
         assert!(!top_result_is_weak(&[json!({"title": "no score here"})]));
+    }
+
+    #[test]
+    fn an_all_stop_word_query_is_recognised() {
+        // The cases the guard must rescue: every token is a stop word.
+        assert!(is_all_stop_words("the and"));
+        assert!(is_all_stop_words("من في"));
+        assert!(is_all_stop_words("The Of")); // case-insensitive
+                                              // A query with any content word is a normal query — the primary leg handles it.
+        assert!(!is_all_stop_words("the president"));
+        assert!(!is_all_stop_words("سونلغاز في"));
+        // Nothing to rescue, or too long to be the short-query case.
+        assert!(!is_all_stop_words(""));
+        assert!(!is_all_stop_words("the a is of and in for to")); // over the token cap
     }
 
     #[test]
