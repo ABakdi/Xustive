@@ -6,6 +6,7 @@
 
 pub mod admin;
 pub mod admin_crawler;
+pub mod admin_eval;
 pub mod admin_maintenance;
 pub mod admin_queue;
 pub mod dataage;
@@ -170,6 +171,7 @@ pub fn app(state: AppState) -> Router {
         .route("/politeness", axum::routing::post(admin::set_politeness))
         .route("/status", get(admin::status))
         .route("/config", get(admin::config))
+        .route("/eval", get(admin_eval::status))
         .route("/media", get(admin::media))
         .route("/interaction", get(admin::interaction))
         .route(

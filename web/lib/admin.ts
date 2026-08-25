@@ -347,6 +347,39 @@ export interface QueueStatus {
   } | null
 }
 export const getQueue = (signal?: AbortSignal) => getJSON<QueueStatus>('/queue', signal)
+
+// --- evaluation (PROB-003) -------------------------------------------------------------------
+/** One report file under eval/reports/, summarised. Absent scores mean the file does not carry
+ *  them (an ab-/serp-/calibration- report), never zero. */
+export interface EvalReport {
+  file: string
+  kind: 'eval' | 'baseline' | 'ab' | 'serp' | 'calibration'
+  generated_at?: string | null
+  queries?: number | null
+  ndcg_at_10?: number
+  mrr_at_10?: number
+  recall_at_50?: number
+  zero_result_rate?: number
+  by_language?: Record<string, number>
+  variants?: { name: string; why?: string; ndcg_at_10?: number; mrr_at_10?: number }[]
+  ranked?: unknown[]
+  engine?: string
+}
+export interface EvalStatus {
+  reports: EvalReport[]
+  unreadable: string[]
+  /** Latest dated eval vs baseline.json, same relative tolerance as `xustive eval --baseline`. */
+  gate: {
+    baseline_ndcg: number
+    latest_ndcg: number
+    latest_file: string
+    delta: number
+    tolerance_pct: number
+    pass: boolean
+  } | null
+  candidates: { file: string; rows: number }[]
+}
+export const getEval = (signal?: AbortSignal) => getJSON<EvalStatus>('/eval', signal)
 export const replayDlq = () => postJSON<{ replayed?: number }>('/queue/replay', {})
 
 // --- maintenance (takedown) ------------------------------------------------------------------
