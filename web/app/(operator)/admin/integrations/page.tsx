@@ -108,7 +108,6 @@ export default function IntegrationsPage() {
                 ['SearXNG (gateway calls this)', fed.searxng_url || '—'],
                 ['Latency budget', `${fed.budget_ms} ms`],
                 ['Max hits / query', String(fed.max_hits)],
-                ['Extra allowlist', fed.allowlist.length ? fed.allowlist.join(', ') : '(SearXNG host only)'],
                 ['Gateway reachable', fed.reachable_from_api ? 'yes — healthy' : 'no — start the federation profile'],
                 ['Circuit breaker', fed.breaker],
                 ['Eager index', fed.eager_index ? 'on — results indexed immediately (thin), then crawled' : 'off — crawl-feed only (slower to appear)'],

@@ -340,10 +340,12 @@ pub struct FederationConfig {
     /// with the real page (same URL-derived id). Off by default — it puts external, un-crawled text
     /// into the index, which is a deliberate trade of quality for immediacy.
     pub eager_index: bool,
-    /// Extra outbound hosts the gateway may reach beyond `searxng_url` (an external summariser, a
-    /// mirror). Empty means "the SearXNG host and nothing else" — the allowlist is deny-by-default.
-    pub allowlist: Vec<String>,
 }
+// Note on gateway egress (BUG-004): there is no runtime allowlist. The gateway's reach is bounded
+// *topologically* — it holds exactly two outbound clients, pointed at the endpoints its own
+// environment names (`SEARXNG_URL`, `EXTERNAL_LLM_URL`), and nothing reads any other destination.
+// An earlier `allowlist` field claimed deny-by-default enforcement that no code performed; a config
+// knob that promises a control it does not exert is worse than stating the real boundary.
 
 fn default_federation_budget_ms() -> u64 {
     // The response's strip wait. Long enough that a reasonably quick SearXNG shows the strip live,
@@ -370,7 +372,6 @@ impl Default for FederationConfig {
             fetch_budget_ms: default_federation_fetch_budget_ms(),
             max_hits: default_federation_max_hits(),
             eager_index: false,
-            allowlist: Vec::new(),
         }
     }
 }

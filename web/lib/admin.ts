@@ -204,7 +204,6 @@ export interface FederationStatus {
   /** When true, federated results are indexed immediately as thin docs (title+snippet), then the
    *  full crawl overwrites them. When false, only the crawl-feed runs (slower to appear). */
   eager_index: boolean
-  allowlist: string[]
   /** Live health probe of the gateway (on the core network — not internet egress). */
   reachable_from_api: boolean
   /** The gateway's circuit-breaker state: closed | open | half-open | none. */

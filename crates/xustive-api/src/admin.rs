@@ -581,7 +581,6 @@ pub async fn integrations(
             "budget_ms": f.budget_ms,
             "max_hits": f.max_hits,
             "eager_index": f.eager_index,
-            "allowlist": f.allowlist,
             // A live health probe of the gateway (on `core`), plus its circuit-breaker state. The API
             // never talks to SearXNG directly — the gateway does (ADR-0017).
             "reachable_from_api": reachable,

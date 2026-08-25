@@ -43,7 +43,7 @@ legs into the shared helper.
 
 ## Medium
 
-### BUG-004 — `federation.allowlist` is dead config with a false doc comment — **open**
+### BUG-004 — `federation.allowlist` is dead config with a false doc comment — **fixed**
 `crates/xustive-core/src/config.rs` documents "deny-by-default allowlist"; nothing anywhere reads
 it except the admin display. The gateway reaches whatever `SEARXNG_URL`/`EXTERNAL_LLM_URL` say.
 Fix: remove the dead field and the false claim; state honestly that gateway egress is bounded by
