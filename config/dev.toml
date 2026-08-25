@@ -14,6 +14,15 @@ timeout_suggest_ms = 150
 cors_origins = ["http://localhost:3000"]
 static_dir = "web/public"
 
+[queue]
+# The main queue Redis (frontier, streams) — persistent by design.
+url = "redis://127.0.0.1:6390"
+# The behavioural-signals Redis (interaction counters, weak-coverage terms) — the EPHEMERAL
+# `redis-signals` compose instance (no RDB/AOF, never backed up), so the identifier-free windowed
+# counters cannot become a durable ordered log (BUG-034, ADR-0018). Empty would fall back to the
+# persistent queue Redis, re-inheriting its AOF.
+signals_url = "redis://127.0.0.1:6391"
+
 [search]
 meili_url = "http://localhost:7700"
 meili_key = ""

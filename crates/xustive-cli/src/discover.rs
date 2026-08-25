@@ -84,12 +84,12 @@ pub async fn run(config: &Config) -> Result<()> {
     };
 
     let weak = WeakCoverage::connect_in(
-        &config.queue.url,
+        config.queue.signals_url(),
         "discovery",
         disc.effective_k(),
         Duration::from_secs(disc.weak_coverage_window_days * 86_400),
     )
-    .with_context(|| format!("no Redis at {}", config.queue.url))?;
+    .with_context(|| format!("no signals Redis at {}", config.queue.signals_url()))?;
     let frontier = Frontier::connect(&config.queue.url)
         .with_context(|| format!("no Redis at {}", config.queue.url))?;
     let stats = CrawlStats::connect(&config.queue.url).await;

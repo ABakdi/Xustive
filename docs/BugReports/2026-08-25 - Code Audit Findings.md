@@ -197,7 +197,7 @@ verbatim to the logs, violating ADR-0008. Fix: scrub the URL off the error at th
 (`reqwest::Error::without_url()` inside the `From` impls), with a regression test that a failing
 request's rendered error does not contain the query.
 
-### BUG-034 [high] — Redis AOF + backups make the signals store a durable ordered query log — **open**
+### BUG-034 [high] — Redis AOF + backups make the signals store a durable ordered query log — **fixed**
 Prod Redis runs `--appendonly yes` (needed: it also holds the queue/frontier), so every
 `interaction:*`/`discovery:*` write lands in an ordered command log — chaining qhash↔plaintext and
 reconstructing sessions — and `backup.sh` ships `dump.rdb` (plaintext terms included) off-host into

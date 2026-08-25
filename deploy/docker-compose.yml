@@ -91,6 +91,31 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # The behavioural-signals store (BUG-034, ADR-0018): interaction counters and weak-coverage
+  # terms, and nothing else. Deliberately EPHEMERAL — no RDB, no AOF, no volume, and backup.sh
+  # never touches it — because persistence would turn the identifier-free windowed counters into
+  # an ordered durable command log (chaining hash↔plaintext writes, outliving the sliding window
+  # in backups), exactly what ADR-0018 forbids. Losing this instance loses ranking hints, never
+  # data of record. volatile-lru is safe here: every signal key carries a TTL by construction.
+  redis-signals:
+    image: redis:7-alpine
+    container_name: xustive-redis-signals
+    mem_limit: 256m
+    cpus: 0.5
+    command: >
+      redis-server
+      --save ""
+      --appendonly no
+      --maxmemory 192mb
+      --maxmemory-policy volatile-lru
+    networks: [core]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   # Fetches weather and, later, rates into the cache the serving plane reads.
   #
   # On `ingest` *and* `core`, which looks like a hole and is not: `core` is internal, so joining

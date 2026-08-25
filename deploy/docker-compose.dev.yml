@@ -36,6 +36,13 @@ services:
     ports:
       - "127.0.0.1:${XUSTIVE_REDIS_PORT:-6390}:6379"
 
+  # The ephemeral signals store (BUG-034), published so the host-run API/crawld reach it at the
+  # `queue.signals_url` dev default (redis://localhost:6391).
+  redis-signals:
+    networks: [core, devhost]
+    ports:
+      - "127.0.0.1:${XUSTIVE_REDIS_SIGNALS_PORT:-6391}:6379"
+
   # Only started with `--profile ocr`. Published on localhost so the host-run API reaches it at the
   # `media.sidecar.endpoint` default (http://127.0.0.1:8091/ocr).
   ocr-sidecar:

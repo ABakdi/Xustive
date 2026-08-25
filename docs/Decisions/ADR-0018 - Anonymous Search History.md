@@ -87,6 +87,12 @@ search itself wrote.
 **Commits us to**
 - `k ≥ 20` on any multi-user deployment, enforced in config validation, not convention (inherited
   from 0015, re-audited here for the history view).
+- **The signal stores live in an ephemeral Redis** (`redis-signals`: no RDB, no AOF, no volume,
+  excluded from backups; `queue.signals_url`). The persistent queue Redis's AOF is an *ordered*
+  command log — it would chain hash↔plaintext writes back into sessions, and backups of it would
+  make terms outlive the sliding window — so "windowed and unchainable" is only true if the store's
+  persistence layer is as forgetful as its keys. Losing the instance loses ranking hints, never
+  data of record.
 - No session-grouping field and no fine-grained per-event timestamp in the history store, ever — the
   moment either exists, thresholding stops protecting content.
 - A privacy page that states, per mode, what is stored (terms, counts, clicks — no identifiers) and

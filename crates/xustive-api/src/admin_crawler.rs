@@ -484,7 +484,7 @@ pub async fn weak_coverage(
         })));
     }
     let terms = xustive_ingest::weak_coverage::WeakCoverage::connect_in(
-        &state.config.queue.url,
+        state.config.queue.signals_url(),
         "discovery",
         disc.effective_k(),
         std::time::Duration::from_secs(disc.weak_coverage_window_days * 86_400),

@@ -125,6 +125,14 @@ pub struct QueueConfig {
     pub url: String,
     /// Stream carrying documents waiting to be indexed.
     pub index_stream: String,
+    /// Redis holding the **behavioural signal stores** — interaction counters and weak-coverage
+    /// terms (BUG-034). Separate from `url` on purpose: the queue Redis must persist (AOF — losing
+    /// it loses the crawl frontier), but persistence turns the signal namespaces into an *ordered,
+    /// durable* command log that chains qhash↔plaintext writes and outlives the sliding window in
+    /// backups — the exact properties ADR-0018 forbids. Point this at an instance running with
+    /// `--save '' --appendonly no` that no backup touches (`redis-signals` in compose). Empty falls
+    /// back to `url`, which keeps a one-Redis dev box working but re-inherits its persistence.
+    pub signals_url: String,
 }
 
 impl Default for QueueConfig {
@@ -132,6 +140,20 @@ impl Default for QueueConfig {
         Self {
             url: "redis://127.0.0.1:6390".into(),
             index_stream: "q:index".into(),
+            signals_url: String::new(),
+        }
+    }
+}
+
+impl QueueConfig {
+    /// The Redis the signal stores (interaction, weak-coverage) connect to: the dedicated
+    /// ephemeral instance when configured, else the queue Redis (see [`QueueConfig::signals_url`]).
+    pub fn signals_url(&self) -> &str {
+        let s = self.signals_url.trim();
+        if s.is_empty() {
+            &self.url
+        } else {
+            s
         }
     }
 }

@@ -91,6 +91,11 @@ qdrant_backup() {
 # --- Redis ---------------------------------------------------------------------------------------
 # BGSAVE writes dump.rdb in the container; copy it out. The AOF (appendonly yes) is the finer-grained
 # record and is captured by a volume backup; the RDB is the point-in-time copy this ships.
+#
+# DELIBERATELY only the queue Redis. The signals instance (xustive-redis-signals) holds the
+# interaction counters and weak-coverage terms and must NEVER be backed up (BUG-034, ADR-0018):
+# a backup of windowed identifier-free counters is a durable query log with none of those
+# properties. Do not add it here.
 redis_backup() {
   command -v docker >/dev/null 2>&1 || { warn "redis: docker unavailable; cannot BGSAVE/copy"; return; }
   docker exec "$REDIS_CONTAINER" redis-cli BGSAVE >/dev/null 2>&1 || { warn "redis: BGSAVE failed"; return; }

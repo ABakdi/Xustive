@@ -508,7 +508,7 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
     if config.interaction.enabled {
         let frontier = orchestrator.frontier().clone();
         let stop = stop.clone();
-        let redis_url = config.queue.url.clone();
+        let redis_url = config.queue.signals_url().to_string();
         let k = config.interaction.k_anonymity;
         let hot_floor = config.interaction.hot_floor();
         let window = Duration::from_secs(config.interaction.window_days * 86_400);

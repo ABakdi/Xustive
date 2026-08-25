@@ -215,7 +215,7 @@ impl AppState {
             return;
         }
         let store = xustive_ingest::interaction::Interactions::connect_in(
-            &self.config.queue.url,
+            self.config.queue.signals_url(),
             "interaction",
             cfg.k_anonymity,
             Duration::from_secs(cfg.window_days * 86_400),
