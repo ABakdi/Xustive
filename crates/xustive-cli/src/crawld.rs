@@ -121,7 +121,8 @@ pub async fn run(config: &Config, opts: &Options) -> Result<()> {
 
     let queue = Queue::connect_producer(&config.queue.url, &config.queue.index_stream)
         .await
-        .context("could not reach the index queue")?;
+        .context("could not reach the index queue")?
+        .with_max_len(config.queue.index_stream_max_len);
 
     let fetcher = Fetcher::new(FetchConfig {
         ignore_politeness: config.crawl.ignore_politeness,

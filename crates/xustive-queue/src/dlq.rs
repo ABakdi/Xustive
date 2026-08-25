@@ -36,6 +36,7 @@ impl Queue {
             manager: self.manager.clone(),
             stream: format!("{}:dead", self.stream),
             group: self.group.clone(),
+            max_len: self.max_len,
         }
     }
 

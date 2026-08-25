@@ -905,6 +905,7 @@ async fn fetch_by_ids(state: &AppState, index: &str, ids: &[String]) -> Vec<Valu
 fn ingest_federated(state: &AppState, hits: &[xustive_ingest::federation::FederatedHit]) {
     let queue_url = state.config.queue.url.clone();
     let index_stream = state.config.queue.index_stream.clone();
+    let stream_max_len = state.config.queue.index_stream_max_len;
     let eager = state.config.federation.eager_index;
     let now = xustive_core::now_unix();
 
@@ -947,8 +948,9 @@ fn ingest_federated(state: &AppState, hits: &[xustive_ingest::federation::Federa
     tokio::spawn(async move {
         // 1. Eager index — thin documents to the index queue, overwritten later by the full crawl.
         if eager {
-            if let Ok(producer) =
-                xustive_queue::Queue::connect_producer(&queue_url, &index_stream).await
+            if let Ok(producer) = xustive_queue::Queue::connect_producer(&queue_url, &index_stream)
+                .await
+                .map(|q| q.with_max_len(stream_max_len))
             {
                 let jobs: Vec<xustive_queue::indexer::IndexJob> = entries
                     .iter()

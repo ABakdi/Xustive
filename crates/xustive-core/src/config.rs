@@ -133,6 +133,16 @@ pub struct QueueConfig {
     /// `--save '' --appendonly no` that no backup touches (`redis-signals` in compose). Empty falls
     /// back to `url`, which keeps a one-Redis dev box working but re-inherits its persistence.
     pub signals_url: String,
+    /// Entry cap on the index stream (`XADD MAXLEN ~`). The cap that matters is **bytes** — each
+    /// entry is a full document, so the old 100k-entry cap allowed ~900MB of stream on a 1GB Redis
+    /// (PROB-001's actual OOM). 20k entries ≈ 100–200MB at typical document sizes; the crawler's
+    /// backpressure holds the working depth far below this, so the cap is the runaway backstop.
+    #[serde(default = "default_index_stream_max_len")]
+    pub index_stream_max_len: usize,
+}
+
+fn default_index_stream_max_len() -> usize {
+    20_000
 }
 
 impl Default for QueueConfig {
@@ -141,6 +151,7 @@ impl Default for QueueConfig {
             url: "redis://127.0.0.1:6390".into(),
             index_stream: "q:index".into(),
             signals_url: String::new(),
+            index_stream_max_len: default_index_stream_max_len(),
         }
     }
 }
@@ -197,6 +208,45 @@ pub struct CrawlConfig {
     /// overwhelm the small development Redis, and the real home is object storage.
     #[serde(default)]
     pub raw_ttl_days: u64,
+
+    // ── Frontier growth bounds (PROB-001). Every knob here exists so the crawl can NEVER fill
+    // Redis again: the frontier is a working set with a global ceiling, per-host lifetime budgets,
+    // and a self-expiring seen-set — growth is linear and bounded by construction, not by hope.
+    /// Global ceiling on URLs queued across all hosts. At the ceiling the frontier **evicts its
+    /// worst-priority tail** to admit new discoveries — bounding by dropping the least promising,
+    /// never by refusing the newest (the Heritrix/Nutch behaviour). ~200k URLs ≈ 120–150 MB.
+    #[serde(default = "default_frontier_max_urls")]
+    pub frontier_max_urls: usize,
+    /// Lifetime page budget per host: once this many pages have been *crawled* from a host, new
+    /// discoveries for it are dropped (revisits continue). Resets over roughly two seen-set
+    /// rotations, so a large site is revisited across months rather than swallowing the crawl in
+    /// one sitting. **0 = unlimited.**
+    #[serde(default = "default_max_pages_per_host")]
+    pub max_pages_per_host: u64,
+    /// How many of a page's outlinks may enter the frontier — the **best-scoring K**, not the
+    /// first K. This is the branching factor of the whole crawl: Nutch ships 100 as its default
+    /// defence; 64 with priority selection keeps growth linear where 200-unfiltered was cubic.
+    #[serde(default = "default_max_outlinks_per_page")]
+    pub max_outlinks_per_page: usize,
+    /// The seen-set rotation window, in days. URL dedup lives in generational sets that expire
+    /// after two windows, so "every URL ever seen" stops being a forever-growing structure: memory
+    /// is bounded by two windows of discovery, and a URL not re-encountered within them may be
+    /// crawled afresh — which the revisit and content-dedup layers absorb.
+    #[serde(default = "default_seen_rotate_days")]
+    pub seen_rotate_days: u64,
+}
+
+fn default_frontier_max_urls() -> usize {
+    200_000
+}
+fn default_max_pages_per_host() -> u64 {
+    20_000
+}
+fn default_max_outlinks_per_page() -> usize {
+    64
+}
+fn default_seen_rotate_days() -> u64 {
+    45
 }
 
 fn default_registry_path() -> String {
@@ -665,6 +715,10 @@ impl Default for CrawlConfig {
             registry_path: default_registry_path(),
             documents_page_size: 50,
             raw_ttl_days: 0,
+            frontier_max_urls: default_frontier_max_urls(),
+            max_pages_per_host: default_max_pages_per_host(),
+            max_outlinks_per_page: default_max_outlinks_per_page(),
+            seen_rotate_days: default_seen_rotate_days(),
         }
     }
 }
@@ -920,6 +974,34 @@ impl Config {
                         .into(),
                 });
             }
+        }
+        // Frontier bounds (PROB-001): zero or absurd values would silently disable the growth
+        // guarantees, so they are refused rather than "interpreted".
+        if self.crawl.frontier_max_urls < 1_000 {
+            return Err(ConfigError::Value {
+                key: "crawl.frontier_max_urls".into(),
+                msg: "must be at least 1000 — the global frontier ceiling is a load-bearing bound"
+                    .into(),
+            });
+        }
+        if self.crawl.max_outlinks_per_page == 0 || self.crawl.max_outlinks_per_page > 200 {
+            return Err(ConfigError::Value {
+                key: "crawl.max_outlinks_per_page".into(),
+                msg: "must be between 1 and 200".into(),
+            });
+        }
+        if self.crawl.seen_rotate_days < 7 {
+            return Err(ConfigError::Value {
+                key: "crawl.seen_rotate_days".into(),
+                msg: "must be at least 7 days — shorter windows re-crawl everything constantly"
+                    .into(),
+            });
+        }
+        if self.queue.index_stream_max_len < 1_000 {
+            return Err(ConfigError::Value {
+                key: "queue.index_stream_max_len".into(),
+                msg: "must be at least 1000".into(),
+            });
         }
         if !matches!(self.ml.device.as_str(), "auto" | "gpu" | "cpu") {
             return Err(ConfigError::Value {

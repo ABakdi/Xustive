@@ -94,6 +94,10 @@ pub struct Queue {
     pub(crate) manager: redis::aio::ConnectionManager,
     pub stream: String,
     pub group: String,
+    /// Stream entry cap applied on every produce (`XADD MAXLEN ~`). Defaults to [`MAX_LEN`];
+    /// deployments size it to their Redis memory via `queue.index_stream_max_len` (PROB-001 —
+    /// the cap that matters is bytes, and entries are full documents).
+    pub max_len: usize,
 }
 
 /// Pull one group's `lag` out of an `XINFO GROUPS` reply.
@@ -148,6 +152,7 @@ impl Queue {
             manager,
             stream: stream.to_string(),
             group: group.to_string(),
+            max_len: MAX_LEN,
         };
         queue.ensure_group().await?;
         Ok(queue)
@@ -173,7 +178,14 @@ impl Queue {
             // Never used by the producer paths. Named so a stray consume() is obviously wrong
             // rather than silently joining some default group.
             group: "__producer__".to_string(),
+            max_len: MAX_LEN,
         })
+    }
+
+    /// Size the stream cap to the deployment (see `queue.index_stream_max_len`).
+    pub fn with_max_len(mut self, max_len: usize) -> Self {
+        self.max_len = max_len.max(1);
+        self
     }
 
     /// A handle to the shared connection. Cloning a `ConnectionManager` is cheap — it hands back a
@@ -211,7 +223,7 @@ impl Queue {
         let id: String = conn
             .xadd_maxlen(
                 &self.stream,
-                redis::streams::StreamMaxlen::Approx(MAX_LEN),
+                redis::streams::StreamMaxlen::Approx(self.max_len),
                 "*",
                 &[(FIELD, json.as_str())],
             )
@@ -231,7 +243,7 @@ impl Queue {
                 serde_json::to_string(payload).map_err(|e| QueueError::Encode(e.to_string()))?;
             pipe.xadd_maxlen(
                 &self.stream,
-                redis::streams::StreamMaxlen::Approx(MAX_LEN),
+                redis::streams::StreamMaxlen::Approx(self.max_len),
                 "*",
                 &[(FIELD, json.as_str())],
             )
@@ -383,7 +395,10 @@ impl Queue {
     pub async fn trim(&self) -> Result<(), QueueError> {
         let mut conn = self.conn().await?;
         let _: i64 = conn
-            .xtrim(&self.stream, redis::streams::StreamMaxlen::Approx(MAX_LEN))
+            .xtrim(
+                &self.stream,
+                redis::streams::StreamMaxlen::Approx(self.max_len),
+            )
             .await?;
         Ok(())
     }
