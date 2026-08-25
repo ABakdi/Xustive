@@ -214,7 +214,7 @@ non-dev environment, `interaction.k_anonymity ≥ 20`, `discovery.k_anonymity �
 `hot_click_floor` ≥ the k floor (0 = "use k" stays legal) — so every binary that loads the config
 gets the guarantee; fix the false comment.
 
-### BUG-036 [med] — `qhash` is unsalted FNV-1a while claiming irreversibility — **open**
+### BUG-036 [med] — `qhash` is unsalted FNV-1a while claiming irreversibility — **fixed**
 The comment says the hash "can never be reversed"; unsalted FNV-1a of a short query falls to a
 dictionary attack — the exact "false comfort" ADR-0008's alternatives table rejects, and the code
 admits the spec'd salted HMAC is unimplemented. Fix: keyed blake3 with a deploy salt

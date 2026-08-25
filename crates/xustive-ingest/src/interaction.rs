@@ -74,14 +74,21 @@ pub struct Interactions {
     namespace: String,
     k: u32,
     window: Duration,
+    /// Keyed-hash key derived from the deploy salt (BUG-036), `None` when no salt is configured
+    /// (dev). With a key, qhashes are `blake3::keyed_hash` — unguessable without the salt, so a
+    /// dictionary attack over the stored keys goes nowhere. Without one, the FNV fallback below
+    /// applies, with the honesty that entails.
+    salt_key: Option<[u8; 32]>,
 }
 
-/// A stable, non-plaintext key for a normalised query.
+/// The **unsalted fallback** for a non-plaintext query key: FNV-1a of the trimmed query.
 ///
-/// FNV-1a here keeps the query text out of the `(query, doc)` counter keys — a scaffold stand-in for
-/// the HMAC-with-a-deploy-salt the spec calls for. The real privacy guarantee is k-anonymity plus the
-/// window, exactly as for [[weak_coverage]]; the hash only avoids storing the plaintext in these keys.
-fn qhash(query: &str) -> String {
+/// Honest about what it is (BUG-036): unsalted, it is trivially reversible by dictionary attack —
+/// hash the candidate, compare — so it only keeps plaintext out of the key *bytes*, it does not
+/// protect the query from anyone holding the store. Deployments set `interaction.salt`
+/// (`XUSTIVE_QHASH_SALT`) and get keyed blake3 instead; config validation requires it outside dev.
+/// The load-bearing privacy guarantees remain k-anonymity plus the window, as for [[weak_coverage]].
+fn fnv_qhash(query: &str) -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in query.trim().as_bytes() {
         h ^= *b as u64;
@@ -92,14 +99,23 @@ fn qhash(query: &str) -> String {
 
 impl Interactions {
     /// Connect, or `None` if Redis is unreachable. Best-effort like every counter store here.
-    pub async fn connect_in(url: &str, namespace: &str, k: u32, window: Duration) -> Option<Self> {
+    /// `salt` keys the query hash (BUG-036); empty falls back to unsalted FNV, dev only.
+    pub async fn connect_in(
+        url: &str,
+        namespace: &str,
+        k: u32,
+        window: Duration,
+        salt: &str,
+    ) -> Option<Self> {
         let client = redis::Client::open(url).ok()?;
         let manager = client.get_connection_manager().await.ok()?;
+        let salt = salt.trim();
         Some(Self {
             manager,
             namespace: namespace.to_string(),
             k: k.max(1),
             window,
+            salt_key: (!salt.is_empty()).then(|| *blake3::hash(salt.as_bytes()).as_bytes()),
         })
     }
 
@@ -128,7 +144,7 @@ impl Interactions {
 
     /// Record that `docs` were shown for `query`.
     pub async fn impressions(&self, query: &str, docs: &[String]) {
-        let qh = qhash(query);
+        let qh = self.qhash(query);
         let mut keys = Vec::with_capacity(docs.len() * 2);
         for d in docs {
             keys.push(format!("{}:qd:{qh}:{d}:imp", self.namespace));
@@ -138,15 +154,24 @@ impl Interactions {
     }
 
     /// The opaque hash of a query, for callers (the API's click token) that must hold a query
-    /// reference without holding the query text. FNV-1a of the trimmed query — one-way and
-    /// fixed-width, so it can never be reversed to the words someone typed.
-    pub fn qhash(query: &str) -> String {
-        qhash(query)
+    /// reference without holding the query text. Keyed blake3 under the deploy salt when one is
+    /// configured (BUG-036) — genuinely one-way for anyone without the salt; the unsalted FNV
+    /// fallback (dev) only keeps plaintext out of the key bytes, and says so at [`fnv_qhash`].
+    /// An instance method, not a static: the hash is a function of the deployment's salt.
+    pub fn qhash(&self, query: &str) -> String {
+        match &self.salt_key {
+            Some(key) => {
+                let h = blake3::keyed_hash(key, query.trim().as_bytes());
+                // 128 bits of the keyed hash: compact keys, unguessable without the salt.
+                h.to_hex()[..32].to_string()
+            }
+            None => fnv_qhash(query),
+        }
     }
 
     /// Record one click for `(query, doc)`.
     pub async fn click(&self, query: &str, doc: &str) {
-        self.click_by_qhash(&qhash(query), doc).await;
+        self.click_by_qhash(&self.qhash(query), doc).await;
     }
 
     /// Record one click when the query is already reduced to its [`Interactions::qhash`]. This is the
@@ -208,7 +233,7 @@ impl Interactions {
     pub async fn ctr_for(&self, query: &str, docs: &[String]) -> HashMap<String, f32> {
         let mut out = HashMap::new();
         let mut conn = self.conn();
-        let qh = qhash(query);
+        let qh = self.qhash(query);
         for d in docs {
             let qd_imp = self
                 .get_u32(&mut conn, &format!("{}:qd:{qh}:{d}:imp", self.namespace))
@@ -290,7 +315,10 @@ impl Interactions {
                 .await;
             // Clicks are keyed by the query hash, which we recompute from the text we hold here.
             let clicks = self
-                .get_u32(&mut conn, &format!("{}:qk:{}", self.namespace, qhash(&q)))
+                .get_u32(
+                    &mut conn,
+                    &format!("{}:qk:{}", self.namespace, self.qhash(&q)),
+                )
                 .await;
             stats.push(QueryStat {
                 query: q,
@@ -447,9 +475,24 @@ mod tests {
 
     #[test]
     fn the_query_hash_is_stable_and_hides_the_text() {
-        assert_eq!(qhash("paracetamol"), qhash(" paracetamol "));
-        assert_ne!(qhash("paracetamol"), qhash("aspirin"));
-        assert!(!qhash("paracetamol").contains("paracetamol"));
+        assert_eq!(fnv_qhash("paracetamol"), fnv_qhash(" paracetamol "));
+        assert_ne!(fnv_qhash("paracetamol"), fnv_qhash("aspirin"));
+        assert!(!fnv_qhash("paracetamol").contains("paracetamol"));
+    }
+
+    #[test]
+    fn the_salted_hash_is_keyed_stable_and_salt_dependent() {
+        // BUG-036: with a salt the hash is keyed blake3 — deterministic under one salt, different
+        // under another, never the FNV a dictionary attacker could precompute, and never plaintext.
+        let key_a = *blake3::hash(b"salt-a").as_bytes();
+        let key_b = *blake3::hash(b"salt-b").as_bytes();
+        let h = |key: &[u8; 32], q: &str| {
+            blake3::keyed_hash(key, q.trim().as_bytes()).to_hex()[..32].to_string()
+        };
+        assert_eq!(h(&key_a, "paracetamol"), h(&key_a, " paracetamol "));
+        assert_ne!(h(&key_a, "paracetamol"), h(&key_b, "paracetamol"));
+        assert_ne!(h(&key_a, "paracetamol"), fnv_qhash("paracetamol"));
+        assert!(!h(&key_a, "paracetamol").contains("paracetamol"));
     }
 
     // The key-shape proof (M6-T08.3): assert every key the store constructs is built ONLY from the
@@ -460,7 +503,7 @@ mod tests {
     #[test]
     fn no_key_can_contain_an_identifier() {
         let ns = "interaction";
-        let qh = qhash("some query");
+        let qh = fnv_qhash("some query");
         let doc = "doc123";
         let query = "some query";
         let keys = [

@@ -3842,6 +3842,7 @@ name = "xustive-ingest"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "blake3",
  "chacha20poly1305",
  "chardetng",
  "encoding_rs",

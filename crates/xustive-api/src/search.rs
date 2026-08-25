@@ -753,7 +753,7 @@ pub async fn handler(
                 total_hits as u32,
             )
             .await;
-        Some(mint_interaction_token(&state, &normalized))
+        Some(mint_interaction_token(&state, &store, &normalized))
     } else {
         None
     };
@@ -1112,14 +1112,19 @@ fn interaction_category(vertical: Option<&str>) -> &'static str {
 /// Mint an opaque search→click token and store it in memory against the query's hash (never the
 /// query text). Swept of expired entries on the way in, so the map cannot grow without bound
 /// (M6-T03.1). The token is a fresh ULID — it carries no information about the query.
-fn mint_interaction_token(state: &AppState, normalized_query: &str) -> String {
+fn mint_interaction_token(
+    state: &AppState,
+    store: &xustive_ingest::interaction::Interactions,
+    normalized_query: &str,
+) -> String {
     use std::time::Instant;
     const TTL: std::time::Duration = std::time::Duration::from_secs(120);
     /// Ceiling on outstanding tokens (BUG-024), mirroring `PendingStore::MAX_PENDING`: the TTL
     /// sweep alone left the map bounded only by request rate, so a flood grew it without limit.
     const MAX_TOKENS: usize = 4096;
     let token = ulid::Ulid::new().to_string();
-    let qh = xustive_ingest::interaction::Interactions::qhash(normalized_query);
+    // The store's hash, salted per deployment (BUG-036) — a static would not know the salt.
+    let qh = store.qhash(normalized_query);
     if let Ok(mut map) = state.interaction_tokens.write() {
         let now = Instant::now();
         map.retain(|_, (_, minted)| now.duration_since(*minted) < TTL);

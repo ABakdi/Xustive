@@ -433,6 +433,13 @@ pub struct InteractionConfig {
     pub window_days: u64,
     /// Clicks on a (query, doc) before the doc becomes a re-crawl freshness candidate. 0 = use `k`.
     pub hot_click_floor: u32,
+    /// Deploy salt keying the query hash in `qd:`/`qk:` counter keys (BUG-036). With a salt, the
+    /// hash is keyed blake3 — unguessable without it, so the stored keys resist dictionary
+    /// reversal. Empty falls back to unsalted FNV, which only keeps plaintext out of the key bytes;
+    /// **validation refuses an empty salt outside dev** when interaction is enabled. Also settable
+    /// as `XUSTIVE_QHASH_SALT`. Rotating it orphans the windowed `qd:`/`qk:` counters — they decay
+    /// out within the window, so rotation costs at most one window of click signal.
+    pub salt: String,
 }
 
 // The `interaction` ranking *weight* deliberately lives in the ranker's `Weights` (config/ranking.toml),
@@ -446,6 +453,7 @@ impl Default for InteractionConfig {
             k_anonymity: 20,
             window_days: 90,
             hot_click_floor: 0,
+            salt: String::new(),
         }
     }
 }
@@ -868,6 +876,10 @@ impl Config {
         if let Ok(v) = std::env::var("XUSTIVE_FEDERATION_ENABLED") {
             self.federation.enabled = matches!(v.as_str(), "1" | "true" | "yes");
         }
+        // The qhash deploy salt (BUG-036) — a secret, so the environment is its natural home.
+        if let Ok(v) = std::env::var("XUSTIVE_QHASH_SALT") {
+            self.interaction.salt = v;
+        }
     }
 
     fn validate(&self) -> Result<(), ConfigError> {
@@ -897,6 +909,15 @@ impl Config {
                 return Err(ConfigError::Unsafe {
                     field: "discovery.k_anonymity",
                     environment: self.environment.clone(),
+                });
+            }
+            // Without a salt the query hash is dictionary-reversible (BUG-036) — dev-only.
+            if self.interaction.enabled && self.interaction.salt.trim().is_empty() {
+                return Err(ConfigError::Value {
+                    key: "interaction.salt".into(),
+                    msg: "required outside dev: set it (or XUSTIVE_QHASH_SALT) so query hashes \
+                          are keyed, not dictionary-reversible FNV"
+                        .into(),
                 });
             }
         }
@@ -1019,6 +1040,7 @@ mod crawl_guard_tests {
         let mut c = Config::default();
         c.environment = "prod".into();
         c.interaction.enabled = true;
+        c.interaction.salt = "deploy-secret".into(); // required outside dev; tested below
         c.interaction.k_anonymity = 1;
         assert!(c.validate().is_err(), "prod + interaction k=1 must refuse");
 
@@ -1035,6 +1057,13 @@ mod crawl_guard_tests {
         c.discovery.k_anonymity = 1;
         assert!(c.validate().is_err(), "prod + discovery k=1 must refuse");
         c.discovery.k_anonymity = 20;
+        assert!(c.validate().is_ok());
+
+        // Outside dev an empty qhash salt is refused too (BUG-036) — unsalted FNV is
+        // dictionary-reversible, the exact "false comfort" ADR-0008 rejects.
+        c.interaction.salt = String::new();
+        assert!(c.validate().is_err(), "prod + empty salt must refuse");
+        c.interaction.salt = "deploy-secret".into();
         assert!(c.validate().is_ok());
 
         // Dev keeps the single-operator escape hatch: k=1 honestly means "no anonymity, my box".

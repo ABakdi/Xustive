@@ -7,6 +7,7 @@ license.workspace = true
 description = "Polite fetching, robots.txt compliance, and HTML to Document extraction."
 
 [dependencies]
+blake3.workspace = true
 pdf-extract = "0.7"
 xustive-core = { path = "../xustive-core", features = ["resolve"] }
 xustive-federation = { path = "../xustive-federation" }

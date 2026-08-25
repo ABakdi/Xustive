@@ -16,9 +16,14 @@ fn redis_url() -> String {
 #[tokio::test]
 async fn ctr_surfaces_only_above_the_k_floor() {
     // k = 3: a (query, doc) needs at least 3 impressions before its CTR is surfaced.
-    let Some(store) =
-        Interactions::connect_in(&redis_url(), "test_interaction", 3, Duration::from_secs(60))
-            .await
+    let Some(store) = Interactions::connect_in(
+        &redis_url(),
+        "test_interaction",
+        3,
+        Duration::from_secs(60),
+        "",
+    )
+    .await
     else {
         eprintln!("skipping: Redis not reachable at {}", redis_url());
         return;
@@ -57,6 +62,7 @@ async fn a_click_by_qhash_matches_a_click_by_query() {
         "test_interaction_qhash",
         1,
         Duration::from_secs(60),
+        "test-salt",
     )
     .await
     else {
@@ -68,9 +74,7 @@ async fn a_click_by_qhash_matches_a_click_by_query() {
 
     store.impressions(&query, &[doc.clone()]).await;
     // Click via the qhash path (what POST /interaction does).
-    store
-        .click_by_qhash(&Interactions::qhash(&query), &doc)
-        .await;
+    store.click_by_qhash(&store.qhash(&query), &doc).await;
 
     let ctr = store.ctr_for(&query, &[doc.clone()]).await;
     assert!(
@@ -87,6 +91,7 @@ async fn analytics_readers_surface_above_the_floor() {
         "test_interaction_analytics",
         2,
         Duration::from_secs(60),
+        "",
     )
     .await
     else {

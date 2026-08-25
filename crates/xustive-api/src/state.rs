@@ -219,6 +219,7 @@ impl AppState {
             "interaction",
             cfg.k_anonymity,
             Duration::from_secs(cfg.window_days * 86_400),
+            &cfg.salt,
         )
         .await;
         match store {

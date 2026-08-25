@@ -91,6 +91,9 @@ eager_index = true
 # On for this personal dev engine so it collects your searches. It stores NO identifier — no IP, no
 # user-agent, no session — so it is anonymous by construction; on a multi-user deployment set k to 20
 # (the guard refuses < 20 outside `dev`). See ADR-0008/ADR-0015.
+# salt keys the query hash in counter keys (BUG-036): required outside dev (or XUSTIVE_QHASH_SALT);
+# empty here means the dev-only unsalted fallback. Rotating it costs at most one window of clicks.
+# salt = "some-long-random-secret"
 enabled = true
 # k-anonymity floor. 20 is the ADR-0008 public floor; a value < 20 is refused outside `dev` (the
 # guard). This is a single-user dev box, so 1 is honest ("one operator, no anonymity") — raise it to
