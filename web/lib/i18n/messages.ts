@@ -220,7 +220,7 @@ const fr: Messages = {
   wilaya: 'Wilaya',
   weather: 'Météo',
   utility: 'Outil',
-  exam: 'Résultats d examen',
+  exam: "Résultats d'examen",
   transliterate: 'Translittération',
   alternatives: 'Autre lecture',
   fuel: 'Prix des carburants',

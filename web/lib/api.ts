@@ -14,7 +14,6 @@ const BASE = typeof window === 'undefined'
 export interface Sentiment {
   label: 'positive' | 'neutral' | 'negative'
   score: number
-  confidence: number
 }
 
 export interface ResultCard {

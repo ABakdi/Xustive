@@ -335,6 +335,14 @@ async function Shell({
         ) : (
           children
         )}
+
+        {/* The privacy statement must be reachable from where people actually are (BUG-030): a
+            shared results URL was a dead end — the only link lived on the home page. */}
+        <footer className="mt-10 border-t pt-4 text-xs" style={{ borderColor: 'var(--line)' }}>
+          <a href={`/${lang}/privacy`} className="no-underline hover:underline" style={{ color: 'var(--fg-faint)' }}>
+            {t.privacyLine}
+          </a>
+        </footer>
       </main>
     </>
   )

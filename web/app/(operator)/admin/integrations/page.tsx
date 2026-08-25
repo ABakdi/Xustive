@@ -16,10 +16,10 @@ import { PageHead } from '@/components/admin/ui'
 /**
  * External-tool integrations (M7-T09, ADR-0017).
  *
- * Today: query-time federation with a self-hosted SearXNG aggregator. The serving plane never talks
- * to SearXNG directly — it lives on the egress network behind the Federation Gateway — so this page
- * shows configuration and the runtime switch, not a live health probe. The blend and crawl-feed that
- * consume the switch are later increments; this is the control surface for them.
+ * Query-time federation with a self-hosted SearXNG aggregator (mixed into results, eager-indexed,
+ * crawl-fed), the semantic and image vector engines, and the opt-in external AI summariser. The
+ * serving plane never talks to SearXNG or the LLM provider directly — both live behind the
+ * Federation Gateway on the egress network; this page is the control surface and the health view.
  */
 export default function IntegrationsPage() {
   const [fed, setFed] = useState<FederationStatus | null>(null)
@@ -30,25 +30,31 @@ export default function IntegrationsPage() {
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const load = useCallback(() => {
-    getIntegrations()
-      .then((d) => {
-        setFed(d.federation)
-        setSemantic(d.semantic)
-        setImage(d.image)
-        setExt(d.external_summariser)
-        setEff(d.effectiveness)
-      })
-      .catch((e) => setMsg((e as Error).message))
-  }, [])
-  useEffect(() => load(), [load])
+  const load = useCallback(
+    () =>
+      getIntegrations()
+        .then((d) => {
+          setFed(d.federation)
+          setSemantic(d.semantic)
+          setImage(d.image)
+          setExt(d.external_summariser)
+          setEff(d.effectiveness)
+        })
+        .catch((e) => setMsg((e as Error).message)),
+    [],
+  )
+  useEffect(() => {
+    void load()
+  }, [load])
 
   async function toggle(integration: string, enabled: boolean) {
     setBusy(true)
     setMsg('')
     try {
       await setIntegration(integration, enabled)
-      load()
+      // Await the reload before re-enabling the controls (BUG-027): clearing `busy` while the
+      // refetch was still in flight let a rapid second click toggle against stale state.
+      await load()
     } catch (e) {
       setMsg((e as Error).message)
     } finally {
@@ -175,7 +181,9 @@ export default function IntegrationsPage() {
             </tbody>
           </table>
         </>
-      ) : null}
+      ) : (
+        <p className="mb-6 text-sm" style={{ color: 'var(--fg-faint)' }}>Loading…</p>
+      )}
 
       {/* Semantic (dense) text search — a whole retrieval path that otherwise had no console. */}
       <h2 className="mb-2 mt-8 text-lg font-semibold">Semantic search (dense text)</h2>

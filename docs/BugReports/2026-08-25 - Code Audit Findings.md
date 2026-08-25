@@ -159,20 +159,20 @@ records `kind=reinforce`, hiding failures from the dashboard. Fix: record a dist
 re-sends it on a same-host https→http downgrade and replays the prompt on 307/308. Fix:
 `redirect::Policy::none()` — a provider API has no business redirecting.
 
-### BUG-027 — Admin integrations page: toggle race + missing loading states — **open**
+### BUG-027 — Admin integrations page: toggle race + missing loading states — **fixed**
 `web/app/(operator)/admin/integrations/page.tsx`: `busy` clears before the un-awaited `load()`
 resolves (rapid re-click toggles on stale state); the external-summariser section renders a bare
 heading when the fetch fails, and a stale doc comment contradicts shipped behavior. Fix: await the
 reload; add loading fallbacks; drop the stale comment.
 
-### BUG-028 — TS `Sentiment.confidence` doesn't exist in the API output — **open**
+### BUG-028 — TS `Sentiment.confidence` doesn't exist in the API output — **fixed**
 `web/lib/api.ts` requires `confidence: number`; Rust `SentimentOut` serializes only
 `label`/`score`. Dishonest type — any future use passes tsc and breaks at runtime. Fix: remove it.
 
-### BUG-029 — French instant-answer typo — **open**
+### BUG-029 — French instant-answer typo — **fixed**
 `web/lib/i18n/messages.ts`: `'Résultats d examen'` → `'Résultats d'examen'`.
 
-### BUG-030 — Privacy page unreachable from the results page — **open**
+### BUG-030 — Privacy page unreachable from the results page — **fixed**
 Only the home footer links `/{lang}/privacy`; someone landing on a shared results URL has no path
 to it. Fix: add the privacy link to the results-page footer area.
 
