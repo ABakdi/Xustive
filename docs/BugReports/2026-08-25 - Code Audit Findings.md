@@ -3,15 +3,15 @@ tags:
   - bugs
   - audit
 date: 2026-08-25
-status: resolved
+status: in-progress
 ---
 # Code Audit Findings — 2026-08-25
 
 Consolidated from a five-track review (search/summary pipeline, CLI eval tooling, federation
 gateway, web frontend, cross-cutting) with each finding verified against the code before landing
-here. Ordered by severity; tackled top-down. **User-privacy-class findings are deliberately
-excluded from this tracker by operator decision (2026-08-25)** — they are listed at the bottom so
-the decision is recorded, not silently forgotten.
+here. Ordered by severity; tackled top-down. The user-privacy-class findings were initially
+excluded by operator decision, then **reopened the same day** — they are tracked at the bottom as
+BUG-033..040.
 
 Status: `open` → `fixed (commit)` / `wontfix (reason)`.
 
@@ -187,14 +187,56 @@ intended "extra recall on page 1" behavior. Recorded here so the choice is expli
 hold millions of entries. Fix: document the `--max-docs` bound as the memory control and prune
 sub-`min_count` pairs periodically during the scan.
 
-## Excluded — user-privacy class (operator decision, 2026-08-25, not tracked here)
+## Privacy class — initially excluded, reopened by operator decision later the same day
 
-- Query text leaks into gateway/discover logs via reqwest error URLs (SearXNG/Brave GET `?q=`).
-- Prod Redis AOF + off-host backups defeat the windowed/unchainable search-history model.
-- `discovery.k_anonymity` claimed clamped to 20, actually `max(1)`, unvalidated; weak-coverage on
-  by default; `interaction.guard()` runs only in the API binary.
-- `qhash` comment overstates FNV-1a irreversibility; spec'd salted HMAC unimplemented.
-- Sliding TTL doubles as a per-term last-event timestamp.
-- ADR-0008's "nightly log scan" (scan-logs.sh) is not automated anywhere.
-- Privacy page omits the federation egress (queries → SearXNG → upstream engines).
-- `EXTERNAL_LLM_KEY` visible in `docker inspect` (compose secret would remove it).
+### BUG-033 [high] — Query text leaks into logs via reqwest error URLs — **open**
+`SearxngClient::search` and the Brave client send the query as a GET `?q=` parameter; reqwest
+transport errors carry the full request URL in their `Display`, and `federate_inner` /
+`discover.rs` log `error = %e` — so with SearXNG (or Brave DNS) down, every live query is written
+verbatim to the logs, violating ADR-0008. Fix: scrub the URL off the error at the boundary
+(`reqwest::Error::without_url()` inside the `From` impls), with a regression test that a failing
+request's rendered error does not contain the query.
+
+### BUG-034 [high] — Redis AOF + backups make the signals store a durable ordered query log — **open**
+Prod Redis runs `--appendonly yes` (needed: it also holds the queue/frontier), so every
+`interaction:*`/`discovery:*` write lands in an ordered command log — chaining qhash↔plaintext and
+reconstructing sessions — and `backup.sh` ships `dump.rdb` (plaintext terms included) off-host into
+indefinitely-retained dirs. Fix: move the signal stores to a dedicated **ephemeral** Redis
+(`--save '' --appendonly no`, never backed up) via a `queue.signals_url` that defaults to the main
+queue URL for compatibility; dev + prod compose gain the instance.
+
+### BUG-035 [high] — k-anonymity floors are claimed but not enforced — **open**
+A `DiscoveryConfig` doc comment claims "the loader clamps anything lower back up to 20";
+`effective_k()` is `max(1)` and `Config::validate()` checks nothing — while weak-coverage (which
+stores plaintext user terms) defaults **on**. `InteractionConfig::guard` runs only in the API
+binary, and `hot_click_floor` has no floor at all. Fix: enforce in `Config::validate()` — on any
+non-dev environment, `interaction.k_anonymity ≥ 20`, `discovery.k_anonymity ≥ 20`, and
+`hot_click_floor` ≥ the k floor (0 = "use k" stays legal) — so every binary that loads the config
+gets the guarantee; fix the false comment.
+
+### BUG-036 [med] — `qhash` is unsalted FNV-1a while claiming irreversibility — **open**
+The comment says the hash "can never be reversed"; unsalted FNV-1a of a short query falls to a
+dictionary attack — the exact "false comfort" ADR-0008's alternatives table rejects, and the code
+admits the spec'd salted HMAC is unimplemented. Fix: keyed blake3 with a deploy salt
+(`interaction.salt` / `XUSTIVE_QHASH_SALT`), required on non-dev deployments by config validation;
+unsalted FNV remains the dev fallback with an honest comment.
+
+### BUG-037 [med] — Privacy page omits the federation egress — **open**
+The page presents the external summariser as the one optional third-party egress, but enabling
+federation sends every query's text to SearXNG and onward to upstream engines. Fix: a federation
+clause parallel to `privacyExternalNote`, all four locales.
+
+### BUG-038 [med] — ADR-0008's claimed log scan is not automated — **open**
+`scan-logs.sh` greps exactly the `?q=` leak pattern but nothing runs it. Fix: `test-egress.sh`
+gains a live-container log scan when the stack is up, and ADR-0008's enforcement row is reworded to
+the mechanism that actually exists.
+
+### BUG-039 [low] — Sliding TTL doubles as a fine-grained last-event timestamp — **open**
+Every bump resets `EXPIRE window`, so `window − TTL` reads back any term's last search time to
+~1s precision. Fix: banded refresh — re-arm the TTL only when it has fallen below half the window,
+coarsening the observable to half-window granularity while keeping "decays to nothing".
+
+### BUG-040 [low] — `EXTERNAL_LLM_KEY` visible in `docker inspect` — **open**
+A plain compose env var shows in `docker inspect` and `/proc/<pid>/environ`. Fix: the gateway also
+accepts `EXTERNAL_LLM_KEY_FILE` (a mounted secret path), documented in compose, so operators can
+use docker secrets; the env var stays as the dev default.
