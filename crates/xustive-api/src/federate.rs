@@ -37,7 +37,10 @@ pub struct FederatorClient {
     health: String,
     default_budget_ms: u64,
     /// Fail fast when the gateway is down instead of waiting out the budget on every request.
-    breaker: xustive_core::circuit::SharedBreaker,
+    /// One breaker **per route** (BUG-006): `/federate` and `/summarise` fail independently — a
+    /// dead LLM provider must not shed federation, nor a dead SearXNG suppress external summaries.
+    federate_breaker: xustive_core::circuit::SharedBreaker,
+    summarise_breaker: xustive_core::circuit::SharedBreaker,
 }
 
 impl FederatorClient {
@@ -60,18 +63,19 @@ impl FederatorClient {
             .timeout(Duration::from_secs(30))
             .build()
             .ok()?;
-        let breaker = xustive_core::circuit::SharedBreaker::new(xustive_core::circuit::Config {
+        let breaker_config = xustive_core::circuit::Config {
             failure_threshold: 3,
             cooldown: Duration::from_secs(5),
             max_cooldown: Duration::from_secs(60),
-        });
+        };
         Some(Self {
             http,
             endpoint: format!("{base}/federate"),
             summarise_endpoint: format!("{base}/summarise"),
             health: format!("{base}/healthz"),
             default_budget_ms: cfg.budget_ms,
-            breaker,
+            federate_breaker: xustive_core::circuit::SharedBreaker::new(breaker_config),
+            summarise_breaker: xustive_core::circuit::SharedBreaker::new(breaker_config),
         })
     }
 
@@ -80,7 +84,7 @@ impl FederatorClient {
     /// caller falls back to the local model, per the same fail-open rule federation obeys. The
     /// prompt (which contains query text) is never logged, here or at the gateway.
     pub async fn summarise(&self, prompt: &str, budget_ms: u64) -> Option<String> {
-        if prompt.trim().is_empty() || !self.breaker.allow() {
+        if prompt.trim().is_empty() || !self.summarise_breaker.allow() {
             return None;
         }
         #[derive(Deserialize)]
@@ -96,28 +100,28 @@ impl FederatorClient {
             Ok(Ok(r)) if r.status().is_success() => r,
             Ok(Ok(r)) => {
                 tracing::warn!(status = %r.status(), "summarise gateway returned an error");
-                self.breaker.on_failure();
+                self.summarise_breaker.on_failure();
                 return None;
             }
             Ok(Err(e)) => {
                 tracing::warn!(error = %e, "summarise gateway request failed");
-                self.breaker.on_failure();
+                self.summarise_breaker.on_failure();
                 return None;
             }
             Err(_) => {
                 tracing::warn!(budget_ms, "summarise gateway exceeded budget");
-                self.breaker.on_failure();
+                self.summarise_breaker.on_failure();
                 return None;
             }
         };
         match resp.json::<Reply>().await {
             Ok(reply) => {
-                self.breaker.on_success();
+                self.summarise_breaker.on_success();
                 reply.text.filter(|t| !t.trim().is_empty())
             }
             Err(e) => {
                 tracing::warn!(error = %e, "summarise gateway reply decode failed");
-                self.breaker.on_failure();
+                self.summarise_breaker.on_failure();
                 None
             }
         }
@@ -126,7 +130,7 @@ impl FederatorClient {
     /// The breaker's state, for the admin console (`"closed"`, `"open"`, `"half-open"`).
     pub fn breaker_state(&self) -> &'static str {
         use xustive_core::circuit::State;
-        match self.breaker.state() {
+        match self.federate_breaker.state() {
             State::Closed => "closed",
             State::Open => "open",
             State::HalfOpen => "half-open",
@@ -147,17 +151,17 @@ impl FederatorClient {
             return Vec::new();
         }
         // Fail fast if the gateway has been failing — no request, no wait.
-        if !self.breaker.allow() {
+        if !self.federate_breaker.allow() {
             return Vec::new();
         }
         let budget = budget_ms.unwrap_or(self.default_budget_ms);
         match self.try_federate(query, budget).await {
             Ok(hits) => {
-                self.breaker.on_success();
+                self.federate_breaker.on_success();
                 hits
             }
             Err(()) => {
-                self.breaker.on_failure();
+                self.federate_breaker.on_failure();
                 Vec::new()
             }
         }

@@ -55,7 +55,7 @@ local `generate` starts a fresh `deadline_ms` of its own — up to ~2× the budg
 contradicting "turning this on only changes who writes the summary". Fix: one shared deadline —
 the local fallback gets what the external attempt left.
 
-### BUG-006 — One circuit breaker couples `/federate` and `/summarise` — **open**
+### BUG-006 — One circuit breaker couples `/federate` and `/summarise` — **fixed**
 `crates/xustive-api/src/federate.rs`: both endpoints share a `SharedBreaker`, so a dead LLM
 provider sheds federation and a dead SearXNG sheds external summaries. Fix: one breaker per
 endpoint.
