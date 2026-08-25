@@ -162,6 +162,10 @@ eval-check: ## Score the golden set and fail if nDCG@10 regressed
 	cargo run --release -q -p xustive-cli -- --config $(CONFIG) eval \
 		--baseline eval/reports/baseline.json --dry-run
 
+.PHONY: calibrate
+calibrate: ## Calibrate ranking side-weights against SearXNG's ordering (offline tuning signal; needs federation up)
+	cargo run --release -q -p xustive-cli -- --config $(CONFIG) calibrate
+
 .PHONY: golden
 golden: ## Regenerate the machine-judged golden set from the live index
 	./eval/build_golden.py --out eval/golden/v1.jsonl

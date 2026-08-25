@@ -89,8 +89,8 @@ The narrow, allowlisted egress hop that keeps the serving plane's no-egress prop
 
 ## M7-T07 — Learn from external ranking (offline reranker calibration)
 
-- [ ] M7-T07.1 **Capture SearXNG ordering offline** for a sample of queries (ingestion plane, no user in the loop) as a relevance reference.
-- [ ] M7-T07.2 **Calibrate [[Ranking and Relevance]] weights** against that reference on the golden set — a tuning signal, never a live ranking input; the invariant "relevance dominates" must still hold.
+- [x] M7-T07.1 **Capture SearXNG ordering offline** for a sample of queries (ingestion plane, no user in the loop) as a relevance reference. `xustive-cli calibrate` fetches SearXNG's top-k domains per query and writes a durable `external-ref-*.jsonl`; `--reference <file>` replays it without re-hitting the network.
+- [x] M7-T07.2 **Calibrate [[Ranking and Relevance]] weights** against that reference on the golden set — a tuning signal, never a live ranking input; the invariant "relevance dominates" must still hold. Sweeps the four side-weights (relevance + interaction held fixed), rejects any vector past the side budget before scoring, and reports the best-agreeing vector (by RBO) next to the default — a recommendation applied by hand, verified with `make eval`. Nothing writes config.
 - [ ] M7-T07.3 **Feed co-occurrence** from external results into the T01.2 synonym/expansion mining.
 
 ## M7-T08 — External AI summariser (opt-in, offline-preferred)

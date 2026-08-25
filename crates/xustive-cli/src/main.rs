@@ -4,6 +4,7 @@
 //! normaliser actually does to a string. That last one exists because "why does this query match
 //! nothing" is almost always a normalisation question.
 
+mod calibrate;
 mod commoncrawl;
 mod crawl;
 mod crawld;
@@ -169,6 +170,24 @@ enum Command {
         #[arg(long, default_value_t = 10)]
         k: usize,
         /// Print the report without writing it.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Calibrate ranking side-weights against SearXNG's ordering, offline (M7-T07). A tuning signal a
+    /// human applies by hand — never a live ranking input.
+    Calibrate {
+        #[arg(long, default_value = "eval/serp-queries.txt")]
+        queries: PathBuf,
+        /// A previously captured reference JSONL (`external-ref-*.jsonl`). When set, SearXNG is not
+        /// contacted and the sweep runs against the recorded ordering.
+        #[arg(long)]
+        reference: Option<PathBuf>,
+        #[arg(long, default_value = "eval/reports")]
+        out: PathBuf,
+        /// How many top domains to compare.
+        #[arg(long, default_value_t = 10)]
+        k: usize,
+        /// Print the report without writing it (also skips writing the captured reference).
         #[arg(long)]
         dry_run: bool,
     },
@@ -439,6 +458,23 @@ async fn main() -> Result<()> {
                 date: today(),
             };
             serp_eval::run(&client, &config, &opts).await
+        }
+        Command::Calibrate {
+            queries,
+            reference,
+            out,
+            k,
+            dry_run,
+        } => {
+            let opts = calibrate::CalibrateOptions {
+                queries,
+                reference,
+                out_dir: out,
+                k,
+                dry_run,
+                date: today(),
+            };
+            calibrate::run(&client, &config, &opts).await
         }
         Command::Worker { once } => worker::run(&config, &client, once).await,
         Command::Dlq { action, limit } => worker::dlq(&config, &action, limit).await,

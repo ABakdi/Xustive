@@ -45,7 +45,7 @@ pub struct SerpEvalOptions {
 
 /// Weight for rank-biased overlap. 0.9 concentrates ~86% of the weight in the top 10 — the right
 /// shape for "did we agree where the user actually looks".
-const RBO_P: f64 = 0.9;
+pub(crate) const RBO_P: f64 = 0.9;
 
 /// Pause between reference-engine queries. A SERP tolerates one lookup but walls a fast burst of
 /// them, so the yardstick paces itself like a person would; an offline eval can afford the minutes.
@@ -219,7 +219,7 @@ async fn our_domains(
 }
 
 /// Ordered, de-duplicated top-`k` registrable-ish domains from a stream of URLs or hosts.
-fn domains_of<'a>(items: impl Iterator<Item = &'a str>, k: usize) -> Vec<String> {
+pub(crate) fn domains_of<'a>(items: impl Iterator<Item = &'a str>, k: usize) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     for item in items {
@@ -257,7 +257,7 @@ fn normalize_domain(s: &str) -> Option<String> {
 }
 
 /// Fraction of the reference's domains that also appear in ours.
-fn overlap_at_k(ours: &[String], reference: &[String]) -> f64 {
+pub(crate) fn overlap_at_k(ours: &[String], reference: &[String]) -> f64 {
     if reference.is_empty() {
         return 0.0;
     }
@@ -273,7 +273,7 @@ fn overlap_at_k(ours: &[String], reference: &[String]) -> f64 {
 /// normalised by that maximum — giving a clean [0, 1] where identical order is exactly 1.0. Because
 /// the normaliser depends only on `depth`, it does not distort comparisons between two candidate
 /// orderings measured against the same reference.
-fn rbo(ours: &[String], reference: &[String], p: f64) -> f64 {
+pub(crate) fn rbo(ours: &[String], reference: &[String], p: f64) -> f64 {
     let depth = ours.len().max(reference.len());
     if depth == 0 {
         return 0.0;
@@ -309,7 +309,7 @@ fn rbo(ours: &[String], reference: &[String], p: f64) -> f64 {
 
 /// NDCG of our ordering, grading each domain by how high the reference ranked it (top reference
 /// domain = highest grade), so agreeing with the reference near the top is what scores.
-fn ndcg_vs_reference(ours: &[String], reference: &[String]) -> f64 {
+pub(crate) fn ndcg_vs_reference(ours: &[String], reference: &[String]) -> f64 {
     let n = reference.len();
     if n == 0 {
         return 0.0;
@@ -343,7 +343,7 @@ fn ndcg_vs_reference(ours: &[String], reference: &[String]) -> f64 {
     }
 }
 
-fn load_queries(path: &PathBuf) -> Result<Vec<String>> {
+pub(crate) fn load_queries(path: &PathBuf) -> Result<Vec<String>> {
     let body =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     Ok(body
