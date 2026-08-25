@@ -486,6 +486,10 @@ pub async fn weak_coverage(
         return Ok(Json(json!({
             "enabled": false,
             "k_anonymity": disc.effective_k(),
+            "resolution": {
+                "serp_enabled": disc.serp_enabled,
+                "brave_usable": disc.brave_usable(),
+            },
             "terms": [],
         })));
     }
@@ -507,6 +511,12 @@ pub async fn weak_coverage(
     Ok(Json(json!({
         "enabled": true,
         "k_anonymity": disc.effective_k(),
+        // Whether anything can actually RESOLVE these terms (PROB-003): the page used to promise
+        // "the crawler chases these automatically" with no way to see that no source was wired.
+        "resolution": {
+            "serp_enabled": disc.serp_enabled,
+            "brave_usable": disc.brave_usable(),
+        },
         "terms": rows,
     })))
 }

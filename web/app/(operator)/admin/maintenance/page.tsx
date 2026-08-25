@@ -132,7 +132,9 @@ export default function MaintenancePage() {
         <div className="mb-4 max-w-2xl rounded border px-3 py-3 text-sm" style={{ borderColor: 'var(--line)' }}>
           Removed for <code>{result.domain}</code>: {result.documents_removed ?? 0} documents,{' '}
           {result.vector_groups_removed ?? 0} vector groups, {result.raw_bodies_removed ?? 0} stored
-          bodies. Future crawling is not blocked — disable the source to prevent re-indexing.
+          bodies.{' '}
+          {/* The API's own note, verbatim, so the two cannot drift (PROB-003). */}
+          {result.note ?? 'Future crawling is not blocked — disable the source to prevent re-indexing.'}
         </div>
       ) : null}
 

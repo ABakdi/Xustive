@@ -46,6 +46,7 @@ export default function ComputePage() {
     override_expires_in?: number | null
   }
   const ranking = (data?.ranking ?? {}) as Record<string, number>
+  const index_ = (data?.index ?? {}) as { alias?: string; documents?: string; meili_url?: string }
   // The additive signals, in score order — the same ones the re-ranker sums (spam is subtracted).
   const rankSignals = ['relevance', 'freshness', 'trust', 'authority', 'quality', 'interaction']
 
@@ -56,11 +57,32 @@ export default function ComputePage() {
         take effect on the next model load, not mid-request.
       </PageHead>
 
-      <p className="mb-6 text-[0.95rem]">
+      <p className="mb-2 text-[0.95rem]">
         Currently running on <strong>{resolved.active ?? 'unknown'}</strong>
         {resolved.reason ? ` — ${resolved.reason}` : ''}. GPU support{' '}
         {gpuCompiled ? 'compiled in' : 'not compiled in'}; hardware{' '}
         {gpuDetected ? 'detected' : 'not detected'}.
+        {/* The GPU's identity and VRAM were only shown in the fell-back advisory — on a healthy
+            GPU box they were invisible (PROB-003). */}
+        {resolved.gpu?.name ? (
+          <>
+            {' '}Detected: <strong>{resolved.gpu.name}</strong>
+            {resolved.gpu.free_mib != null && resolved.gpu.total_mib != null
+              ? ` (${resolved.gpu.free_mib} / ${resolved.gpu.total_mib} MB free)`
+              : ''}
+            {resolved.gpu_layers != null ? `, ${resolved.gpu_layers} layers offloaded` : ''}.
+          </>
+        ) : null}
+      </p>
+
+      {/* Which index this deployment actually serves — returned by the API since M4 and never
+          rendered anywhere (PROB-003). */}
+      <p className="mb-6 text-sm" style={{ color: 'var(--fg-muted)' }}>
+        Index: <code>{String(index_.alias ?? '…')}</code>
+        {index_.documents && index_.documents !== index_.alias ? (
+          <> → <code>{String(index_.documents)}</code></>
+        ) : null}{' '}
+        on <code>{String(index_.meili_url ?? '…')}</code>
       </p>
 
       {/* The common misconfiguration on this hardware: a GPU is present but this binary cannot use
@@ -164,7 +186,12 @@ export default function ComputePage() {
               <tr key={m.spec.id}>
                 <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{m.spec.id}</td>
                 <td className="border-b py-1" style={{ borderColor: 'var(--line)' }}>{m.spec.role}</td>
-                <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{m.spec.size_mib} MB</td>
+                <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>
+                  {m.spec.size_mib} MB
+                  {m.present && m.actual_mib > 0 && m.actual_mib !== m.spec.size_mib
+                    ? ` (${m.actual_mib} on disk)`
+                    : ''}
+                </td>
                 <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>
                   {m.spec.licence}
                   {!m.spec.commercial_use ? (
@@ -199,6 +226,19 @@ export default function ComputePage() {
         <li className="flex gap-2">
           <span style={{ color: 'var(--fg-muted)' }}>spam (−)</span>
           <span className="tabular-nums font-medium">{ranking['spam_penalty']?.toFixed(2) ?? '—'}</span>
+        </li>
+        {/* The structural knobs the endpoint always returned and the page dropped (PROB-003). */}
+        <li className="flex gap-2">
+          <span style={{ color: 'var(--fg-muted)' }}>unknown-date ×</span>
+          <span className="tabular-nums font-medium">{ranking['unknown_date_factor']?.toFixed(2) ?? '—'}</span>
+        </li>
+        <li className="flex gap-2">
+          <span style={{ color: 'var(--fg-muted)' }}>per-domain cap</span>
+          <span className="tabular-nums font-medium">{ranking['per_domain_cap'] ?? '—'}</span>
+        </li>
+        <li className="flex gap-2">
+          <span style={{ color: 'var(--fg-muted)' }}>simhash collapse ≤</span>
+          <span className="tabular-nums font-medium">{ranking['simhash_collapse_distance'] ?? '—'}</span>
         </li>
       </ul>
 

@@ -37,7 +37,10 @@ export default function SourceHealthPage() {
             <Th>state</Th>
             <Th>tier</Th>
             <Th num>fetched</Th>
+            <Th num>failed</Th>
             <Th num>indexed</Th>
+            <Th num>thin</Th>
+            <Th num>dup</Th>
             <Th num>fetch ok</Th>
             <Th num>extraction</Th>
             <Th num>duplicate</Th>
@@ -52,10 +55,20 @@ export default function SourceHealthPage() {
               {s.display_name || s.id}{' '}
               <span style={{ color: 'var(--fg-faint)' }}>{s.id}</span>
             </Td>
-            <Td>{s.lifecycle || '—'}</Td>
+            {/* crawlable folds approval + lifecycle into the one bit that matters: will the
+                next crawl include this source? Returned since M2, rendered now (PROB-003). */}
+            <Td>
+              {s.lifecycle || '—'}
+              {s.crawlable === false ? (
+                <span style={{ color: 'var(--warn)' }}> · not crawlable</span>
+              ) : null}
+            </Td>
             <Td>{s.trust_tier || '—'}</Td>
             <Td num>{s.counts.fetched}</Td>
+            <Td num>{s.counts.failed}</Td>
             <Td num>{s.counts.indexed}</Td>
+            <Td num>{s.counts.thin}</Td>
+            <Td num>{s.counts.duplicate}</Td>
             <QualityCell v={s.quality.fetch_success_rate} ok={(x) => x > 0.95} />
             <QualityCell v={s.quality.extraction_success_rate} ok={(x) => x > 0.9} />
             <QualityCell v={s.quality.duplicate_ratio} ok={(x) => x < 0.3} />

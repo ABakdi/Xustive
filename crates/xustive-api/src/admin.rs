@@ -322,6 +322,8 @@ pub async fn interaction(
         "enabled": true,
         "k_anonymity": state.config.interaction.k_anonymity,
         "window_days": state.config.interaction.window_days,
+        // The click floor hot re-crawl acts on — used server-side above, now visible (PROB-003).
+        "hot_floor": state.config.interaction.hot_floor(),
         "top_queries": top_json,
         "categories": by_category,
         "ctr_leaders": leaders_json,

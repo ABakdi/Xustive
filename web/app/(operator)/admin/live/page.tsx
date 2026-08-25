@@ -64,6 +64,8 @@ export default function LivePage() {
       <div className="mb-6 mt-1 flex flex-wrap gap-3">
         <Tile n={s?.state ?? '…'} label="state" />
         <Tile n={s?.fetched ?? 0} label="fetched" />
+        <Tile n={s?.revisited ?? 0} label="revisited" />
+        <Tile n={s?.parsed ?? 0} label="parsed" />
         <Tile n={s?.indexed ?? 0} label="indexed" />
         <Tile n={s?.discovered ?? 0} label="discovered" />
         <Tile n={s?.failed ?? 0} label="failed" />
@@ -73,10 +75,13 @@ export default function LivePage() {
       </div>
 
       <h2 className="mb-2 mt-8 text-lg font-semibold">Recent URLs</h2>
-      <Table head={<><Th>outcome</Th><Th>url</Th><Th num>words</Th></>}>
+      <Table head={<><Th>at</Th><Th>outcome</Th><Th>host</Th><Th>url</Th><Th num>words</Th></>}>
         {(s?.recent ?? []).map((r, i) => (
           <tr key={`${r.url}-${i}`}>
+            {/* host and at arrived in every frame and were dropped (PROB-003). */}
+            <Td>{r.at ? new Date(r.at * 1000).toLocaleTimeString() : '—'}</Td>
             <Td>{r.outcome}</Td>
+            <Td>{r.host}</Td>
             <Td title={r.url}>{r.url}</Td>
             <Td num>{r.words}</Td>
           </tr>

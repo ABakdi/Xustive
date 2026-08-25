@@ -204,7 +204,9 @@ export default function DocumentsPage() {
       >
         {(data?.hits ?? []).map((h) => (
           <tr key={h.id}>
-            <Td title={h.title}>
+            {/* Hovering shows the excerpt — the preview that arrived on every row and was only
+                ever used as a length fallback (PROB-003). */}
+            <Td title={h.excerpt || h.title}>
               <a href={h.url} rel="noopener nofollow" style={{ color: 'var(--accent)' }}>
                 {h.title || h.url}
               </a>

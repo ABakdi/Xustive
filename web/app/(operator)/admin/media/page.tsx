@@ -92,7 +92,8 @@ export default function MediaPage() {
               <Dot ok={vector.qdrant_reachable} label={vector.qdrant_reachable ? 'reachable' : 'unreachable'} />
             </Row>
             <Row label="CLIP embedder">
-              <Dot ok={vector.embedder_healthy} label={vector.embedder_healthy ? 'up' : 'down'} />
+              <Dot ok={vector.embedder_healthy} label={vector.embedder_healthy ? 'up' : 'down'} />{' '}
+              <code className="text-xs">{vector.embedder_endpoint}</code>
             </Row>
             <Row label="Collection">
               <code className="text-xs">{vector.collection}</code>
@@ -118,7 +119,8 @@ export default function MediaPage() {
         ) : (
           <>
             <Row label="STT sidecar">
-              <Dot ok={stt.healthy} label={stt.healthy ? 'up' : 'down'} />
+              <Dot ok={stt.healthy} label={stt.healthy ? 'up' : 'down'} />{' '}
+              <code className="text-xs">{stt.endpoint}</code>
             </Row>
             <Row label="Circuit breaker">
               <Dot

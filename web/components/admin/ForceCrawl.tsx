@@ -26,7 +26,13 @@ export function ForceCrawl() {
     setMsg('')
     try {
       const r = await enqueueUrl(u, front)
-      setMsg(r.error?.message ? `refused: ${r.error.message}` : `queued ${r.url ?? u}`)
+      setMsg(
+        r.error?.message
+          ? `refused: ${r.error.message}`
+          : r.already_known
+            ? `${r.url ?? u} is already known — not re-queued`
+            : `queued ${r.url ?? u}`,
+      )
       if (!r.error) setUrl('')
     } catch (err) {
       setMsg((err as Error).message)

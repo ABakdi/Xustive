@@ -105,6 +105,7 @@ export default function QueuePage() {
                   <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>url</th>
                   <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>reason</th>
                   <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>attempts</th>
+                  <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>failed at</th>
                 </tr>
               </thead>
               <tbody>
@@ -115,6 +116,9 @@ export default function QueuePage() {
                     </td>
                     <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>{d.reason}</td>
                     <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{d.attempts}</td>
+                    <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>
+                      {d.failed_at ? new Date(d.failed_at * 1000).toLocaleString() : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>

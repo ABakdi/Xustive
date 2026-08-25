@@ -15,6 +15,23 @@ export default function WeakCoveragePage() {
         nothing here identifies a query or a person. When a resolution source is configured (SERP or
         Brave), the crawler chases these automatically.
       </PageHead>
+      {/* Whether that "automatically" is actually true here (PROB-003): the page used to promise
+          resolution with no way to see that no source was wired. */}
+      {data?.resolution ? (
+        <p className="mb-3 text-sm" style={{ color: 'var(--fg-muted)' }}>
+          Resolution:{' '}
+          {data.resolution.serp_enabled ? (
+            <strong>direct SERP enabled</strong>
+          ) : data.resolution.brave_usable ? (
+            <strong>Brave enabled</strong>
+          ) : (
+            <strong style={{ color: 'var(--warn)' }}>
+              no source configured — these terms are collected but nothing chases them
+            </strong>
+          )}
+          .
+        </p>
+      ) : null}
       <StatusLine>
         {error
           ? `Could not load weak coverage: ${error}`

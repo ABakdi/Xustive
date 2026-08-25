@@ -39,7 +39,8 @@ export default function InteractionPage() {
         <>
           <p className="mb-6 text-sm" style={{ color: 'var(--fg-muted)' }}>
             k-anonymity floor <strong>{data.k_anonymity}</strong> · window{' '}
-            <strong>{data.window_days} days</strong>
+            <strong>{data.window_days} days</strong> · hot re-crawl after{' '}
+            <strong>{data.hot_floor ?? data.k_anonymity} clicks</strong>
           </p>
 
           <section className="mb-8">

@@ -82,7 +82,9 @@ export default function SourcesPage() {
             setMsg(
               r.already_listed
                 ? 'already listed — queued to crawl next'
-                : `added as ${r.source_id} and queued to crawl next`,
+                : r.queued === false
+                  ? `added as ${r.source_id} — but the frontier was unreachable, so it is NOT queued yet (it will seed on the next crawld start)`
+                  : `added as ${r.source_id} and queued to crawl next`,
             )
             setUrl('')
             load()
@@ -200,8 +202,10 @@ export default function SourcesPage() {
                       onClick={async () => {
                         if (!confirm(`Stop crawling ${s.url}?\nDocuments already collected stay in the index.`)) return
                         try {
-                          await removeSource(s.url)
-                          setMsg('removed — already-crawled documents remain')
+                          const rr = await removeSource(s.url)
+                          setMsg(
+                            `removed ${rr.removed ?? 1} entr${(rr.removed ?? 1) === 1 ? 'y' : 'ies'} — already-crawled documents remain`,
+                          )
                           load()
                         } catch (err) {
                           setMsg((err as Error).message)

@@ -78,6 +78,8 @@ export const getSourceHealth = (signal?: AbortSignal) =>
 export interface WeakCoverage {
   enabled: boolean
   k_anonymity: number
+  /** Whether anything can actually resolve weak terms to URLs (PROB-003). */
+  resolution?: { serp_enabled: boolean; brave_usable: boolean }
   terms: { term: string; count: number }[]
 }
 export const getWeakCoverage = (signal?: AbortSignal) =>
@@ -147,12 +149,12 @@ export const CATEGORIES = [
 export const getSources = (signal?: AbortSignal) =>
   getJSON<{ seeds: Seed[] }>('/crawler/sources', signal).then((d) => d.seeds)
 export const addSource = (url: string, trust: string, category?: string) =>
-  postJSON<{ ok?: boolean; already_listed?: boolean; source_id?: string }>('/crawler/sources', {
-    url,
-    trust,
-    category,
-  })
-export const removeSource = (url: string) => postJSON<{ ok?: boolean }>('/crawler/sources/remove', { url })
+  postJSON<{ ok?: boolean; already_listed?: boolean; source_id?: string; queued?: boolean }>(
+    '/crawler/sources',
+    { url, trust, category },
+  )
+export const removeSource = (url: string) =>
+  postJSON<{ ok?: boolean; removed?: number }>('/crawler/sources/remove', { url })
 
 // --- live snapshot ---------------------------------------------------------------------------
 export interface Snapshot {
@@ -174,12 +176,14 @@ export interface Snapshot {
 export const getStatus = (signal?: AbortSignal) => getJSON<Snapshot>('/crawler/status', signal)
 
 // --- force-crawl (enqueue a URL) -------------------------------------------------------------
-/** Push a URL into the frontier now — as trusted as a seed. `front` jumps it to the head. */
+/** Push a URL into the frontier now — as trusted as a seed. `front` jumps it to the head.
+ *  The response distinguishes "queued fresh" (`added`) from "already known" (`already_known`) —
+ *  the client type used to invent a `queued` field the API never sent (PROB-003). */
 export const enqueueUrl = (url: string, front: boolean) =>
-  postJSON<{ url?: string; queued?: boolean; error?: { message?: string } }>('/crawler/enqueue', {
-    url,
-    front,
-  })
+  postJSON<{ ok?: boolean; added?: boolean; already_known?: boolean; url?: string; error?: { message?: string } }>(
+    '/crawler/enqueue',
+    { url, front },
+  )
 
 // --- compute ---------------------------------------------------------------------------------
 export const getCompute = (signal?: AbortSignal) => getJSON<Record<string, unknown>>('/status', signal)
@@ -291,6 +295,8 @@ export interface InteractionStatus {
   enabled: boolean
   k_anonymity?: number
   window_days?: number
+  /** Clicks before a doc becomes a re-crawl candidate — used server-side, now visible (PROB-003). */
+  hot_floor?: number
   top_queries?: {
     query: string
     count: number
