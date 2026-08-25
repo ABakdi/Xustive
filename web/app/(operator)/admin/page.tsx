@@ -9,6 +9,7 @@ import {
   getMedia,
   getInteraction,
   getIntegrations,
+  getQueue,
   getDocuments,
   type MediaStatus,
   type InteractionStatus,
@@ -61,12 +62,14 @@ export default function OverviewPage() {
   const [interaction, setInteraction] = useState<InteractionStatus | null>(null)
   const [integrations, setIntegrations] = useState<Awaited<ReturnType<typeof getIntegrations>> | null>(null)
   const [corpus, setCorpus] = useState<number | null>(null)
+  const [queue, setQueue] = useState<Awaited<ReturnType<typeof getQueue>> | null>(null)
   useEffect(() => {
     const tick = () => {
       getCompute().then(setCompute).catch(() => {})
       getMedia().then(setMedia).catch(() => {})
       getInteraction().then(setInteraction).catch(() => {})
       getIntegrations().then(setIntegrations).catch(() => {})
+      getQueue().then(setQueue).catch(() => {})
       // Total corpus size = the index's own estimate for an empty query.
       getDocuments({}).then((d) => setCorpus(d.estimated_total)).catch(() => {})
     }
@@ -166,6 +169,25 @@ export default function OverviewPage() {
                 ? 'embedder down'
                 : `${integrations.semantic.documents_embedded.toLocaleString()} vectors`
               : 'off'
+          }
+        />
+        {/* The capacity alarm, front and centre (PROB-001/PROB-003): the last OOM arrived with
+            no signal anywhere in admin. Warn from 80%; the crawler pauses itself at 85%. */}
+        <Chip
+          label="Capacity"
+          state={
+            queue?.capacity?.redis_pct != null
+              ? queue.capacity.redis_pct >= 80
+                ? 'warn'
+                : 'on'
+              : 'off'
+          }
+          detail={
+            queue?.capacity
+              ? queue.capacity.redis_pct != null
+                ? `Redis ${queue.capacity.redis_pct}%${queue.capacity.redis_pct >= 80 ? ' — drain or raise maxmemory' : ''}`
+                : 'Redis uncapped'
+              : '…'
           }
         />
       </div>
