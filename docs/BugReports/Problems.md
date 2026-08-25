@@ -17,7 +17,14 @@ URLFrontier/StormCrawler, Frontera, IRLbot) plus Meilisearch's indexing guidance
 
 ## PROB-001 — The crawl frontier grows super-linearly and the queue Redis is a hard 1GB wall
 
-**Status: open · Severity: high (the dev instance is at the wall now — every write OOMs)**
+**Status: SOLVED 2026-08-25 — see [[PROB-001 - Bounded Frontier and Queue|the solution document]]
+([Solutions/PROB-001 - Bounded Frontier and Queue.md](<Solutions/PROB-001 - Bounded Frontier and Queue.md>))
+for the full design, knobs, and operator runbook.** Every growing structure is now bounded or
+self-expiring, branching is linear (best-64 outlinks), the crawler pauses itself at 85% Redis
+memory, failure is loud, and the admin Queue page carries the capacity alarm. The analysis below
+is preserved as the record of what was wrong.
+
+**Severity at discovery: high (the dev instance was at the wall — every write OOMing)**
 
 ### What actually filled the 1GB (live forensics, 2026-08-25)
 
