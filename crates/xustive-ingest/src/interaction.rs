@@ -127,19 +127,53 @@ impl Interactions {
         self.window.as_secs() as i64
     }
 
-    /// `INCR key; EXPIRE key window` for several keys in one pipeline — the counter never outlives the
-    /// window, and never exists without an expiry (the [[weak_coverage]] invariant).
+    /// `INCR` several keys in one pipeline, arming each with a **banded** expiry: a key gets its
+    /// window when it is new or when its remaining TTL has fallen below half the window, never on
+    /// every bump (BUG-039). Refreshing on every write made `window − TTL` a per-term last-event
+    /// timestamp readable to ~1s by anyone with store access — the fine-grained timing ADR-0018
+    /// says must not exist. Banding coarsens that observable to half-window granularity while
+    /// keeping the invariant that matters: a counter never exists without an expiry, and one not
+    /// bumped within its window still decays to nothing (worst case it lives window/2 less).
     async fn bump(&self, keys: &[String]) {
         if keys.is_empty() {
             return;
         }
         let mut conn = self.conn();
-        let mut pipe = redis::pipe();
+        // The increments run in their own pipeline, so nothing about the TTL read below can ever
+        // cost a count — the counters are the data, the banding is only a refinement on top.
+        let mut incr = redis::pipe();
         for k in keys {
-            pipe.cmd("INCR").arg(k).ignore();
-            pipe.cmd("EXPIRE").arg(k).arg(self.window_secs()).ignore();
+            incr.cmd("INCR").arg(k).ignore();
         }
-        let _: Result<(), _> = pipe.query_async::<()>(&mut conn).await;
+        let _: Result<(), _> = incr.query_async::<()>(&mut conn).await;
+
+        // If the PTTL read fails, arm EVERYTHING unconditionally: the INCRs may have landed, and a
+        // counter without an expiry is unbounded retention — the one state this store must never be
+        // in. Losing the banding on an error costs timestamp coarseness; losing the expiry costs
+        // the invariant.
+        let mut ttls = redis::pipe();
+        for k in keys {
+            ttls.cmd("PTTL").arg(k);
+        }
+        let pttls = match ttls.query_async::<Vec<i64>>(&mut conn).await {
+            Ok(v) if v.len() == keys.len() => v,
+            _ => vec![-1; keys.len()],
+        };
+        let half_window_ms = self.window_secs() * 500; // window/2, in ms
+        let mut arm = redis::pipe();
+        let mut any = false;
+        for (k, pttl) in keys.iter().zip(pttls) {
+            // PTTL < 0 is a fresh key with no expiry (the just-INCRed case) — it MUST be armed, or
+            // the counter would live forever. Below half-window, re-arm; otherwise leave the clock
+            // alone so it tells nothing finer than "active within the last half window".
+            if pttl < half_window_ms {
+                arm.cmd("EXPIRE").arg(k).arg(self.window_secs()).ignore();
+                any = true;
+            }
+        }
+        if any {
+            let _: Result<(), _> = arm.query_async::<()>(&mut conn).await;
+        }
     }
 
     /// Record that `docs` were shown for `query`.

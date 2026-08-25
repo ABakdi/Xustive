@@ -236,7 +236,7 @@ structurally: the searxng container runs with `logging: driver: none`, so its st
 entirely query traffic — is never retained anywhere. Federation verified working after, scan
 green.
 
-### BUG-039 [low] — Sliding TTL doubles as a fine-grained last-event timestamp — **open**
+### BUG-039 [low] — Sliding TTL doubles as a fine-grained last-event timestamp — **fixed**
 Every bump resets `EXPIRE window`, so `window − TTL` reads back any term's last search time to
 ~1s precision. Fix: banded refresh — re-arm the TTL only when it has fallen below half the window,
 coarsening the observable to half-window granularity while keeping "decays to nothing".

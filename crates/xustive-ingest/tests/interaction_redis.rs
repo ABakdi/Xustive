@@ -10,7 +10,12 @@ use std::time::Duration;
 use xustive_ingest::interaction::Interactions;
 
 fn redis_url() -> String {
-    std::env::var("XUSTIVE_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6390".into())
+    // The SIGNALS instance (BUG-034) — where the interaction store actually lives now, and an
+    // ephemeral one, so tests never contend with the persistent queue Redis. That matters
+    // practically too: the queue instance runs maxmemory+noeviction and a full dev crawl once
+    // filled it, at which point every test INCR failed with OOM and all three tests here failed
+    // for a reason that had nothing to do with the code under test.
+    std::env::var("XUSTIVE_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6391".into())
 }
 
 #[tokio::test]

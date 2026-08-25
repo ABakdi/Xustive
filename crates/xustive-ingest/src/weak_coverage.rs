@@ -82,19 +82,28 @@ impl WeakCoverage {
             return;
         };
         let key = self.key(term);
-        // INCR then a sliding EXPIRE: the window restarts on every hit, so an actively-searched
-        // term persists and a one-off decays. Pipelined so the two cannot be split by a crash into
-        // a counter with no expiry (which would be unbounded retention of the term text).
-        let _: Result<(), _> = redis::pipe()
-            .cmd("INCR")
+        // INCR with a **banded** sliding expiry (BUG-039, mirroring `Interactions::bump`): the
+        // window is armed when the key is new or its TTL has fallen below half the window, never on
+        // every hit — refreshing every time made `window − TTL` a per-term last-searched timestamp
+        // readable to ~1s. An actively-searched term still persists and a one-off still decays
+        // (worst case window/2 sooner); a counter still never exists without an expiry.
+        let window = self.window.as_secs().max(1) as i64;
+        // The increment runs on its own, so the TTL refinement below can never cost the count.
+        let _: Result<i64, _> = redis::cmd("INCR").arg(&key).query_async(&mut conn).await;
+        // On a failed PTTL read, treat the key as expiry-less (-1) and arm it: the INCR may have
+        // landed, and a term key with no expiry is unbounded retention of the term text.
+        let pttl = redis::cmd("PTTL")
             .arg(&key)
-            .ignore()
-            .cmd("EXPIRE")
-            .arg(&key)
-            .arg(self.window.as_secs().max(1))
-            .ignore()
-            .query_async::<()>(&mut conn)
-            .await;
+            .query_async::<i64>(&mut conn)
+            .await
+            .unwrap_or(-1);
+        if pttl < window * 500 {
+            let _: Result<(), _> = redis::cmd("EXPIRE")
+                .arg(&key)
+                .arg(window)
+                .query_async::<()>(&mut conn)
+                .await;
+        }
     }
 
     /// The weak-coverage terms worth acting on: those at or above the k-anonymity floor, most-
