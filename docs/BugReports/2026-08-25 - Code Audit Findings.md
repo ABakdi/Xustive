@@ -111,15 +111,15 @@ the budget. Fix: put the full send-and-decode future inside the timeout.
 
 ## Low
 
-### BUG-016 — eval-ab: restore failure shadows the original error — **open**
+### BUG-016 — eval-ab: restore failure shadows the original error — **fixed**
 A variant failure followed by a restore failure reports only the restore error; which variant
 broke and why is dropped. Fix: chain/report both.
 
-### BUG-017 — eval-ab: a late variant failure discards all completed scores — **open**
+### BUG-017 — eval-ab: a late variant failure discards all completed scores — **fixed**
 Scores for variants 1..N−1 survive only as scrolled stdout; no report, no delta table. Fix: print
 the table and write the report for whatever completed before surfacing the error.
 
-### BUG-018 — eval-ab: "wins" label and noise band are both wrong — **open**
+### BUG-018 — eval-ab: "wins" label and noise band are both wrong — **fixed**
 Any `d > 0.0` is stamped "← wins" against a caption saying noise isn't a win, and the printed
 `±0.010` treats the *relative* `NDCG_TOLERANCE` (1% of baseline) as absolute. Fix: stamp wins only
 past the tolerance, and compute the band from the baseline.

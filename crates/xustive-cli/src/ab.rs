@@ -186,19 +186,31 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &AbOptions) -> Res
         }
     }
 
-    // Restore unconditionally, and only then surface any scoring failure.
-    client
+    // Restore unconditionally. If the restore ALSO fails, the original failure must not vanish
+    // behind it (BUG-016) — which variant broke, and why, is the information the operator needs.
+    if let Err(restore_err) = client
         .apply_settings_within(&index, &snapshot, APPLY_WAIT)
         .await
-        .context("restoring the original settings — the index may be left in a variant state; re-run `make migrate`")?;
-    println!("\n  original settings restored.");
-    if let Some(e) = failed {
-        return Err(e);
+    {
+        let restore_err = anyhow::Error::new(restore_err).context(
+            "restoring the original settings — the index may be left in a variant state; re-run `make migrate`",
+        );
+        return Err(match failed {
+            Some(original) => {
+                original.context(format!("and then the restore failed too: {restore_err:#}"))
+            }
+            None => restore_err,
+        });
     }
+    println!("\n  original settings restored.");
 
-    // The verdict, in deltas against the baseline run.
+    // The verdict and the report are produced from whatever completed, *before* any failure is
+    // surfaced (BUG-017): a late variant failure must not discard hours of finished reindex+scoring.
+    // The verdict, in deltas against the baseline run. "Wins" means past the same relative
+    // tolerance the regression gate uses — a hair above baseline is noise, not a win (BUG-018).
     if let Some(baseline) = scores.iter().find(|s| s.name == "baseline") {
         let base_ndcg = baseline.ndcg_at_10;
+        let noise = base_ndcg * crate::eval::NDCG_TOLERANCE;
         println!("\n  against baseline (nDCG@10 {:.4}):", base_ndcg);
         for s in scores.iter().filter(|s| s.name != "baseline") {
             let d = s.ndcg_at_10 - base_ndcg;
@@ -206,16 +218,16 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &AbOptions) -> Res
                 "    {:<28}{:+.4}{}",
                 s.name,
                 d,
-                if d > 0.0 { "  ← wins" } else { "" }
+                if d > noise { "  ← wins" } else { "" }
             );
         }
         println!(
-            "\n  Keep only measured wins; a delta within noise (±{:.3}) is not a win.",
-            crate::eval::NDCG_TOLERANCE
+            "\n  Keep only measured wins; a delta within noise (±{noise:.4}, {:.0}% of baseline) is not a win.",
+            crate::eval::NDCG_TOLERANCE * 100.0
         );
     }
 
-    if !opts.dry_run {
+    if !opts.dry_run && !scores.is_empty() {
         let report = AbReport {
             generated_at: opts.date.clone(),
             queries: golden.len(),
@@ -227,6 +239,9 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &AbOptions) -> Res
         std::fs::write(&path, serde_json::to_string_pretty(&report)?)
             .with_context(|| format!("writing {}", path.display()))?;
         println!("\nwrote {}", path.display());
+    }
+    if let Some(e) = failed {
+        return Err(e);
     }
     Ok(())
 }
