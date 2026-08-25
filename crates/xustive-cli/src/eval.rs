@@ -174,11 +174,13 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
     Ok(())
 }
 
-/// One query through the same retrieval the API runs: the primary leg, then — when it found too
-/// little — the expanded leg, merged and deduplicated by id. A harness that skips the expansion
-/// measures a pipeline nobody uses, which is how the Arabizi failure looked like a ranking problem
-/// for a while rather than a missing retrieval step. Shared with the settings A/B (`eval-ab`), so
-/// both harnesses score exactly the same retrieval.
+/// One query through the same retrieval the API runs (BUG-003): the primary leg with ranking
+/// scores and the spam filter, the all-stop-word phrase rescue (M7-T01.5), then — when the primary
+/// found too little *or* its best hit is weak (M7-T01.3) — the expanded leg, merged and
+/// deduplicated by id. A harness that skips any of these measures a pipeline nobody uses, which is
+/// how the Arabizi failure looked like a ranking problem for a while rather than a missing
+/// retrieval step. The trigger helpers live in `xustive-search` and are the very ones the API
+/// calls, so the two cannot drift again. Shared with the settings A/B (`eval-ab`).
 pub(crate) async fn retrieve_with_expansion(
     client: &MeiliClient,
     config: &Config,
@@ -187,12 +189,39 @@ pub(crate) async fn retrieve_with_expansion(
     expander: &xustive_lang::Expander,
     query: &str,
 ) -> Result<Vec<Value>> {
+    use xustive_search::filter::{Filters, SPAM_THRESHOLD};
+    use xustive_search::rank::top_result_is_weak;
+    use xustive_search::settings::is_all_stop_words;
+
     let normalized = xustive_text::normalize(query);
     let pool = config.search.candidate_pool.max(50);
-    let q = Query::new(&normalized).limit(pool);
+    // The default-filter spam clause the API applies to every search.
+    let spam_filter = Filters {
+        exclude_spam: true,
+        ..Filters::default()
+    }
+    .to_expression(SPAM_THRESHOLD);
+
+    let mut q = Query::new(&normalized).limit(pool).ranking_score(true);
+    if let Some(expr) = spam_filter.clone() {
+        q = q.filter(expr);
+    }
     let mut hits = client.search::<Value>(index, &q).await?;
 
-    if hits.hits.len() < 5 {
+    // The stop-word phrase rescue (M7-T01.5), exactly as the API runs it.
+    if hits.hits.is_empty() && is_all_stop_words(&normalized) {
+        let phrase = format!("\"{normalized}\"");
+        let mut retry = Query::new(&phrase).limit(pool).ranking_score(true);
+        if let Some(expr) = spam_filter.clone() {
+            retry = retry.filter(expr);
+        }
+        if let Ok(recovered) = client.search::<Value>(index, &retry).await {
+            hits = recovered;
+        }
+    }
+
+    // Few *or weak* (M7-T01.3) — the same condition, via the same shared helper, the API uses.
+    if hits.hits.len() < 5 || top_result_is_weak(&hits.hits) {
         let detected = detector.detect(&normalized);
         let expansion = expander.expand(&normalized, detected.lang);
         let terms: Vec<String> = expansion
@@ -202,7 +231,10 @@ pub(crate) async fn retrieve_with_expansion(
             .take(12)
             .collect();
         if !terms.is_empty() {
-            let expanded = Query::new(terms.join(" ")).limit(pool);
+            let mut expanded = Query::new(terms.join(" ")).limit(pool);
+            if let Some(expr) = spam_filter {
+                expanded = expanded.filter(expr);
+            }
             if let Ok(extra) = client.search::<Value>(index, &expanded).await {
                 let mut seen: std::collections::HashSet<String> = hits
                     .hits

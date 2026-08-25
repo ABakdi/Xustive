@@ -209,6 +209,23 @@ pub fn infer_intent(normalized_query: &str, candidate_ages_days: &[f32]) -> Inte
 /// Re-rank candidates.
 ///
 /// `now` is passed in rather than read from the clock so ranking is deterministic and testable.
+/// Below this Meilisearch `_rankingScore`, even the best result is a weak match — worth widening
+/// the query with the expansion leg even when it returned plenty of hits (M7-T01.3). A strong exact
+/// match scores near 1.0; a page where only some query terms matched scores well below.
+pub const WEAK_TOP_SCORE: f64 = 0.6;
+
+/// Whether the top engine hit is a weak match — the signal that a query returned *hits* but not
+/// good ones, which a count-only expansion trigger misses. Reads engine order, so it is only
+/// meaningful on relevance-ordered results (not under an explicit sort). Absent scores (an older
+/// index, or a query that did not ask for them) read as not-weak, leaving behaviour unchanged.
+/// Shared by the API handler and the eval harness so the trigger cannot drift between them.
+pub fn top_result_is_weak(hits: &[Value]) -> bool {
+    hits.first()
+        .and_then(|h| h.get("_rankingScore"))
+        .and_then(Value::as_f64)
+        .is_some_and(|s| s < WEAK_TOP_SCORE)
+}
+
 pub fn rerank(
     hits: &[Value],
     normalized_query: &str,
@@ -789,6 +806,19 @@ mod tests {
         let ids_a: Vec<&Value> = a.iter().map(|r| &r.hit["id"]).collect();
         let ids_b: Vec<&Value> = b.iter().map(|r| &r.hit["id"]).collect();
         assert_eq!(ids_a, ids_b);
+    }
+
+    #[test]
+    fn a_weak_top_score_triggers_expansion() {
+        use serde_json::json;
+        // A strong exact match scores near 1.0 and must not trigger the widen.
+        assert!(!top_result_is_weak(&[json!({"_rankingScore": 0.95})]));
+        // A partial match below the floor should.
+        assert!(top_result_is_weak(&[json!({"_rankingScore": 0.42})]));
+        // No hits, and an index that returns no score, both read as not-weak — the count-only
+        // trigger stays in charge where the score is unavailable.
+        assert!(!top_result_is_weak(&[]));
+        assert!(!top_result_is_weak(&[json!({"title": "no score here"})]));
     }
 
     #[test]

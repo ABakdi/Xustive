@@ -11,6 +11,35 @@ pub const DOCUMENTS: &str = "documents";
 pub const COMMENTS: &str = "comments";
 pub const SOURCES: &str = "sources";
 
+/// Longest all-stop-word query the phrase rescue will attempt (M7-T01.5). A genuine short
+/// function-word query ("who is the", "the and") is a handful of tokens; beyond that, an exact
+/// match on a long stop-word run is vanishingly unlikely and not worth a second round trip.
+pub const MAX_STOPWORD_PHRASE_TOKENS: usize = 6;
+
+/// Whether every token of `query` is a tokeniser stop word — the case where the engine strips the
+/// whole query and returns nothing. Uses [`STOP_WORDS`], the same list the index is configured
+/// with, and is shared by the API handler and the eval harness so neither can drift (BUG-003).
+/// Empty or over-long queries return false: there is nothing to rescue, or it is not the
+/// short-query case the rescue exists for.
+pub fn is_all_stop_words(query: &str) -> bool {
+    let mut tokens = query.split_whitespace().peekable();
+    if tokens.peek().is_none() {
+        return false;
+    }
+    let mut count = 0;
+    for tok in tokens {
+        count += 1;
+        if count > MAX_STOPWORD_PHRASE_TOKENS {
+            return false;
+        }
+        let lower = tok.to_lowercase();
+        if !STOP_WORDS.contains(&lower.as_str()) {
+            return false;
+        }
+    }
+    true
+}
+
 /// The engine's deep-pagination bound (`pagination.maxTotalHits` on the documents index), shared
 /// with the query handler so the pages the API *advertises* never exceed the pages the engine can
 /// *serve* — the two drifting apart is how dead pagination links happen (BUG-002).
@@ -183,6 +212,20 @@ pub fn all() -> Vec<(&'static str, &'static str, Value)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_all_stop_word_query_is_recognised() {
+        // The cases the phrase rescue must catch: every token is a stop word.
+        assert!(is_all_stop_words("the and"));
+        assert!(is_all_stop_words("من في"));
+        assert!(is_all_stop_words("The Of")); // case-insensitive
+                                              // A query with any content word is a normal query — the primary leg handles it.
+        assert!(!is_all_stop_words("the president"));
+        assert!(!is_all_stop_words("سونلغاز في"));
+        // Nothing to rescue, or too long to be the short-query case.
+        assert!(!is_all_stop_words(""));
+        assert!(!is_all_stop_words("the a is of and in for to")); // over the token cap
+    }
 
     fn strs(v: &Value, key: &str) -> Vec<String> {
         v[key]

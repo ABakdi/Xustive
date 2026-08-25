@@ -34,7 +34,7 @@ metric for queries that have hits. Fix: grow the pool to cover the requested off
 (`candidate_pool.max(offset + hits_per_page)`, bounded by the engine's `maxTotalHits`), and cap
 `total_pages` at what a pool can actually serve.
 
-### BUG-003 — Eval harness measures a pipeline production doesn't run — **open**
+### BUG-003 — Eval harness measures a pipeline production doesn't run — **fixed**
 `crates/xustive-cli/src/eval.rs` `retrieve_with_expansion` claims parity with the API but lacks the
 weak-top-score expansion trigger (M7-T01.3), the all-stop-word phrase rescue (M7-T01.5), and the
 spam filter the API applies. `make eval` / `eval-ab` therefore score a different retrieval than

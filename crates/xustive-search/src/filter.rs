@@ -5,6 +5,11 @@
 
 use xustive_core::{SentimentLabel, SourceType};
 
+/// Spam suppression threshold: documents at or above it stay indexed but out of default results.
+/// Lives here — beside the clause that applies it — and is shared by the API handler and the eval
+/// harness, so the two cannot score under different spam regimes (BUG-003).
+pub const SPAM_THRESHOLD: f32 = 0.8;
+
 /// Filters extracted from a request, before they become a Meilisearch expression.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Filters {

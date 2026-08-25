@@ -25,8 +25,8 @@ use crate::state::AppState;
 
 /// Hard cap on query length, matching the API contract.
 pub const MAX_QUERY_CHARS: usize = 512;
-/// Spam suppression threshold. Documents above it stay indexed but out of default results.
-const SPAM_THRESHOLD: f32 = 0.8;
+/// Spam suppression threshold, shared with the eval harness (BUG-003).
+use xustive_search::filter::SPAM_THRESHOLD;
 
 #[derive(Debug, Deserialize)]
 pub struct SearchParams {
@@ -163,48 +163,11 @@ pub struct SearchResponse {
 /// answer it were never reached.
 const EXPANSION_THRESHOLD: usize = 5;
 
-/// Below this Meilisearch `_rankingScore`, even the best result is a weak match — worth widening the
-/// query with the expansion leg even when it returned plenty of hits (M7-T01.3). A strong exact match
-/// scores near 1.0; a page where only some query terms matched scores well below.
-const WEAK_TOP_SCORE: f64 = 0.6;
-
-/// Whether the top result is a weak match — the signal that a query returned *hits* but not good
-/// ones, which the count-only trigger misses. Absent scores (an older index) read as not-weak, so the
-/// behaviour is unchanged where the score is unavailable.
-fn top_result_is_weak(hits: &[Value]) -> bool {
-    hits.first()
-        .and_then(|h| h.get("_rankingScore"))
-        .and_then(Value::as_f64)
-        .is_some_and(|s| s < WEAK_TOP_SCORE)
-}
-
-/// Longest all-stop-word query we will rescue as a phrase. A genuine short function-word query
-/// ("who is the", "the and") is a handful of tokens; beyond that, an exact match on a long stop-word
-/// run is vanishingly unlikely and not worth a second round trip.
-const MAX_STOPWORD_PHRASE_TOKENS: usize = 6;
-
-/// Whether every token of `query` is a tokeniser stop word — the case where Meilisearch strips the
-/// whole query and returns nothing (M7-T01.5). Uses the *same* list the index was configured with,
-/// so the two cannot drift. Empty or over-long queries return false: there is nothing to rescue, or
-/// it is not the short-query case this guard is for.
-fn is_all_stop_words(query: &str) -> bool {
-    let mut tokens = query.split_whitespace().peekable();
-    if tokens.peek().is_none() {
-        return false;
-    }
-    let mut count = 0;
-    for tok in tokens {
-        count += 1;
-        if count > MAX_STOPWORD_PHRASE_TOKENS {
-            return false;
-        }
-        let lower = tok.to_lowercase();
-        if !xustive_search::settings::STOP_WORDS.contains(&lower.as_str()) {
-            return false;
-        }
-    }
-    true
-}
+// The weak-top-score expansion trigger (M7-T01.3) and the all-stop-word phrase rescue (M7-T01.5)
+// live in `xustive-search` (`rank::top_result_is_weak`, `settings::is_all_stop_words`), shared with
+// the offline eval harness so the harness scores the same retrieval production runs (BUG-003).
+use xustive_search::rank::top_result_is_weak;
+use xustive_search::settings::is_all_stop_words;
 
 /// Retrieve again with expanded terms and merge into `hits`.
 ///
@@ -1401,18 +1364,6 @@ mod tests {
         assert_eq!(count_bucket(5_000), "1000+");
     }
 
-    #[test]
-    fn a_weak_top_score_triggers_expansion() {
-        // A strong exact match scores near 1.0 and must not trigger the widen.
-        assert!(!top_result_is_weak(&[json!({"_rankingScore": 0.95})]));
-        // A partial match below the floor should.
-        assert!(top_result_is_weak(&[json!({"_rankingScore": 0.42})]));
-        // No hits, and an index that returns no score, both read as not-weak — the count-only
-        // trigger stays in charge where the score is unavailable.
-        assert!(!top_result_is_weak(&[]));
-        assert!(!top_result_is_weak(&[json!({"title": "no score here"})]));
-    }
-
     /// The id the eager index / full crawl assigns a URL — the same derivation both the federation
     /// merge and the indexer use, so a card built with it dedups against the crawled document.
     fn id_of(url: &str) -> String {
@@ -1464,20 +1415,6 @@ mod tests {
             .find(|c| c.id == id_of("https://example.dz/b"))
             .expect("the new federated URL is added");
         assert!(b.from_web);
-    }
-
-    #[test]
-    fn an_all_stop_word_query_is_recognised() {
-        // The cases the guard must rescue: every token is a stop word.
-        assert!(is_all_stop_words("the and"));
-        assert!(is_all_stop_words("من في"));
-        assert!(is_all_stop_words("The Of")); // case-insensitive
-                                              // A query with any content word is a normal query — the primary leg handles it.
-        assert!(!is_all_stop_words("the president"));
-        assert!(!is_all_stop_words("سونلغاز في"));
-        // Nothing to rescue, or too long to be the short-query case.
-        assert!(!is_all_stop_words(""));
-        assert!(!is_all_stop_words("the a is of and in for to")); // over the token cap
     }
 
     #[test]
