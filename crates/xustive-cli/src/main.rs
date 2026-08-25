@@ -198,7 +198,8 @@ enum Command {
         /// A pair must co-occur at least this often to be proposed.
         #[arg(long, default_value_t = 5)]
         min_count: u32,
-        /// The review file to write. Deliberately dated so runs never overwrite a half-reviewed one.
+        /// The review file to write (default: a dated `data/expansion/candidates-*.tsv`). An
+        /// existing file is never overwritten — the run refuses so a half-reviewed file survives.
         #[arg(long)]
         out: Option<PathBuf>,
         /// Print the candidates without writing the file.

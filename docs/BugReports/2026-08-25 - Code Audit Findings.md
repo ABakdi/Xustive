@@ -128,12 +128,12 @@ past the tolerance, and compute the band from the baseline.
 `eval.rs`: `baseline["ndcg_at_10"].as_f64().unwrap_or(0.0)` — a wrong-shaped `--baseline` file
 reads as 0.0 and the gate goes permanently green. Fix: error on a baseline without the field.
 
-### BUG-020 — Miner: token cap applies before token cleaning — **open**
+### BUG-020 — Miner: token cap applies before token cleaning — **fixed**
 `mine.rs`: `.take(24)` on raw whitespace tokens runs before `clean_token`, so stop-word/punctuation
 heavy titles (and long federated query+title strings) exhaust the budget before content tokens.
 Fix: cap after cleaning.
 
-### BUG-021 — Miner: same-day rerun silently clobbers a half-reviewed candidates file — **open**
+### BUG-021 — Miner: same-day rerun silently clobbers a half-reviewed candidates file — **fixed**
 The `--out` help promises dated files "never overwrite a half-reviewed one", but the date is
 day-granular. Fix: refuse to overwrite an existing candidates file (require `--out` or delete).
 
@@ -182,7 +182,7 @@ the wait is its own explicit budget), and web cards appended beyond `hits_per_pa
 intended "extra recall on page 1" behavior. Recorded here so the choice is explicit; the
 `pagination.hits_per_page` field describes the local page size, not the card count.
 
-### BUG-032 — Miner pair map unbounded before filtering — **open**
+### BUG-032 — Miner pair map unbounded before filtering — **fixed**
 `mine.rs` counts every cross-script pair before `min_count`/PMI filters run; a corpus-scale run can
 hold millions of entries. Fix: document the `--max-docs` bound as the memory control and prune
 sub-`min_count` pairs periodically during the scan.

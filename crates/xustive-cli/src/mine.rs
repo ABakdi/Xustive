@@ -53,6 +53,13 @@ const MAX_TOKENS_PER_TITLE: usize = 24;
 /// Ceiling on proposed candidates. A reviewer reads a page, not a corpus.
 const MAX_CANDIDATES: usize = 200;
 
+/// Ceiling on distinct pairs held while counting (BUG-032). A corpus-scale run can otherwise
+/// accumulate millions of one-off pairs before the min-count/PMI filters ever see them. Past the
+/// cap, singleton pairs are pruned (classic lossy counting): a pruned pair that recurs later
+/// restarts from zero, so *very* rare pairs from a huge corpus can be undercounted — an acceptable
+/// bias for a candidate miner whose floor is `min_count` anyway, and it is reported when it fires.
+const MAX_PAIRS: usize = 1_000_000;
+
 #[derive(Default)]
 struct Counts {
     titles: u64,
@@ -93,6 +100,15 @@ struct CandidatePair {
 }
 
 pub async fn run(client: &MeiliClient, config: &Config, opts: &MineOptions) -> Result<()> {
+    // Refuse to clobber an existing candidates file (BUG-021): the date in the default name is
+    // day-granular, so a same-day rerun would silently overwrite a file a reviewer may be halfway
+    // through. Reviewed candidates are the scarce artefact here; a rerun is cheap.
+    if !opts.dry_run && opts.out.exists() {
+        anyhow::bail!(
+            "{} already exists — review/move it first, or pass --out for a different file",
+            opts.out.display()
+        );
+    }
     let mut counts = Counts::default();
 
     // --- corpus titles ---------------------------------------------------------------------------
@@ -122,6 +138,15 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &MineOptions) -> R
             }
         }
         offset += n;
+        // Keep the pair map bounded between pages (BUG-032) — see MAX_PAIRS for the trade.
+        if counts.pair.len() > MAX_PAIRS {
+            let before = counts.pair.len();
+            counts.pair.retain(|_, ev| ev.count > 1);
+            println!(
+                "  pair map hit {before} entries — pruned {} singletons (rare pairs may undercount)",
+                before - counts.pair.len()
+            );
+        }
         if n < limit {
             break;
         }
@@ -248,10 +273,13 @@ fn count_title(counts: &mut Counts, title: &str, domain: Option<u64>, federated:
     let mut arabic: Vec<String> = Vec::new();
     let mut latin: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
+    // Clean first, cap after (BUG-020): capping raw whitespace tokens let a stop-word- or
+    // punctuation-heavy prefix (or a long federated query) exhaust the budget before the title's
+    // actual content tokens were reached.
     for tok in normalized
         .split_whitespace()
-        .take(MAX_TOKENS_PER_TITLE)
         .filter_map(clean_token)
+        .take(MAX_TOKENS_PER_TITLE)
     {
         if !seen.insert(tok.clone()) {
             continue;
