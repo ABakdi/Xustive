@@ -164,6 +164,7 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/politeness", axum::routing::post(admin::set_politeness))
         .route("/status", get(admin::status))
+        .route("/config", get(admin::config))
         .route("/media", get(admin::media))
         .route("/interaction", get(admin::interaction))
         .route(

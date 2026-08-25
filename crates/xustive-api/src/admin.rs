@@ -192,6 +192,39 @@ pub async fn set_device(
     })))
 }
 
+/// `GET /admin/config` — the effective configuration, secrets redacted (PROB-003).
+///
+/// Before this, "what is this system actually running with" required shell access: the console
+/// echoed a scattering of values and hinted at config keys it could not show. This is the whole
+/// effective `Config` — defaults, file, and environment overrides already merged — as one
+/// document. Read-only on purpose: changing config stays a file edit that passes
+/// `Config::validate()` on start, so the safety guards cannot be side-stepped from a browser.
+///
+/// Every secret is REDACTED, never echoed: keys, salts, and any URL that could embed credentials.
+/// The redaction marker distinguishes "set" from "empty", which is what an operator actually
+/// needs to know about a secret.
+pub async fn config(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    authorise(&state, peer, &headers).map_err(|d| d.json())?;
+    let mut cfg = (*state.config).clone();
+    fn redact(v: &mut String) {
+        if !v.trim().is_empty() {
+            *v = "«set — redacted»".into();
+        }
+    }
+    redact(&mut cfg.api.admin_key);
+    redact(&mut cfg.search.meili_key);
+    redact(&mut cfg.discovery.brave_api_key);
+    // A proxy URL routinely embeds user:pass — treat the whole value as a secret.
+    redact(&mut cfg.discovery.serp_proxy);
+    redact(&mut cfg.vector.qdrant_key);
+    redact(&mut cfg.interaction.salt);
+    Ok(Json(json!({ "config": cfg })))
+}
+
 /// Resolve the current settings against the hardware actually present.
 /// Image-AI status: which OCR engine is selected and whether it and the image-similarity stack are
 /// up. Read-only — the operator's window onto the two optional sidecars and the vector index,

@@ -16,6 +16,7 @@ const SECTIONS: { group: string; label: string; href: string }[] = [
   { group: 'SEARCH', label: 'Search history', href: '/admin/interaction' },
   { group: 'SEARCH', label: 'Media & voice', href: '/admin/media' },
   { group: 'SYSTEM', label: 'Compute', href: '/admin/compute' },
+  { group: 'SYSTEM', label: 'Configuration', href: '/admin/config' },
   { group: 'SYSTEM', label: 'Index queue', href: '/admin/queue' },
   { group: 'SYSTEM', label: 'Maintenance', href: '/admin/maintenance' },
 ]

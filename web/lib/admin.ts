@@ -185,6 +185,10 @@ export const enqueueUrl = (url: string, front: boolean) =>
     { url, front },
   )
 
+// --- configuration (read-only, secrets redacted) ---------------------------------------------
+export const getConfig = (signal?: AbortSignal) =>
+  getJSON<{ config: Record<string, unknown> }>('/config', signal)
+
 // --- compute ---------------------------------------------------------------------------------
 export const getCompute = (signal?: AbortSignal) => getJSON<Record<string, unknown>>('/status', signal)
 export const setDevice = (preference: string, gpuLayers: number | null) =>
