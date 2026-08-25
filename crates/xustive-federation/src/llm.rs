@@ -33,8 +33,12 @@ impl ExternalLlm {
         if endpoint.is_empty() {
             return None;
         }
+        // No redirects (BUG-026): a provider API has no business redirecting a completions POST,
+        // and following one re-sends the bearer key on a same-host scheme downgrade and replays
+        // the prompt body on 307/308. Refusing outright is simpler than trusting the policy edges.
         let http = reqwest::Client::builder()
             .timeout(timeout)
+            .redirect(reqwest::redirect::Policy::none())
             .user_agent("xustive-federator")
             .build()
             .ok()?;

@@ -154,7 +154,7 @@ grows it without bound. Fix: cap with oldest-eviction, mirroring `PendingStore`.
 `search.rs`: when `fetch_by_ids` fails for a non-empty missing set the SEMANTIC_FUSED metric
 records `kind=reinforce`, hiding failures from the dashboard. Fix: record a distinct outcome.
 
-### BUG-026 — External LLM client follows redirects — **open**
+### BUG-026 — External LLM client follows redirects — **fixed**
 `crates/xustive-federation/src/llm.rs`: default redirect policy; reqwest strips auth cross-host but
 re-sends it on a same-host https→http downgrade and replays the prompt on 307/308. Fix:
 `redirect::Policy::none()` — a provider API has no business redirecting.
