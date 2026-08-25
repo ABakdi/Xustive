@@ -516,9 +516,22 @@ impl MeiliClient {
     }
 
     pub async fn apply_settings(&self, index: &str, settings: &Value) -> Result<(), SearchError> {
+        self.apply_settings_within(index, settings, DEFAULT_TASK_WAIT)
+            .await
+    }
+
+    /// Apply settings with an explicit deadline. A searchable-attributes change reindexes every
+    /// document, and on a large index that overruns the default task wait — the settings A/B
+    /// (`eval-ab`) waits as long as the reindex genuinely takes rather than declaring it failed.
+    pub async fn apply_settings_within(
+        &self,
+        index: &str,
+        settings: &Value,
+        max_wait: Duration,
+    ) -> Result<(), SearchError> {
         let url = self.url(&format!("/indexes/{index}/settings"))?;
         let t: TaskRef = self.send(self.http.patch(url).json(settings)).await?;
-        self.wait_task(t.task_uid).await?;
+        self.wait_task_for(t.task_uid, max_wait).await?;
         Ok(())
     }
 
@@ -562,6 +575,28 @@ impl MeiliClient {
         }
         let url = self.url(&format!(
             "/indexes/{index}/documents?offset={offset}&limit={limit}"
+        ))?;
+        let page: Page = self.send(self.http.get(url)).await?;
+        Ok(page.results)
+    }
+
+    /// One page of documents restricted to the named fields. The full-fields [`Self::documents_page`]
+    /// exists for the reindex copy, which must keep everything; a scan that only needs a field or two
+    /// (the synonym miner reading titles) must not drag every body over the wire to get them.
+    pub async fn documents_page_fields(
+        &self,
+        index: &str,
+        offset: u64,
+        limit: u64,
+        fields: &[&str],
+    ) -> Result<Vec<Value>, SearchError> {
+        #[derive(serde::Deserialize)]
+        struct Page {
+            results: Vec<Value>,
+        }
+        let url = self.url(&format!(
+            "/indexes/{index}/documents?offset={offset}&limit={limit}&fields={}",
+            fields.join(",")
         ))?;
         let page: Page = self.send(self.http.get(url)).await?;
         Ok(page.results)

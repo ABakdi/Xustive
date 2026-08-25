@@ -4,12 +4,14 @@
 //! normaliser actually does to a string. That last one exists because "why does this query match
 //! nothing" is almost always a normalisation question.
 
+mod ab;
 mod calibrate;
 mod commoncrawl;
 mod crawl;
 mod crawld;
 mod discover;
 mod eval;
+mod mine;
 mod pagerank;
 mod parsecheck;
 mod registry;
@@ -156,6 +158,17 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// A/B index-settings variants against the golden set (M7-T01.4). Applies each variant to the
+    /// live index, scores it, and restores the original settings — run against dev, not production.
+    EvalAb {
+        #[arg(long, default_value = "eval/golden/v1.jsonl")]
+        golden: PathBuf,
+        #[arg(long, default_value = "eval/reports")]
+        out: PathBuf,
+        /// Print the table without writing the report file.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Compare our result ordering to a reference search engine (the "compare to Google" yardstick).
     EvalSerp {
         #[arg(long, default_value = "eval/serp-queries.txt")]
@@ -170,6 +183,25 @@ enum Command {
         #[arg(long, default_value_t = 10)]
         k: usize,
         /// Print the report without writing it.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Mine synonym candidates from corpus-title and federated-title co-occurrence (M7-T01.2/T07.3).
+    /// Writes a review file the expander never loads — a human promotes real pairs into the lexicon.
+    MineSynonyms {
+        /// A `calibrate` capture (`external-ref-*.jsonl`) to mine federated co-occurrence from.
+        #[arg(long)]
+        reference: Option<PathBuf>,
+        /// Ceiling on corpus titles scanned.
+        #[arg(long, default_value_t = 50_000)]
+        max_docs: u64,
+        /// A pair must co-occur at least this often to be proposed.
+        #[arg(long, default_value_t = 5)]
+        min_count: u32,
+        /// The review file to write. Deliberately dated so runs never overwrite a half-reviewed one.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Print the candidates without writing the file.
         #[arg(long)]
         dry_run: bool,
     },
@@ -442,6 +474,19 @@ async fn main() -> Result<()> {
             };
             eval::run(&client, &config, &opts).await
         }
+        Command::EvalAb {
+            golden,
+            out,
+            dry_run,
+        } => {
+            let opts = ab::AbOptions {
+                golden,
+                out_dir: out,
+                dry_run,
+                date: today(),
+            };
+            ab::run(&client, &config, &opts).await
+        }
         Command::EvalSerp {
             queries,
             out,
@@ -458,6 +503,25 @@ async fn main() -> Result<()> {
                 date: today(),
             };
             serp_eval::run(&client, &config, &opts).await
+        }
+        Command::MineSynonyms {
+            reference,
+            max_docs,
+            min_count,
+            out,
+            dry_run,
+        } => {
+            let date = today();
+            let opts = mine::MineOptions {
+                reference,
+                max_docs,
+                min_count,
+                out: out.unwrap_or_else(|| {
+                    PathBuf::from(format!("data/expansion/candidates-{date}.tsv"))
+                }),
+                dry_run,
+            };
+            mine::run(&client, &config, &opts).await
         }
         Command::Calibrate {
             queries,

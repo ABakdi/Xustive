@@ -166,6 +166,14 @@ eval-check: ## Score the golden set and fail if nDCG@10 regressed
 calibrate: ## Calibrate ranking side-weights against SearXNG's ordering (offline tuning signal; needs federation up)
 	cargo run --release -q -p xustive-cli -- --config $(CONFIG) calibrate
 
+.PHONY: eval-ab
+eval-ab: ## A/B index-settings variants against the golden set (temporarily reconfigures the dev index, then restores)
+	cargo run --release -q -p xustive-cli -- --config $(CONFIG) eval-ab
+
+.PHONY: mine-synonyms
+mine-synonyms: ## Mine synonym candidates from title co-occurrence into a review file (never auto-promoted)
+	cargo run --release -q -p xustive-cli -- --config $(CONFIG) mine-synonyms
+
 .PHONY: golden
 golden: ## Regenerate the machine-judged golden set from the live index
 	./eval/build_golden.py --out eval/golden/v1.jsonl

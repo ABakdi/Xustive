@@ -59,45 +59,10 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
     // so it runs twice below: a baseline, and again with a replayed interaction signal (M6-T09.1).
     let mut retrieved: Vec<(&GoldenQuery, Vec<Value>)> = Vec::with_capacity(golden.len());
     for g in &golden {
-        let normalized = xustive_text::normalize(&g.query);
-        let pool = config.search.candidate_pool.max(50);
-        let query = Query::new(&normalized).limit(pool);
-        let mut hits = client
-            .search::<Value>(&index, &query)
+        let hits = retrieve_with_expansion(client, config, &index, &detector, &expander, &g.query)
             .await
             .with_context(|| format!("searching for {:?}", g.id))?;
-
-        // The same expanded leg the API runs. A harness that skips it measures a pipeline nobody
-        // uses — which is how the Arabizi failure looked like a ranking problem for a while rather
-        // than a missing retrieval step.
-        if hits.hits.len() < 5 {
-            let detected = detector.detect(&normalized);
-            let expansion = expander.expand(&normalized, detected.lang);
-            let terms: Vec<String> = expansion
-                .variants
-                .iter()
-                .map(|v| v.text.clone())
-                .take(12)
-                .collect();
-            if !terms.is_empty() {
-                let expanded = Query::new(terms.join(" ")).limit(pool);
-                if let Ok(extra) = client.search::<Value>(&index, &expanded).await {
-                    let mut seen: std::collections::HashSet<String> = hits
-                        .hits
-                        .iter()
-                        .filter_map(|h| h.get("id")?.as_str().map(str::to_string))
-                        .collect();
-                    for hit in extra.hits {
-                        if let Some(id) = hit.get("id").and_then(Value::as_str) {
-                            if seen.insert(id.to_string()) {
-                                hits.hits.push(hit);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        retrieved.push((g, hits.hits));
+        retrieved.push((g, hits));
     }
 
     // Pass 1 — baseline re-rank (no interaction), and a replayed click stream over its top results.
@@ -209,8 +174,56 @@ pub async fn run(client: &MeiliClient, config: &Config, opts: &EvalOptions) -> R
     Ok(())
 }
 
+/// One query through the same retrieval the API runs: the primary leg, then — when it found too
+/// little — the expanded leg, merged and deduplicated by id. A harness that skips the expansion
+/// measures a pipeline nobody uses, which is how the Arabizi failure looked like a ranking problem
+/// for a while rather than a missing retrieval step. Shared with the settings A/B (`eval-ab`), so
+/// both harnesses score exactly the same retrieval.
+pub(crate) async fn retrieve_with_expansion(
+    client: &MeiliClient,
+    config: &Config,
+    index: &str,
+    detector: &xustive_lang::Detector,
+    expander: &xustive_lang::Expander,
+    query: &str,
+) -> Result<Vec<Value>> {
+    let normalized = xustive_text::normalize(query);
+    let pool = config.search.candidate_pool.max(50);
+    let q = Query::new(&normalized).limit(pool);
+    let mut hits = client.search::<Value>(index, &q).await?;
+
+    if hits.hits.len() < 5 {
+        let detected = detector.detect(&normalized);
+        let expansion = expander.expand(&normalized, detected.lang);
+        let terms: Vec<String> = expansion
+            .variants
+            .iter()
+            .map(|v| v.text.clone())
+            .take(12)
+            .collect();
+        if !terms.is_empty() {
+            let expanded = Query::new(terms.join(" ")).limit(pool);
+            if let Ok(extra) = client.search::<Value>(index, &expanded).await {
+                let mut seen: std::collections::HashSet<String> = hits
+                    .hits
+                    .iter()
+                    .filter_map(|h| h.get("id")?.as_str().map(str::to_string))
+                    .collect();
+                for hit in extra.hits {
+                    if let Some(id) = hit.get("id").and_then(Value::as_str) {
+                        if seen.insert(id.to_string()) {
+                            hits.hits.push(hit);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(hits.hits)
+}
+
 /// The golden set, plus the corpus size its judgements were made against.
-fn load_golden(path: &Path) -> Result<(Vec<GoldenQuery>, Option<usize>)> {
+pub(crate) fn load_golden(path: &Path) -> Result<(Vec<GoldenQuery>, Option<usize>)> {
     let text =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
 
@@ -263,7 +276,7 @@ fn check_corpus_drift(judged_against: Option<usize>, live: usize) -> bool {
 /// Re-rank one query's candidate hits and return the ordered document ids and their publish dates.
 /// Factored out so the harness can re-rank the same retrieved pool twice — baseline and with a
 /// replayed interaction signal — without re-fetching from Meili.
-fn rerank_ids(
+pub(crate) fn rerank_ids(
     hits: &[Value],
     normalized: &str,
     now: i64,

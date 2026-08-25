@@ -54,10 +54,14 @@ const SIDE_BUDGET_MAX: f32 = 0.46;
 
 /// One query's captured external ordering.
 #[derive(Serialize, Deserialize)]
-struct ReferenceRow {
-    query: String,
+pub(crate) struct ReferenceRow {
+    pub(crate) query: String,
     /// SearXNG's ranked, de-duplicated top domains.
-    domains: Vec<String>,
+    pub(crate) domains: Vec<String>,
+    /// The hit titles, kept as raw material for synonym co-occurrence mining (M7-T07.3) — the
+    /// calibration itself never reads them. Defaulted so captures from before this field load.
+    #[serde(default)]
+    pub(crate) titles: Vec<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -328,10 +332,17 @@ async fn capture_reference(
             }
         };
         let domains = domains_of(hits.iter().map(|h| h.url.as_str()), k);
+        let titles: Vec<String> = hits
+            .iter()
+            .map(|h| h.title.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .take(k)
+            .collect();
         println!("  {q:<40}  {} domains", domains.len());
         rows.push(ReferenceRow {
             query: q.clone(),
             domains,
+            titles,
         });
     }
 
@@ -352,8 +363,9 @@ async fn capture_reference(
     Ok(rows)
 }
 
-/// Load a previously captured reference JSONL (one [`ReferenceRow`] per line).
-fn load_reference(path: &PathBuf) -> Result<Vec<ReferenceRow>> {
+/// Load a previously captured reference JSONL (one [`ReferenceRow`] per line). Shared with the
+/// synonym miner (`mine-synonyms`), which reads the same captures for their titles.
+pub(crate) fn load_reference(path: &PathBuf) -> Result<Vec<ReferenceRow>> {
     let body =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let mut rows = Vec::new();

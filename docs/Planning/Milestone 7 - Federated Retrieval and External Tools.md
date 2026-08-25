@@ -37,7 +37,7 @@ Remaining in the federation track: **T06.3** the convergence proof (a re-issued 
 Close the word-mismatch gap with no new infrastructure, tuning [[Search Index]] settings and the [[Query Expander]].
 
 - [x] M7-T01.1 **Stemming / light morphology** for Arabic (prefix/suffix stripping, root-aware folding) and French/English, so `الكتاب`/`كتاب` and plural/verb forms match without leaning on typo tolerance. Measured against the golden set, not assumed.
-- [ ] M7-T01.2 **Grow the synonym + expansion lexicon** and make it data-driven — mine candidate pairs from the corpus and from federated co-occurrence (T07), reviewed before they land in `data/expansion/*.tsv`.
+- [~] M7-T01.2 **Grow the synonym + expansion lexicon** and make it data-driven — mine candidate pairs from the corpus and from federated co-occurrence (T07), reviewed before they land in `data/expansion/*.tsv`. The miner is built (`xustive-cli mine-synonyms` / `make mine-synonyms`): cross-script PMI over corpus titles + `calibrate` capture titles, writing a dated `candidates-*.tsv` review file the expander never loads. Growing the lexicon itself remains the human step — candidates need native-speaker review (blocker B7) before promotion into `synonyms.tsv`/`entities.tsv`.
 - [x] M7-T01.3 **Fix the expansion-leg trigger**: today it only runs below five hits. Let it also fire when the primary leg's *top* results are weak (low rerank score), not only when they are few, within the deadline.
 - [ ] M7-T01.4 **Searchable-attribute + ranking-rule review**: confirm `title`/`excerpt`/`entities`/`body` weighting and the `exactness`→custom-rule order still serve recall after stemming; adjust with a golden-set A/B, not by feel.
 - [x] M7-T01.5 **Stop-word / short-query guard**: a short function-word query must not lose all its terms to the stop-word list and return nothing.
@@ -91,7 +91,7 @@ The narrow, allowlisted egress hop that keeps the serving plane's no-egress prop
 
 - [x] M7-T07.1 **Capture SearXNG ordering offline** for a sample of queries (ingestion plane, no user in the loop) as a relevance reference. `xustive-cli calibrate` fetches SearXNG's top-k domains per query and writes a durable `external-ref-*.jsonl`; `--reference <file>` replays it without re-hitting the network.
 - [x] M7-T07.2 **Calibrate [[Ranking and Relevance]] weights** against that reference on the golden set — a tuning signal, never a live ranking input; the invariant "relevance dominates" must still hold. Sweeps the four side-weights (relevance + interaction held fixed), rejects any vector past the side budget before scoring, and reports the best-agreeing vector (by RBO) next to the default — a recommendation applied by hand, verified with `make eval`. Nothing writes config.
-- [ ] M7-T07.3 **Feed co-occurrence** from external results into the T01.2 synonym/expansion mining.
+- [x] M7-T07.3 **Feed co-occurrence** from external results into the T01.2 synonym/expansion mining. `calibrate` captures now record SearXNG hit titles per query; `mine-synonyms --reference` mines query↔title cross-script co-occurrence from them alongside the corpus, marking each candidate's federated evidence count.
 
 ## M7-T08 — External AI summariser (opt-in, offline-preferred)
 
