@@ -10,8 +10,12 @@ date: 2026-08-06
 
 ## Status
 
-Accepted. Constrains [[Security and Privacy]], [[Observability]], [[Autocomplete Service]],
-[[API Gateway]], [[Error Handling and Resilience]].
+Accepted, **amended twice**. [[ADR-0015 - Anonymous Interaction Signals for Ranking]] amended the
+"No click tracking" and "Aggregate counters … default off" rows; [[ADR-0018 - Anonymous Search
+History]] amends the "Query text never written to durable storage" row (identifier-free, windowed
+retention of the normalised term, for the operator console and ranking). The rows below stand except
+where those ADRs supersede them. Constrains [[Security and Privacy]], [[Observability]],
+[[Autocomplete Service]], [[API Gateway]], [[Error Handling and Resilience]].
 
 ## Context
 
@@ -33,7 +37,7 @@ problem in exchange for a claim we can actually defend?
 
 | Rule | Enforcement |
 |:---|:---|
-| Query text never written to durable storage | code review + CI telemetry lint |
+| Query text never written to durable storage | code review + CI telemetry lint — **amended by [[ADR-0018 - Anonymous Search History]]**: the normalised term (no identifier) may be retained in a windowed counter for the operator console and ranking |
 | Query text never in a log line, metric label, or span attribute | lint greps `tracing::` call sites; nightly log scan against a query corpus |
 | Query text never leaves the `core` network | `xustive-api`/`xustive-ml` have **no egress route** ([[Deployment Topology]] §3); an egress test passes only if the connection fails |
 | No result caching keyed by query | a query-keyed cache is a query log with extra steps |

@@ -12,6 +12,15 @@ const ar = {
   searchPlaceholder: 'ابحث…',
   searchLabel: 'بحث',
   privacyLine: 'بحثك ما يترابط بيك أبداً',
+  privacyTitle: 'الخصوصية',
+  privacyLead: 'لا نُخزّن أي مُعرّف، وبحثك لا يُربط بك أبداً.',
+  privacyStored:
+    'ما نُخزّنه: كلمات البحث التي تكتبها، وعدد النتائج التي أعادها كل بحث، والنتائج التي فُتحت — كأعداد فقط، دون أي مُعرّف.',
+  privacyNotStored:
+    'ما لا نُخزّنه أبداً: عنوان IP، أو الجهاز، أو الجلسة أو الحساب، أو أي شيء يربط بحثاً بك.',
+  privacyModeNote:
+    'على خادم بمُشغِّل واحد، هذا السجل خاص بك وحدك على جهازك. على خادم مُشترك، لا يظهر إلا مُجمّعاً فوق عتبة، دون ربط الجلسات ودون توقيتات دقيقة.',
+  privacyBack: 'العودة إلى البحث',
   resultsCount: 'نتيجة',
   resultsApprox: 'حوالي',
   fromTheWeb: 'من الويب',
@@ -146,6 +155,15 @@ const fr: Messages = {
   searchPlaceholder: 'Rechercher…',
   searchLabel: 'Rechercher',
   privacyLine: 'Vos recherches ne sont jamais liées à vous',
+  privacyTitle: 'Confidentialité',
+  privacyLead: 'Nous ne stockons aucun identifiant, et votre recherche n’est jamais liée à vous.',
+  privacyStored:
+    'Ce que nous conservons : les termes recherchés, le nombre de résultats obtenus et les résultats ouverts — sous forme de compteurs, sans aucun identifiant.',
+  privacyNotStored:
+    'Ce que nous ne conservons jamais : votre adresse IP, votre appareil, une session ou un compte, ni rien qui relie une recherche à vous.',
+  privacyModeNote:
+    'Sur une instance à opérateur unique, cet historique n’est qu’à vous, sur votre propre machine. Sur une instance partagée, il n’apparaît qu’agrégé au-dessus d’un seuil, sans regroupement de sessions ni horodatage précis.',
+  privacyBack: 'Retour à la recherche',
   resultsCount: 'résultats',
   resultsApprox: 'environ',
   fromTheWeb: 'Depuis le web',
@@ -271,6 +289,15 @@ const en: Messages = {
   searchPlaceholder: 'Search…',
   searchLabel: 'Search',
   privacyLine: 'Searches are never linked to you',
+  privacyTitle: 'Privacy',
+  privacyLead: 'We store no identifier, and your search is never linked to you.',
+  privacyStored:
+    'What we keep: the terms you search, how many results each returned, and which results were opened — as counts, with no identifier attached.',
+  privacyNotStored:
+    'What we never keep: your IP address, your device, a session or account, or anything that ties a search to you.',
+  privacyModeNote:
+    'On a single-operator instance this history is yours alone, on your own machine. On a shared instance it appears only in aggregate above a threshold, with no session grouping and no fine-grained timestamps.',
+  privacyBack: 'Back to search',
   resultsCount: 'results',
   resultsApprox: 'about',
   fromTheWeb: 'From the web',
@@ -427,6 +454,15 @@ const ary: Messages = {
   searchPlaceholder: 'قلب على…',
   searchLabel: 'قلب',
   privacyLine: 'البحث تاعك عمرو ما يتربط بيك',
+  privacyTitle: 'الخصوصية',
+  privacyLead: 'ما نخزنو حتى معرّف، وبحثك عمرو ما يتربط بيك.',
+  privacyStored:
+    'واش نخزنو: الكلمات لي كتبحث بيهم، شحال من نتيجة رجعات، وأنهي نتائج تحلّاو — غير كأعداد، بلا حتى معرّف.',
+  privacyNotStored:
+    'واش عمرنا ما نخزنو: عنوان IP، الجهاز، الجلسة ولا الحساب، ولا أي حاجة تربط بحثة بيك.',
+  privacyModeNote:
+    'فسيرفر بمستعمل واحد، هاد التاريخ ديالك وحدك فجهازك. فسيرفر مشترك، ما كيبانش غير مجمّع فوق عتبة، بلا ربط ديال الجلسات وبلا أوقات دقيقة.',
+  privacyBack: 'رجع للبحث',
   resultsCount: 'نتيجة',
   resultsApprox: 'تقريبا',
   fromTheWeb: 'من الويب',

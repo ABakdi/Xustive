@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { LangSwitcher } from '@/components/layout/LangSwitcher'
@@ -41,7 +42,9 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
           <SearchBox lang={lang} t={t} />
 
           <p className="mt-5 text-xs" style={{ color: 'var(--fg-faint)' }}>
-            {t.privacyLine}
+            <Link href={`/${lang}/privacy`} className="no-underline hover:underline" style={{ color: 'inherit' }}>
+              {t.privacyLine}
+            </Link>
           </p>
         </div>
       </main>

@@ -35,6 +35,7 @@ updated: 2026-08-06
 | [[ADR-0015 - Anonymous Interaction Signals for Ranking]] | k-anonymous interaction counters feed ranking and re-crawl; default off | accepted | [[Ranking and Relevance]], [[Query Pipeline]], [[Interaction Signals]], [[Observability]] |
 | [[ADR-0016 - Two OCR Engines with an Optional Unlimited-OCR Sidecar]] | dual OCR backends, optional Unlimited-OCR sidecar | accepted | OCR / multimodal ingest |
 | [[ADR-0017 - Query-Time Federation with External Metasearch]] | live web federation through one allowlisted gateway; serving-plane no-egress kept as one hop; converge to standalone | accepted | [[Federation Gateway]], [[Query Pipeline]], [[Crawler Orchestrator]], [[Ranking and Relevance]] |
+| [[ADR-0018 - Anonymous Search History]] | identifier-free retention of the normalised term + counts; storage always identifier-free, `k` a multi-user surfacing floor; amends 0008's durable-storage row | accepted | [[Security and Privacy]], [[Observability]], [[Interaction Signals]] |
 
 ---
 
