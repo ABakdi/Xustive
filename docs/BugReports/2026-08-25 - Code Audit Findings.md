@@ -65,7 +65,7 @@ endpoint.
 federation channels carry ULID ids: a SearXNG hit for an already-indexed URL passes the id check
 and duplicates the result on page 1. Fix: dedup by canonical URL as well as id.
 
-### BUG-008 — Gateway accepts ~2MB unauthenticated prompts from any core container — **open**
+### BUG-008 — Gateway accepts ~2MB unauthenticated prompts from any core container — **fixed**
 `crates/xustive-federator/src/lib.rs`: `/summarise` (and `/federate`) have no auth, no rate limit,
 and axum's default 2MB body cap; any compromised core-network container gets a free proxy to the
 operator's paid LLM key. Fix (minimal): a tight `DefaultBodyLimit` on the gateway router sized to

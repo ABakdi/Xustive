@@ -75,12 +75,20 @@ pub struct SummariseResponse {
 /// Token ceiling for one external summary — a cited paragraph, and a cost bound per call.
 const SUMMARY_MAX_TOKENS: u32 = 512;
 
+/// Request-body ceiling (BUG-008). The gateway is unauthenticated on `core` — its callers are
+/// trusted by network position, not identity — so the bodies it accepts are the abuse surface: a
+/// compromised core container could otherwise pump ~2MB prompts (axum's default) through the
+/// operator's paid LLM key. A real query is bytes and a real grounded prompt is a few tens of KB;
+/// 64KB covers both with room, and caps what any caller can spend per request.
+const MAX_BODY_BYTES: usize = 64 * 1024;
+
 /// The router: a health check, the federation route, and the external-summary route.
 pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/federate", post(federate))
         .route("/summarise", post(summarise))
+        .layer(axum::extract::DefaultBodyLimit::max(MAX_BODY_BYTES))
         .with_state(state)
 }
 
