@@ -202,7 +202,11 @@ async fn expand_and_merge(
         return Vec::new();
     }
 
-    let mut expanded = Query::new(terms.join(" ")).limit(state.config.search.candidate_pool);
+    // Same highlights as the primary leg (BUG-022): expansion-only hits otherwise rendered with no
+    // <em> marks while primary-leg cards on the same page had them.
+    let mut expanded = Query::new(terms.join(" "))
+        .limit(state.config.search.candidate_pool)
+        .highlight(&["excerpt", "title"]);
     if let Some(expr) = filters.to_expression(SPAM_THRESHOLD) {
         expanded = expanded.filter(expr);
     }
@@ -379,7 +383,7 @@ pub async fn handler(
                         hits.len() as u64,
                     );
                     // Index (eager) + queue for full crawl. Runs regardless of the strip timeout.
-                    ingest_federated(&bg, &hits, language);
+                    ingest_federated(&bg, &hits);
                 }
                 hits
             })
@@ -526,17 +530,20 @@ pub async fn handler(
                 .cloned()
                 .collect();
             let dense_docs = fetch_by_ids(&state, &index, &missing).await;
+            // Three outcomes, not two (BUG-025): a genuine recall attempt whose id-fetch came back
+            // empty is a *failure*, and labelling it "reinforce" hid dense-recall outages from the
+            // dashboard behind the label that means "everything worked, nothing new to add".
+            let kind = if !dense_docs.is_empty() {
+                "recall"
+            } else if missing.is_empty() {
+                "reinforce"
+            } else {
+                "fetch_failed"
+            };
             state.metrics.incr(
                 metrics::SEMANTIC_FUSED,
                 metrics::SEMANTIC_FUSED_HELP,
-                &[(
-                    "kind",
-                    if dense_docs.is_empty() {
-                        "reinforce"
-                    } else {
-                        "recall"
-                    },
-                )],
+                &[("kind", kind)],
             );
             hits.hits = crate::text_search::rrf_fuse(
                 std::mem::take(&mut hits.hits),
@@ -895,11 +902,7 @@ async fn fetch_by_ids(state: &AppState, index: &str, ids: &[String]) -> Vec<Valu
 /// The search plane only *writes* Redis (the index queue and the frontier); the crawler *reads* the
 /// frontier ([[ADR-0001 - Two-Plane Architecture]]). Each URL passes the same `SafeUrl` and trap
 /// checks a discovered link does.
-fn ingest_federated(
-    state: &AppState,
-    hits: &[xustive_ingest::federation::FederatedHit],
-    language: xustive_core::Lang,
-) {
+fn ingest_federated(state: &AppState, hits: &[xustive_ingest::federation::FederatedHit]) {
     let queue_url = state.config.queue.url.clone();
     let index_stream = state.config.queue.index_stream.clone();
     let eager = state.config.federation.eager_index;
@@ -911,6 +914,7 @@ fn ingest_federated(
         host: String,
         title: String,
         snippet: String,
+        lang: xustive_core::Lang,
     }
     let mut entries: Vec<Entry> = Vec::new();
     for h in hits {
@@ -926,6 +930,14 @@ fn ingest_federated(
             host: safe.authority(),
             title: h.title.clone(),
             snippet: h.snippet.clone(),
+            // The hit's OWN language, from its title + snippet (BUG-023): stamping the query's
+            // detected language mislabelled every cross-language result — a French query indexing
+            // an English page put `fr` on it, corrupting the language filter and facet until the
+            // full crawl overwrote the thin doc.
+            lang: state
+                .detector
+                .detect(&format!("{} {}", h.title, h.snippet))
+                .lang,
         });
     }
     if entries.is_empty() {
@@ -958,7 +970,7 @@ fn ingest_federated(
                         doc.body = body;
                         doc.discovery = xustive_core::DiscoveryChannel::Federation;
                         doc.source_id = "federation".into();
-                        doc.language = language;
+                        doc.language = e.lang;
                         doc.crawled_at = now;
                         doc.indexed_at = now;
                         // A placeholder from a snippet, not a crawled page — kept low so it never
@@ -1103,11 +1115,25 @@ fn interaction_category(vertical: Option<&str>) -> &'static str {
 fn mint_interaction_token(state: &AppState, normalized_query: &str) -> String {
     use std::time::Instant;
     const TTL: std::time::Duration = std::time::Duration::from_secs(120);
+    /// Ceiling on outstanding tokens (BUG-024), mirroring `PendingStore::MAX_PENDING`: the TTL
+    /// sweep alone left the map bounded only by request rate, so a flood grew it without limit.
+    const MAX_TOKENS: usize = 4096;
     let token = ulid::Ulid::new().to_string();
     let qh = xustive_ingest::interaction::Interactions::qhash(normalized_query);
     if let Ok(mut map) = state.interaction_tokens.write() {
         let now = Instant::now();
         map.retain(|_, (_, minted)| now.duration_since(*minted) < TTL);
+        if map.len() >= MAX_TOKENS {
+            // Under genuine pressure, drop the oldest: a lost click attribution on an old search
+            // beats an unbounded map — the same trade the summary token store makes.
+            if let Some(oldest) = map
+                .iter()
+                .min_by_key(|(_, (_, minted))| *minted)
+                .map(|(k, _)| k.clone())
+            {
+                map.remove(&oldest);
+            }
+        }
         map.insert(token.clone(), (qh, now));
     }
     token

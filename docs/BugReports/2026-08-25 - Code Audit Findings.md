@@ -137,20 +137,20 @@ Fix: cap after cleaning.
 The `--out` help promises dated files "never overwrite a half-reviewed one", but the date is
 day-granular. Fix: refuse to overwrite an existing candidates file (require `--out` or delete).
 
-### BUG-022 — Expansion-leg hits render without highlighting — **open**
+### BUG-022 — Expansion-leg hits render without highlighting — **fixed**
 `search.rs` `expand_and_merge`'s query omits `.highlight(...)`, so expansion-only cards have no
 `<em>` marks while primary-leg cards on the same page do. Fix: request the same highlights.
 
-### BUG-023 — Eager-indexed federated docs get stamped with the query's language — **open**
+### BUG-023 — Eager-indexed federated docs get stamped with the query's language — **fixed**
 `search.rs` `ingest_federated` sets `doc.language` from the *query's* detection; a French query
 indexing an English page mislabels it until the full crawl. Fix: detect from the hit's own
 title+snippet instead.
 
-### BUG-024 — `interaction_tokens` map has no size cap — **open**
+### BUG-024 — `interaction_tokens` map has no size cap — **fixed**
 `search.rs`: TTL sweep but no `MAX_PENDING`-style cap (unlike `PendingStore`); a request flood
 grows it without bound. Fix: cap with oldest-eviction, mirroring `PendingStore`.
 
-### BUG-025 — Dense-recall failures recorded as "reinforce" — **open**
+### BUG-025 — Dense-recall failures recorded as "reinforce" — **fixed**
 `search.rs`: when `fetch_by_ids` fails for a non-empty missing set the SEMANTIC_FUSED metric
 records `kind=reinforce`, hiding failures from the dashboard. Fix: record a distinct outcome.
 
