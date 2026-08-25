@@ -71,7 +71,9 @@ export interface SearchResponse {
   }
   took_ms: number
   results: ResultCard[]
-  facets: Record<string, Record<string, number>>
+  /** Facet counts by field. Nullable defensively: older/deviant backends sent `null` when the
+   *  facet stage was deadline-dropped, which crashed the Server Component (BUG-001). */
+  facets: Record<string, Record<string, number>> | null
   /** True when facets were dropped under load, not genuinely empty. */
   facets_degraded?: boolean
   /** Related searches (M7): concepts recurring across the top results, shown as clickable chips. */

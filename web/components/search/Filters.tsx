@@ -43,7 +43,7 @@ export function Filters({
 }: {
   lang: string
   t: Messages
-  facets: Record<string, Record<string, number>>
+  facets: Record<string, Record<string, number>> | null
   active: Params
   q: string
 }) {
@@ -64,7 +64,7 @@ export function Filters({
   }
 
   const groups = GROUPS.map((group) => {
-    const counts = facets[group.facet]
+    const counts = facets?.[group.facet]
     if (!counts) return null
     const values = Object.entries(counts)
       .filter(([, n]) => n > 0)

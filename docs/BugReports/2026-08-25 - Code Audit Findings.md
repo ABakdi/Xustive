@@ -17,7 +17,7 @@ Status: `open` → `fixed (commit)` / `wontfix (reason)`.
 
 ## High
 
-### BUG-001 — Results page 500s when facets are degraded — **open**
+### BUG-001 — Results page 500s when facets are degraded — **fixed**
 `crates/xustive-search/src/client.rs` `facet_distribution: #[serde(default)] Value` defaults to
 `Null`, so when the deadline drops the facet stage the API serializes `"facets": null`
 (`search.rs`), while `web/lib/api.ts:74` types `facets` as a required record and

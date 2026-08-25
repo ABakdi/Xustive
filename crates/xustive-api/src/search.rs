@@ -858,7 +858,14 @@ pub async fn handler(
         },
         took_ms: started.elapsed().as_millis() as u64,
         results,
-        facets: hits.facet_distribution,
+        // Never `null`: when facets were skipped (deadline) or the engine sent nothing, an empty
+        // object keeps the contract "facets is a map" — a `null` here crashed the results page in
+        // exactly the degraded state `facets_degraded` exists to soften (BUG-001).
+        facets: if hits.facet_distribution.is_object() {
+            hits.facet_distribution
+        } else {
+            serde_json::json!({})
+        },
         // Facets were asked for but the deadline cut them, versus simply absent. Only the first is
         // a degradation worth signalling.
         facets_degraded: !want_facets,
