@@ -77,7 +77,7 @@ it gain full egress while `scripts/test-egress.sh` probes a *fresh* container on
 stays green. Fix: probe from inside the real API-plane container(s) where possible, and document
 the dev-overlay exception explicitly in the script output.
 
-### BUG-010 — New Darija privacy strings are Moroccan, not Algerian — **open**
+### BUG-010 — New Darija privacy strings are Moroccan, not Algerian — **fixed**
 `web/lib/i18n/messages.ts` (`ary`): `كتبحث`/`ما كيبانش` (Moroccan ka-/ki- imperfective) and
 `ديالك` (Moroccan possessive) contradict the same catalogue's own `تاعك`/`تاع` forms. Fix: align
 with the catalogue's Algerian conventions (still flagged for native review, B7).
