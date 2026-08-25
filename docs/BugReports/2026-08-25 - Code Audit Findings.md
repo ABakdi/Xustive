@@ -124,7 +124,7 @@ Any `d > 0.0` is stamped "← wins" against a caption saying noise isn't a win, 
 `±0.010` treats the *relative* `NDCG_TOLERANCE` (1% of baseline) as absolute. Fix: stamp wins only
 past the tolerance, and compute the band from the baseline.
 
-### BUG-019 — eval regression gate can never fail on a malformed baseline — **open**
+### BUG-019 — eval regression gate can never fail on a malformed baseline — **fixed**
 `eval.rs`: `baseline["ndcg_at_10"].as_f64().unwrap_or(0.0)` — a wrong-shaped `--baseline` file
 reads as 0.0 and the gate goes permanently green. Fix: error on a baseline without the field.
 

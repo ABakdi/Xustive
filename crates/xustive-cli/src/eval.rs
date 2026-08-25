@@ -395,7 +395,16 @@ fn gate(current: &eval::Report, baseline_path: &Path) -> Result<()> {
     let text = std::fs::read_to_string(baseline_path)
         .with_context(|| format!("reading baseline {}", baseline_path.display()))?;
     let baseline: Value = serde_json::from_str(&text)?;
-    let previous = baseline["ndcg_at_10"].as_f64().unwrap_or(0.0);
+    // A baseline without the field is a wrong file, not a baseline of zero (BUG-019): defaulting
+    // to 0.0 made every current score a pass, so one mis-pointed `--baseline` in CI turned the
+    // gate permanently green. Refuse loudly instead.
+    let previous = baseline["ndcg_at_10"].as_f64().with_context(|| {
+        format!(
+            "{} has no numeric `ndcg_at_10` — is this an eval report? (ab-*/serp-*/calibration-* \
+             reports are not baselines)",
+            baseline_path.display()
+        )
+    })?;
     let delta = current.ndcg_at_10 - previous;
 
     println!(
