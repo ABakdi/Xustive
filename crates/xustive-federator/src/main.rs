@@ -79,9 +79,21 @@ async fn main() -> Result<()> {
         None => tracing::warn!("no SEARXNG_URL configured — gateway is inert (answers empty)"),
     }
 
-    // The API key comes from the environment alone — never a CLI arg, which would show in `ps` —
-    // and lives only in this process, on the egress plane. The serving API never sees it.
-    let llm_key = std::env::var("EXTERNAL_LLM_KEY").unwrap_or_default();
+    // The API key comes from the environment or a mounted secret file — never a CLI arg, which
+    // would show in `ps` — and lives only in this process, on the egress plane. The serving API
+    // never sees it. EXTERNAL_LLM_KEY_FILE (a docker/compose secret mount) wins over the plain env
+    // var (BUG-040): a plain compose env shows in `docker inspect` and /proc/<pid>/environ, while a
+    // secret file is visible only inside the container.
+    let llm_key = match std::env::var("EXTERNAL_LLM_KEY_FILE") {
+        Ok(path) if !path.trim().is_empty() => match std::fs::read_to_string(path.trim()) {
+            Ok(k) => k.trim().to_string(),
+            Err(e) => {
+                tracing::error!(error = %e, "EXTERNAL_LLM_KEY_FILE is set but unreadable — refusing to fall back silently");
+                return Err(e.into());
+            }
+        },
+        _ => std::env::var("EXTERNAL_LLM_KEY").unwrap_or_default(),
+    };
     let llm = xustive_federation::llm::ExternalLlm::new(
         &args.external_llm_url,
         &args.external_llm_model,

@@ -241,7 +241,7 @@ Every bump resets `EXPIRE window`, so `window − TTL` reads back any term's las
 ~1s precision. Fix: banded refresh — re-arm the TTL only when it has fallen below half the window,
 coarsening the observable to half-window granularity while keeping "decays to nothing".
 
-### BUG-040 [low] — `EXTERNAL_LLM_KEY` visible in `docker inspect` — **open**
+### BUG-040 [low] — `EXTERNAL_LLM_KEY` visible in `docker inspect` — **fixed**
 A plain compose env var shows in `docker inspect` and `/proc/<pid>/environ`. Fix: the gateway also
 accepts `EXTERNAL_LLM_KEY_FILE` (a mounted secret path), documented in compose, so operators can
 use docker secrets; the env var stays as the dev default.

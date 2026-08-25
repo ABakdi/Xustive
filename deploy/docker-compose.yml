@@ -322,9 +322,14 @@ services:
       #   XUSTIVE_EXTERNAL_LLM_URL=https://api.deepseek.com/chat/completions
       #   XUSTIVE_EXTERNAL_LLM_MODEL=deepseek-chat
       #   XUSTIVE_EXTERNAL_LLM_KEY=sk-...
+      # The plain env var shows in `docker inspect` (BUG-040). For production, prefer a secret
+      # file: mount it (compose `secrets:` or a bind mount) and set
+      #   EXTERNAL_LLM_KEY_FILE: /run/secrets/external_llm_key
+      # — the file path wins over EXTERNAL_LLM_KEY, and the key never appears in inspect output.
       EXTERNAL_LLM_URL: ${XUSTIVE_EXTERNAL_LLM_URL:-}
       EXTERNAL_LLM_MODEL: ${XUSTIVE_EXTERNAL_LLM_MODEL:-}
       EXTERNAL_LLM_KEY: ${XUSTIVE_EXTERNAL_LLM_KEY:-}
+      EXTERNAL_LLM_KEY_FILE: ${XUSTIVE_EXTERNAL_LLM_KEY_FILE:-}
       RUST_LOG: info
     networks: [core, ingest]
     depends_on:
