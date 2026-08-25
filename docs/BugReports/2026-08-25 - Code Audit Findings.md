@@ -71,7 +71,7 @@ and axum's default 2MB body cap; any compromised core-network container gets a f
 operator's paid LLM key. Fix (minimal): a tight `DefaultBodyLimit` on the gateway router sized to
 real prompts; note the residual trust model in the module doc.
 
-### BUG-009 — Dev `devhost` bridge gives the serving plane internet egress; egress test can't see it — **open**
+### BUG-009 — Dev `devhost` bridge gives the serving plane internet egress; egress test can't see it — **fixed**
 `deploy/docker-compose.dev.yml`: `devhost` is a NAT-ing default bridge, so dev containers joined to
 it gain full egress while `scripts/test-egress.sh` probes a *fresh* container on `core` only and
 stays green. Fix: probe from inside the real API-plane container(s) where possible, and document
