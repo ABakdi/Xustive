@@ -149,6 +149,11 @@ pub struct SearchResponse {
     /// reads as "this search has nothing to filter by" — a different, wrong message.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub facets_degraded: bool,
+    /// Related searches (M7-T03): concepts (entities/topics) that recur across this query's top
+    /// results — "people searching this find pages about …". Empty past the first page or when the
+    /// results share no recurring concept beyond the query itself.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related: Vec<String>,
 }
 
 /// Below this many primary hits, try the expanded leg.
@@ -707,6 +712,39 @@ pub async fn handler(
         ],
     );
 
+    // Related searches (M7-T03): the concepts (entities/topics) that recur across this query's top
+    // results. A concept common to many of the pages a query surfaces is what that query is "also
+    // about" — computed from the results we already have, so it needs no graph or extra round trip.
+    let related: Vec<String> = if page == 1 {
+        let fq = xustive_text::fold(&normalized);
+        let mut counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+        for r in ranked.iter().take(20) {
+            for field in ["entities", "topics"] {
+                let Some(arr) = r.hit.get(field).and_then(Value::as_array) else {
+                    continue;
+                };
+                for concept in arr.iter().filter_map(Value::as_str) {
+                    let folded = xustive_text::fold(concept);
+                    if folded.chars().count() < 3 {
+                        continue;
+                    }
+                    // Drop the query itself and its sub/superstrings — those are not "related".
+                    if fq.contains(&folded) || folded.contains(&fq) {
+                        continue;
+                    }
+                    *counts.entry(concept.to_string()).or_default() += 1;
+                }
+            }
+        }
+        // A concept must recur across at least two of the top results to count as a theme, not a
+        // one-off. Most frequent first, capped; ties broken by name for a stable order.
+        let mut themes: Vec<(String, u32)> = counts.into_iter().filter(|(_, n)| *n >= 2).collect();
+        themes.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        themes.into_iter().take(8).map(|(c, _)| c).collect()
+    } else {
+        Vec::new()
+    };
+
     // NOTE: `normalized` is echoed to the caller who sent it, which is fine. It must never
     // reach a log line, a metric label, or a trace attribute.
     Ok(Json(SearchResponse {
@@ -735,6 +773,7 @@ pub async fn handler(
         // Facets were asked for but the deadline cut them, versus simply absent. Only the first is
         // a degradation worth signalling.
         facets_degraded: !want_facets,
+        related,
     }))
 }
 

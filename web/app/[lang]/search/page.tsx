@@ -252,6 +252,27 @@ export default async function SearchPage({
             </ol>
           )}
 
+          {data.related && data.related.length > 0 ? (
+            <section className="mt-8" aria-label={t.relatedSearches}>
+              <h2 className="mb-2 text-sm font-semibold" style={{ color: 'var(--fg-muted)' }}>
+                {t.relatedSearches}
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {data.related.map((term) => (
+                  <a
+                    key={term}
+                    href={`/${lang}/search?q=${encodeURIComponent(term)}`}
+                    dir="auto"
+                    className="rounded-full border px-3 py-1 text-sm no-underline"
+                    style={{ borderColor: 'var(--line)', color: 'var(--accent)' }}
+                  >
+                    {term}
+                  </a>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <Pagination lang={lang} t={t} pagination={p} params={sp} q={q} />
         </>
       )}

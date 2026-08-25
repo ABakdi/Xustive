@@ -74,6 +74,8 @@ export interface SearchResponse {
   facets: Record<string, Record<string, number>>
   /** True when facets were dropped under load, not genuinely empty. */
   facets_degraded?: boolean
+  /** Related searches (M7): concepts recurring across the top results, shown as clickable chips. */
+  related?: string[]
 }
 
 export interface Suggestion {

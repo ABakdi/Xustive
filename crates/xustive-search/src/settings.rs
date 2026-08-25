@@ -70,6 +70,9 @@ pub fn documents_settings() -> Value {
             "engagement", "language", "media", "simhash", "quality_score", "comments_count",
             // Shown in the admin document list as a provenance badge (crawler vs external tools).
             "discovery",
+            // The concepts a document covers, so the query pipeline can aggregate them across a
+            // page's top results into "related searches" (M7-T03) without a second round trip.
+            "entities", "topics",
             // The extracted body's length. Not shown to searchers — it is here so the admin
             // console can tell an article from a navigation page at a glance, which the excerpt
             // cannot: the excerpt is capped, so measuring it measures the truncation.
