@@ -57,9 +57,11 @@ Give the engine meaning-level matching so a sentence finds pages by concept, reu
 
 Index documents by the concepts they cover, not only the words they contain — improving recall and enabling "related terms".
 
-- [ ] M7-T03.1 **Keyphrase / entity extraction** at index time → a `concepts` field, feeding both retrieval and a term graph.
-- [ ] M7-T03.2 **Term graph** (concept → documents, concept ↔ concept co-occurrence) in Redis/Qdrant, built offline from the corpus.
-- [ ] M7-T03.3 **Related-terms expansion**: a query's concepts pull in strongly-linked terms as a bounded recall aid, and surface "related searches" in the UI.
+> **Built 2026-08-25 — related searches, without a persistent graph.** Documents already carry parse-time `entities` + `topics` (the concepts); they are now in the index's `displayedAttributes`, and the search pipeline aggregates the concepts recurring across a query's top 20 results (dropping the query itself and its sub/superstrings), returning the most frequent as `related` — rendered as clickable chips under the results. The results a query surfaces *are* what it is "also about", so their shared concepts are its related searches, computed with no graph and no extra round-trip.
+
+- [x] M7-T03.1 **Concepts at index time** — `entities` + `topics` are extracted at parse time and now surfaced (displayed) so the pipeline can read them off results.
+- [~] M7-T03.2 **Term graph** — deferred. A persistent concept co-occurrence graph is not built; the related-searches UX is achieved by query-time aggregation over the result set instead (simpler, always fresh, no offline job). Revisit if concept→concept recall beyond "related to these results" is wanted.
+- [x] M7-T03.3 **Related searches** — the recurring concepts of a query's top results, surfaced as clickable chips in the UI (all four locales).
 
 ## M7-T04 — The Federation Gateway ([[Federation Gateway]], C31)
 
