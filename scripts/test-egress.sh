@@ -106,6 +106,22 @@ else
   echo "  ~ xustive-redis not running; skipping the real-container probe" >&2
 fi
 
+# 7. Scan the LIVE containers' logs for leaked query text (BUG-038, ADR-0008). scan-logs.sh has
+#    always known the `?q=` URL pattern — the exact shape of the reqwest-error leak — but nothing
+#    ran it; a scan that exists and never runs is documentation, not enforcement. This automates it
+#    wherever this test runs against a live stack. Bounded to the recent tail so it stays fast.
+QUERY_URL_PATTERN='[?&](q|query)=[^ "]+'
+log_leak=0
+for c in $(docker ps --format '{{.Names}}' | grep '^xustive-'); do
+  if docker logs --tail 2000 "$c" 2>&1 | grep -qE "$QUERY_URL_PATTERN"; then
+    bad "QUERY TEXT IN $c LOGS — a URL with ?q= was logged (see scan-logs.sh pattern)"
+    log_leak=1
+  fi
+done
+if [ "$log_leak" -eq 0 ]; then
+  ok "no query-bearing URLs in the running containers' recent logs"
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "✓ egress test: the serving plane cannot reach the internet"
 fi

@@ -38,7 +38,7 @@ problem in exchange for a claim we can actually defend?
 | Rule | Enforcement |
 |:---|:---|
 | Query text never written to durable storage | code review + CI telemetry lint — **amended by [[ADR-0018 - Anonymous Search History]]**: the normalised term (no identifier) may be retained in a windowed counter for the operator console and ranking |
-| Query text never in a log line, metric label, or span attribute | lint greps `tracing::` call sites; nightly log scan against a query corpus |
+| Query text never in a log line, metric label, or span attribute | lint greps `tracing::` call sites (CI); `test-egress.sh` scans live containers' logs for query-bearing URLs on every run; `scan-logs.sh` for log files; transport errors scrub request URLs at the type boundary |
 | Query text never leaves the `core` network | `xustive-api`/`xustive-ml` have **no egress route** ([[Deployment Topology]] §3); an egress test passes only if the connection fails |
 | No result caching keyed by query | a query-keyed cache is a query log with extra steps |
 | No click tracking, no redirect interstitials, no `ping` | the `href` is the destination |

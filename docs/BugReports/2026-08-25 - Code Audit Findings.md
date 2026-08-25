@@ -226,10 +226,15 @@ The page presents the external summariser as the one optional third-party egress
 federation sends every query's text to SearXNG and onward to upstream engines. Fix: a federation
 clause parallel to `privacyExternalNote`, all four locales.
 
-### BUG-038 [med] — ADR-0008's claimed log scan is not automated — **open**
-`scan-logs.sh` greps exactly the `?q=` leak pattern but nothing runs it. Fix: `test-egress.sh`
-gains a live-container log scan when the stack is up, and ADR-0008's enforcement row is reworded to
-the mechanism that actually exists.
+### BUG-038 [med] — ADR-0008's claimed log scan is not automated — **fixed**
+`scan-logs.sh` greps exactly the `?q=` leak pattern but nothing ran it. Fixed: `test-egress.sh`
+gains a live-container log scan (check 7), and ADR-0008's enforcement row now names the mechanisms
+that actually exist. **The new check caught a real leak on its first run**: SearXNG's own
+`searx.network.*` loggers print the full upstream URL — `?q=<query>` — on engine failures
+(verified with a canary query), third-party code we cannot scrub like our own clients. Fixed
+structurally: the searxng container runs with `logging: driver: none`, so its stdout — which is
+entirely query traffic — is never retained anywhere. Federation verified working after, scan
+green.
 
 ### BUG-039 [low] — Sliding TTL doubles as a fine-grained last-event timestamp — **open**
 Every bump resets `EXPIRE window`, so `window − TTL` reads back any term's last search time to

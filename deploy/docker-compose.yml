@@ -288,6 +288,14 @@ services:
     volumes:
       - ../services/searxng/settings.yml:/etc/searxng/settings.yml:ro
     networks: [ingest]
+    # No log retention, at the Docker level (BUG-038's scan caught this live): SearXNG's own
+    # `searx.network.*` loggers print the full upstream URL — `?q=<query text>` — whenever an
+    # engine request fails, and that is third-party code we cannot scrub the way we scrubbed our
+    # own clients (BUG-033). This container's entire traffic IS query text, so the structural fix
+    # is that its stdout is never kept anywhere: no driver, no file, nothing for a scan, a backup,
+    # or a subpoena to find. Debugging SearXNG itself? Flip to `json-file` locally, briefly.
+    logging:
+      driver: "none"
     restart: unless-stopped
 
   # The Federation Gateway (M7-T04.1, [[ADR-0017]]): the one allowlisted egress hop. Dual-homed —
