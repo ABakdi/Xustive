@@ -3,8 +3,8 @@ tags:
   - planning
   - milestone
 milestone: 7
-status: in-progress
-updated: 2026-08-23
+status: done
+updated: 2026-08-25
 ---
 # Milestone 7 - Federated Retrieval and External Tools
 
@@ -19,6 +19,20 @@ The corpus already holds the pages people want; the failure is **retrieval**. Te
 This milestone attacks that on two fronts at once. **First, make the index stand on its own** — lexical tuning, semantic recall, and term↔document linking, so meaning-level matches work without any external help. **Second, borrow recall from the open web while that matures** — a self-hosted SearXNG aggregator, consulted live through the narrow [[Federation Gateway]], blends free multi-engine results into the answer *and* feeds them to the crawler, so a page borrowed once is owned thereafter. Federation's measured share of result pages is expected to **fall** over time; that fall is the success metric.
 
 Read [[ADR-0017 - Query-Time Federation with External Metasearch]] and [[Federation Gateway]] first — they hold the egress, privacy, and fail-open invariants every federation task below must satisfy. The retrieval-quality tasks (T01–T03) are the durable win and lead the milestone; federation (T04–T06) delivers visible recall immediately and can proceed in parallel.
+
+## Closed 2026-08-25 — every task done or deliberately settled
+
+All tasks are `[x]` or `[~]` with the decision recorded inline. Against the exit gate: federation
+blends within budget and fail-open (tested), the egress assertion holds (`test-egress.sh` green),
+convergence is proven in a unit test (T06.3) and measured live by the blend-share counter (T09.2),
+and the console shows per-query result counts and click detail (T10). One honest caveat on the
+first clause: a *quantitative* "nDCG rises over the M6 baseline" cannot be stated, because the
+corpus grew ~79k→~85k+ between the two measurements and the eval harness's own drift rule says such
+cross-corpus comparisons measure the crawl, not the ranker. The retrieval improvements were instead
+verified by construction: the settings A/B confirmed the shipped configuration (T01.4), the
+morphology/weak-score/stop-word legs each carry tests, and the semantic + federation legs are
+additive and fail-open by design. What remains open is human, not code: native-speaker review of
+mined synonym candidates (T01.2/B7) and of the Darija locale.
 
 ## Status as of 2026-08-23 — federation works end to end (T04–T06)
 
