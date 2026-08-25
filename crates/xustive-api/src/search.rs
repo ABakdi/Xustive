@@ -669,18 +669,7 @@ pub async fn handler(
     // once a URL has been crawled it appears as a normal local result and its web card drops out. The
     // ids also flow into impression/click capture below, so interaction ranking (M6) covers them too.
     if page == 1 && !federated_hits.is_empty() {
-        let mut seen: std::collections::HashSet<String> =
-            results.iter().map(|c| c.id.clone()).collect();
-        for hit in &federated_hits {
-            let Ok(safe) = xustive_core::SafeUrl::parse(&hit.url) else {
-                continue;
-            };
-            let canonical = xustive_ingest::frontier::canonical(safe.as_url());
-            let id = xustive_core::id_for_url(&canonical);
-            if seen.insert(id.clone()) {
-                results.push(federated_card(hit, &canonical, id));
-            }
-        }
+        merge_federated(&mut results, &federated_hits);
     }
     // Register the top documents for a summary the browser will ask for separately. Built from
     // the re-ranked head rather than the page the user is on: a summary of page 7 is not what
@@ -1166,6 +1155,29 @@ pub(crate) fn to_card(hit: &Value) -> ResultCard {
     }
 }
 
+/// Mix live web results into `results`: append each federated hit not already present as a local
+/// result, flagged `from_web`. Dedup is by the URL-derived id — the same id the eager index and the
+/// later full crawl both assign — so once a federated URL has been crawled it appears as a normal
+/// local result and its web card drops out. This is the M7-T06 convergence mechanism: the blend
+/// share of any given URL falls to zero the moment the crawler catches up with it.
+fn merge_federated(
+    results: &mut Vec<ResultCard>,
+    federated_hits: &[xustive_ingest::federation::FederatedHit],
+) {
+    let mut seen: std::collections::HashSet<String> =
+        results.iter().map(|c| c.id.clone()).collect();
+    for hit in federated_hits {
+        let Ok(safe) = xustive_core::SafeUrl::parse(&hit.url) else {
+            continue;
+        };
+        let canonical = xustive_ingest::frontier::canonical(safe.as_url());
+        let id = xustive_core::id_for_url(&canonical);
+        if seen.insert(id.clone()) {
+            results.push(federated_card(hit, &canonical, id));
+        }
+    }
+}
+
 /// Build a result card from a live federation hit (M7): its SearXNG title, snippet and engine. The id
 /// is the URL-derived id the eager index uses, so an impression or click on this card attributes to
 /// the same document once it is crawled — and so it dedups against the local result for the same URL.
@@ -1349,6 +1361,59 @@ mod tests {
         // trigger stays in charge where the score is unavailable.
         assert!(!top_result_is_weak(&[]));
         assert!(!top_result_is_weak(&[json!({"title": "no score here"})]));
+    }
+
+    /// The id the eager index / full crawl assigns a URL — the same derivation both the federation
+    /// merge and the indexer use, so a card built with it dedups against the crawled document.
+    fn id_of(url: &str) -> String {
+        let safe = xustive_core::SafeUrl::parse(url).expect("test url parses");
+        let canonical = xustive_ingest::frontier::canonical(safe.as_url());
+        xustive_core::id_for_url(&canonical)
+    }
+
+    fn fed_hit(url: &str) -> xustive_ingest::federation::FederatedHit {
+        xustive_ingest::federation::FederatedHit {
+            url: url.into(),
+            title: "web title".into(),
+            snippet: "web snippet".into(),
+            engine: "duckduckgo".into(),
+            rank: 1,
+        }
+    }
+
+    fn local_card(id: String, url: &str) -> ResultCard {
+        ResultCard {
+            from_web: false,
+            ..federated_card(&fed_hit(url), url, id)
+        }
+    }
+
+    #[test]
+    fn a_crawled_federated_url_converges_to_a_local_result() {
+        // M7-T06.3. The engine has already crawled example.dz/a — it is a normal local result. The
+        // same URL comes back from federation on the next identical query; it must NOT reappear as a
+        // second "from the web" card. A never-seen federated URL (example.dz/b) still gets mixed in.
+        let url_a = "https://example.dz/a";
+        let mut results = vec![local_card(id_of(url_a), url_a)];
+
+        merge_federated(
+            &mut results,
+            &[fed_hit(url_a), fed_hit("https://example.dz/b")],
+        );
+
+        // The crawled URL stayed a single, local (non-web) result — it converged.
+        let a: Vec<_> = results.iter().filter(|c| c.id == id_of(url_a)).collect();
+        assert_eq!(a.len(), 1, "the crawled URL must not double up");
+        assert!(
+            !a[0].from_web,
+            "the crawled URL answers locally, not from the web"
+        );
+        // The genuinely new federated URL was mixed in, flagged from_web.
+        let b = results
+            .iter()
+            .find(|c| c.id == id_of("https://example.dz/b"))
+            .expect("the new federated URL is added");
+        assert!(b.from_web);
     }
 
     #[test]

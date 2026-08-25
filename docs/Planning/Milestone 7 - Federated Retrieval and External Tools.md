@@ -85,7 +85,7 @@ The narrow, allowlisted egress hop that keeps the serving plane's no-egress prop
 
 - [x] M7-T06.1 **Crawl-feed**: each federated URL → capped/windowed `federation:hint:<url>` in Redis, through the SSRF + trap guards, read by the [[Crawler Orchestrator]] revisit/discovery pass (search plane only *writes*; crawler only *reads*, per [[ADR-0001 - Two-Plane Architecture]]).
 - [x] M7-T06.2 **New `DiscoveryChannel::Federation`** so the discovery funnel ([[admin/discovery]]) shows federated URLs' fetch/index/yield like every other channel.
-- [ ] M7-T06.3 **Convergence proof**: a federated URL, once crawled+indexed, is answered locally on the next identical query and drops its federation tag — asserted in a test and visible as a falling blend share.
+- [x] M7-T06.3 **Convergence proof**: a federated URL, once crawled+indexed, is answered locally on the next identical query and drops its federation tag — asserted in a test and visible as a falling blend share.
 
 ## M7-T07 — Learn from external ranking (offline reranker calibration)
 
