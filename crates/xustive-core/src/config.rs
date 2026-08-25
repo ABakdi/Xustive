@@ -24,8 +24,8 @@ pub enum ConfigError {
     #[error("invalid value for {key}: {msg}")]
     Value { key: String, msg: String },
     #[error(
-        "{field} is set to an unsafe value for the {environment} environment; \
-         this configuration would crawl abusively"
+        "{field} is set to an unsafe value for the {environment} environment \
+         (abusive crawling or a de-anonymising floor); refusing to start"
     )]
     Unsafe {
         field: &'static str,
@@ -217,7 +217,9 @@ pub struct DiscoveryConfig {
     #[serde(default = "default_weak_floor")]
     pub weak_coverage_result_floor: usize,
     /// k-anonymity threshold: a term is never surfaced until it has been seen at least this often.
-    /// The ADR mandates k ≥ 20; the loader clamps anything lower back up to 20.
+    /// The ADR mandates k ≥ 20 on any non-dev deployment, **enforced by `Config::validate()`** —
+    /// the loader refuses to start rather than clamping silently (BUG-035; an earlier comment
+    /// claimed a clamp that no code performed). k = 1 is single-operator dev only.
     #[serde(default = "default_k_anonymity")]
     pub k_anonymity: u32,
     /// Sliding window, in days. A term must reach `k_anonymity` within this window or it decays and
@@ -869,6 +871,35 @@ impl Config {
     }
 
     fn validate(&self) -> Result<(), ConfigError> {
+        // k-anonymity floors, enforced where EVERY binary passes (BUG-035): the API-only
+        // `interaction.guard()` left crawld and the CLI loading the same config with no check, and
+        // discovery — which stores plaintext user terms and defaults ON — had no enforcement at
+        // all despite a doc comment claiming a clamp. ADR-0015/0018: k ≥ 20 outside dev, always.
+        if self.environment != "dev" {
+            if self.interaction.enabled && self.interaction.k_anonymity < 20 {
+                return Err(ConfigError::Unsafe {
+                    field: "interaction.k_anonymity",
+                    environment: self.environment.clone(),
+                });
+            }
+            // `hot_click_floor == 0` means "use k" and stays legal; an explicit sub-20 floor
+            // would surface per-doc click behaviour below the anonymity line.
+            if self.interaction.enabled
+                && self.interaction.hot_click_floor != 0
+                && self.interaction.hot_click_floor < 20
+            {
+                return Err(ConfigError::Unsafe {
+                    field: "interaction.hot_click_floor",
+                    environment: self.environment.clone(),
+                });
+            }
+            if self.discovery.weak_coverage_enabled && self.discovery.k_anonymity < 20 {
+                return Err(ConfigError::Unsafe {
+                    field: "discovery.k_anonymity",
+                    environment: self.environment.clone(),
+                });
+            }
+        }
         if !matches!(self.ml.device.as_str(), "auto" | "gpu" | "cpu") {
             return Err(ConfigError::Value {
                 key: "ml.device".into(),
@@ -979,6 +1010,38 @@ mod crawl_guard_tests {
         assert!(c.validate().is_err());
         c.federation.searxng_url = "http://xustive-searxng:8080".into();
         assert!(c.validate().is_ok());
+    }
+
+    #[test]
+    fn non_dev_refuses_sub_20_k_anonymity_everywhere_it_matters() {
+        // BUG-035: enforced in validate() so EVERY binary that loads the config gets it, not only
+        // the API. Interaction k, the explicit hot-click floor, and discovery k are all floored.
+        let mut c = Config::default();
+        c.environment = "prod".into();
+        c.interaction.enabled = true;
+        c.interaction.k_anonymity = 1;
+        assert!(c.validate().is_err(), "prod + interaction k=1 must refuse");
+
+        c.interaction.k_anonymity = 20;
+        c.interaction.hot_click_floor = 5;
+        assert!(
+            c.validate().is_err(),
+            "prod + hot_click_floor=5 must refuse"
+        );
+        c.interaction.hot_click_floor = 0; // "use k" stays legal
+        assert!(c.validate().is_ok());
+
+        c.discovery.weak_coverage_enabled = true;
+        c.discovery.k_anonymity = 1;
+        assert!(c.validate().is_err(), "prod + discovery k=1 must refuse");
+        c.discovery.k_anonymity = 20;
+        assert!(c.validate().is_ok());
+
+        // Dev keeps the single-operator escape hatch: k=1 honestly means "no anonymity, my box".
+        c.environment = "dev".into();
+        c.interaction.k_anonymity = 1;
+        c.discovery.k_anonymity = 1;
+        assert!(c.validate().is_ok(), "dev may run k=1");
     }
 
     #[test]

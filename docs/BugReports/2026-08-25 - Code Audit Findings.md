@@ -205,7 +205,7 @@ indefinitely-retained dirs. Fix: move the signal stores to a dedicated **ephemer
 (`--save '' --appendonly no`, never backed up) via a `queue.signals_url` that defaults to the main
 queue URL for compatibility; dev + prod compose gain the instance.
 
-### BUG-035 [high] — k-anonymity floors are claimed but not enforced — **open**
+### BUG-035 [high] — k-anonymity floors are claimed but not enforced — **fixed**
 A `DiscoveryConfig` doc comment claims "the loader clamps anything lower back up to 20";
 `effective_k()` is `max(1)` and `Config::validate()` checks nothing — while weak-coverage (which
 stores plaintext user terms) defaults **on**. `InteractionConfig::guard` runs only in the API
