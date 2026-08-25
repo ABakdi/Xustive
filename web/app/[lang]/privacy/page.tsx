@@ -26,9 +26,9 @@ export default async function Privacy({ params }: { params: Promise<{ lang: stri
 
   return (
     <main className="mx-auto max-w-xl px-6 py-16">
-      <Link href={`/${lang}`} className="inline-block no-underline">
-        <Wordmark lang={lang} size="sm" />
-      </Link>
+      {/* Wordmark is itself a link home — wrapping it in another Link nested <a> inside <a>
+          (invalid HTML, hydration warnings). BUG-014. */}
+      <Wordmark lang={lang} size="sm" />
 
       <h1 className="mt-10 text-2xl font-semibold">{t.privacyTitle}</h1>
       <p className="mt-3 text-base" style={{ color: 'var(--fg-muted)' }}>

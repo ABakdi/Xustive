@@ -100,7 +100,7 @@ alongside titles and attribute federated evidence to its real domain.
 the newest document, not the best match, so the expansion leg fires on nearly every recency-sorted
 search. Fix: apply the weak-score check only when no explicit sort is set.
 
-### BUG-014 — Nested anchors on the privacy page — **open**
+### BUG-014 — Nested anchors on the privacy page — **fixed**
 `web/app/[lang]/privacy/page.tsx` wraps `Wordmark` (already a `next/link`) in a second `Link` —
 invalid HTML, React DOM-nesting warning, hydration risk. Fix: use the bare `Wordmark`.
 
