@@ -20,6 +20,8 @@ const ar = {
     'ما لا نُخزّنه أبداً: عنوان IP، أو الجهاز، أو الجلسة أو الحساب، أو أي شيء يربط بحثاً بك.',
   privacyModeNote:
     'على خادم بمُشغِّل واحد، هذا السجل خاص بك وحدك على جهازك. على خادم مُشترك، لا يظهر إلا مُجمّعاً فوق عتبة، دون ربط الجلسات ودون توقيتات دقيقة.',
+  privacyExternalNote:
+    'إذا فعّل المشغّل خدمة التلخيص الخارجية الاختيارية، تُرسل كلمات البحث ومقتطفات النتائج إلى مزوّد ذكاء اصطناعي خارجي لتوليد الملخص — دون أي شيء يعرّف بك. هذه الخدمة معطّلة افتراضياً، والملخصات تُولَّد محلياً على هذا الخادم.',
   privacyBack: 'العودة إلى البحث',
   resultsCount: 'نتيجة',
   resultsApprox: 'حوالي',
@@ -163,6 +165,8 @@ const fr: Messages = {
     'Ce que nous ne conservons jamais : votre adresse IP, votre appareil, une session ou un compte, ni rien qui relie une recherche à vous.',
   privacyModeNote:
     'Sur une instance à opérateur unique, cet historique n’est qu’à vous, sur votre propre machine. Sur une instance partagée, il n’apparaît qu’agrégé au-dessus d’un seuil, sans regroupement de sessions ni horodatage précis.',
+  privacyExternalNote:
+    'Si l’opérateur active le résumé externe optionnel, les termes recherchés et les extraits de résultats sont envoyés à un fournisseur d’IA tiers pour générer le résumé — jamais rien qui vous identifie. Ce service est désactivé par défaut : les résumés sont générés localement, sur ce serveur.',
   privacyBack: 'Retour à la recherche',
   resultsCount: 'résultats',
   resultsApprox: 'environ',
@@ -297,6 +301,8 @@ const en: Messages = {
     'What we never keep: your IP address, your device, a session or account, or anything that ties a search to you.',
   privacyModeNote:
     'On a single-operator instance this history is yours alone, on your own machine. On a shared instance it appears only in aggregate above a threshold, with no session grouping and no fine-grained timestamps.',
+  privacyExternalNote:
+    'If the operator enables the optional external summariser, the search terms and result excerpts of summarised searches are sent to a third-party AI provider to write the summary — never anything that identifies you. It is off by default: summaries are generated locally, on this server.',
   privacyBack: 'Back to search',
   resultsCount: 'results',
   resultsApprox: 'about',
@@ -462,6 +468,8 @@ const ary: Messages = {
     'واش عمرنا ما نخزنو: عنوان IP، الجهاز، الجلسة ولا الحساب، ولا أي حاجة تربط بحثة بيك.',
   privacyModeNote:
     'فسيرفر بمستعمل واحد، هاد التاريخ ديالك وحدك فجهازك. فسيرفر مشترك، ما كيبانش غير مجمّع فوق عتبة، بلا ربط ديال الجلسات وبلا أوقات دقيقة.',
+  privacyExternalNote:
+    'إذا فعّل المشغّل التلخيص الخارجي الاختياري، كلمات البحث ومقتطفات النتائج يتبعثو لمزوّد ذكاء اصطناعي خارجي باش يكتب الملخص — بلا حتى حاجة تعرّف بيك. هاد الخدمة مطفية افتراضياً: الملخصات يتصنعو محلياً فهاد السيرفر.',
   privacyBack: 'رجع للبحث',
   resultsCount: 'نتيجة',
   resultsApprox: 'تقريبا',

@@ -39,6 +39,9 @@ export default async function Privacy({ params }: { params: Promise<{ lang: stri
         <p>{t.privacyStored}</p>
         <p>{t.privacyNotStored}</p>
         <p style={{ color: 'var(--fg-faint)' }}>{t.privacyModeNote}</p>
+        {/* The one optional third-party egress (M7-T08), documented plainly per ADR-0017/T08.3:
+            what leaves, to whom, and that it is off unless the operator turns it on. */}
+        <p style={{ color: 'var(--fg-faint)' }}>{t.privacyExternalNote}</p>
       </div>
 
       <p className="mt-10 text-sm">

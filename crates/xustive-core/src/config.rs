@@ -702,6 +702,12 @@ pub struct MlConfig {
     pub deadline_ms: u64,
     /// Kill switch. With this off, `/v1/summary` always answers "no summary" and no model loads.
     pub summaries_enabled: bool,
+    /// Route summaries through the external LLM behind the Federation Gateway (M7-T08) before
+    /// falling back to the local model. **Default off** — it is third-party SaaS: when on, the
+    /// query text and result excerpts leave the deployment for the configured provider
+    /// ([[ADR-0005]] keeps the local model the default; the privacy page documents the egress).
+    /// Needs `federation.federator_url` plus the gateway's `EXTERNAL_LLM_*` environment.
+    pub external_summaries: bool,
 }
 
 impl Default for MlConfig {
@@ -714,6 +720,7 @@ impl Default for MlConfig {
             slots: 2,
             deadline_ms: 30_000,
             summaries_enabled: true,
+            external_summaries: false,
         }
     }
 }

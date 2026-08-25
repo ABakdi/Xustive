@@ -320,6 +320,9 @@ pub const SUMMARY_DURATION_HELP: &str = "Time to produce a summary, end to end";
 pub const SUMMARY_WITHHELD: &str = "xustive_summary_withheld_total";
 pub const SUMMARY_WITHHELD_HELP: &str =
     "Summaries not shown, by reason. Refusals are normal; generation failures are not";
+pub const SUMMARY_EXTERNAL: &str = "xustive_summary_external_total";
+pub const SUMMARY_EXTERNAL_HELP: &str =
+    "External-summariser attempts by outcome (M7-T08); every non-ok falls back to the local model";
 
 pub const SEARCH_DURATION: &str = "xustive_search_duration_seconds";
 pub const SEARCH_DURATION_HELP: &str = "Search pipeline duration by stage";

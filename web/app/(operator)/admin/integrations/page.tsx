@@ -8,6 +8,7 @@ import {
   type FederationStatus,
   type SemanticStatus,
   type ImageVectorStatus,
+  type ExternalSummariserStatus,
   type IntegrationEffectiveness,
 } from '@/lib/admin'
 import { PageHead } from '@/components/admin/ui'
@@ -24,6 +25,7 @@ export default function IntegrationsPage() {
   const [fed, setFed] = useState<FederationStatus | null>(null)
   const [semantic, setSemantic] = useState<SemanticStatus | null>(null)
   const [image, setImage] = useState<ImageVectorStatus | null>(null)
+  const [ext, setExt] = useState<ExternalSummariserStatus | null>(null)
   const [eff, setEff] = useState<IntegrationEffectiveness | null>(null)
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
@@ -34,17 +36,18 @@ export default function IntegrationsPage() {
         setFed(d.federation)
         setSemantic(d.semantic)
         setImage(d.image)
+        setExt(d.external_summariser)
         setEff(d.effectiveness)
       })
       .catch((e) => setMsg((e as Error).message))
   }, [])
   useEffect(() => load(), [load])
 
-  async function toggle(enabled: boolean) {
+  async function toggle(integration: string, enabled: boolean) {
     setBusy(true)
     setMsg('')
     try {
-      await setIntegration('federation', enabled)
+      await setIntegration(integration, enabled)
       load()
     } catch (e) {
       setMsg((e as Error).message)
@@ -88,7 +91,7 @@ export default function IntegrationsPage() {
               type="checkbox"
               checked={fed.enabled}
               disabled={busy || !fed.configured}
-              onChange={(e) => toggle(e.target.checked)}
+              onChange={(e) => toggle('federation', e.target.checked)}
             />
             Federation is <strong>{fed.enabled ? 'ON' : 'off'}</strong>
             {!fed.configured ? (
@@ -122,17 +125,58 @@ export default function IntegrationsPage() {
             </tbody>
           </table>
 
-          {/* Honest about what this switch does today: it is the control surface; the consumers that
-              read it (the query-time blend and the crawler crawl-feed) are later increments. */}
           <p className="mb-6 max-w-2xl rounded border px-3 py-2 text-sm" style={{ borderColor: 'var(--line)', background: 'var(--bg-sunk)' }}>
-            The blend into live results and the crawl-feed that indexes federated URLs are being
-            built next. Enabling federation here arms the switch they read; until they land, this
-            toggle changes configuration state without yet altering results.
+            With federation on, web results are mixed into searches with a “from the web” badge,
+            indexed immediately in the background, and fed to the crawler — so a page someone just
+            searched for becomes a normal local result within seconds.
           </p>
         </>
       ) : (
         <p className="mb-6 text-sm" style={{ color: 'var(--fg-faint)' }}>Loading…</p>
       )}
+
+      {/* External AI summariser (M7-T08) — the one integration that is third-party SaaS, said
+          plainly: when on, query text and result excerpts leave this deployment. */}
+      <h2 className="mb-2 mt-8 text-lg font-semibold">External AI summariser</h2>
+      {ext ? (
+        <>
+          <p className="mb-3 max-w-2xl rounded border px-3 py-2 text-sm" style={{ borderColor: 'var(--warn)', background: 'var(--bg-sunk)' }}>
+            <strong>Third-party service.</strong> When enabled, the search terms and result excerpts
+            of summarised searches are sent to the AI provider configured on the gateway
+            (<code>EXTERNAL_LLM_URL</code>) — unlike everything else on this page, data leaves this
+            deployment. The local model stays the default and the fallback; external answers face
+            the same citation and language validation. Off by default.
+          </p>
+          <label className="mb-4 flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={ext.enabled}
+              disabled={busy || !ext.configured}
+              onChange={(e) => toggle('external_summariser', e.target.checked)}
+            />
+            External summariser is <strong>{ext.enabled ? 'ON' : 'off'}</strong>
+            {!ext.configured ? (
+              <span style={{ color: 'var(--fg-faint)' }}> — configure the gateway first</span>
+            ) : null}
+          </label>
+          <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
+            <tbody>
+              {[
+                ['Configured (gateway reachable path)', ext.configured ? 'yes' : 'no — set federation.federator_url'],
+                ['Runtime switch', ext.enabled ? 'on' : 'off'],
+                ['Provider endpoint & key', 'held by the gateway (EXTERNAL_LLM_URL / EXTERNAL_LLM_KEY env) — never on the serving plane'],
+                ['Summaries served externally', ext.attempts_ok.toLocaleString()],
+                ['Fell back to local', ext.attempts_failed.toLocaleString()],
+              ].map(([k, v]) => (
+                <tr key={k}>
+                  <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
+                  <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
 
       {/* Semantic (dense) text search — a whole retrieval path that otherwise had no console. */}
       <h2 className="mb-2 mt-8 text-lg font-semibold">Semantic search (dense text)</h2>

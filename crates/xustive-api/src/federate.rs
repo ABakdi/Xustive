@@ -31,6 +31,8 @@ pub struct FederatorClient {
     http: reqwest::Client,
     /// `{federator_url}/federate`.
     endpoint: String,
+    /// `{federator_url}/summarise` (M7-T08).
+    summarise_endpoint: String,
     /// `{federator_url}/healthz`.
     health: String,
     default_budget_ms: u64,
@@ -66,10 +68,59 @@ impl FederatorClient {
         Some(Self {
             http,
             endpoint: format!("{base}/federate"),
+            summarise_endpoint: format!("{base}/summarise"),
             health: format!("{base}/healthz"),
             default_budget_ms: cfg.budget_ms,
             breaker,
         })
+    }
+
+    /// Ask the gateway's external summariser for one completion (M7-T08). **Never fails**: any
+    /// error — breaker open, over budget, provider down, unconfigured — returns `None` and the
+    /// caller falls back to the local model, per the same fail-open rule federation obeys. The
+    /// prompt (which contains query text) is never logged, here or at the gateway.
+    pub async fn summarise(&self, prompt: &str, budget_ms: u64) -> Option<String> {
+        if prompt.trim().is_empty() || !self.breaker.allow() {
+            return None;
+        }
+        #[derive(Deserialize)]
+        struct Reply {
+            text: Option<String>,
+        }
+        let call = self
+            .http
+            .post(&self.summarise_endpoint)
+            .json(&serde_json::json!({ "prompt": prompt, "budget_ms": budget_ms }))
+            .send();
+        let resp = match tokio::time::timeout(Duration::from_millis(budget_ms), call).await {
+            Ok(Ok(r)) if r.status().is_success() => r,
+            Ok(Ok(r)) => {
+                tracing::warn!(status = %r.status(), "summarise gateway returned an error");
+                self.breaker.on_failure();
+                return None;
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, "summarise gateway request failed");
+                self.breaker.on_failure();
+                return None;
+            }
+            Err(_) => {
+                tracing::warn!(budget_ms, "summarise gateway exceeded budget");
+                self.breaker.on_failure();
+                return None;
+            }
+        };
+        match resp.json::<Reply>().await {
+            Ok(reply) => {
+                self.breaker.on_success();
+                reply.text.filter(|t| !t.trim().is_empty())
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "summarise gateway reply decode failed");
+                self.breaker.on_failure();
+                None
+            }
+        }
     }
 
     /// The breaker's state, for the admin console (`"closed"`, `"open"`, `"half-open"`).

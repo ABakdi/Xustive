@@ -99,6 +99,12 @@ hot_click_floor = 0
 #   1. download:  huggingface-cli download Qwen/Qwen2.5-7B-Instruct-GGUF qwen2.5-7b-instruct-q4_k_m.gguf --local-dir models
 #   2. select:    summariser_model = "qwen2.5-7b-instruct-q4"
 summariser_model = ""
+# External AI summariser (M7-T08): route summaries through the LLM configured on the Federation
+# Gateway (EXTERNAL_LLM_URL / EXTERNAL_LLM_MODEL / EXTERNAL_LLM_KEY in its environment; any
+# OpenAI-compatible endpoint — DeepSeek, Qwen/DashScope, OpenRouter). THIRD-PARTY SaaS: when on,
+# query text and result excerpts leave the deployment. Default off; the local model stays the
+# default and the fallback. Also toggleable live from the admin Integrations page.
+external_summaries = false
 # Device: auto | gpu | cpu — also switchable live from the admin Compute page. GPU needs a binary
 # built with `--features cuda` (CUDA toolkit at build time); without it this falls back to CPU.
 device = "auto"

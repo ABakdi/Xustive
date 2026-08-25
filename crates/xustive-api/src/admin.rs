@@ -589,6 +589,18 @@ pub async fn integrations(
         },
         "semantic": semantic,
         "image": image,
+        // The external AI summariser (M7-T08): third-party SaaS behind the same gateway, flagged
+        // distinctly so the console can say "this one sends data off-box when on". "Configured" from
+        // the API's side is the same gateway client federation uses; whether the gateway itself holds
+        // an EXTERNAL_LLM_URL is its own deployment concern.
+        "external_summariser": {
+            "enabled": state.external_summaries.load(Ordering::Relaxed),
+            "configured": state.federator.is_some(),
+            "third_party": true,
+            "attempts_ok": state.metrics.counter_where(crate::metrics::SUMMARY_EXTERNAL, "outcome", "ok"),
+            "attempts_failed": state.metrics.counter_total(crate::metrics::SUMMARY_EXTERNAL)
+                .saturating_sub(state.metrics.counter_where(crate::metrics::SUMMARY_EXTERNAL, "outcome", "ok")),
+        },
         // Effectiveness counters, read straight from the same registry Prometheus exports (M7), so the
         // console shows the payoff without a Grafana round-trip: how often federation contributed,
         // how many URLs it fed the index, and whether the dense leg added recall or just reinforced.
@@ -604,7 +616,7 @@ pub async fn integrations(
 
 #[derive(Debug, serde::Deserialize)]
 pub struct IntegrationUpdate {
-    /// Which integration to change. Only `federation` today.
+    /// Which integration to change: `federation` or `external_summariser`.
     pub integration: String,
     pub enabled: bool,
 }
@@ -641,6 +653,28 @@ pub async fn set_integrations(
             Ok(Json(json!({
                 "ok": true,
                 "integration": "federation",
+                "enabled": update.enabled,
+            })))
+        }
+        "external_summariser" => {
+            // Same refusal as federation: the external summariser reaches the world through the
+            // gateway, so arming it with no gateway configured is a misconfiguration, not a mode.
+            if update.enabled && state.federator.is_none() {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": {
+                        "code": "no_endpoint",
+                        "message": "set federation.federator_url (and the gateway's EXTERNAL_LLM_* environment) before enabling the external summariser",
+                    }})),
+                ));
+            }
+            state
+                .external_summaries
+                .store(update.enabled, Ordering::Relaxed);
+            tracing::info!(peer = ?peer, enabled = update.enabled, "external summariser toggled via admin");
+            Ok(Json(json!({
+                "ok": true,
+                "integration": "external_summariser",
                 "enabled": update.enabled,
             })))
         }

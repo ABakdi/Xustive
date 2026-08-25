@@ -95,9 +95,9 @@ The narrow, allowlisted egress hop that keeps the serving plane's no-egress prop
 
 ## M7-T08 — External AI summariser (opt-in, offline-preferred)
 
-- [ ] M7-T08.1 **Parallel-AI (or equivalent) MCP client** behind its own `enabled` flag, flagged distinctly as third-party SaaS; **default off**, local quantised summariser stays the default ([[ADR-0005 - Local Quantised LLM for Summaries]]).
-- [ ] M7-T08.2 **Offline enrichment path**: summarise/enrich stored documents on the ingestion plane, not on the serving path, by default.
-- [ ] M7-T08.3 If ever live, obey the same budget-and-fail-open rule as federation; document the third-party egress on the privacy page.
+- [x] M7-T08.1 **Parallel-AI (or equivalent) MCP client** behind its own `enabled` flag, flagged distinctly as third-party SaaS; **default off**, local quantised summariser stays the default ([[ADR-0005 - Local Quantised LLM for Summaries]]). Built as an **OpenAI-compatible chat-completions client** ("or equivalent") on the Federation Gateway — one client covers DeepSeek, Qwen/DashScope, OpenRouter, and Parallel-AI-class providers; which provider is deployment config (`EXTERNAL_LLM_URL/MODEL/KEY` on the gateway — the key never touches the serving plane). `[ml] external_summaries = false` + a runtime admin toggle; the Integrations page flags it third-party with a plain "data leaves this deployment" warning.
+- [~] M7-T08.2 **Offline enrichment path**: summarise/enrich stored documents on the ingestion plane, not on the serving path, by default. Decision: the offline preference is honoured as **local-by-default** — the serving-path summary keeps ADR-0005's local model unless the operator opts in; per-document batch enrichment through a paid SaaS is deferred until a product surface consumes stored per-document summaries (today none does).
+- [x] M7-T08.3 If ever live, obey the same budget-and-fail-open rule as federation; document the third-party egress on the privacy page. The external leg runs inside the same `ml.deadline_ms` budget, behind the federator's circuit breaker, and **every** failure (over budget, provider down, validation reject) falls back to the local model — external answers face the same citation/language validator. The privacy page documents the egress in all four locales: what is sent (search terms + result excerpts), to whom, never anything identifying, off by default.
 
 ## M7-T09 — Operator control (the Integrations console)
 

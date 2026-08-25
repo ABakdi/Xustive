@@ -154,9 +154,26 @@ pub async fn handler(
     // Cloned for the validator, which needs the shown passages to resolve `[n]` markers. The prompt
     // itself is rebuilt per attempt inside `generate` (it is cheap and each attempt consumes one).
     let cited = built.cited.clone();
+
+    // The external summariser first, when the operator has switched it on (M7-T08): the same
+    // prompt, carried out by the LLM behind the Federation Gateway, held to the same validator —
+    // an external model does not get to skip citations or switch language. Every failure falls
+    // through to the local model, so turning this on can only ever change who writes the summary,
+    // never whether one is possible.
+    let external = if state
+        .external_summaries
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
+        generate_external(&state, &built, &cited, pending.lang).await
+    } else {
+        None
+    };
     drop(built);
 
-    let outcome = generate(&state, &pending, &cited).await;
+    let outcome = match external {
+        Some(summary) => Ok(summary),
+        None => generate(&state, &pending, &cited).await,
+    };
     let took_ms = started.elapsed().as_millis() as u64;
 
     Ok(Json(match outcome {
@@ -188,6 +205,39 @@ pub async fn handler(
             }
         }
     }))
+}
+
+/// One attempt against the external summariser via the Federation Gateway (M7-T08). `None` on any
+/// failure — gateway absent, over budget, provider down, or the text failing the same validation
+/// the local model faces — so the caller falls back to the local path. Deliberately not
+/// feature-gated: a CPU-only build without the `summariser` feature can still serve summaries this
+/// way once the operator enables it. Metric records the outcome, never the text.
+async fn generate_external(
+    state: &AppState,
+    built: &prompt::Prompt,
+    cited: &[prompt::Cited],
+    lang: OutputLang,
+) -> Option<validate::Summary> {
+    let federator = state.federator.as_ref()?;
+    // One chat message carrying the same system rules + grounded passages the local model gets.
+    let prompt_text = format!("{}\n\n{}", built.system, built.user);
+    let text = federator
+        .summarise(&prompt_text, state.config.ml.deadline_ms)
+        .await;
+    let outcome = match text {
+        Some(text) => match validate::check(&text, cited, lang) {
+            Ok(summary) => ("ok", Some(summary)),
+            // Never log the text or the query — only why it was withheld, same as the local path.
+            Err(r) => (r.as_str(), None),
+        },
+        None => ("unavailable", None),
+    };
+    state.metrics.incr(
+        crate::metrics::SUMMARY_EXTERNAL,
+        crate::metrics::SUMMARY_EXTERNAL_HELP,
+        &[("outcome", outcome.0)],
+    );
+    outcome.1
 }
 
 /// Rejections a second, differently-sampled attempt has a real chance of clearing. Deliberate

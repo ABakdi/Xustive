@@ -40,6 +40,20 @@ struct Args {
     /// Default per-request budget in ms, applied when a `/federate` call carries none.
     #[arg(long, env = "FEDERATION_BUDGET_MS", default_value_t = 250)]
     budget_ms: u64,
+
+    /// OpenAI-compatible chat-completions endpoint for the external summariser (M7-T08), e.g.
+    /// `https://api.deepseek.com/chat/completions`. Empty leaves the route inert (answers empty).
+    #[arg(long, env = "EXTERNAL_LLM_URL", default_value = "")]
+    external_llm_url: String,
+
+    /// Model name sent to the external summariser.
+    #[arg(long, env = "EXTERNAL_LLM_MODEL", default_value = "")]
+    external_llm_model: String,
+
+    /// Upstream timeout for one external summariser call, in ms. The per-request budget bounds it
+    /// further.
+    #[arg(long, env = "EXTERNAL_LLM_TIMEOUT_MS", default_value_t = 30_000)]
+    external_llm_timeout_ms: u64,
 }
 
 #[tokio::main]
@@ -65,9 +79,28 @@ async fn main() -> Result<()> {
         None => tracing::warn!("no SEARXNG_URL configured — gateway is inert (answers empty)"),
     }
 
+    // The API key comes from the environment alone — never a CLI arg, which would show in `ps` —
+    // and lives only in this process, on the egress plane. The serving API never sees it.
+    let llm_key = std::env::var("EXTERNAL_LLM_KEY").unwrap_or_default();
+    let llm = xustive_federation::llm::ExternalLlm::new(
+        &args.external_llm_url,
+        &args.external_llm_model,
+        &llm_key,
+        Duration::from_millis(args.external_llm_timeout_ms),
+    )
+    .map(Arc::new);
+    match &llm {
+        Some(_) => tracing::info!(
+            model = %args.external_llm_model,
+            "external summariser configured"
+        ),
+        None => tracing::info!("no EXTERNAL_LLM_URL — /summarise is inert (answers empty)"),
+    }
+
     let state = AppState {
         client,
         default_budget: Duration::from_millis(args.budget_ms),
+        llm,
     };
 
     let listener = tokio::net::TcpListener::bind(&args.bind).await?;

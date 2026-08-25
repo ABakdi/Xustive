@@ -31,6 +31,10 @@ pub struct AppState {
     pub client: Option<Arc<SearxngClient>>,
     /// Applied when a request does not carry its own `budget_ms`.
     pub default_budget: Duration,
+    /// The external summariser (M7-T08), `None` when unconfigured — the second and only other
+    /// outbound client this gateway may hold. The API key lives here, on the egress plane, and the
+    /// serving API never sees it.
+    pub llm: Option<Arc<xustive_federation::llm::ExternalLlm>>,
 }
 
 /// `POST /federate` request. `budget_ms` lets the caller (the serving pipeline) impose a tighter
@@ -51,11 +55,32 @@ pub struct FederateResponse {
     pub partial: bool,
 }
 
-/// The router: a health check and the one federation route.
+/// `POST /summarise` request (M7-T08): the serving API builds the full grounded prompt (its own
+/// passages, citation rules and language instruction) and this gateway only carries it out — so the
+/// prompt policy lives in one place whichever backend answers.
+#[derive(Debug, Deserialize)]
+pub struct SummariseRequest {
+    pub prompt: String,
+    #[serde(default)]
+    pub budget_ms: Option<u64>,
+}
+
+/// `POST /summarise` response. `text: None` is the fail-open answer — provider down, over budget,
+/// unconfigured — and the caller falls back to the local model without treating it as an error.
+#[derive(Debug, Serialize)]
+pub struct SummariseResponse {
+    pub text: Option<String>,
+}
+
+/// Token ceiling for one external summary — a cited paragraph, and a cost bound per call.
+const SUMMARY_MAX_TOKENS: u32 = 512;
+
+/// The router: a health check, the federation route, and the external-summary route.
 pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/federate", post(federate))
+        .route("/summarise", post(summarise))
         .with_state(state)
 }
 
@@ -68,6 +93,46 @@ async fn federate(
     Json(req): Json<FederateRequest>,
 ) -> Json<FederateResponse> {
     Json(federate_inner(&state, req).await)
+}
+
+async fn summarise(
+    State(state): State<AppState>,
+    Json(req): Json<SummariseRequest>,
+) -> Json<SummariseResponse> {
+    Json(summarise_inner(&state, req).await)
+}
+
+/// The summarise logic, separated from the axum extractors so it is unit-testable without a server.
+/// Fail-open throughout: every failure is `text: None`, never an error status — an external summary
+/// is an improvement on the local one, never a precondition for anything.
+pub async fn summarise_inner(state: &AppState, req: SummariseRequest) -> SummariseResponse {
+    let prompt = req.prompt.trim();
+    if prompt.is_empty() {
+        return SummariseResponse { text: None };
+    }
+    let Some(llm) = state.llm.clone() else {
+        return SummariseResponse { text: None };
+    };
+    let budget = req
+        .budget_ms
+        .map(Duration::from_millis)
+        .unwrap_or(state.default_budget);
+
+    match tokio::time::timeout(budget, llm.complete(prompt, SUMMARY_MAX_TOKENS)).await {
+        Ok(Ok(text)) => SummariseResponse { text: Some(text) },
+        Ok(Err(e)) => {
+            // `e` carries a status or transport error, never the prompt (which holds query text).
+            tracing::warn!(error = %e, "external summariser call failed; answering empty");
+            SummariseResponse { text: None }
+        }
+        Err(_) => {
+            tracing::warn!(
+                budget_ms = budget.as_millis() as u64,
+                "external summariser exceeded budget; answering empty"
+            );
+            SummariseResponse { text: None }
+        }
+    }
 }
 
 /// The gateway logic, separated from the axum extractors so it is unit-testable without a server.
@@ -125,7 +190,31 @@ mod tests {
         AppState {
             client: None,
             default_budget: Duration::from_millis(250),
+            llm: None,
         }
+    }
+
+    #[tokio::test]
+    async fn summarise_is_inert_without_an_llm_and_on_an_empty_prompt() {
+        // Both fail-open shapes: unconfigured, and nothing to summarise. Neither is an error.
+        let r = summarise_inner(
+            &unconfigured(),
+            SummariseRequest {
+                prompt: "summarise this".into(),
+                budget_ms: Some(100),
+            },
+        )
+        .await;
+        assert!(r.text.is_none());
+        let r = summarise_inner(
+            &unconfigured(),
+            SummariseRequest {
+                prompt: "   ".into(),
+                budget_ms: None,
+            },
+        )
+        .await;
+        assert!(r.text.is_none());
     }
 
     #[tokio::test]

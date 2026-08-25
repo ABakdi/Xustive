@@ -53,6 +53,11 @@ pub struct AppState {
     /// never reaches SearXNG itself, which lives behind the [[Federation Gateway]] on the egress
     /// network. Runtime as well as config so turning federation on or off is not a restart.
     pub federation_enabled: Arc<std::sync::atomic::AtomicBool>,
+    /// Runtime switch for the external summariser (M7-T08), mirrored from `[ml] external_summaries`
+    /// and flipped from the admin Integrations page. When on (and a gateway client exists), the
+    /// summary endpoint tries the external LLM through the [[Federation Gateway]] before the local
+    /// model; when off, summaries are exactly the local-only path. Default off — third-party SaaS.
+    pub external_summaries: Arc<std::sync::atomic::AtomicBool>,
     /// Searches whose summary has not been requested yet.
     pub pending: Arc<PendingStore>,
     /// The loaded summariser, once it is ready.
@@ -282,6 +287,7 @@ impl AppState {
     pub fn new(config: Config) -> Result<Self, SearchError> {
         let ignore_politeness = config.crawl.ignore_politeness;
         let federation_enabled = config.federation.enabled;
+        let external_summaries = config.ml.external_summaries;
         // Falls back to the alias name itself, which is also what a pre-alias deployment uses.
         // `resolve` is async and this is not, so the real lookup happens in `resolve_index`
         // below, called from main once the runtime exists.
@@ -315,6 +321,7 @@ impl AppState {
             gpu_layers: Arc::new(AtomicI64::new(gpu_layers)),
             ignore_politeness: Arc::new(std::sync::atomic::AtomicBool::new(ignore_politeness)),
             federation_enabled: Arc::new(std::sync::atomic::AtomicBool::new(federation_enabled)),
+            external_summaries: Arc::new(std::sync::atomic::AtomicBool::new(external_summaries)),
             documents_index: Arc::new(std::sync::RwLock::new(documents_index)),
             suggest: Arc::new(std::sync::RwLock::new(Arc::new(
                 crate::suggest::PrefixIndex::build(&curated, &[]),

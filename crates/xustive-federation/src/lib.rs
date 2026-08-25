@@ -16,6 +16,8 @@
 //! that calls it; here we keep the part most likely to drift (SearXNG's JSON shape) pure and
 //! fixture-tested.
 
+pub mod llm;
+
 use serde::{Deserialize, Serialize};
 
 /// One federated result. Carries what a blended answer needs — the destination, the aggregator's

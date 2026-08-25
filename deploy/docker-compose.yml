@@ -283,6 +283,15 @@ services:
       SEARXNG_URL: http://xustive-searxng:8080
       FEDERATION_MAX_HITS: "10"
       FEDERATION_BUDGET_MS: "250"
+      # External AI summariser (M7-T08, opt-in): any OpenAI-compatible chat-completions endpoint.
+      # Left empty, the /summarise route is inert. The key stays here, on the egress plane — the
+      # serving API never sees it. Set them in the host environment or a .env file, e.g.
+      #   XUSTIVE_EXTERNAL_LLM_URL=https://api.deepseek.com/chat/completions
+      #   XUSTIVE_EXTERNAL_LLM_MODEL=deepseek-chat
+      #   XUSTIVE_EXTERNAL_LLM_KEY=sk-...
+      EXTERNAL_LLM_URL: ${XUSTIVE_EXTERNAL_LLM_URL:-}
+      EXTERNAL_LLM_MODEL: ${XUSTIVE_EXTERNAL_LLM_MODEL:-}
+      EXTERNAL_LLM_KEY: ${XUSTIVE_EXTERNAL_LLM_KEY:-}
       RUST_LOG: info
     networks: [core, ingest]
     depends_on:

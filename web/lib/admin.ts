@@ -239,14 +239,25 @@ export interface IntegrationEffectiveness {
   semantic_fused_recall: number
   semantic_fused_reinforce: number
 }
+/** The external AI summariser (M7-T08): third-party SaaS behind the Federation Gateway. */
+export interface ExternalSummariserStatus {
+  enabled: boolean
+  /** A gateway client exists; whether the gateway holds an LLM endpoint is its own deployment env. */
+  configured: boolean
+  /** Always true — the flag the console uses to show the "sends data off-box" warning. */
+  third_party: boolean
+  attempts_ok: number
+  attempts_failed: number
+}
 export const getIntegrations = (signal?: AbortSignal) =>
   getJSON<{
     federation: FederationStatus
     semantic: SemanticStatus
     image: ImageVectorStatus
+    external_summariser: ExternalSummariserStatus
     effectiveness: IntegrationEffectiveness
   }>('/integrations', signal)
-/** Toggle one integration on or off at runtime. Only `federation` today. */
+/** Toggle one integration on or off at runtime: `federation` or `external_summariser`. */
 export const setIntegration = (integration: string, enabled: boolean) =>
   postJSON<{ ok: boolean; integration: string; enabled: boolean }>('/integrations', {
     integration,
