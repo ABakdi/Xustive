@@ -3,7 +3,7 @@ tags:
   - bugs
   - audit
 date: 2026-08-25
-status: in-progress
+status: resolved
 ---
 # Code Audit Findings — 2026-08-25
 
