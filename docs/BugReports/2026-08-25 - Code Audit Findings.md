@@ -104,7 +104,7 @@ search. Fix: apply the weak-score check only when no explicit sort is set.
 `web/app/[lang]/privacy/page.tsx` wraps `Wordmark` (already a `next/link`) in a second `Link` —
 invalid HTML, React DOM-nesting warning, hydration risk. Fix: use the bare `Wordmark`.
 
-### BUG-015 — Gateway-client budget bounds only the request headers — **open**
+### BUG-015 — Gateway-client budget bounds only the request headers — **fixed**
 `crates/xustive-api/src/federate.rs`: `tokio::time::timeout` wraps `send()` but `resp.json()` runs
 outside it, bounded only by the 30s socket timeout — a trickled body holds the response far past
 the budget. Fix: put the full send-and-decode future inside the timeout.

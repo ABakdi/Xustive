@@ -91,36 +91,36 @@ impl FederatorClient {
         struct Reply {
             text: Option<String>,
         }
-        let call = self
-            .http
-            .post(&self.summarise_endpoint)
-            .json(&serde_json::json!({ "prompt": prompt, "budget_ms": budget_ms }))
-            .send();
-        let resp = match tokio::time::timeout(Duration::from_millis(budget_ms), call).await {
-            Ok(Ok(r)) if r.status().is_success() => r,
-            Ok(Ok(r)) => {
-                tracing::warn!(status = %r.status(), "summarise gateway returned an error");
-                self.summarise_breaker.on_failure();
-                return None;
+        // The budget bounds the WHOLE exchange — send, headers, and body decode (BUG-015). A
+        // timeout around `send()` alone stops at the headers, and a gateway trickling the body
+        // could then hold the caller until the 30s socket timeout.
+        let attempt = async {
+            let resp = self
+                .http
+                .post(&self.summarise_endpoint)
+                .json(&serde_json::json!({ "prompt": prompt, "budget_ms": budget_ms }))
+                .send()
+                .await
+                .map_err(|e| tracing::warn!(error = %e, "summarise gateway request failed"))?;
+            if !resp.status().is_success() {
+                tracing::warn!(status = %resp.status(), "summarise gateway returned an error");
+                return Err(());
             }
-            Ok(Err(e)) => {
-                tracing::warn!(error = %e, "summarise gateway request failed");
-                self.summarise_breaker.on_failure();
-                return None;
-            }
-            Err(_) => {
-                tracing::warn!(budget_ms, "summarise gateway exceeded budget");
-                self.summarise_breaker.on_failure();
-                return None;
-            }
+            resp.json::<Reply>()
+                .await
+                .map_err(|e| tracing::warn!(error = %e, "summarise gateway reply decode failed"))
         };
-        match resp.json::<Reply>().await {
-            Ok(reply) => {
+        match tokio::time::timeout(Duration::from_millis(budget_ms), attempt).await {
+            Ok(Ok(reply)) => {
                 self.summarise_breaker.on_success();
                 reply.text.filter(|t| !t.trim().is_empty())
             }
-            Err(e) => {
-                tracing::warn!(error = %e, "summarise gateway reply decode failed");
+            Ok(Err(())) => {
+                self.summarise_breaker.on_failure();
+                None
+            }
+            Err(_) => {
+                tracing::warn!(budget_ms, "summarise gateway exceeded budget");
                 self.summarise_breaker.on_failure();
                 None
             }
@@ -168,37 +168,34 @@ impl FederatorClient {
     }
 
     async fn try_federate(&self, query: &str, budget_ms: u64) -> Result<Vec<FederatedHit>, ()> {
-        let call = self
-            .http
-            .post(&self.endpoint)
-            .json(&serde_json::json!({ "query": query, "budget_ms": budget_ms }))
-            .send();
-        // Bound the wait by the budget even if the gateway misbehaves — federation may never make
-        // the local answer wait past this.
-        let resp = match tokio::time::timeout(Duration::from_millis(budget_ms), call).await {
-            Ok(Ok(r)) => r,
-            Ok(Err(e)) => {
-                tracing::warn!(error = %e, "federation gateway request failed");
+        // The budget bounds the WHOLE exchange — send, headers, and body decode (BUG-015) — so a
+        // misbehaving gateway trickling a body cannot make the caller wait past it.
+        let attempt = async {
+            let resp = self
+                .http
+                .post(&self.endpoint)
+                .json(&serde_json::json!({ "query": query, "budget_ms": budget_ms }))
+                .send()
+                .await
+                .map_err(|e| tracing::warn!(error = %e, "federation gateway request failed"))?;
+            if !resp.status().is_success() {
+                tracing::warn!(status = %resp.status(), "federation gateway returned an error");
                 return Err(());
             }
-            Err(_) => {
-                tracing::warn!(budget_ms, "federation gateway exceeded budget");
-                return Err(());
-            }
+            resp.json::<FederateReply>()
+                .await
+                .map_err(|e| tracing::warn!(error = %e, "federation gateway reply decode failed"))
         };
-        if !resp.status().is_success() {
-            tracing::warn!(status = %resp.status(), "federation gateway returned an error");
-            return Err(());
-        }
-        match resp.json::<FederateReply>().await {
-            Ok(reply) => {
+        match tokio::time::timeout(Duration::from_millis(budget_ms), attempt).await {
+            Ok(Ok(reply)) => {
                 if reply.partial {
                     tracing::debug!("federation returned a partial result");
                 }
                 Ok(reply.hits)
             }
-            Err(e) => {
-                tracing::warn!(error = %e, "federation gateway reply decode failed");
+            Ok(Err(())) => Err(()),
+            Err(_) => {
+                tracing::warn!(budget_ms, "federation gateway exceeded budget");
                 Err(())
             }
         }
