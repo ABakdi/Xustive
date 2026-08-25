@@ -323,6 +323,13 @@ pub const SUMMARY_WITHHELD_HELP: &str =
 pub const SUMMARY_EXTERNAL: &str = "xustive_summary_external_total";
 pub const SUMMARY_EXTERNAL_HELP: &str =
     "External-summariser attempts by outcome (M7-T08); every non-ok falls back to the local model";
+pub const FEDERATION_DURATION: &str = "xustive_federation_duration_seconds";
+pub const FEDERATION_DURATION_HELP: &str =
+    "Detached federation fetch duration, spawn to hits (M7-T09.2) — off the response's critical path";
+pub const FEDERATION_BLEND: &str = "xustive_federation_blend_cards_total";
+pub const FEDERATION_BLEND_HELP: &str =
+    "Result cards served on federation-on first pages, by source \
+    (web|local). The web share falling over time is the convergence measure: the index catching up";
 
 pub const SEARCH_DURATION: &str = "xustive_search_duration_seconds";
 pub const SEARCH_DURATION_HELP: &str = "Search pipeline duration by stage";

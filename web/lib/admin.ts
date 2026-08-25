@@ -236,6 +236,10 @@ export interface IntegrationEffectiveness {
   federation_searches_hits: number
   federation_searches_empty: number
   federation_urls_fed: number
+  /** Cards served on federation-armed first pages, by source. The web share falling over time is
+   *  the convergence measure — the index catching up with what people search for (M7-T09.2). */
+  blend_cards_web: number
+  blend_cards_local: number
   semantic_fused_recall: number
   semantic_fused_reinforce: number
 }

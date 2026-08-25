@@ -255,6 +255,12 @@ export default function IntegrationsPage() {
                 ],
                 ['URLs fed to the index', eff.federation_urls_fed.toLocaleString()],
                 [
+                  'Blend share (convergence)',
+                  eff.blend_cards_web + eff.blend_cards_local > 0
+                    ? `${((100 * eff.blend_cards_web) / (eff.blend_cards_web + eff.blend_cards_local)).toFixed(1)}% from the web (${eff.blend_cards_web.toLocaleString()} web · ${eff.blend_cards_local.toLocaleString()} local) — falling means the index is catching up`
+                    : 'no federation-armed searches yet',
+                ],
+                [
                   'Semantic added recall',
                   `${eff.semantic_fused_recall.toLocaleString()} searches · ${eff.semantic_fused_reinforce.toLocaleString()} only reinforced lexical`,
                 ],

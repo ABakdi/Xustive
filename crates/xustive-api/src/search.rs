@@ -394,7 +394,15 @@ pub async fn handler(
             let bg = state.clone();
             let fetch_budget = state.config.federation.fetch_budget_ms;
             tokio::spawn(async move {
+                let fetch_started = Instant::now();
                 let hits = client.federate(&q, Some(fetch_budget)).await;
+                // Per-tool latency (M7-T09.2). Detached, so this measures the tool, not the search.
+                bg.metrics.observe(
+                    metrics::FEDERATION_DURATION,
+                    metrics::FEDERATION_DURATION_HELP,
+                    &[],
+                    fetch_started.elapsed().as_secs_f64(),
+                );
                 bg.metrics.incr(
                     metrics::FEDERATION_SEARCHES,
                     metrics::FEDERATION_SEARCHES_HELP,
@@ -608,6 +616,7 @@ pub async fn handler(
     // Best-effort live federation hits (M7): wait up to the strip budget for the detached fetch, to
     // MIX into the page below. The fetch keeps running and eager-indexes regardless, so whatever is
     // not ready in time still becomes a normal local result on the next search.
+    let federation_armed = federation.is_some();
     let federated_hits = match federation {
         Some(mut handle) => {
             let wait = Duration::from_millis(state.config.federation.budget_ms);
@@ -670,6 +679,26 @@ pub async fn handler(
     // ids also flow into impression/click capture below, so interaction ranking (M6) covers them too.
     if page == 1 && !federated_hits.is_empty() {
         merge_federated(&mut results, &federated_hits);
+    }
+    // The convergence measure (M7-T09.2): of the cards served on federation-armed first pages, how
+    // many came from the web vs the local index. Counted on *every* armed page-1 search — including
+    // the ones where no web card arrived — because the falling web share over time is exactly the
+    // index catching up, and skipping the all-local pages would hide that.
+    if federation_armed {
+        let web = results.iter().filter(|c| c.from_web).count() as u64;
+        let local = results.len() as u64 - web;
+        state.metrics.incr_by(
+            metrics::FEDERATION_BLEND,
+            metrics::FEDERATION_BLEND_HELP,
+            &[("source", "web")],
+            web,
+        );
+        state.metrics.incr_by(
+            metrics::FEDERATION_BLEND,
+            metrics::FEDERATION_BLEND_HELP,
+            &[("source", "local")],
+            local,
+        );
     }
     // Register the top documents for a summary the browser will ask for separately. Built from
     // the re-ranked head rather than the page the user is on: a summary of page 7 is not what

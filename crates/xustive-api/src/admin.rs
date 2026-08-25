@@ -608,6 +608,10 @@ pub async fn integrations(
             "federation_searches_hits": state.metrics.counter_where(crate::metrics::FEDERATION_SEARCHES, "outcome", "hits"),
             "federation_searches_empty": state.metrics.counter_where(crate::metrics::FEDERATION_SEARCHES, "outcome", "empty"),
             "federation_urls_fed": state.metrics.counter_total(crate::metrics::FEDERATION_FED),
+            // The convergence measure (T09.2): the web share of served cards falling over time is
+            // the index catching up with what people search for.
+            "blend_cards_web": state.metrics.counter_where(crate::metrics::FEDERATION_BLEND, "source", "web"),
+            "blend_cards_local": state.metrics.counter_where(crate::metrics::FEDERATION_BLEND, "source", "local"),
             "semantic_fused_recall": state.metrics.counter_where(crate::metrics::SEMANTIC_FUSED, "kind", "recall"),
             "semantic_fused_reinforce": state.metrics.counter_where(crate::metrics::SEMANTIC_FUSED, "kind", "reinforce"),
         },

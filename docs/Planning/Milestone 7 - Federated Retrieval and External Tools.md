@@ -102,7 +102,7 @@ The narrow, allowlisted egress hop that keeps the serving plane's no-egress prop
 ## M7-T09 — Operator control (the Integrations console)
 
 - [x] M7-T09.1 **`/admin/integrations`** page: per-tool enable/disable (SearXNG federation, crawl-feed, external summariser), endpoint + credential entry, latency budget, blend cap — the "complete control" the operator asked for.
-- [ ] M7-T09.2 **Health + effectiveness**: per-tool latency, yield, breaker state, and `federation_blend_share` over time (is the index catching up?).
+- [x] M7-T09.2 **Health + effectiveness**: per-tool latency, yield, breaker state, and `federation_blend_share` over time (is the index catching up?). Latency: `xustive_federation_duration_seconds` (the detached fetch, spawn→hits). Blend share: `xustive_federation_blend_cards_total{source=web|local}` counted on every federation-armed first page — including all-local ones, so the web share genuinely falls as the index catches up — shown on the Integrations console as "Blend share (convergence)" and exported for Grafana time-series. Yield + breaker state were already live.
 - [x] M7-T09.3 **`GET/POST /api/v1/admin/integrations`** behind admin auth, bounded-cardinality labels, no query text.
 
 ## M7-T10 — Anonymous search history (extends M6)
