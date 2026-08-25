@@ -138,7 +138,102 @@ raise `maxmemory`; then restart the worker to drain the small remainder.
    Meilisearch's single writer handles thousands of small docs/s in large batches. Revisit only if
    stream lag grows while fetchers are saturated.
 
-### Sources (both problems)
+## PROB-003 — The admin console exposes a fraction of what tunes, measures, and controls the system
+
+**Status: open · Severity: medium (visibility/operability debt; nothing malfunctions, but the
+operator flies blind on most of the surface)**
+
+Method: one full inventory of everything that controls or measures the system (config fields,
+hardcoded tuning constants, runtime switches, metrics, eval artifacts, tuning data files), one full
+inventory of everything the 13 admin pages display or control, then the diff. Scale of the gap:
+the backend carries **~90 config keys, ~150 tuning constants, ~27 metric families, 8 kinds of
+evaluation artifact, and ~12 tuning data files**; the admin UI displays a few dozen values and
+offers **12 controls** (5 runtime switches: federation, external summariser, device, GPU layers,
+politeness bypass, temporary log level — plus force-crawl, seed add/remove, DLQ replay, takedown).
+
+### A. Whole subsystems with ZERO admin visibility
+
+1. **The evaluation loop** — the quality trajectory is invisible. `eval/reports/*.json` (nDCG/MRR
+   history + the regression gate), `ab-*.json` settings A/Bs, `calibration-*.json` weight sweeps,
+   `serp-*.json` Google-yardstick agreement, and the miner's `candidates-*.tsv` review files all
+   exist only on disk via `make` targets. An operator cannot see "is search getting better" or
+   review synonym candidates without a shell.
+2. **Capacity / Redis health** — the PROB-001 OOM had **no admin signal whatsoever**: no memory
+   used-vs-maxmemory for either Redis instance, no frontier size (`seen`/`due`/per-host queue
+   depths), no `q:index` byte size. The queue page shows entry backlog and dead letters only.
+3. **Most Prometheus metrics** — the registry exports ~27 families; the console mirrors ~6
+   (federation/semantic counters). Invisible in admin: search stage durations, zero-result rate,
+   degraded-stage counts, rate-limited counts, summary-withheld reasons, external-summary
+   outcomes beyond ok/failed, instant-answer/translate usage, `xustive_data_age_seconds`
+   (weather/tool staleness — there IS a staleness gauge, no page shows it), queue depth gauges.
+   Grafana exists in dev, but the console's own story stops at the Integrations effectiveness box.
+4. **The proxy/SERP layer** (breakers, EWMA health, quarantine, bandwidth alert at 80%) — fully
+   built, zero UI.
+5. **The expansion lexicon** — `entities.tsv`/`synonyms.tsv` (what the engine considers
+   equivalent) and Meilisearch settings drift (`make migrate-check`) have no admin view.
+6. **Blocklists** — the three-tier exclusion set (safety/takedown/host-opt-out) is **in-memory
+   with no persistent file wired and no UI**; a takedown's "block future crawling" pairing the
+   Maintenance page itself recommends cannot actually be done anywhere.
+
+### B. Controls that exist in the backend but cannot be operated from the UI
+
+- **No crawler pause/stop/start anywhere** — state is displayed, never controllable.
+- **Registry lifecycle** (`registry.jsonl`: approve/disable, per-source frequency, depth limit,
+  max-docs-per-run, crawl delay) — file-edit only; the console shows health but offers no action.
+- **`WeakCoverage::forget(term)` exists in code** — no endpoint, no UI (an operator cannot dismiss
+  a chased term).
+- **Ranking weights** — displayed read-only (7 of 10 fields); editing means writing
+  `config/ranking.toml` (a file that does not even exist in the repo) and restarting. No editor,
+  no validation surface, despite the relevance-dominance invariant being checkable.
+- **DLQ** — replay is all-or-nothing (1000 at a time); no per-item inspect/drop.
+- **Federation tuning** (`budget_ms`, `fetch_budget_ms`, `max_hits`, `eager_index`) and every
+  `[discovery]`/`[interaction]`/`[vector]`/`[stt]`/`[media]` switch — config-file-only, displayed
+  at best as hints.
+- **Static tool data with expiry dates** (fuel prices `REVIEW_BY 2027-03-01`, exam calendar) — no
+  staleness surfacing, no reminder.
+
+### C. Config that cannot even be *seen* from the console
+
+There is no "effective configuration" page. An operator cannot answer basic questions without
+shell access: what is `candidate_pool`? which Meilisearch index/URL is live (returned by
+`GET /status` and never rendered)? what are the deadline stage budgets, rate limits, politeness
+delay, revisit intervals, indexer batch sizes, k-anonymity window? The ~150 tuning constants
+(EXPANSION_THRESHOLD, WEAK_TOP_SCORE, RRF K, MAX_PER_HOST, BACKPRESSURE_AT, prompt caps, …) are
+of course code — but the *config* half is one serializer away from visible.
+
+### D. Fifteen fields already returned by admin endpoints and silently dropped by the pages
+
+`GET /status`: the whole `index` block (alias, resolved index, meili_url); `Weights.unknown_date_factor`,
+`per_domain_cap`, `simhash_collapse_distance`; models' `actual_mib`; GPU name/VRAM when healthy.
+Source health: `approved`, `crawlable`, `counts.failed/thin/duplicate`. Live: `parsed`,
+`revisited`, `recent[].host/.at`. Queue: dead-letter `failed_at`. Media: `stt.endpoint`,
+`vector.embedder_endpoint`. Enqueue response `added`/`already_known` (client types don't even
+match the API shape — the operator can't tell "queued fresh" from "already known").
+`add_source.queued` and `remove_source.removed` ignored (UI claims success unconditionally).
+Interaction `hot_floor` used server-side, never displayed. Weak-coverage page doesn't show whether
+a resolution source (SERP/Brave) is even configured.
+
+### Recommendations (ranked)
+
+1. **Render what already arrives** (pure frontend, hours): the fifteen dropped fields in D, and
+   fix the enqueue-response type mismatch.
+2. **A read-only Configuration page** (one endpoint serializing the effective `Config` with
+   secrets redacted — meili_key, admin_key, brave key, salt): answers "what is this system
+   running with" in one view, including env-var overrides.
+3. **A capacity card on Overview** (ties to PROB-001): both Redis instances' used/max memory with
+   an 80% warning, `q:index` bytes, frontier totals. This is the missing alarm that would have
+   caught the OOM days early.
+4. **An Evaluation page**: list `eval/reports/*` with the nDCG trend and gate status; render the
+   latest calibration/A/B verdicts; a miner-candidates review table (view + copy, promotion stays
+   manual per B7).
+5. **Close the control gaps in operator-pain order**: crawler pause/resume; registry lifecycle
+   editor (approve/disable/frequency); weak-term forget button; per-item DLQ actions; a
+   ranking-weights editor that enforces the relevance-dominance bound server-side; blocklist
+   manager (requires wiring blocklist persistence first — a prerequisite worth its own line).
+6. **Longer term**: config *editing* for the safe subset through the existing `Config::validate()`
+   so the guards (k-floors, politeness, salt) apply to UI changes exactly as to file changes.
+
+### Sources (PROB-001/002)
 
 Mercator (SRC-173; IR-book ch.20) · Heritrix 3 frontier budgets (`queue-total-budget`,
 BdbFrontier) · Nutch CrawlDb / `generate -topN` / `db.max.outlinks.per.page=100` ·
