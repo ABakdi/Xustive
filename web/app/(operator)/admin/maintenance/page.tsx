@@ -97,13 +97,13 @@ export default function MaintenancePage() {
         <div className="mb-4 max-w-2xl rounded border px-3 py-3 text-sm" style={{ borderColor: 'var(--warn)' }}>
           <p className="mb-2">
             <strong>{preview.matched ?? 0}</strong> document{preview.matched === 1 ? '' : 's'} match{' '}
-            <code>{preview.domain}</code>. This deletes them from the index, image vectors, and stored
+            <code><bdi>{preview.domain}</bdi></code>. This deletes them from the index, image vectors, and stored
             bodies — permanently.
           </p>
           {(preview.matched ?? 0) > 0 ? (
             <div className="flex flex-wrap items-end gap-2">
               <label className="flex flex-col gap-1">
-                Type <code>{preview.domain}</code> to confirm
+                Type <code><bdi>{preview.domain}</bdi></code> to confirm
                 <input
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
@@ -130,7 +130,7 @@ export default function MaintenancePage() {
 
       {result?.executed ? (
         <div className="mb-4 max-w-2xl rounded border px-3 py-3 text-sm" style={{ borderColor: 'var(--line)' }}>
-          Removed for <code>{result.domain}</code>: {result.documents_removed ?? 0} documents,{' '}
+          Removed for <code><bdi>{result.domain}</bdi></code>: {result.documents_removed ?? 0} documents,{' '}
           {result.vector_groups_removed ?? 0} vector groups, {result.raw_bodies_removed ?? 0} stored
           bodies.{' '}
           {/* The API's own note, verbatim, so the two cannot drift (PROB-003). */}

@@ -110,7 +110,7 @@ export default function LivePage() {
             {/* host and at arrived in every frame and were dropped (PROB-003). */}
             <Td>{r.at ? new Date(r.at * 1000).toLocaleTimeString() : '—'}</Td>
             <Td>{r.outcome}</Td>
-            <Td>{r.host}</Td>
+            <Td><bdi>{r.host}</bdi></Td>
             <Td title={r.url}>{r.url}</Td>
             <Td num>{r.words}</Td>
           </tr>

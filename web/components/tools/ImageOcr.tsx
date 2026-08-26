@@ -338,7 +338,7 @@ export function ImageOcr({ lang, t }: { lang: string; t: Messages }) {
                           {r.title || r.display_url}
                         </Link>
                         <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--fg-faint)' }}>
-                          <span dir="ltr">{r.display_url}</span>
+                          <span dir="ltr"><bdi>{r.display_url}</bdi></span>
                           <span aria-hidden>·</span>
                           <span>{simLabel(r.score, t)}</span>
                         </div>

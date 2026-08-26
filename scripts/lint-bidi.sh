@@ -20,7 +20,11 @@ fail=0
 
 # 1. A URL rendered as text must be isolated.
 #
-# Excludes `href=` and `dateTime=` — attribute values are never laid out, so they cannot reorder.
+# Attribute values are never laid out, so they cannot reorder — a URL in `href=`, `value=` or
+# `title=` is data the browser reads, not text the bidi algorithm arranges. Rather than listing
+# attribute names, every `name={...}` assignment is stripped from the line before the check, so
+# what remains is only what is actually rendered. A line carrying both an attribute and a bare
+# rendered value is therefore still caught, which a name-by-name exclusion list would have missed.
 while IFS= read -r line; do
   file="${line%%:*}"
   rest="${line#*:}"
@@ -28,6 +32,12 @@ while IFS= read -r line; do
   code="${rest#*:}"
   case "$code" in
   *"<bdi"*) continue ;;
+  esac
+  # What is left after the attributes are removed.
+  rendered=$(printf '%s' "$code" | sed -E 's/[a-zA-Z-]+=\{[^}]*\}//g')
+  case "$rendered" in
+  *"{"*"display_url"*"}"* | *"{"*"host"*"}"* | *"{"*"domain"*"}"*) ;;
+  *) continue ;;
   esac
   echo "  $file:$num — URL rendered without <bdi>: ${code#"${code%%[![:space:]]*}"}"
   fail=1
