@@ -16,8 +16,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const UA = 'XustiveKnowledge/0.1 (+https://xustive.dz; contact via repository)'
 const API = process.env.XUSTIVE_API_URL ?? 'http://127.0.0.1:8080'
-const TIMEOUT_MS = 6000
-const CANDIDATES = 7
+const TIMEOUT_MS = 12000
+/** Names Wikidata's search may return per language. Zinedine Zidane is eighth for "zidane"; a
+ *  shortlist of seven never saw him and the resolver picked an Algerian namesake. */
+const CANDIDATES = 12
 
 /** `P31` classes that are about a *name*, not a thing. A panel on one is the "name list" failure. */
 const NOT_A_THING = new Set([
@@ -58,16 +60,30 @@ type Doc = {
   descriptions?: Record<string, { value?: string }>
 }
 
+/** A page about a *name* rather than a thing, from its description — the phase-one documents carry
+ *  no claims. "family name", "given name", "disambiguation page" are what Wikidata writes there. */
+function isNamePage(doc: Doc): boolean {
+  const descs = Object.values(doc.descriptions ?? {}).map((d) => (d.value ?? '').toLowerCase())
+  if (descs.some((d) => /disambiguation|given name|family name|surname|name list|wikimedia/.test(d)))
+    return true
+  return instanceOf(doc).some((c) => NOT_A_THING.has(c))
+}
+
 function instanceOf(doc: Doc): string[] {
   return (doc.claims?.P31 ?? [])
     .map((c) => c.mainsnak?.datavalue?.value?.id)
     .filter((x): x is string => typeof x === 'string')
 }
 
-/** The best entity for a query, or null. */
-async function resolve(q: string, lang: string): Promise<Doc | null> {
+/**
+ * Candidate documents for a query — **names only**, no claims.
+ *
+ * Two phases, because a full Wikidata document is megabytes and a dozen of them timed out. The
+ * resolver only needs what a name lookup needs — labels, aliases, descriptions, and sitelinks for
+ * prominence — so that is all this fetches. The claims are fetched once, for the winner.
+ */
+async function candidates(q: string, lang: string): Promise<Doc[]> {
   const wd = 'https://www.wikidata.org/w/api.php'
-  // Search in the reader's language first, then English — most entities have an English label.
   const langs = lang === 'en' ? ['en'] : [lang === 'ary' ? 'ar' : lang, 'en']
   const ids: string[] = []
   for (const l of langs) {
@@ -75,24 +91,49 @@ async function resolve(q: string, lang: string): Promise<Doc | null> {
       `${wd}?action=wbsearchentities&search=${encodeURIComponent(q)}&language=${l}&uselang=${l}&type=item&limit=${CANDIDATES}&format=json`,
     )) as { search?: { id: string }[] } | null
     for (const s of r?.search ?? []) if (!ids.includes(s.id)) ids.push(s.id)
-    if (ids.length >= CANDIDATES) break
   }
-  if (ids.length === 0) return null
-
+  if (ids.length === 0) return []
   const r = (await json(
-    `${wd}?action=wbgetentities&ids=${ids.slice(0, CANDIDATES).join('|')}` +
+    `${wd}?action=wbgetentities&ids=${ids.slice(0, CANDIDATES * 2).join('|')}` +
+      `&props=labels|descriptions|aliases|sitelinks&languages=ar|ary|fr|en|mul&format=json`,
+  )) as { entities?: Record<string, Doc> } | null
+  return Object.values(r?.entities ?? {}).filter(
+    // Name pages — disambiguation, given names, family names — are never the thing meant. Without
+    // claims in this phase the check is on the description Wikidata writes for them.
+    (d) => d && d.id && !isNamePage(d),
+  )
+}
+
+/** The full document for one entity. */
+async function fullDocument(id: string): Promise<Doc | null> {
+  const r = (await json(
+    `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${id}` +
       `&props=labels|descriptions|aliases|claims|sitelinks&languages=ar|ary|fr|en|mul&format=json`,
   )) as { entities?: Record<string, Doc> } | null
-  const docs = Object.values(r?.entities ?? {}).filter((d) => d && d.id)
+  return r?.entities?.[id] ?? null
+}
 
-  const things = docs.filter((d) => !instanceOf(d).some((c) => NOT_A_THING.has(c)))
-  if (things.length === 0) return null
-  // Prominence: the number of language editions that bothered to write about it. Crude, honest,
-  // and exactly what separates Cristiano Ronaldo from a list of people called Ronaldo.
-  things.sort(
-    (a, b) => Object.keys(b.sitelinks ?? {}).length - Object.keys(a.sitelinks ?? {}).length,
-  )
-  return things[0] ?? null
+/**
+ * Which candidate the query means — decided by the API, not here.
+ *
+ * The first version ranked by sitelink count in this file and resolved "messi" on the French page
+ * to Jesus Christ (the French search matched *Messie*). The store's own resolver — exact name
+ * first, corpus agreement, a precision floor — already knows better, so the candidates go to it
+ * and it names the winner or declines.
+ */
+async function resolve(q: string, lang: string): Promise<Doc | null> {
+  const docs = await candidates(q, lang)
+  if (docs.length === 0) return null
+  const res = await fetch(`${API}/api/v1/knowledge/resolve-live`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: q, docs }),
+    cache: 'no-store',
+  })
+  if (res.status === 204 || !res.ok) return null
+  const { id } = (await res.json()) as { id?: string }
+  if (!id) return null
+  return (await fullDocument(id)) ?? docs.find((d) => d.id === id) ?? null
 }
 
 /** The reader's-language Wikipedia extract for a document, when it has an article. */
@@ -137,7 +178,7 @@ export async function GET(req: NextRequest) {
   // Second round: the labels the templates will actually show.
   const unresolved = first.unresolved ?? []
   if (unresolved.length === 0) {
-    return NextResponse.json(first, { headers: { 'Cache-Control': 'private, max-age=600' } })
+    return NextResponse.json(first, { headers: { 'Cache-Control': 'private, max-age=300' } })
   }
   const r = (await json(
     `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${unresolved.slice(0, 50).join('|')}` +
@@ -149,5 +190,5 @@ export async function GET(req: NextRequest) {
     if (l) labels.push([id, l])
   }
   const second = (await render({ doc, lang, extract, labels })) ?? first
-  return NextResponse.json(second, { headers: { 'Cache-Control': 'private, max-age=600' } })
+  return NextResponse.json(second, { headers: { 'Cache-Control': 'private, max-age=300' } })
 }

@@ -292,3 +292,51 @@ pub struct RenderExtract {
     #[serde(default)]
     pub url: String,
 }
+
+/// `POST /api/v1/knowledge/resolve-live` — choose among Wikidata candidates the web tier fetched.
+///
+/// The first version of the live fallback ranked candidates in the web tier by sitelink count
+/// alone, and on the French page "messi" resolved to Jesus Christ: Wikidata's French search
+/// matched *Messie*, and prominence did the rest. Prominence without a name match is the wrong
+/// rule, and the right rule already exists — [`resolve::choose`], with its exact-name-first
+/// scoring, its corpus-agreement signal and its precision floor. So the web tier sends the raw
+/// candidate documents and this endpoint judges them the way the store's own hits are judged.
+/// Answers `204` when nothing clears the floor, which is the honest answer for a query that is
+/// not a name.
+pub async fn resolve_live(
+    State(state): State<AppState>,
+    Json(req): Json<ResolveLiveRequest>,
+) -> Result<Json<Value>, StatusCode> {
+    let query = req.query.trim();
+    if !resolve::is_panel_shaped(query) {
+        return Err(StatusCode::NO_CONTENT);
+    }
+    let now = xustive_core::now_unix();
+    let mut candidates = Vec::new();
+    for doc in &req.docs {
+        let Some(entity) = xustive_knowledge::wikidata::parse(doc, now) else {
+            continue;
+        };
+        let corpus_mentions = corpus_mentions(&state, &entity).await;
+        candidates.push(Candidate {
+            entity,
+            corpus_mentions,
+        });
+    }
+    let Some(resolution) = resolve::choose(query, &candidates) else {
+        return Err(StatusCode::NO_CONTENT);
+    };
+    Ok(Json(json!({
+        "id": resolution.entity.id,
+        "confidence": resolution.confidence,
+        "also": resolution.also.map(|a| a.id),
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ResolveLiveRequest {
+    pub query: String,
+    /// Entities from `wbgetentities`, as Wikidata returned them.
+    #[serde(default)]
+    pub docs: Vec<Value>,
+}

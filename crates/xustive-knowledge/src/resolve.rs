@@ -108,14 +108,28 @@ fn score(query: &str, c: &Candidate) -> f32 {
 
     // The dominant signal: did they type this thing's name, exactly?
     let exact = names.contains(&q);
-    // A prefix match covers "Riyad Mahrez" typed as "Mahrez" and little else.
+    // Every word they typed is a whole word of one of its names: "zidane" against "Zinedine
+    // Zidane", "mahrez" against "Riyad Mahrez". Surname search is the common case, and an entity
+    // without a bare-surname alias — most of them — was invisible to it. Whole words only, so
+    // "messi" does not match "Messie".
+    let words: Vec<&str> = q.split_whitespace().collect();
+    let word_match = !exact
+        && !words.is_empty()
+        && names.iter().any(|n| {
+            let have: Vec<&str> = n.split_whitespace().collect();
+            words.iter().all(|w| have.contains(w))
+        });
+    // A prefix match covers a name typed half-way and little else.
     let prefix = !exact
+        && !word_match
         && names
             .iter()
             .any(|n| n.starts_with(&q) || q.starts_with(n.as_str()));
 
     let mut s = if exact {
         0.70
+    } else if word_match {
+        0.60
     } else if prefix {
         0.35
     } else {
@@ -255,6 +269,31 @@ mod tests {
         ];
         let r = choose("Oran", &hits).unwrap();
         assert_eq!(r.entity.id, "Q_EXACT");
+    }
+
+    #[test]
+    fn a_surname_finds_the_person_and_not_the_video_game_named_after_him() {
+        // The live failure: "zidane" declined, because Zinedine Zidane has no bare-surname alias
+        // and the surname is neither an exact nor a prefix match of "Zinedine Zidane". A whole
+        // word of the name is a match; between two whole-word matches, prominence decides.
+        let person = candidate("Q_ZZ", "Zinedine Zidane", 180, 20);
+        let game = candidate("Q_GAME", "Zidane Football Generation 2002", 4, 0);
+        assert_eq!(choose("zidane", &[game, person]).unwrap().entity.id, "Q_ZZ");
+    }
+
+    #[test]
+    fn a_word_match_is_whole_words_so_messi_is_not_the_messiah() {
+        // "messi" against a name carrying the alias "Messie" must not count: Jesus Christ is
+        // enormously prominent, and a substring match plus prominence resolved "messi" on the
+        // French page to him.
+        let mut jesus = candidate("Q_J", "Jésus-Christ", 300, 0);
+        jesus
+            .entity
+            .names
+            .aliases
+            .push(("fr".into(), "Messie".into()));
+        let messi = candidate("Q_M", "Lionel Messi", 200, 30);
+        assert_eq!(choose("messi", &[jesus, messi]).unwrap().entity.id, "Q_M");
     }
 
     #[test]

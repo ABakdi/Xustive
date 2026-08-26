@@ -261,6 +261,10 @@ pub fn app(state: AppState) -> Router {
             "/knowledge/render",
             axum::routing::post(knowledge::render_document),
         )
+        .route(
+            "/knowledge/resolve-live",
+            axum::routing::post(knowledge::resolve_live),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             limit_knowledge,
@@ -269,7 +273,8 @@ pub fn app(state: AppState) -> Router {
             StatusCode::GATEWAY_TIMEOUT,
             Duration::from_millis(state.config.api.timeout_search_ms),
         ))
-        .layer(RequestBodyLimitLayer::new(6 * 1024 * 1024))
+        // Seven candidate documents, and a country's runs to megabytes on its own.
+        .layer(RequestBodyLimitLayer::new(32 * 1024 * 1024))
         .with_state(state.clone());
 
     let core = Router::new()
