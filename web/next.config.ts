@@ -20,6 +20,12 @@ const config: NextConfig = {
   // Fewer bytes and one less thing that can differ between dev and prod.
   compress: true,
 
+  // The rewrite proxy's default timeout is 30 s, and a summary on CPU takes about that long —
+  // under load a little more. Past the default the proxy hangs up the socket and the summary
+  // box collapses to nothing, while a direct call to the API succeeds. Looser than the API's own
+  // summary timeout (ml.deadline_ms + 10 s), so the API is what bounds the wait, not the proxy.
+  experimental: { proxyTimeout: 90_000 },
+
   async rewrites() {
     return [{ source: '/api/v1/:path*', destination: `${API}/api/v1/:path*` }]
   },
