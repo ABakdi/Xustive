@@ -54,6 +54,11 @@ pub async fn panel(
 
     let candidates = candidates(&state, raw).await;
     let Some(resolution) = resolve::choose(raw, &candidates) else {
+        // Nobody has harvested this. Record the gap so the store converges on what this audience
+        // actually asks for rather than on a guess about it (M8-T09) — through the *same*
+        // k-anonymous mechanism weak coverage already uses, under the same floor, in the same
+        // ephemeral instance. An entity fewer than k people asked for is never written down.
+        record_miss(&state, raw).await;
         return Err(StatusCode::NO_CONTENT);
     };
 
@@ -141,4 +146,35 @@ fn render(entity: &Entity, also: Option<&Entity>, lang: &str) -> Value {
         })),
         "updated_at": entity.updated_at,
     })
+}
+
+/// Namespace for entity demand.
+///
+/// Separate from `discovery` so the two never mix: a weak *search* wants a crawl source, a weak
+/// *entity* wants a harvest, and an operator reading either list should not have to guess which
+/// kind of gap a row is.
+pub const DEMAND_NAMESPACE: &str = "entity";
+
+/// Record that a panel-shaped query resolved to nothing.
+///
+/// Governed by the same switch as weak coverage: with the flag clear, nothing about this query is
+/// recorded anywhere. Best-effort — a lost increment is a slightly undercounted gap, never a
+/// correctness problem.
+async fn record_miss(state: &AppState, query: &str) {
+    let disc = &state.config.discovery;
+    if !disc.weak_coverage_enabled {
+        return;
+    }
+    let normalised = query.trim().to_lowercase();
+    if normalised.is_empty() {
+        return;
+    }
+    if let Some(w) = xustive_ingest::weak_coverage::WeakCoverage::connect_in(
+        state.config.queue.signals_url(),
+        DEMAND_NAMESPACE,
+        disc.effective_k(),
+        std::time::Duration::from_secs(disc.weak_coverage_window_days * 86_400),
+    ) {
+        w.record(&normalised).await;
+    }
 }

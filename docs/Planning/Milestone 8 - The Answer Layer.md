@@ -272,12 +272,12 @@ places a model is actually better than a table.
 
 ## M8-T09 — Demand-driven coverage
 
-- [ ] M8-T09.1 A resolution miss is recorded through the **existing k-anonymous weak-coverage
+- [x] M8-T09.1 A resolution miss is recorded through the **existing k-anonymous weak-coverage
       mechanism** — the same floor, the same window, the same ephemeral signals instance. An entity
       asked for by fewer than `k` people is never written anywhere
 - [ ] M8-T09.2 The harvester works that queue: what people actually ask for gets fetched, so the
       store converges on this audience rather than on a guess about it
-- [ ] M8-T09.3 Surfaced on the admin console beside weak coverage — including, honestly, when
+- [x] M8-T09.3 Surfaced on the admin console beside weak coverage — including, honestly, when
       nothing is chasing the queue
 
 ## M8-T10 — Gates

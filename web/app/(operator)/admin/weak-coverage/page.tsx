@@ -10,6 +10,7 @@ export default function WeakCoveragePage() {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const k = data?.k_anonymity ?? 20
   const terms = data?.terms ?? []
+  const entities = data?.entities ?? []
   return (
     <>
       <PageHead title="Weak coverage">
@@ -82,6 +83,31 @@ export default function WeakCoveragePage() {
             </tr>
           ))}
         </Table>
+      ) : null}
+
+      {data?.enabled && entities.length > 0 ? (
+        <div className="mt-8">
+          <h2 className="mb-2 text-lg font-semibold">Entities people asked for</h2>
+          <StatusLine>
+            {`${entities.length} name(s) searched ≥ ${k} times that the knowledge store does not hold. These want a harvest, not a crawl source — add the QID to data/knowledge/seeds.tsv.`}
+          </StatusLine>
+          <Table
+            head={
+              <>
+                <Th>name</Th>
+                <Th num>searches</Th>
+              </>
+            }
+          >
+            {entities.map((t) => (
+              <tr key={t.term}>
+                {/* User search text — React escapes it by rendering as a text node. */}
+                <Td>{t.term}</Td>
+                <Td num>{t.count}</Td>
+              </tr>
+            ))}
+          </Table>
+        </div>
       ) : null}
     </>
   )

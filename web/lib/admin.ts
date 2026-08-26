@@ -108,6 +108,9 @@ export interface WeakCoverage {
   /** Whether anything can actually resolve weak terms to URLs (PROB-003). */
   resolution?: { serp_enabled: boolean; brave_usable: boolean }
   terms: { term: string; count: number }[]
+  /** Panel-shaped queries that resolved to no entity (M8-T09). A different kind of gap: this one
+   *  wants a harvest, not a crawl source. */
+  entities?: { term: string; count: number }[]
 }
 export const getWeakCoverage = (signal?: AbortSignal) =>
   getJSON<WeakCoverage>('/crawler/weak-coverage', signal)

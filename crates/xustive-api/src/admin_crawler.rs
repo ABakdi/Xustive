@@ -589,6 +589,25 @@ pub async fn weak_coverage(
             .collect(),
         None => Vec::new(),
     };
+    // Entity demand (M8-T09): panel-shaped queries that resolved to nothing. A different kind of
+    // gap from a weak search — this one wants a harvest, not a crawl source — so it is listed
+    // separately rather than mixed into the same table.
+    let entity_rows: Vec<serde_json::Value> =
+        match xustive_ingest::weak_coverage::WeakCoverage::connect_in(
+            state.config.queue.signals_url(),
+            crate::knowledge::DEMAND_NAMESPACE,
+            disc.effective_k(),
+            std::time::Duration::from_secs(disc.weak_coverage_window_days * 86_400),
+        ) {
+            Some(w) => w
+                .weak_terms(200)
+                .await
+                .into_iter()
+                .map(|t| json!({ "term": t.term, "count": t.count }))
+                .collect(),
+            None => Vec::new(),
+        };
+
     Ok(Json(json!({
         "enabled": true,
         "k_anonymity": disc.effective_k(),
@@ -599,6 +618,7 @@ pub async fn weak_coverage(
             "brave_usable": disc.brave_usable(),
         },
         "terms": rows,
+        "entities": entity_rows,
     })))
 }
 
