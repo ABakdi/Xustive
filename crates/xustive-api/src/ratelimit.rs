@@ -67,6 +67,9 @@ pub const SUMMARY: Limit = Limit::new(20, 60);
 /// place can have in flight, not how many it can ask for.
 pub const TRANSLATE: Limit = Limit::new(10, 60);
 pub const MEDIA: Limit = Limit::new(10, 60);
+/// The entity panel. One per search rather than per keystroke, and each one costs a handful of
+/// index round trips — so it sits between search and suggest rather than sharing either.
+pub const KNOWLEDGE: Limit = Limit::new(90, 60);
 pub const SOURCES: Limit = Limit::new(5, 3600);
 
 /// What the limiter decided.

@@ -32,6 +32,7 @@
 pub mod entity;
 pub mod index;
 pub mod kind;
+pub mod resolve;
 pub mod wikidata;
 
 pub use entity::{

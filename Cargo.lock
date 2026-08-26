@@ -3764,6 +3764,7 @@ dependencies = [
  "url",
  "xustive-core",
  "xustive-ingest",
+ "xustive-knowledge",
  "xustive-lang",
  "xustive-media",
  "xustive-ml",

@@ -12,6 +12,7 @@ xustive-text = { path = "../xustive-text" }
 xustive-toold = { path = "../xustive-toold" }
 xustive-tools = { path = "../xustive-tools" }
 xustive-search = { path = "../xustive-search" }
+xustive-knowledge = { path = "../xustive-knowledge" }
 xustive-lang = { path = "../xustive-lang" }
 blake3.workspace = true
 xustive-ml = { path = "../xustive-ml", default-features = false }

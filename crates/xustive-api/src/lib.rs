@@ -15,6 +15,7 @@ pub mod error;
 pub mod federate;
 pub mod image_search;
 pub mod interaction;
+pub mod knowledge;
 pub mod metrics;
 pub mod ocr;
 pub mod ratelimit;
@@ -132,6 +133,21 @@ pub fn app(state: AppState) -> Router {
         ))
         .with_state(state.clone());
 
+    // The entity panel (M8-T02). Out of band, like the summary: the search path never waits for
+    // it, and a slow or empty answer degrades to a rail that is simply not there. It reads the
+    // knowledge index and nothing else — no egress, and no cache keyed by the query.
+    let knowledge_routes = Router::new()
+        .route("/knowledge", get(knowledge::panel))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            limit_knowledge,
+        ))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            Duration::from_millis(state.config.api.timeout_search_ms),
+        ))
+        .with_state(state.clone());
+
     let ops = Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
@@ -239,7 +255,8 @@ pub fn app(state: AppState) -> Router {
             api.merge(summary)
                 .merge(translate)
                 .merge(suggest_routes)
-                .merge(interaction_routes),
+                .merge(interaction_routes)
+                .merge(knowledge_routes),
         )
         .nest("/api/v1/admin", admin_api)
         .merge(ops)
@@ -314,6 +331,10 @@ async fn limit_summary(State(state): State<AppState>, req: Request, next: Next) 
 
 async fn limit_translate(State(state): State<AppState>, req: Request, next: Next) -> Response {
     enforce(&state, "/translate", ratelimit::TRANSLATE, req, next).await
+}
+
+async fn limit_knowledge(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    enforce(&state, "/knowledge", ratelimit::KNOWLEDGE, req, next).await
 }
 
 async fn limit_suggest(State(state): State<AppState>, req: Request, next: Next) -> Response {
