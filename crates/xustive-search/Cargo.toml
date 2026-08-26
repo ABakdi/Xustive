@@ -10,6 +10,7 @@ description = "Meilisearch client, index settings, and the search request/respon
 xustive-core = { path = "../xustive-core" }
 xustive-text = { path = "../xustive-text" }
 xustive-lang = { path = "../xustive-lang" }
+xustive-knowledge = { path = "../xustive-knowledge" }
 serde.workspace = true
 serde_json.workspace = true
 reqwest.workspace = true

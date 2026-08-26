@@ -3958,6 +3958,7 @@ dependencies = [
  "tracing",
  "url",
  "xustive-core",
+ "xustive-knowledge",
  "xustive-lang",
  "xustive-text",
 ]

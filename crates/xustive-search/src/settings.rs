@@ -10,6 +10,10 @@ use serde_json::{json, Value};
 pub const DOCUMENTS: &str = "documents";
 pub const COMMENTS: &str = "comments";
 pub const SOURCES: &str = "sources";
+/// The knowledge index (M8-T01.3). Its field names come from `xustive-knowledge` rather than being
+/// written out again here: a searchable attribute naming a field the document does not emit fails
+/// silently — it matches nothing, which reads as bad relevance rather than as a typo.
+pub use xustive_knowledge::index::INDEX as KNOWLEDGE;
 
 /// Longest all-stop-word query the phrase rescue will attempt (M7-T01.5). A genuine short
 /// function-word query ("who is the", "the and") is a handful of tokens; beyond that, an exact
@@ -200,12 +204,43 @@ pub fn sources_settings() -> Value {
     })
 }
 
+/// The knowledge index: entities, matched by name.
+///
+/// Only names and descriptions are searchable. The nested entity carries image credits, licence
+/// strings and authority identifiers, and an entity found by the contents of its own image credit
+/// would be a match no reader could explain.
+///
+/// `prominence` is sortable because it is the tie-breaker when two entities share a name — the
+/// number of language editions that bothered to write about something is a crude measure of how
+/// likely a bare name means it, and a crude honest one.
+pub fn knowledge_settings() -> Value {
+    use xustive_knowledge::index as k;
+    json!({
+        "searchableAttributes": [k::F_NAMES, k::F_DESCRIPTIONS],
+        "filterableAttributes": [k::F_KIND],
+        "sortableAttributes": [k::F_PROMINENCE, k::F_UPDATED_AT],
+        // No `typo` rule ahead of `exactness`: for a name, an exact match is almost always the
+        // right answer, and typo tolerance that outranks it turns `Oran` into `Orano`.
+        "rankingRules": ["words", "exactness", "typo", "proximity", "attribute", "sort"],
+        "stopWords": [],
+        // A name is short. Two typos in a short name is a different name.
+        "typoTolerance": {
+            "minWordSizeForTypos": { "oneTypo": 5, "twoTypos": 9 }
+        }
+    })
+}
+
 /// Every index and its settings, in creation order.
 pub fn all() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         (DOCUMENTS, "id", documents_settings()),
         (COMMENTS, "id", comments_settings()),
         (SOURCES, "id", sources_settings()),
+        (
+            KNOWLEDGE,
+            xustive_knowledge::index::F_ID,
+            knowledge_settings(),
+        ),
     ]
 }
 
@@ -356,6 +391,9 @@ mod tests {
         for (name, pk, _) in all() {
             assert_eq!(pk, "id", "{name} should key on id");
         }
-        assert_eq!(all().len(), 3);
+        // A tripwire, not a fact: an index added here needs settings written on purpose, and the
+        // count failing is how the author is asked whether they did that. Four since M8 added
+        // `knowledge`.
+        assert_eq!(all().len(), 4);
     }
 }

@@ -30,6 +30,7 @@
 //! live where the translations do.
 
 pub mod entity;
+pub mod index;
 pub mod kind;
 pub mod wikidata;
 
