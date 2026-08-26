@@ -254,7 +254,14 @@ impl Orchestrator {
         }
     }
 
-    async fn publish_recent(&self, url: &str, host: &str, outcome: &str, words: usize) {
+    async fn publish_recent(
+        &self,
+        url: &str,
+        host: &str,
+        outcome: &str,
+        words: usize,
+        media: (usize, usize),
+    ) {
         if let Some(s) = &self.shared {
             s.record(&RecentUrl {
                 url: url.to_string(),
@@ -262,6 +269,8 @@ impl Orchestrator {
                 outcome: outcome.to_string(),
                 at: xustive_core::now_unix(),
                 words,
+                images: media.0,
+                videos: media.1,
             })
             .await;
         }
@@ -381,7 +390,7 @@ impl Orchestrator {
             Err(FetchError::RobotsDisallowed) => {
                 self.stats.skip("robots");
                 self.publish_skip("robots").await;
-                self.publish_recent(url, host, "robots", 0).await;
+                self.publish_recent(url, host, "robots", 0, (0, 0)).await;
                 return Outcome::Idle;
             }
             Err(e) => {
@@ -395,7 +404,7 @@ impl Orchestrator {
                 self.publish("failed").await;
                 self.publish_skip(outcome).await;
                 self.publish_source(&claim.source_id, "failed", 1).await;
-                self.publish_recent(url, host, outcome, 0).await;
+                self.publish_recent(url, host, outcome, 0, (0, 0)).await;
                 return Outcome::Idle;
             }
         };
@@ -463,7 +472,7 @@ impl Orchestrator {
                 self.stats.skip("thin");
                 self.publish_skip("thin").await;
                 self.publish_source(&claim.source_id, "thin", 1).await;
-                self.publish_recent(url, host, "thin", 0).await;
+                self.publish_recent(url, host, "thin", 0, (0, 0)).await;
                 if !fetched.exclusion.is_some_and(|e| e.blocks_links()) {
                     self.enqueue_outlinks(&outlinks, &claim.source_id, claim)
                         .await;
@@ -473,7 +482,7 @@ impl Orchestrator {
             Err(ParseError::NoIndex) => {
                 self.stats.skip("noindex");
                 self.publish_skip("noindex").await;
-                self.publish_recent(url, host, "noindex", 0).await;
+                self.publish_recent(url, host, "noindex", 0, (0, 0)).await;
                 return Outcome::Idle;
             }
             Err(e) => {
@@ -485,6 +494,15 @@ impl Orchestrator {
             }
         };
         self.stats.parsed += 1;
+        // Media counted apart from the page (M9): a page is one "parsed" however many pictures it
+        // carries, and the operator asked to see the pictures enumerated on their own.
+        let (page_images, page_videos) = media_counts(&parsed.document.media);
+        if page_images > 0 {
+            self.publish_n("images", page_images).await;
+        }
+        if page_videos > 0 {
+            self.publish_n("videos", page_videos).await;
+        }
         self.publish("parsed").await;
 
         // Stamp the fetched MIME so a "Files" vertical can select PDFs from pages.
@@ -537,8 +555,14 @@ impl Orchestrator {
 
         self.documents += 1;
         let words = parsed.document.body.split_whitespace().count();
-        self.publish_recent(&fetched.final_url, host, "indexed", words)
-            .await;
+        self.publish_recent(
+            &fetched.final_url,
+            host,
+            "indexed",
+            words,
+            (page_images, page_videos),
+        )
+        .await;
         self.schedule_revisit(
             claim,
             Some(&parsed.document.content_hash),
@@ -831,4 +855,17 @@ mod tests {
         // that scan on the hot path.
         assert!(RECLAIM_EVERY >= Duration::from_secs(10));
     }
+}
+
+/// How many images and videos a page's media carries.
+fn media_counts(media: &[xustive_core::model::Media]) -> (usize, usize) {
+    let images = media
+        .iter()
+        .filter(|m| m.kind == xustive_core::model::MediaKind::Image)
+        .count();
+    let videos = media
+        .iter()
+        .filter(|m| m.kind == xustive_core::model::MediaKind::Video)
+        .count();
+    (images, videos)
 }

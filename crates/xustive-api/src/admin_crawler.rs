@@ -123,6 +123,9 @@ pub struct DocumentQuery {
     /// Discovery channel, e.g. `federation`, `seed`, `link` — provenance filter (M7). Empty = all.
     #[serde(default)]
     pub channel: Option<String>,
+    /// `image` or `video`: only documents carrying media of that kind (M9). Empty = all.
+    #[serde(default)]
+    pub media: Option<String>,
     #[serde(default)]
     pub page: Option<usize>,
 }
@@ -175,9 +178,12 @@ pub async fn documents(
 
     // 1. Composition: facet the index by `discovery` within the scope, no documents needed. This is
     //    the "crawler vs external tools" breakdown the console shows.
+    // `media.type` is faceted beside provenance so the page can enumerate documents with images
+    // and with videos apart from plain pages (M9). Meilisearch counts a document once per
+    // distinct value, so a page with three images counts once under `image`.
     let mut composition_q = xustive_search::Query::new(q.clone())
         .limit(0)
-        .facets(&["discovery"]);
+        .facets(&["discovery", "media.type"]);
     if !scope.is_empty() {
         composition_q = composition_q.filter(scope.clone());
     }
@@ -199,6 +205,15 @@ pub async fn documents(
     if let Some(cf) = &channel_filter {
         list_filters.push(cf.clone());
     }
+    // The media drill-in, like the channel one: kept out of the composition scope so the counts
+    // always show every kind to pick from.
+    if let Some(kind) = params
+        .media
+        .as_deref()
+        .filter(|k| matches!(*k, "image" | "video"))
+    {
+        list_filters.push(format!("media.type = {kind:?}"));
+    }
     let mut query = xustive_search::Query::new(q)
         .limit(per_page)
         .offset((page - 1) * per_page)
@@ -219,6 +234,9 @@ pub async fn documents(
             "per_page": per_page,
             // `{ "discovery": { "federation": 12, "seed": 340, ... } }` — the index by provenance.
             "composition": composition.get("discovery").cloned().unwrap_or_else(|| json!({})),
+            // `{ "image": 176, "video": 21 }` — documents carrying media of each kind, within the
+            // scope. Enumerated apart from pages on purpose (M9).
+            "media": composition.get("media.type").cloned().unwrap_or_else(|| json!({})),
         }))),
         Err(e) => {
             tracing::warn!(error = %e, "admin document list failed");

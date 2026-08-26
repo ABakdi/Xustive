@@ -95,6 +95,10 @@ export default function LivePage() {
         <Tile n={s?.fetched ?? 0} label="fetched" />
         <Tile n={s?.revisited ?? 0} label="revisited" />
         <Tile n={s?.parsed ?? 0} label="parsed" />
+        {/* Media enumerated apart from pages (M9): a page is one "parsed" however many pictures
+            it carries, and the count of pictures is a different fact about the crawl. */}
+        <Tile n={s?.images ?? 0} label="images found" />
+        <Tile n={s?.videos ?? 0} label="videos found" />
         <Tile n={s?.indexed ?? 0} label="indexed" />
         <Tile n={s?.discovered ?? 0} label="discovered" />
         <Tile n={s?.failed ?? 0} label="failed" />
@@ -104,13 +108,19 @@ export default function LivePage() {
       </div>
 
       <h2 className="mb-2 mt-8 text-lg font-semibold">Recent URLs</h2>
-      <Table head={<><Th>at</Th><Th>outcome</Th><Th>host</Th><Th>url</Th><Th num>words</Th></>}>
+      <Table head={<><Th>at</Th><Th>outcome</Th><Th>host</Th>
+              <Th num>media</Th><Th>url</Th><Th num>words</Th></>}>
         {(s?.recent ?? []).map((r, i) => (
           <tr key={`${r.url}-${i}`}>
             {/* host and at arrived in every frame and were dropped (PROB-003). */}
             <Td>{r.at ? new Date(r.at * 1000).toLocaleTimeString() : '—'}</Td>
             <Td>{r.outcome}</Td>
             <Td><bdi>{r.host}</bdi></Td>
+            <Td num>
+              {r.images || r.videos
+                ? `${r.images ?? 0} img · ${r.videos ?? 0} vid`
+                : '—'}
+            </Td>
             <Td title={r.url}>{r.url}</Td>
             <Td num>{r.words}</Td>
           </tr>

@@ -130,6 +130,8 @@ export interface DocHit {
   published_at?: number
   /** Discovery channel that found this document — its provenance (M7). */
   discovery?: string
+  /** The media the parser found on the page (M9). */
+  media?: { type: 'image' | 'video' | 'audio'; url: string; provider?: string }[]
 }
 export interface DocumentsPage {
   hits: DocHit[]
@@ -138,9 +140,13 @@ export interface DocumentsPage {
   per_page: number
   /** Index composition by discovery channel within the current scope: `{ federation: 12, seed: 340 }`. */
   composition: Record<string, number>
+  /** Documents carrying media of each kind within the scope: `{ image: 176, video: 21 }` (M9).
+   *  Enumerated apart from pages: a gallery and an article are both one page indexed. */
+  media?: Record<string, number>
 }
 export function getDocuments(
-  params: { q?: string; host?: string; lang?: string; channel?: string; page?: number },
+  params: { q?: string; host?: string; lang?: string; channel?: string
+  media?: string; page?: number },
   signal?: AbortSignal,
 ) {
   const p = new URLSearchParams()
@@ -148,6 +154,7 @@ export function getDocuments(
   if (params.host) p.set('host', params.host)
   if (params.lang) p.set('lang', params.lang)
   if (params.channel) p.set('channel', params.channel)
+  if (params.media) p.set('media', params.media)
   p.set('page', String(params.page ?? 1))
   return getJSON<DocumentsPage>(`/crawler/documents?${p}`, signal)
 }
@@ -197,11 +204,16 @@ export interface Snapshot {
   fetched: number
   revisited: number
   parsed: number
+  /** Media entries extracted, counted apart from pages (M9). */
+  images?: number
+  videos?: number
   indexed: number
   discovered: number
   failed: number
   skipped: Record<string, number>
-  recent: { url: string; host: string; outcome: string; at: number; words: number }[]
+  recent: { url: string; host: string; outcome: string; at: number; words: number
+  images?: number
+  videos?: number }[]
   hosts: Record<string, number>
   waiting: number
   inflight: number

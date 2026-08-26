@@ -53,6 +53,12 @@ pub struct RecentUrl {
     /// Words extracted. A navigation page and a real article look identical by title, and this is
     /// the cheapest thing that tells them apart at a glance.
     pub words: usize,
+    /// Media the parser found on the page, counted apart from the page itself (M9): a gallery and
+    /// an article are both "one page indexed", and only this tells them apart.
+    #[serde(default)]
+    pub images: usize,
+    #[serde(default)]
+    pub videos: usize,
 }
 
 /// A snapshot the console renders.
@@ -67,6 +73,11 @@ pub struct Snapshot {
     #[serde(default)]
     pub revisited: u64,
     pub parsed: u64,
+    /// Media entries extracted across all parsed pages, enumerated separately from pages (M9).
+    #[serde(default)]
+    pub images: u64,
+    #[serde(default)]
+    pub videos: u64,
     pub indexed: u64,
     pub discovered: u64,
     pub failed: u64,
@@ -472,6 +483,8 @@ impl CrawlStats {
             fetched: counters.get("fetched").copied().unwrap_or(0),
             revisited: counters.get("revisited").copied().unwrap_or(0),
             parsed: counters.get("parsed").copied().unwrap_or(0),
+            images: counters.get("images").copied().unwrap_or(0),
+            videos: counters.get("videos").copied().unwrap_or(0),
             indexed: counters.get("indexed").copied().unwrap_or(0),
             discovered: counters.get("discovered").copied().unwrap_or(0),
             failed: counters.get("failed").copied().unwrap_or(0),
@@ -583,6 +596,8 @@ mod tests {
             outcome: "indexed".into(),
             at: 1,
             words: 640,
+            images: 0,
+            videos: 0,
         };
         let json = serde_json::to_string(&e).expect("serialises");
         assert!(json.contains("words"), "word count is the cheap tell");

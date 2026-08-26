@@ -19,8 +19,10 @@ export default function DocumentsPage() {
   const [host, setHost] = useState('')
   const [lang, setLang] = useState('')
   const [channel, setChannel] = useState('')
+  // `image` / `video` / '' — the media drill-in (M9), applied immediately like the channel one.
+  const [media, setMedia] = useState('')
   // The *applied* filters, updated only on submit — so typing does not refetch per keystroke.
-  const [applied, setApplied] = useState({ q: '', host: '', lang: '', channel: '' })
+  const [applied, setApplied] = useState({ q: '', host: '', lang: '', channel: '', media: '' })
   const [page, setPage] = useState(1)
   const [data, setData] = useState<DocumentsPage | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -30,6 +32,11 @@ export default function DocumentsPage() {
     setChannel(c)
     setPage(1)
     setApplied((a) => ({ ...a, channel: c }))
+  }
+  const pickMedia = (m: string) => {
+    setMedia(m)
+    setPage(1)
+    setApplied((a) => ({ ...a, media: m }))
   }
 
   const load = useCallback(() => {
@@ -118,12 +125,51 @@ export default function DocumentsPage() {
         </div>
       </div>
 
+      {/* Media enumerated apart from pages (M9): a gallery and an article are both "one page
+          indexed", and only this says how many pages carry pictures or videos. A chip drills the
+          list down to just those. */}
+      <div
+        className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded border px-3 py-3 text-sm"
+        style={{ borderColor: 'var(--line)', background: 'var(--bg-sunk)' }}
+      >
+        <span>
+          <strong className="tabular-nums">{(data?.media?.image ?? 0).toLocaleString()}</strong>{' '}
+          pages with <strong>images</strong>
+        </span>
+        <span>
+          <strong className="tabular-nums">{(data?.media?.video ?? 0).toLocaleString()}</strong>{' '}
+          pages with <strong>videos</strong>
+        </span>
+        <span className="flex flex-wrap gap-1.5">
+          {(
+            [
+              ['', 'all pages'],
+              ['image', 'with images'],
+              ['video', 'with videos'],
+            ] as const
+          ).map(([m, label]) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => pickMedia(m)}
+              className="rounded border px-2 py-0.5 text-xs"
+              style={{
+                borderColor: applied.media === m ? 'var(--accent)' : 'var(--line)',
+                color: 'var(--fg-muted)',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </span>
+      </div>
+
       <form
         className="mb-3 flex flex-wrap items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault()
           setPage(1)
-          setApplied({ q, host, lang, channel })
+          setApplied({ q, host, lang, channel, media })
         }}
       >
         <input
@@ -198,6 +244,7 @@ export default function DocumentsPage() {
             <Th>source</Th>
             <Th>language</Th>
             <Th num>length</Th>
+            <Th num>media</Th>
             <Th>published</Th>
           </>
         }
@@ -230,6 +277,14 @@ export default function DocumentsPage() {
             </Td>
             <Td>{h.language || ''}</Td>
             <Td num>{h.body_len ?? (h.excerpt ? h.excerpt.length : '')}</Td>
+            {/* The page's own media, enumerated: N images · M videos, or a dash. */}
+            <Td num>
+              {(() => {
+                const img = (h.media ?? []).filter((m) => m.type === 'image').length
+                const vid = (h.media ?? []).filter((m) => m.type === 'video').length
+                return img || vid ? `${img} img · ${vid} vid` : '—'
+              })()}
+            </Td>
             <Td>
               {h.published_at
                 ? new Date(h.published_at * 1000).toISOString().slice(0, 16).replace('T', ' ')
