@@ -415,6 +415,12 @@ pub fn fill_entity_labels(entity: &mut Entity, labels: &[(String, String)]) {
                     *reviewer = l;
                 }
             }
+            // A unit is an entity too. `117 Q7727` is not a runtime; `117 minute` is.
+            Value::Quantity { unit, .. } if is_qid(unit) => {
+                if let Some(l) = lookup(unit) {
+                    *unit = l;
+                }
+            }
             _ => {}
         }
     }
@@ -602,6 +608,17 @@ mod tests {
         assert!(matches!(
             e.fact("review_score").map(|f| &f.value),
             Some(Value::Score { reviewer, .. }) if reviewer == "Rotten Tomatoes"
+        ));
+    }
+
+    #[test]
+    fn a_quantity_unit_is_resolved_like_any_other_reference() {
+        // `117 Q7727` is not a runtime a reader can use.
+        let mut e = parse(&film(), 0).unwrap();
+        fill_entity_labels(&mut e, &[("Q7727".to_string(), "minute".to_string())]);
+        assert!(matches!(
+            e.fact("duration").map(|f| &f.value),
+            Some(Value::Quantity { unit, .. }) if unit == "minute"
         ));
     }
 

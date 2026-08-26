@@ -139,6 +139,10 @@ pub fn unresolved_references(harvested: &[Harvested]) -> Vec<String> {
                 Value::Score { reviewer, .. } if wikidata::is_qid(reviewer) => {
                     ids.insert(reviewer.clone());
                 }
+                // Units are entities too — a duration of `Q7727` is not a duration.
+                Value::Quantity { unit, .. } if wikidata::is_qid(unit) => {
+                    ids.insert(unit.clone());
+                }
                 _ => {}
             }
         }

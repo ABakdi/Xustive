@@ -15,7 +15,7 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use xustive_knowledge::resolve::{self, Candidate};
-use xustive_knowledge::{index, Entity};
+use xustive_knowledge::{index, template, Entity};
 
 use crate::state::AppState;
 
@@ -129,7 +129,9 @@ fn render(entity: &Entity, also: Option<&Entity>, lang: &str) -> Value {
             "licence": e.provenance.licence,
             "url": e.provenance.url,
         })),
-        "facts": entity.facts,
+        // The template decides what this kind shows and in what order, capped per key — the
+        // parser stores every property it recognises, and a panel is not a data dump.
+        "facts": template::select(entity),
         "authorities": entity.authorities,
         "images": entity.images,
         "also": also.map(|a| json!({
