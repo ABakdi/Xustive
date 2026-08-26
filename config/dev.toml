@@ -84,7 +84,9 @@ searxng_url = "http://xustive-searxng:8080"
 federator_url = "http://127.0.0.1:8095"
 # How long the response waits for the live "from the web" strip. The background fetch (below) runs
 # detached and indexes results regardless, so this is only the strip's latency cap, not the fetch.
-budget_ms = 1500
+# Well inside api.timeout_search_ms (1500): the strip wait is a cap on how long the page waits
+# for live web hits, and it has to leave time to answer. Config::validate() refuses otherwise.
+budget_ms = 900
 # How long the background federation fetch may run — a real metasearch aggregation takes seconds.
 # Detached from the response, so a generous value never slows a search.
 fetch_budget_ms = 6000

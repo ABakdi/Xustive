@@ -45,6 +45,9 @@ pub struct FederateRequest {
     pub query: String,
     #[serde(default)]
     pub budget_ms: Option<u64>,
+    /// `web` (default), `images` or `videos` (M9-T06). Absent on the wire from an older API.
+    #[serde(default)]
+    pub category: xustive_federation::Category,
 }
 
 /// `POST /federate` response. `partial` is true when the budget cut the call short or SearXNG
@@ -164,7 +167,7 @@ pub async fn federate_inner(state: &AppState, req: FederateRequest) -> FederateR
         .map(Duration::from_millis)
         .unwrap_or(state.default_budget);
 
-    match tokio::time::timeout(budget, client.search(query)).await {
+    match tokio::time::timeout(budget, client.search_in(query, req.category)).await {
         Ok(Ok(hits)) => FederateResponse {
             hits,
             partial: false,
@@ -232,6 +235,7 @@ mod tests {
             FederateRequest {
                 query: "   ".into(),
                 budget_ms: None,
+                category: Default::default(),
             },
         )
         .await;
@@ -247,6 +251,7 @@ mod tests {
             FederateRequest {
                 query: "قسنطينة".into(),
                 budget_ms: Some(100),
+                category: Default::default(),
             },
         )
         .await;
@@ -263,6 +268,7 @@ mod tests {
                 snippet: "s".into(),
                 engine: "duckduckgo".into(),
                 rank: 1,
+                media: None,
             }],
             partial: true,
         };

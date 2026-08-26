@@ -1073,6 +1073,22 @@ impl Config {
                 msg: "must be between 1 and 5000 — the strip wait may never make the local answer wait long".into(),
             });
         }
+        // The strip wait has to fit inside the search timeout with room to shape the page, or a
+        // slow tool turns every search into a 504. Refused rather than clamped, like every other
+        // guard here — and checked whenever a gateway is configured, not only when the file says
+        // enabled, because the admin console can switch federation on at runtime.
+        if self.federation.api_federation_usable()
+            && self.federation.budget_ms + 200 > self.api.timeout_search_ms
+        {
+            return Err(ConfigError::Value {
+                key: "federation.budget_ms".into(),
+                msg: format!(
+                    "must be at least 200ms below api.timeout_search_ms ({}), or the strip wait \
+                     leaves no time to answer",
+                    self.api.timeout_search_ms
+                ),
+            });
+        }
         if self.federation.enabled
             && (self.federation.fetch_budget_ms == 0 || self.federation.fetch_budget_ms > 30_000)
         {

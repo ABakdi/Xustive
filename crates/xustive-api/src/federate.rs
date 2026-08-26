@@ -13,7 +13,7 @@
 use std::time::Duration;
 
 use serde::Deserialize;
-use xustive_ingest::federation::FederatedHit;
+use xustive_ingest::federation::{Category, FederatedHit};
 
 /// The gateway's `/federate` response shape (mirrors `xustive_federator::FederateResponse`).
 #[derive(Debug, Deserialize)]
@@ -147,6 +147,18 @@ impl FederatorClient {
     /// `budget_ms` overrides the configured default when set; it is passed to the gateway *and*
     /// bounds the wait here.
     pub async fn federate(&self, query: &str, budget_ms: Option<u64>) -> Vec<FederatedHit> {
+        self.federate_in(query, Category::Web, budget_ms).await
+    }
+
+    /// [`Self::federate`] for one category. Images and Videos (M9-T06) ride the same gateway, the
+    /// same breaker and the same budget — a slow image engine cannot slow a web search any more
+    /// than a slow web engine could.
+    pub async fn federate_in(
+        &self,
+        query: &str,
+        category: Category,
+        budget_ms: Option<u64>,
+    ) -> Vec<FederatedHit> {
         if query.trim().is_empty() {
             return Vec::new();
         }
@@ -155,7 +167,7 @@ impl FederatorClient {
             return Vec::new();
         }
         let budget = budget_ms.unwrap_or(self.default_budget_ms);
-        match self.try_federate(query, budget).await {
+        match self.try_federate(query, category, budget).await {
             Ok(hits) => {
                 self.federate_breaker.on_success();
                 hits
@@ -167,14 +179,19 @@ impl FederatorClient {
         }
     }
 
-    async fn try_federate(&self, query: &str, budget_ms: u64) -> Result<Vec<FederatedHit>, ()> {
+    async fn try_federate(
+        &self,
+        query: &str,
+        category: Category,
+        budget_ms: u64,
+    ) -> Result<Vec<FederatedHit>, ()> {
         // The budget bounds the WHOLE exchange — send, headers, and body decode (BUG-015) — so a
         // misbehaving gateway trickling a body cannot make the caller wait past it.
         let attempt = async {
             let resp = self
                 .http
                 .post(&self.endpoint)
-                .json(&serde_json::json!({ "query": query, "budget_ms": budget_ms }))
+                .json(&serde_json::json!({ "query": query, "budget_ms": budget_ms, "category": category }))
                 .send()
                 .await
                 .map_err(|e| tracing::warn!(error = %e, "federation gateway request failed"))?;

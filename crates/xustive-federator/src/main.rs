@@ -34,7 +34,11 @@ struct Args {
     max_hits: usize,
 
     /// Upstream timeout for a single SearXNG call, in ms. The per-request budget bounds it further.
-    #[arg(long, env = "FEDERATION_TIMEOUT_MS", default_value_t = 2000)]
+    /// The transport timeout on one SearXNG call. A loose backstop, not the budget: the budget a
+    /// `/federate` request carries is what binds, and it must be able to. At 2000 this sat *under*
+    /// the API's 6000 fetch budget and cut every image search short (M9-T06) — the image engines
+    /// routinely take three or four seconds.
+    #[arg(long, env = "FEDERATION_TIMEOUT_MS", default_value_t = 15000)]
     timeout_ms: u64,
 
     /// Default per-request budget in ms, applied when a `/federate` call carries none.

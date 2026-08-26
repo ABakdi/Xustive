@@ -139,6 +139,27 @@ a click — the reader chooses the disclosure. And no code path downloads video 
       is a storage decision (bodies × days, in the Redis that PROB-001 bounded), left to the
       operator; until then the Videos tab fills at the pace of the revisit crawl
 
+## M9-T06 — Federated images and videos
+
+> Asked for after close: *use SearXNG to enrich image and video search the same way web search
+> uses it.* It is the same mechanism — [[ADR-0017 - Query-Time Federation with External Metasearch]]
+> already covers it: one gateway, one budget, fail-open, and every hit queued so the index
+> converges. What changes is a `categories` parameter and a tile instead of a card.
+
+- [ ] M9-T06.1 `Category` (`web` / `images` / `videos`) on the gateway request and the SearXNG
+      call; `FederatedHit` gains an optional `media` — the image (`img_src`, `thumbnail_src`,
+      resolution) or the video (**the watch page, never `iframe_src`**, thumbnail, length). Defaulted
+      on the wire so a gateway and an API of different builds still agree
+- [ ] M9-T06.2 The Images and Videos tabs federate in their own category on page 1, exactly as All
+      does: detached fetch, short strip wait, "from the web" badge on the tile
+- [ ] M9-T06.3 The eager index stores the hit's `media` on the placeholder document, so the next
+      search finds the picture **locally** before the crawl lands; the page is queued for crawl
+      like any federated URL
+- [ ] M9-T06.4 Thumbnails from the engines go through the signed proxy like every other — a
+      Bing-hosted preview is still a third-party host the reader did not choose
+- [ ] M9-T06.5 Fixture tests on the live JSON shapes; a video hit's `src` is asserted to be the
+      watch page and never an embed
+
 ## M9-T05 — Gates
 
 - [x] M9-T05.1 `scripts/no-js-check.sh` extended: `?v=images` renders tiles with script off

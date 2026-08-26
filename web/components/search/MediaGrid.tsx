@@ -73,6 +73,13 @@ export function ImageGrid({ results, t }: { results: Result[]; t: Messages }) {
             </span>
             <span className="block text-xs" style={{ color: 'var(--fg-muted)' }}>
               <bdi>{hostOf(tile.page.url)}</bdi>
+              {/* A live federated hit, not yet in the local index (M9-T06). Badged for the same
+                  reason the list badges it: provenance is the reader's to judge. */}
+              {tile.page.from_web && (
+                <span className="ms-1" style={{ color: 'var(--accent)' }}>
+                  {t.fromTheWeb}
+                </span>
+              )}
             </span>
           </a>
         </li>
@@ -150,6 +157,11 @@ export function VideoList({ results, t }: { results: Result[]; t: Messages }) {
               </span>
               <span className="block text-xs" style={{ color: 'var(--fg-muted)' }}>
                 {t.watchOn} <bdi>{providerName}</bdi> · <bdi>{hostOf(tile.page.url)}</bdi>
+                {tile.page.from_web && (
+                  <span className="ms-1" style={{ color: 'var(--accent)' }}>
+                    {t.fromTheWeb}
+                  </span>
+                )}
               </span>
             </a>
           </li>

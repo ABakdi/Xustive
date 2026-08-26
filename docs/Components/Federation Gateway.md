@@ -38,7 +38,7 @@ It is its own binary for the same reason [[Tool Data Plane]] is: **so it cannot 
 
 ## 3. Interface
 
-- **In (from serving):** `POST /federate {query, lang, budget_ms}` on `core` only. Returns `{hits: [FederatedHit], partial: bool}`; `partial=true` when the budget cut a tool short.
+- **In (from serving):** `POST /federate {query, lang, budget_ms, category}` on `core` only, where `category` is `web` (default), `images` or `videos` (M9-T06) and selects SearXNG's engine set. Returns `{hits: [FederatedHit], partial: bool}`; an image or video hit carries `media {kind, src, thumb, detail}` — for video, `src` is the watch page and never an embed. `partial=true` when the budget cut a tool short.
 - **Out (egress):** SearXNG JSON API (self-hosted); optionally an external summariser MCP (Parallel-AI) — each behind its own `enabled` flag and the allowlist.
 - **To crawler:** `federation:hint:<url>` capped/​windowed Redis keys, read by the revisit/discovery pass (mirrors the `hot_docs` warm-hint mechanism).
 - **To admin:** `GET` health/stats consumed by `/api/v1/admin/integrations`.

@@ -35,13 +35,68 @@ pub struct FederatedHit {
     pub engine: String,
     /// 1-based position in SearXNG's returned order.
     pub rank: usize,
+    /// The image or video this hit *is*, for the Images and Videos categories (M9-T06). `None` for
+    /// web hits, and defaulted on the wire so a gateway and an API of different builds still agree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media: Option<FederatedMedia>,
+}
+
+/// What an image or video hit carries beyond a page. Never bytes: SearXNG hands us URLs, and
+/// every one of them is proxied or linked, not fetched, by the serving side.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FederatedMedia {
+    /// `image` or `video`.
+    pub kind: String,
+    /// The full-size image, or for video the watch page (same as `url`).
+    pub src: String,
+    /// A small preview when the engine offers one. Preferred for tiles: it is what the engine
+    /// already serves at thumbnail size, and it spares the origin a full-size request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumb: Option<String>,
+    /// `"3504 x 2336"` for images, seconds or `m:ss` for video — whatever the engine said, kept as
+    /// text because the formats vary by engine and a tile only displays it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// Which SearXNG category to ask. Web is the M7 default; Images and Videos arrived with M9-T06 and
+/// travel through the same gateway, budget and fail-open path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Category {
+    #[default]
+    Web,
+    Images,
+    Videos,
+}
+
+impl Category {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Category::Web => "general",
+            Category::Images => "images",
+            Category::Videos => "videos",
+        }
+    }
+
+    /// From a vertical name; anything unknown is web, the safe default.
+    pub fn from_vertical(v: Option<&str>) -> Self {
+        match v {
+            Some("images") => Category::Images,
+            Some("videos") => Category::Videos,
+            _ => Category::Web,
+        }
+    }
 }
 
 /// The slice of SearXNG's `format=json` response we read: `results[].{url,title,content,engine}`.
 #[derive(Debug, Deserialize)]
 struct SearxngResponse {
+    /// Untyped on purpose, and parsed one result at a time below: SearXNG's engines are uneven,
+    /// and one result with a field of an unexpected shape used to fail the deserialisation of the
+    /// *whole* response — a hundred good video hits thrown away for one odd one (M9-T06).
     #[serde(default)]
-    results: Vec<SearxngResult>,
+    results: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +113,22 @@ struct SearxngResult {
     engine: String,
     #[serde(default)]
     engines: Vec<String>,
+    /// `images.html` / `videos.html` — how SearXNG says what kind of result this is.
+    // `Option`, not `String` with a default: several engines send `null` rather than omitting a
+    // field, and `#[serde(default)]` on a `String` refuses `null`.
+    #[serde(default)]
+    template: Option<String>,
+    #[serde(default)]
+    img_src: Option<String>,
+    #[serde(default)]
+    thumbnail_src: Option<String>,
+    #[serde(default)]
+    thumbnail: Option<String>,
+    #[serde(default)]
+    resolution: Option<String>,
+    /// Video length. A number of seconds or `m:ss`, depending on the engine.
+    #[serde(default)]
+    length: serde_json::Value,
 }
 
 /// Parse SearXNG's JSON into federated hits, dropping blank URLs and preserving order as rank. Pure,
@@ -69,6 +140,7 @@ pub fn parse_results(body: &str) -> Vec<FederatedHit> {
     };
     resp.results
         .into_iter()
+        .filter_map(|v| serde_json::from_value::<SearxngResult>(v).ok())
         .filter(|r| !r.url.trim().is_empty())
         .enumerate()
         .map(|(i, r)| {
@@ -80,15 +152,44 @@ pub fn parse_results(body: &str) -> Vec<FederatedHit> {
                     .find(|e| !e.trim().is_empty())
                     .unwrap_or_default()
             };
+            let img_src = non_empty(r.img_src.unwrap_or_default());
+            let media = match r.template.as_deref().unwrap_or("") {
+                // An image hit without an image is a web hit that lost its way; dropped below.
+                "images.html" if img_src.is_some() => Some(FederatedMedia {
+                    kind: "image".into(),
+                    src: img_src.unwrap_or_default(),
+                    thumb: non_empty(r.thumbnail_src.unwrap_or_default()),
+                    detail: non_empty(r.resolution.unwrap_or_default()),
+                }),
+                "videos.html" => Some(FederatedMedia {
+                    kind: "video".into(),
+                    // The watch page. Never `iframe_src`: an embed URL is a player, and a player
+                    // is a third-party page load the reader did not choose (ADR-0021).
+                    src: r.url.clone(),
+                    thumb: non_empty(r.thumbnail.unwrap_or_default()),
+                    detail: match r.length {
+                        serde_json::Value::String(s) => non_empty(s),
+                        serde_json::Value::Number(n) => Some(n.to_string()),
+                        _ => None,
+                    },
+                }),
+                _ => None,
+            };
             FederatedHit {
                 url: r.url,
                 title: r.title,
                 snippet: r.content,
                 engine,
                 rank: i + 1,
+                media,
             }
         })
         .collect()
+}
+
+fn non_empty(s: String) -> Option<String> {
+    let t = s.trim();
+    (!t.is_empty() && t != "None").then(|| t.to_string())
 }
 
 /// Why a federation request failed.
@@ -139,12 +240,27 @@ impl SearxngClient {
     /// are left unset — the query text carries the intent, and over-constraining loses the
     /// mixed-script and dialect queries federation most exists to help.
     pub async fn search(&self, query: &str) -> Result<Vec<FederatedHit>, FederationError> {
+        self.search_in(query, Category::Web).await
+    }
+
+    /// Search one category. Images and Videos are the same call with a `categories` parameter;
+    /// SearXNG fans out to its image and video engines and answers in the same JSON shape with a
+    /// `template` naming the kind.
+    pub async fn search_in(
+        &self,
+        query: &str,
+        category: Category,
+    ) -> Result<Vec<FederatedHit>, FederationError> {
         let url = format!("{}/search", self.base);
         let resp = self
             .http
             .get(&url)
             .header("Accept", "application/json")
-            .query(&[("q", query), ("format", "json")])
+            .query(&[
+                ("q", query),
+                ("format", "json"),
+                ("categories", category.as_str()),
+            ])
             .send()
             .await?;
         let status = resp.status();
@@ -221,5 +337,95 @@ mod tests {
             !rendered.contains("SECRET_QUERY_MARKER"),
             "query text leaked into the rendered error: {rendered}"
         );
+    }
+
+    #[test]
+    fn an_image_result_carries_its_image_and_a_video_result_its_watch_page() {
+        // Shapes copied from a live SearXNG answer for "alger" (M9-T06).
+        let body = r#"{"results":[
+          {"template":"images.html","url":"https://observalgerie.com/visiter-alger","title":"Visiter Alger",
+           "content":"…","thumbnail_src":"https://tse1.mm.bing.net/th/id/OIP.z","img_src":"https://observalgerie.com/wp-content/uploads/vue.jpg",
+           "resolution":"1980 x 1200","engine":"duckduckgo images"},
+          {"template":"videos.html","url":"https://www.youtube.com/watch?v=TqIensHhtyY","title":"Mali - Algérie",
+           "content":"…","iframe_src":"https://www.youtube-nocookie.com/embed/TqIensHhtyY",
+           "thumbnail":"https://i.ytimg.com/vi/TqIensHhtyY/hqdefault.jpg","length":"184.0","engine":"google videos"},
+          {"template":"videos.html","url":"https://www.tiktok.com/@x/video/1","title":"t","thumbnail":"https://t/x.jpg","length":"0:49","engine":"duckduckgo videos"},
+          {"template":"images.html","url":"https://example.com/no-image","title":"broken","img_src":"","engine":"bing images"}
+        ]}"#;
+        let hits = parse_results(body);
+        assert_eq!(hits.len(), 4);
+        let img = hits[0].media.as_ref().unwrap();
+        assert_eq!(img.kind, "image");
+        assert_eq!(
+            img.src,
+            "https://observalgerie.com/wp-content/uploads/vue.jpg"
+        );
+        assert_eq!(
+            img.thumb.as_deref(),
+            Some("https://tse1.mm.bing.net/th/id/OIP.z")
+        );
+        assert_eq!(img.detail.as_deref(), Some("1980 x 1200"));
+
+        let vid = hits[1].media.as_ref().unwrap();
+        assert_eq!(vid.kind, "video");
+        // The watch page, never the iframe: an embed is a player.
+        assert_eq!(vid.src, "https://www.youtube.com/watch?v=TqIensHhtyY");
+        assert!(!vid.src.contains("embed"));
+        assert_eq!(vid.detail.as_deref(), Some("184.0"));
+        assert_eq!(
+            hits[2].media.as_ref().unwrap().detail.as_deref(),
+            Some("0:49")
+        );
+
+        // An image result with no image is not an image.
+        assert!(hits[3].media.is_none());
+    }
+
+    #[test]
+    fn a_null_field_or_one_malformed_result_does_not_drop_the_rest() {
+        // The live failure: SearXNG's video engines send `"thumbnail": null` and the like, and a
+        // strict String field failed the deserialisation of the WHOLE body — 118 video hits became
+        // zero. Every result is now parsed on its own, and a null reads as absent.
+        let body = r#"{"results":[
+          {"template":"videos.html","url":"https://www.youtube.com/watch?v=a","title":"ok","thumbnail":null,"img_src":null,"length":184,"engine":"youtube"},
+          {"template":"videos.html","url":12345,"title":"malformed url type"},
+          {"template":"images.html","url":"https://p/x","title":"img","img_src":"https://p/x.jpg","thumbnail_src":null,"resolution":null,"engine":"bing images"}
+        ]}"#;
+        let hits = parse_results(body);
+        assert_eq!(hits.len(), 2, "the malformed result is skipped, not fatal");
+        assert_eq!(hits[0].media.as_ref().unwrap().kind, "video");
+        assert!(hits[0].media.as_ref().unwrap().thumb.is_none());
+        assert_eq!(
+            hits[0].media.as_ref().unwrap().detail.as_deref(),
+            Some("184")
+        );
+        assert_eq!(hits[1].media.as_ref().unwrap().kind, "image");
+    }
+
+    #[test]
+    fn a_web_hit_serialises_without_a_media_field_so_older_builds_still_read_it() {
+        let hit = FederatedHit {
+            url: "https://a".into(),
+            title: "t".into(),
+            snippet: "s".into(),
+            engine: "e".into(),
+            rank: 1,
+            media: None,
+        };
+        let json = serde_json::to_string(&hit).unwrap();
+        assert!(!json.contains("media"));
+        // And a gateway reply without the field still parses.
+        let back: FederatedHit =
+            serde_json::from_str(r#"{"url":"u","title":"t","snippet":"s","engine":"e","rank":1}"#)
+                .unwrap();
+        assert!(back.media.is_none());
+    }
+
+    #[test]
+    fn the_category_names_are_what_searxng_expects() {
+        assert_eq!(Category::from_vertical(Some("images")).as_str(), "images");
+        assert_eq!(Category::from_vertical(Some("videos")).as_str(), "videos");
+        assert_eq!(Category::from_vertical(Some("news")).as_str(), "general");
+        assert_eq!(Category::from_vertical(None), Category::Web);
     }
 }

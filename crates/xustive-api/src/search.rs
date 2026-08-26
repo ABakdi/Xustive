@@ -134,6 +134,11 @@ fn is_zero_u32(n: &u32) -> bool {
     *n == 0
 }
 
+/// Time kept back from the federation strip wait so the page can still be shaped and sent inside
+/// the search deadline after the wait ends. Shaping is a few milliseconds; the margin covers a
+/// slow machine, not a slow tool.
+const FEDERATION_SHAPE_MARGIN: Duration = Duration::from_millis(150);
+
 /// How many images one page may contribute to a grid. Three keeps a photo gallery from being the
 /// whole first screen while still showing that a page has several.
 const MEDIA_PER_CARD: usize = 3;
@@ -436,9 +441,12 @@ pub async fn handler(
             let q = normalized.clone();
             let bg = state.clone();
             let fetch_budget = state.config.federation.fetch_budget_ms;
+            // The Images and Videos tabs federate in their own category (M9-T06): the same
+            // gateway, budget and fail-open, asking SearXNG's image or video engines instead.
+            let category = xustive_ingest::federation::Category::from_vertical(params.v.as_deref());
             tokio::spawn(async move {
                 let fetch_started = Instant::now();
-                let hits = client.federate(&q, Some(fetch_budget)).await;
+                let hits = client.federate_in(&q, category, Some(fetch_budget)).await;
                 // Per-tool latency (M7-T09.2). Detached, so this measures the tool, not the search.
                 bg.metrics.observe(
                     metrics::FEDERATION_DURATION,
@@ -678,10 +686,21 @@ pub async fn handler(
     let federation_armed = federation.is_some();
     let federated_hits = match federation {
         Some(mut handle) => {
-            let wait = Duration::from_millis(state.config.federation.budget_ms);
-            match tokio::time::timeout(wait, &mut handle).await {
-                Ok(Ok(hits)) => hits,
-                _ => Vec::new(),
+            // Bounded by the search's own deadline, with room left to shape the page. The strip
+            // budget is a cap, not an entitlement: with `budget_ms` equal to `timeout_search_ms`
+            // — which the dev config had — a slow SearXNG made every search a 504, on every
+            // vertical, and nobody saw it because federation was off (found by M9-T06).
+            let cap = Duration::from_millis(state.config.federation.budget_ms);
+            let wait = deadline
+                .budget_for(cap)
+                .saturating_sub(FEDERATION_SHAPE_MARGIN);
+            if wait.is_zero() {
+                Vec::new()
+            } else {
+                match tokio::time::timeout(wait, &mut handle).await {
+                    Ok(Ok(hits)) => hits,
+                    _ => Vec::new(),
+                }
             }
         }
         None => Vec::new(),
@@ -996,6 +1015,9 @@ fn ingest_federated(state: &AppState, hits: &[xustive_ingest::federation::Federa
         title: String,
         snippet: String,
         lang: xustive_core::Lang,
+        /// The image or video the hit was (M9-T06), stored on the eager document so the Images
+        /// and Videos tabs find it locally next time, before the crawl lands.
+        media: Vec<xustive_core::model::Media>,
     }
     let mut entries: Vec<Entry> = Vec::new();
     for h in hits {
@@ -1019,6 +1041,30 @@ fn ingest_federated(state: &AppState, hits: &[xustive_ingest::federation::Federa
                 .detector
                 .detect(&format!("{} {}", h.title, h.snippet))
                 .lang,
+            media: h
+                .media
+                .iter()
+                .map(|m| xustive_core::model::Media {
+                    kind: if m.kind == "video" {
+                        xustive_core::model::MediaKind::Video
+                    } else {
+                        xustive_core::model::MediaKind::Image
+                    },
+                    url: m.src.clone(),
+                    thumb_url: m.thumb.clone(),
+                    width: 0,
+                    height: 0,
+                    ocr_text: None,
+                    ocr_lang: None,
+                    embedding_id: None,
+                    phash: None,
+                    provider: (m.kind == "video").then(|| {
+                        xustive_ingest::video::from_url(&m.src)
+                            .map(|v| v.provider.as_str().to_string())
+                            .unwrap_or_else(|| "web".to_string())
+                    }),
+                })
+                .collect(),
         });
     }
     if entries.is_empty() {
@@ -1052,6 +1098,7 @@ fn ingest_federated(state: &AppState, hits: &[xustive_ingest::federation::Federa
                         doc.body = body;
                         doc.discovery = xustive_core::DiscoveryChannel::Federation;
                         doc.source_id = "federation".into();
+                        doc.media = e.media.clone();
                         doc.language = e.lang;
                         doc.crawled_at = now;
                         doc.indexed_at = now;
@@ -1339,7 +1386,7 @@ fn federated_card(
     id: String,
 ) -> ResultCard {
     ResultCard {
-        media: Vec::new(),
+        media: federated_media(hit),
         id,
         title: if hit.title.is_empty() {
             canonical.to_string()
@@ -1363,6 +1410,30 @@ fn federated_card(
         similar_count: 0,
         from_web: true,
     }
+}
+
+/// The tile for an image or video hit (M9-T06). Same shape as a crawled page's `media[]`, so the
+/// Images and Videos tabs render a federated tile and a local one identically — and so the eager
+/// index can store it and the next search finds it locally.
+fn federated_media(hit: &xustive_ingest::federation::FederatedHit) -> Vec<MediaOut> {
+    let Some(m) = &hit.media else {
+        return Vec::new();
+    };
+    let provider = if m.kind == "video" {
+        xustive_ingest::video::from_url(&m.src)
+            .map(|v| v.provider.as_str().to_string())
+            .or_else(|| Some("web".to_string()))
+    } else {
+        None
+    };
+    vec![MediaOut {
+        kind: m.kind.clone(),
+        url: m.src.clone(),
+        thumb_url: m.thumb.clone(),
+        provider,
+        width: 0,
+        height: 0,
+    }]
 }
 
 /// Breadcrumb-style URL for display: `elkhabar.com › economie`.
@@ -1519,7 +1590,44 @@ mod tests {
             snippet: "web snippet".into(),
             engine: "duckduckgo".into(),
             rank: 1,
+            media: None,
         }
+    }
+
+    #[test]
+    fn a_federated_image_hit_becomes_a_tile_and_a_video_hit_links_to_its_watch_page() {
+        // M9-T06: the same card shape as a crawled page's media, so a federated tile and a local
+        // one render identically — and the provider is named from the watch URL.
+        let mut img = fed_hit("https://observalgerie.com/visiter-alger");
+        img.media = Some(xustive_ingest::federation::FederatedMedia {
+            kind: "image".into(),
+            src: "https://observalgerie.com/vue.jpg".into(),
+            thumb: Some("https://tse1.mm.bing.net/th/x".into()),
+            detail: Some("1980 x 1200".into()),
+        });
+        let mut results = Vec::new();
+        merge_federated(&mut results, &[img]);
+        assert_eq!(results[0].media.len(), 1);
+        assert_eq!(results[0].media[0].kind, "image");
+        assert_eq!(
+            results[0].media[0].thumb_url.as_deref(),
+            Some("https://tse1.mm.bing.net/th/x")
+        );
+        assert!(results[0].from_web);
+
+        let mut vid = fed_hit("https://www.youtube.com/watch?v=TqIensHhtyY");
+        vid.media = Some(xustive_ingest::federation::FederatedMedia {
+            kind: "video".into(),
+            src: "https://www.youtube.com/watch?v=TqIensHhtyY".into(),
+            thumb: Some("https://i.ytimg.com/vi/TqIensHhtyY/hqdefault.jpg".into()),
+            detail: Some("184.0".into()),
+        });
+        let mut results = Vec::new();
+        merge_federated(&mut results, &[vid]);
+        let m = &results[0].media[0];
+        assert_eq!(m.kind, "video");
+        assert_eq!(m.provider.as_deref(), Some("youtube"));
+        assert!(!m.url.contains("embed"), "never an embed: {}", m.url);
     }
 
     fn local_card(id: String, url: &str) -> ResultCard {
