@@ -36,6 +36,10 @@ const PATHS: Record<string, string> = {
   camera: 'M4 8h4l2-3h4l2 3h4v12H4zM12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z',
   play: 'M6 4l14 8-14 8z',
   check: 'M4 12l5 5L20 7',
+  // Logical, not physical: "start" points against the writing direction, so the same arrow that
+  // reads back in English reads back in Arabic. Flipped with `dir` by the CSS below.
+  'chevron-start': 'M15 6l-6 6 6 6',
+  'chevron-end': 'M9 6l6 6-6 6',
   users: 'M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM21 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
 }
 

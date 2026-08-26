@@ -352,6 +352,18 @@ places a model is actually better than a table.
 > could not be re-verified before the throttle lifted; the harvester's demand queue is the design
 > answer, since a subject held in the store never takes the live path at all.
 >
+> **Follow-up, later the same day.** Three things the first cut got wrong, all found in the
+> browser. Photos: `Special:FilePath` answers with three redirects inside a four-second leash and
+> a dozen cards fired at once, so the thumbnail address is now *built* — Commons lays thumbnails
+> out by the MD5 of the file name — at a width Commons pre-renders (240 is refused, 250 served).
+> Then the photos broke on every restart: the browser keeps the relation row for five minutes,
+> signed by the previous process's random thumb secret, so the proxy now admits Wikimedia's two
+> public image hosts without a signature (the signature guards against relaying; those hosts
+> cannot be relayed to anything private). The row itself spans both columns above the results,
+> scrolls with no scrollbar, and offers an arrow at whichever edge has somewhere to go while the
+> pointer is over it. Books show the cover, the year and the doors — no rating; the Open Library
+> number next to a Goodreads link invited the wrong reading.
+>
 > Known limitation: a bare Arabic surname (*أفلام سبيلبرغ*) misses on the live path, because
 > Wikidata's search is prefix-based on the label and the Arabic label is "ستيفن سبيلبرغ". Entities
 > in the store resolve by alias in any script; this is one more reason to harvest.

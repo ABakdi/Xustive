@@ -438,3 +438,16 @@ bdi,
   padding: 1.35rem 1.5rem;
   padding-inline-start: 1.5rem;
 }
+
+/* The relation row (M8-T11) scrolls sideways with no scrollbar: the arrows and the wheel do it. */
+.list-row {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.list-row::-webkit-scrollbar {
+  display: none;
+}
+[dir='rtl'] .list-row ~ button svg,
+[dir='rtl'] .rtl-flip {
+  transform: scaleX(-1);
+}

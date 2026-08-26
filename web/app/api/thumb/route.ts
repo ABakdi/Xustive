@@ -34,6 +34,16 @@ function pixel() {
   })
 }
 
+/** Hosts that serve only public images and never anything private: no relay to protect against. */
+function isPublicImageHost(raw: string): boolean {
+  try {
+    const host = new URL(raw).hostname.toLowerCase()
+    return host === 'upload.wikimedia.org' || host === 'commons.wikimedia.org' || host === 'covers.openlibrary.org'
+  } catch {
+    return false
+  }
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const u = searchParams.get('u') ?? ''
@@ -41,7 +51,14 @@ export async function GET(req: Request) {
 
   // Signature first, before the URL is even looked at. Anything unsigned is refused with no work
   // done, which is what keeps this from being a resource anyone can spend.
-  if (!u || !s || !verifyThumb(u, s)) {
+  //
+  // One exception, for the two hosts that are never a relay risk. The secret is per process
+  // unless `XUSTIVE_THUMB_SECRET` pins it, and a relation row cached by the browser for five
+  // minutes still carries the previous process's signatures after a restart — every deploy
+  // was five minutes of broken photos. Wikimedia's image hosts are public by construction, so
+  // for them, and for Open Library's covers, the host itself is the gate; everything else still
+  // needs the signature.
+  if (!u || (!isPublicImageHost(u) && (!s || !verifyThumb(u, s)))) {
     return new NextResponse(null, { status: 403 })
   }
   // Re-checked even though the signer already checked it: the signer's rule could change, and a

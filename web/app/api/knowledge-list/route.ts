@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { viaUpstream } from '@/lib/upstream'
 
 import { detectRelation, type Relation } from '@/lib/relations'
+import { commonsThumbUrl } from '@/lib/commons'
 import { signThumb } from '@/lib/thumb'
 
 /**
@@ -14,9 +15,9 @@ import { signThumb } from '@/lib/thumb'
  * allows. And every card **links to authorities by identifier** — Wikipedia, IMDb, Goodreads,
  * Open Library, Google Books — none of which is fetched or scraped (ADR-0019).
  *
- * Ratings: Goodreads has had no public API since 2020 and forbids scraping, so a Goodreads rating
- * cannot honestly be shown. Open Library publishes ratings openly, and those are shown with the
- * source named. The Goodreads link is still there for the reader to click.
+ * No ratings. Goodreads has had no public API since 2020 and forbids scraping, so a Goodreads
+ * rating cannot honestly be shown, and a card that shows one source's number next to another
+ * source's link invites the wrong reading. A book is its cover, its year and its doors.
  */
 
 const UA = 'XustiveKnowledge/0.1 (+https://xustive.dz; contact via repository)'
@@ -59,6 +60,29 @@ async function json(url: string, init?: RequestInit, attempt = 0): Promise<unkno
       clearTimeout(timer)
       return json(url, init, 1)
     }
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * The medium cover Open Library holds for a work, or null. The work record names its covers by
+ * id; `/b/olid/<work>` does not resolve them, so the record is read first. Three seconds, then
+ * the card goes out without a picture rather than late.
+ */
+async function openLibraryCover(workId: string): Promise<string | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 3000)
+  try {
+    const r = (await fetch(`https://openlibrary.org/works/${encodeURIComponent(workId)}.json`, {
+      ...viaUpstream(),
+      headers: { 'User-Agent': UA, Accept: 'application/json' },
+      signal: controller.signal,
+    } as RequestInit).then((x) => (x.ok ? x.json() : null))) as { covers?: number[] } | null
+    const id = (r?.covers ?? []).find((c) => typeof c === 'number' && c > 0)
+    return id ? `https://covers.openlibrary.org/b/id/${id}-M.jpg` : null
+  } catch {
     return null
   } finally {
     clearTimeout(timer)
@@ -249,26 +273,6 @@ async function membersSparql(subject: string, relation: Relation, lang: string):
   return out
 }
 
-/** Open Library's average rating for a work, when it has one. Open data, named as the source. */
-async function openLibraryRating(olId: string): Promise<{ average: number; count: number } | null> {
-  // A short leash of its own: Open Library can take ten seconds to answer, and a rating is an
-  // extra on a card that is already complete without it — it must never hold the row.
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 3000)
-  const r = (await fetch(`https://openlibrary.org/works/${encodeURIComponent(olId)}/ratings.json`, {
-    ...viaUpstream(),
-    headers: { 'User-Agent': UA, Accept: 'application/json' },
-    signal: controller.signal,
-  } as RequestInit)
-    .then((res) => (res.ok ? res.json() : null))
-    .catch(() => null)
-    .finally(() => clearTimeout(timer))) as {
-    summary?: { average?: number; count?: number }
-  } | null
-  const s = r?.summary
-  if (!s || !s.average || !s.count) return null
-  return { average: Math.round(s.average * 10) / 10, count: s.count }
-}
 
 export async function GET(req: NextRequest) {
   const q = (req.nextUrl.searchParams.get('q') ?? '').trim()
@@ -309,22 +313,21 @@ export async function GET(req: NextRequest) {
       if (ol) links.push({ key: 'openlibrary', url: `https://openlibrary.org/works/${ol}` })
       if (isbn)
         links.push({ key: 'googlebooks', url: `https://books.google.com/books?vid=ISBN${isbn.replace(/-/g, '')}` })
-      const rating = rq.relation === 'books' && ol ? await openLibraryRating(ol) : null
       const image = row.image?.value
+      // Wikidata seldom carries a book's cover; Open Library nearly always does, by its own
+      // cover id, one small JSON away. Only for books, and only when Wikidata had nothing.
+      const cover = !image && rq.relation === 'books' && ol ? await openLibraryCover(ol) : null
       return {
         id,
         title: row.itemLabel?.value ?? id,
         description: row.itemDescription?.value ?? null,
         year: row.date?.value ? row.date.value.slice(0, 4) : null,
         thumb: image
-          ? signThumb(
-              `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(
-                decodeURIComponent(image.split('/').pop() ?? ''),
-              )}?width=240`,
-            )
-          : null,
+          ? signThumb(commonsThumbUrl(decodeURIComponent(image.split('/').pop() ?? '')))
+          : cover
+            ? signThumb(cover)
+            : null,
         links,
-        rating: rating ? { ...rating, source: 'Open Library' } : null,
       }
   })
 

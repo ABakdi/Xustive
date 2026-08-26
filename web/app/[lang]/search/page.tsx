@@ -132,6 +132,11 @@ export default async function SearchPage({
       lang={lang}
       t={t}
       q={q}
+      // A relation query — the cast of a film, the books of an author — gets a row of cards
+      // above everything, across the full width the rail would otherwise leave empty (M8-T11).
+      // The server decides cheaply whether to mount it; the cards arrive after paint, and an
+      // empty answer collapses to nothing.
+      banner={detectRelation(q) ? <ListPanel q={q} lang={lang} t={t} /> : undefined}
       aside={
         // The rail takes a stack now (M8-T08.3). The entity panel comes from our own harvested
         // store and answers with facts; the Wikipedia panel stays underneath as the fallback for
@@ -187,11 +192,6 @@ export default async function SearchPage({
         ) : (
           <ToolCard answer={data.instant} t={t} locale={lang} />
         ))}
-
-      {/* A relation query — the cast of a film, the books of an author — gets a row of cards
-          above the results (M8-T11). The server decides cheaply whether to mount it at all; the
-          cards themselves arrive after paint, and an empty answer collapses to nothing. */}
-      {detectRelation(q) && <ListPanel q={q} lang={lang} t={t} />}
 
       {/* A question gets its answer first.
           Someone typing a topic wants a list of pages; someone asking a question wants an answer,
@@ -334,6 +334,7 @@ async function Shell({
   t,
   q,
   aside,
+  banner,
   children,
 }: {
   lang: Locale
@@ -341,6 +342,8 @@ async function Shell({
   q: string
   /** The right-hand knowledge rail, when the page has one. Absent on the error shell. */
   aside?: React.ReactNode
+  /** A full-width row above both columns — the relation cards. */
+  banner?: React.ReactNode
   children: React.ReactNode
 }) {
   const [theme, density] = await Promise.all([readTheme(), readDensity()])
@@ -374,6 +377,7 @@ async function Shell({
       </header>
 
       <main className="mx-auto min-w-0 max-w-3xl px-6 py-6 lg:max-w-5xl">
+        {banner}
         {aside ? (
           // Two columns on large screens: results (capped for readability) + a sticky knowledge
           // rail. One column below that, where the rail falls under the results.

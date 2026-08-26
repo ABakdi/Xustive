@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { Messages } from '@/lib/i18n/messages'
 import type { Relation } from '@/lib/relations'
@@ -11,8 +11,10 @@ import { Icon, type IconName } from '@/components/ui/Icon'
  *
  * Mounted only when the server decided the query is relation-shaped, fetched after paint like the
  * entity panel, and collapses to nothing when the list is empty. Each card links to an authority
- * by identifier — Wikipedia first, then IMDb, Goodreads, Open Library, Google Books — and shows a
- * rating only when an open source publishes one, named.
+ * by identifier — Wikipedia first, then IMDb, Goodreads, Open Library, Google Books.
+ *
+ * The row scrolls sideways without a scrollbar: the wheel and a swipe move it, and two arrows
+ * appear at the edges while the pointer is over it — only the edge that has somewhere to go.
  */
 
 type Card = {
@@ -22,7 +24,6 @@ type Card = {
   year: string | null
   thumb: string | null
   links: { key: string; url: string }[]
-  rating: { average: number; count: number; source: string } | null
 }
 
 type ListAnswer = {
@@ -57,6 +58,37 @@ const RELATION_ICON: Record<Relation, IconName> = {
 export default function ListPanel({ q, lang, t }: { q: string; lang: string; t: Messages }) {
   const [answer, setAnswer] = useState<ListAnswer | null | undefined>(undefined)
   const [asking, setAsking] = useState(false)
+  const row = useRef<HTMLUListElement>(null)
+  const [edges, setEdges] = useState<{ start: boolean; end: boolean }>({ start: false, end: false })
+
+  // Which arrows to offer. Measured, not assumed: a row of three cards has nowhere to go, and
+  // an arrow that does nothing is worse than none. In RTL the scroll position runs negative, so
+  // distance from either edge is taken in absolute terms.
+  const measure = () => {
+    const el = row.current
+    if (!el) return
+    const travelled = Math.abs(el.scrollLeft)
+    const room = el.scrollWidth - el.clientWidth
+    setEdges({ start: travelled > 4, end: room - travelled > 4 })
+  }
+  useEffect(() => {
+    measure()
+    const el = row.current
+    if (!el) return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answer])
+
+  const nudge = (towards: 'start' | 'end') => {
+    const el = row.current
+    if (!el) return
+    const rtl = getComputedStyle(el).direction === 'rtl'
+    const step = Math.max(el.clientWidth * 0.8, 200)
+    const sign = (towards === 'end' ? 1 : -1) * (rtl ? -1 : 1)
+    el.scrollBy({ left: sign * step, behavior: 'smooth' })
+  }
 
   useEffect(() => {
     const controller = new AbortController()
@@ -100,8 +132,11 @@ export default function ListPanel({ q, lang, t }: { q: string; lang: string; t: 
         </span>
         <bdi>{answer.subject.title}</bdi>
       </h2>
+      <div className="group relative">
       <ul
-        className="m-0 flex list-none gap-3 overflow-x-auto p-0 pb-2"
+        ref={row}
+        onScroll={measure}
+        className="list-row m-0 flex list-none gap-3 overflow-x-auto p-0"
         style={{ scrollSnapType: 'x proximity' }}
       >
         {answer.cards.map((c) => {
@@ -147,14 +182,6 @@ export default function ListPanel({ q, lang, t }: { q: string; lang: string; t: 
                   {c.description}
                 </span>
               )}
-              {c.rating && (
-                <span className="flex items-center gap-1 px-2 pt-1 text-xs" title={c.rating.source}>
-                  <Icon name="star" size={12} style={{ color: 'var(--accent)' }} />
-                  <bdi>
-                    {c.rating.average} · {c.rating.count} · {c.rating.source}
-                  </bdi>
-                </span>
-              )}
               <span className="mt-auto flex flex-wrap gap-1 px-2 pb-2 pt-1.5">
                 {c.links.map((l) => (
                   <a
@@ -176,11 +203,21 @@ export default function ListPanel({ q, lang, t }: { q: string; lang: string; t: 
           )
         })}
       </ul>
-      {answer.relation === 'books' && (
-        <p className="m-0 mt-1 text-xs" style={{ color: 'var(--fg-faint)' }} dir="auto">
-          {t.listRatingNote}
-        </p>
+      {(['start', 'end'] as const).map((side) =>
+        edges[side] ? (
+          <button
+            key={side}
+            type="button"
+            aria-label={side === 'start' ? t.listScrollBack : t.listScrollForward}
+            onClick={() => nudge(side)}
+            className={`absolute top-1/2 ${side === 'start' ? 'start-1' : 'end-1'} flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border opacity-0 shadow-sm transition-opacity focus-visible:opacity-100 group-hover:opacity-100`}
+            style={{ background: 'var(--bg)', borderColor: 'var(--line)', color: 'var(--fg)' }}
+          >
+            <Icon name={side === 'start' ? 'chevron-start' : 'chevron-end'} size={16} className="rtl-flip" />
+          </button>
+        ) : null,
       )}
+      </div>
     </section>
   )
 }
