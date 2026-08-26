@@ -8,8 +8,9 @@ status: resolved
 ---
 # Problems Register
 
-> All three problems are solved; each entry links to its solution document in
-> [Solutions/](<Solutions/>). The analyses are preserved as the record of what was wrong.
+> All three problems are solved; each entry links to its solution document, indexed in
+> [[README|Solutions/]] ([Solutions/README.md](<Solutions/README.md>)). The analyses below are
+> preserved as the record of what was wrong.
 
 Structural and capacity problems — things that are working as coded but will not survive growth.
 Distinct from the bug tracker: a bug is code doing the wrong thing; a problem is the design meeting

@@ -9,6 +9,9 @@ status: solved
 # PROB-001 Solution — The Bounded Frontier and Queue
 
 > Problem: [[Problems#PROB-001 — The crawl frontier grows super-linearly and the queue Redis is a hard 1GB wall|Problems register → PROB-001]] ([../Problems.md](../Problems.md))
+> Related: [[PROB-002 - Crawl and Index Throughput]] — the shared connection and pipelining here
+> are its groundwork; [[PROB-003 - Admin Console Coverage]] — the capacity alarm this design needs
+> an operator to see.
 > Outcome: **the crawl can no longer fill Redis — every growing structure is bounded or
 > self-expiring, the branching is linear, the wall is unreachable by construction, and failure is
 > loud.** Verified by four new Redis integration tests plus the full suite, six clean runs.

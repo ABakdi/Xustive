@@ -11,6 +11,8 @@ status: solved
 > Problem: [[Problems#PROB-002 — Crawl and index throughput is low|Problems register → PROB-002]] ([../Problems.md](../Problems.md))
 > Related: [[PROB-001 - Bounded Frontier and Queue]] — the connection-sharing and pipelining
 > groundwork landed there; the host-diversity lever depends on its budgets.
+> Also: [[PROB-003 - Admin Console Coverage]] — the pause control and the registry policy editor
+> are how an operator now works the levers described here.
 > Outcome: **the per-page overhead is gone from the pipeline** (hundreds of serial Redis round
 > trips → a handful; per-claim guard probes → one per two seconds; Meilisearch fed few large
 > batches instead of task-per-dribble; healthy robots-silent hosts earn 1 rps). The remaining
