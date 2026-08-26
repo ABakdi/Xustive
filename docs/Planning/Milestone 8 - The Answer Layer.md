@@ -194,7 +194,7 @@ places a model is actually better than a table.
 
 ## M8-T05 — Weather, finished
 
-- [ ] M8-T05.1 **Approximate location without asking, without storing** — the client address is
+- [x] M8-T05.1 **Approximate location without asking, without storing** — the client address is
       resolved against a local database in-process, mapped to the nearest wilaya seat, and dropped.
       Never logged, never cached, never sent anywhere. Governed by
       [[ADR-0020 - Approximate Location from a Local Database]]; the discipline is the one
@@ -206,7 +206,7 @@ places a model is actually better than a table.
 - [ ] M8-T05.4 Graphs — temperature and precipitation, drawn as **server-rendered SVG**. A canvas
       chart library would fail the no-JS path and cost more than the whole page budget; an inline
       SVG polyline costs bytes we can count
-- [ ] M8-T05.5 Named places keep working and gain the same depth: `weather oran`, `طقس وهران`,
+- [x] M8-T05.5 Named places keep working and gain the same depth: `weather oran`, `طقس وهران`,
       `météo à Alger`
 - [ ] M8-T05.6 A location we cannot place falls back to the largest nearby wilaya and **says so**.
       A wrong city stated confidently is the failure mode to avoid

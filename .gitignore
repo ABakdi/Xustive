@@ -15,3 +15,6 @@
 tests/fixtures/corpus/*.jsonl
 docs/.obsidian/workspace.json
 data/tessdata/
+
+# Fetched separately by scripts/fetch-geoip.sh — tens of MB, republished monthly.
+data/geoip/

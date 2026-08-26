@@ -107,7 +107,7 @@ fn score(query: &str, c: &Candidate) -> f32 {
         .collect();
 
     // The dominant signal: did they type this thing's name, exactly?
-    let exact = names.iter().any(|n| *n == q);
+    let exact = names.contains(&q);
     // A prefix match covers "Riyad Mahrez" typed as "Mahrez" and little else.
     let prefix = !exact
         && names

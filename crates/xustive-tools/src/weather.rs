@@ -14,6 +14,12 @@ use crate::wilaya::{self, Wilaya};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Request {
     pub wilaya: &'static Wilaya,
+    /// Whether the reader actually named this place.
+    ///
+    /// False means the wilaya is a fallback, and the caller may replace it with a better guess —
+    /// and, either way, must say on the card which place it assumed. A wrong city stated
+    /// confidently is the failure mode worth avoiding here (M8-T05.6).
+    pub named: bool,
     /// Confidence, carried through to the answer the caller builds.
     pub confidence: f32,
 }
@@ -47,6 +53,7 @@ pub fn detect(query: &str) -> Option<Request> {
 
     Some(Request {
         wilaya: named.unwrap_or_else(wilaya::default_wilaya),
+        named: named.is_some(),
         // Naming a place alongside a trigger is a much stronger signal than the trigger alone:
         // `طقس وهران` is unambiguous, `weather` on its own could be a search about climate.
         confidence: match (named.is_some(), trigger.len() > 6) {

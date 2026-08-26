@@ -13,6 +13,7 @@ pub mod dataage;
 pub mod deadline;
 pub mod error;
 pub mod federate;
+pub mod geoip;
 pub mod image_search;
 pub mod interaction;
 pub mod knowledge;

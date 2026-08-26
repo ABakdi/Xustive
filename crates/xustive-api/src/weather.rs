@@ -16,9 +16,26 @@ use xustive_toold::Dataset;
 use crate::state::AppState;
 
 /// Build a weather answer, or nothing.
-pub async fn answer(state: &AppState, query: &str, ui_lang: &str) -> Option<xustive_tools::Answer> {
-    let request = xustive_tools::weather::detect(query)?;
+pub async fn answer(
+    state: &AppState,
+    query: &str,
+    ui_lang: &str,
+    peer: Option<std::net::SocketAddr>,
+) -> Option<xustive_tools::Answer> {
+    let mut request = xustive_tools::weather::detect(query)?;
     let cache = state.tool_cache.as_ref()?;
+
+    // Nobody named a place, so guess one from where the reader is connecting from — a local
+    // database lookup that never leaves the process, and whose result is coarsened to a wilaya
+    // before it travels anywhere ([[ADR-0020]]). Naming a place always wins over guessing.
+    let assumed = !request.named;
+    if !request.named {
+        if let Some(geo) = state.geoip.as_ref() {
+            if let Some(w) = crate::ratelimit::client_ip(peer).and_then(|ip| geo.wilaya_of(ip)) {
+                request.wilaya = w;
+            }
+        }
+    }
 
     let cached = cache
         .get::<Forecast>(&key(Weather.key_prefix(), request.wilaya.code))
@@ -84,6 +101,9 @@ pub async fn answer(state: &AppState, query: &str, ui_lang: &str) -> Option<xust
             "code": f.code,
             "wind_kmh": f.wind_kmh.round(),
             "humidity": f.humidity.round(),
+            // Whether the place was named or guessed. The card says which, because a wrong city
+            // stated confidently is the failure this whole path has to avoid (M8-T05.6).
+            "assumed_place": assumed,
             "days": days,
             "hours": hours,
             // Carried into the card. A reader cannot judge a number we did not measure ourselves

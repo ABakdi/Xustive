@@ -252,6 +252,9 @@ const MAX_EXPANDED_TERMS: usize = 12;
 
 pub async fn handler(
     State(state): State<AppState>,
+    // The connection address, used for one thing only: turning "weather" with no place in it into
+    // a wilaya, by an in-process lookup that discards the address immediately ([[ADR-0020]]).
+    crate::admin::Peer(peer): crate::admin::Peer,
     AxumQuery(params): AxumQuery<SearchParams>,
 ) -> Result<Json<SearchResponse>, ApiError> {
     let started = Instant::now();
@@ -274,7 +277,7 @@ pub async fn handler(
     // when nothing pure matched.
     let instant = match xustive_tools::best_in(&raw, ui_lang) {
         Some(answer) => Some(answer),
-        None => crate::weather::answer(&state, &raw, ui_lang).await,
+        None => crate::weather::answer(&state, &raw, ui_lang, peer).await,
     };
     if let Some(a) = &instant {
         state.metrics.incr(

@@ -81,6 +81,11 @@ pub struct AppState {
     /// Cache the tool data plane fills. `None` when Redis is unreachable, which is not fatal:
     /// tools that need it render nothing and everything else is unaffected.
     pub tool_cache: Option<xustive_toold::store::Store>,
+    /// The bundled IP-to-city database ([[ADR-0020]]). `None` when the file is not provisioned,
+    /// which is the normal state of a fresh checkout: weather then answers only for a named place.
+    /// Loaded once — it is memory-mapped, and reopening it per request would be the only expensive
+    /// part of an otherwise microsecond lookup.
+    pub geoip: Option<Arc<crate::geoip::GeoIp>>,
     /// The OCR engine the user-facing tools use, built once from `[media]`. Tesseract by default;
     /// a [`xustive_media::Fallback`] over the Unlimited-OCR sidecar when `ocr_backend = "unlimited"`,
     /// so a down sidecar degrades to tesseract instead of failing. See [`build_ocr_backend`].
@@ -330,6 +335,7 @@ impl AppState {
             // Connecting lazily and tolerating failure. The serving plane must start whether or
             // not the fetcher has ever run — a cold system has no cached weather by definition.
             tool_cache: xustive_toold::store::Store::connect(&queue_url).ok(),
+            geoip: crate::geoip::GeoIp::load(crate::geoip::DEFAULT_PATH).map(Arc::new),
             ocr: build_ocr_backend(&media),
             image_search: crate::image_search::ImageSearch::from_config(&vector),
             text_search: crate::text_search::TextSearch::from_config(&vector),
