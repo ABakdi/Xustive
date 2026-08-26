@@ -169,15 +169,20 @@ mod tests {
         .expect("alerts.yml must exist next to the metric it alerts on");
 
         let limit = Weather.staleness_limit().as_secs();
+        // The `dataset="weather"` selector is not decoration: the knowledge store re-harvests on a
+        // seven-day cadence, so an unscoped threshold at three hours would fire forever and teach
+        // everyone to ignore the whole family. Asserting the scoped form pins that.
+        let weather_expr = "xustive_data_age_seconds{dataset=\"weather\"} > ";
         assert!(
-            rules.contains(&format!("xustive_data_age_seconds > {limit}")),
+            rules.contains(&format!("{weather_expr}{limit}")),
             "no critical rule at the {limit}s staleness limit; alerts.yml and Weather::staleness_limit have drifted"
         );
 
         // And the warning must fire strictly earlier, or there is no window to act in.
         let warning: u64 = rules
             .lines()
-            .filter_map(|l| l.trim().strip_prefix("expr: xustive_data_age_seconds > "))
+            .filter_map(|l| l.trim().strip_prefix("expr: "))
+            .filter_map(|l| l.strip_prefix(weather_expr))
             .filter_map(|v| v.trim().parse().ok())
             .filter(|v| *v < limit)
             .max()
