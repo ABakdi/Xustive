@@ -77,10 +77,14 @@ const P31_KINDS: &[(&str, Kind)] = &[
     ("Q6256", Kind::Place),     // country
     ("Q3624078", Kind::Place),  // sovereign state
     ("Q10864048", Kind::Place), // first-level administrative division
-    ("Q192287", Kind::Place),   // wilaya of Algeria
-    ("Q5119", Kind::Place),     // capital city
-    ("Q8502", Kind::Place),     // mountain
-    ("Q4022", Kind::Place),     // river
+    // Verified against the live entity rather than assumed: `Oran Province` (Q231331) is an
+    // instance of Q240601, "province of Algeria" / "wilaya d'Algérie". An earlier draft of this
+    // table guessed Q192287, which is *administrative divisions of Russia* — a wrong row here
+    // would have quietly mistyped all 58 wilayas.
+    ("Q240601", Kind::Place),
+    ("Q5119", Kind::Place), // capital city
+    ("Q8502", Kind::Place), // mountain
+    ("Q4022", Kind::Place), // river
     // Organisations
     ("Q43229", Kind::Organisation),
     ("Q4830453", Kind::Organisation), // business
@@ -158,8 +162,11 @@ mod tests {
 
     #[test]
     fn a_wilaya_is_a_place() {
-        // The kind an Algeria-first product had better get right.
-        assert_eq!(from_instance_of(&["Q192287"]), Kind::Place);
+        // The kind an Algeria-first product had better get right. Q240601 is "province of Algeria"
+        // / "wilaya d'Algérie", confirmed from Oran Province's own P31 rather than assumed — the
+        // first draft guessed a QID that turned out to be Russia's administrative divisions, which
+        // would have mistyped every wilaya without failing anything.
+        assert_eq!(from_instance_of(&["Q240601"]), Kind::Place);
     }
 
     #[test]

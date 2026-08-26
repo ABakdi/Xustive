@@ -13,6 +13,7 @@
 //! weather request from a user therefore reveals nothing to any publisher, because the fetch
 //! pattern is identical whether one person searched or a million did.
 
+pub mod knowledge;
 pub mod store;
 pub mod validate;
 pub mod weather;

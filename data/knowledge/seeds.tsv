@@ -1,0 +1,39 @@
+# Knowledge-layer seeds (M8-T01.2).
+#
+# Format: <QID>	<expected name>	<why it is here>
+#
+# The second column is not decoration. A hand-written QID is exactly the kind of thing that is
+# wrong without failing anything, and the harvester compares what it fetched against the name
+# written here — a mismatch is logged and skipped rather than stored. The first draft of the type
+# table carried a QID for "wilaya of Algeria" that was in fact Russia's administrative divisions;
+# this column is how that class of mistake stops being silent.
+#
+# Every id below was resolved from its Wikipedia title against the live API, not typed from
+# memory. Add rows the same way. Entities promoted from the demand queue (M8-T09) carry no
+# expected name, because no human wrote one.
+#
+# This list is a starting point, not the corpus. Coverage is meant to grow from what people
+# actually search for.
+
+# --- the country and its places ---
+Q262	Algeria	the country itself
+Q3561	Algiers	capital
+Q131818	Oran	second city
+Q187346	Constantine	third city
+Q45942	Annaba
+Q244004	Sétif
+Q185134	Tlemcen
+
+# --- organisations ---
+Q1090717	Sonatrach	the country's largest company
+
+# --- people ---
+Q8338725	Riyad Mahrez	the most-searched living Algerian
+Q310855	Hawwari Bumadian	head of state 1965-1978; note the label is a transliteration
+Q2821166	Abdelmadjid Tebboune	head of state
+Q379962	Yacine Kateb	novelist; Wikidata orders the name surname-first
+Q157313	Assia Djebar	novelist
+
+# --- works and events ---
+Q784812	The Battle of Algiers	the film
+Q200790	Algerian War	the war it is about

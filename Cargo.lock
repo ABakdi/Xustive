@@ -3986,6 +3986,8 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "xustive-core",
+ "xustive-knowledge",
+ "xustive-search",
  "xustive-tools",
 ]
 
