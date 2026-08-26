@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 
 import { Filters } from '@/components/search/Filters'
 import { Pagination } from '@/components/search/Pagination'
+import { ImageGrid, VideoList } from '@/components/search/MediaGrid'
 import { ResultCard } from '@/components/search/ResultCard'
 import { InteractionBeacon } from '@/components/search/InteractionBeacon'
 import { SearchBox } from '@/components/search/SearchBox'
@@ -184,7 +185,15 @@ export default async function SearchPage({
             <>
               {/* Name the empty vertical, and offer the way out — the corpus may hold the answer
                   outside this vertical even when the vertical is empty. */}
-              <p className="text-xl">{vertical === 'files' ? t.noFiles : t.noNews}</p>
+              <p className="text-xl">
+                {vertical === 'files'
+                  ? t.noFiles
+                  : vertical === 'images'
+                    ? t.noImages
+                    : vertical === 'videos'
+                      ? t.noVideos
+                      : t.noNews}
+              </p>
               <p className="mt-2 text-sm">
                 <a
                   href={`/${lang}/search?q=${encodeURIComponent(q)}`}
@@ -233,7 +242,13 @@ export default async function SearchPage({
           {/* The result list. When interaction signals are on, the API returns an opaque token and
               the list is wrapped in the anonymous click beacon (a single delegated listener). With
               no token the beacon is absent entirely — no listener, nothing recorded. */}
-          {data.interaction_token ? (
+          {/* The Images and Videos tabs render tiles, not cards (M9-T03). Server-rendered like the
+              list, no JavaScript, through the signed proxy so no crawled host ever sees the reader. */}
+          {vertical === 'images' ? (
+            <ImageGrid results={data.results} t={t} />
+          ) : vertical === 'videos' ? (
+            <VideoList results={data.results} t={t} />
+          ) : data.interaction_token ? (
             <InteractionBeacon token={data.interaction_token}>
               <ol
                 className="list-none p-0"

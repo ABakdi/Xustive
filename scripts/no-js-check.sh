@@ -122,6 +122,20 @@ else
   fi
 fi
 
+# The Images tab is a server-rendered grid (M9-T05.1): tiles must be in the first response, and
+# every one of them must go through the signed proxy — a raw crawled-host <img src> would hand
+# the reader's address to that host on page load.
+images=$(page --data-urlencode "v=images")
+tiles=$(printf '%s' "$images" | grep -o '/api/thumb?u=' | wc -l | tr -d ' ')
+raw=$(printf '%s' "$images" | grep -oE '<img[^>]*src="https?://[^"]*' | grep -vc '/api/thumb' || true)
+if [ "$tiles" -gt 0 ] && [ "${raw:-0}" -eq 0 ]; then
+  echo "  ✓ the images tab renders $tiles server-side tiles, all through the signed proxy"
+elif [ "$tiles" -eq 0 ]; then
+  bad "the images tab rendered no tiles without script"
+else
+  bad "the images tab hotlinks $raw image(s) from crawled hosts"
+fi
+
 # And the dismiss control on a tool card.
 card=$(curl -fsS --max-time 5 --get "$BASE/$LANG_SEG/search" --data-urlencode "q=roman 2026" || true)
 if printf '%s' "$card" | grep -q 'MMXXVI'; then

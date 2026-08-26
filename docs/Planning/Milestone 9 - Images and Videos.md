@@ -83,34 +83,34 @@ a click — the reader chooses the disclosure. And no code path downloads video 
 
 ## M9-T02 — The signed thumbnail proxy
 
-- [ ] M9-T02.1 `/api/thumb?u=…&s=…`: HMAC-SHA256 over the URL with a server secret
+- [x] M9-T02.1 `/api/thumb?u=…&s=…`: HMAC-SHA256 over the URL with a server secret
       (`XUSTIVE_THUMB_SECRET`; a per-process random one when unset, so a missing secret degrades to
       "thumbnails break on restart", never to an open proxy)
-- [ ] M9-T02.2 The search page — a server component, so it holds the secret — signs every
+- [x] M9-T02.2 The search page — a server component, so it holds the secret — signs every
       thumbnail it renders. The browser never sees the secret and never sees a crawled host
-- [ ] M9-T02.3 Same guards as `wiki-image`, and two more: `https` only, no IP-literal or private
+- [x] M9-T02.3 Same guards as `wiki-image`, and two more: `https` only, no IP-literal or private
       hostnames, redirects followed by hand and re-validated per hop, `image/*` only, 5 MB cap
       checked on header and body, 4 s timeout, `Referrer-Policy: no-referrer`
-- [ ] M9-T02.4 Cached a day, keyed by the URL: the same thumbnail for every reader is one fetch
+- [x] M9-T02.4 Cached a day, keyed by the URL: the same thumbnail for every reader is one fetch
       from the crawled host, which is also the polite thing
 - [ ] M9-T02.5 Tests: a forged signature is a 403; a private host is a 400 even when signed; a
       redirect to a disallowed host is refused mid-chain
 
 ## M9-T03 — The tabs
 
-- [ ] M9-T03.1 Images and Videos join the tab row, in all four languages. Shown always: the
+- [x] M9-T03.1 Images and Videos join the tab row, in all four languages. Shown always: the
       operator asked for them, and the empty state below is what makes an empty tab honest
-- [ ] M9-T03.2 The image grid — a pure server component, CSS grid, `<img loading="lazy">`
+- [x] M9-T03.2 The image grid — a pure server component, CSS grid, `<img loading="lazy">`
       through the proxy, no JavaScript. Each tile: the image, the page title, the host, a link to
       the page. `alt` from the page title, never empty
-- [ ] M9-T03.3 The video list — poster, play glyph, title, provider, host; the whole tile links
+- [x] M9-T03.3 The video list — poster, play glyph, title, provider, host; the whole tile links
       to the watch page with `rel="noopener noreferrer nofollow"`. Nothing embedded
-- [ ] M9-T03.4 The empty state names the vertical — "no images for *سونلغاز*" — and links back
+- [x] M9-T03.4 The empty state names the vertical — "no images for *سونلغاز*" — and links back
       to All, per [[UI - Search Verticals]] §3. A generic "no results" would leave the reader
       unsure whether the engine has nothing or the tab is broken
-- [ ] M9-T03.5 A tile whose thumbnail fails to load must not leave a hole: the proxy answers a
+- [x] M9-T03.5 A tile whose thumbnail fails to load must not leave a hole: the proxy answers a
       transparent 1×1 on upstream failure so the grid stays a grid, and the title still links
-- [ ] M9-T03.6 RTL: the grid is direction-agnostic by construction; titles are `<bdi>`-isolated;
+- [x] M9-T03.6 RTL: the grid is direction-agnostic by construction; titles are `<bdi>`-isolated;
       bidi lint green
 
 ## M9-T04 — Repass, so the tabs are not empty on day one
@@ -124,10 +124,10 @@ a click — the reader chooses the disclosure. And no code path downloads video 
 
 ## M9-T05 — Gates
 
-- [ ] M9-T05.1 `scripts/no-js-check.sh` extended: `?v=images` renders tiles with script off
+- [x] M9-T05.1 `scripts/no-js-check.sh` extended: `?v=images` renders tiles with script off
 - [ ] M9-T05.2 `make egress-test` green — the web tier's fetch is the same class as ADR-0014's;
       the serving plane's no-egress is untouched
-- [ ] M9-T05.3 Bundle budget holds — the grid ships no JavaScript at all
+- [x] M9-T05.3 Bundle budget holds — the grid ships no JavaScript at all
 - [ ] M9-T05.4 Telemetry lint: no image URL in a log line (a URL is a page someone read)
 
 ## Deliberately not in this milestone

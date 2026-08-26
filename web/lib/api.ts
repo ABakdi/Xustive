@@ -33,6 +33,16 @@ export interface ResultCard {
   /** True when this result came live from the web (SearXNG), not yet the local index (M7). Shown
    *  with a "web" badge; it is indexed in the background and becomes a normal result next time. */
   from_web?: boolean
+  /** Images and videos the page carries, for the Images/Videos tabs (M9). Upstream URLs — the
+   *  page signs and proxies them before they reach an <img>. */
+  media?: {
+    kind: 'image' | 'video' | 'audio'
+    url: string
+    thumb_url?: string
+    provider?: string
+    width?: number
+    height?: number
+  }[]
 }
 
 export interface InstantAnswer {

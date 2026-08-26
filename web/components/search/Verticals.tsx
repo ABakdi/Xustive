@@ -9,8 +9,8 @@ import type { Messages } from '@/lib/i18n/messages'
  * with a real date. The active vertical lives in the URL (`?v=news`) so a tab is a shareable link and
  * the back button works. A pure server component: it is a row of links, so it ships no JavaScript.
  *
- * Only verticals that exist today are shown. Files (PDF), Social, and Images arrive with the
- * ingestion and multimodal work that feeds them — a tab for an empty vertical would be a dead end.
+ * Social and Short videos arrive with the connectors that feed them — a tab for an empty vertical
+ * would be a dead end. Images and Videos landed with M9 and name themselves when empty.
  */
 export function Verticals({
   lang,
@@ -27,6 +27,11 @@ export function Verticals({
     { id: 'all', label: t.verticalAll },
     { id: 'news', label: t.verticalNews },
     { id: 'files', label: t.verticalFiles },
+    // Images and Videos (M9). Shown always, against the "as content arrives" rule above: the
+    // operator asked for them, and the empty state names the vertical so an empty tab is honest
+    // rather than indistinguishable from a broken one.
+    { id: 'images', label: t.verticalImages },
+    { id: 'videos', label: t.verticalVideos },
   ]
   const current = tabs.some((tab) => tab.id === active) ? active! : 'all'
 
