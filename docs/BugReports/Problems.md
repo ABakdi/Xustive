@@ -4,9 +4,12 @@ tags:
   - capacity
   - performance
 date: 2026-08-25
-status: open
+status: resolved
 ---
 # Problems Register
+
+> All three problems are solved; each entry links to its solution document in
+> [Solutions/](<Solutions/>). The analyses are preserved as the record of what was wrong.
 
 Structural and capacity problems — things that are working as coded but will not survive growth.
 Distinct from the bug tracker: a bug is code doing the wrong thing; a problem is the design meeting
@@ -155,8 +158,17 @@ documented in the solution. The analysis below is preserved as the record.
 
 ## PROB-003 — The admin console exposes a fraction of what tunes, measures, and controls the system
 
-**Status: open · Severity: medium (visibility/operability debt; nothing malfunctions, but the
-operator flies blind on most of the surface)**
+**Status: SOLVED 2026-08-26 — see [[PROB-003 - Admin Console Coverage|the solution document]]
+([Solutions/PROB-003 - Admin Console Coverage.md](<Solutions/PROB-003 - Admin Console Coverage.md>)).**
+All six ranked recommendations are closed: the dropped fields render, the effective configuration
+and the evaluation trail each have a page, the capacity alarm sits on Overview, and the control
+gaps closed in operator-pain order (crawler pause/resume, registry lifecycle + crawl policy
+editor, weak-term forget, per-item dead-letter replay/drop). The ranking-weights editor and
+blocklist manager are deliberately deferred with reasons recorded in the solution (validation
+path and persistence prerequisite respectively). The inventory below is preserved as the record.
+
+**Severity at discovery: medium (visibility/operability debt; nothing malfunctioned, but the
+operator flew blind on most of the surface)**
 
 Method: one full inventory of everything that controls or measures the system (config fields,
 hardcoded tuning constants, runtime switches, metrics, eval artifacts, tuning data files), one full
