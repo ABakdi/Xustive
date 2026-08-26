@@ -26,6 +26,7 @@
 pub mod calculator;
 pub mod currency;
 pub mod datetime;
+pub mod deep;
 pub mod exam;
 pub mod fuel;
 pub mod prayer;

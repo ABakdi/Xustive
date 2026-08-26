@@ -258,6 +258,21 @@ fn first_number(folded: &str) -> Option<f64> {
     current.parse().ok().filter(|n: &f64| *n > 0.0)
 }
 
+/// How many distinct currencies a string names.
+///
+/// Exposed so the serving plane can tell an arithmetic expression that involves money from one
+/// that does not, without duplicating the lexicon.
+pub fn mentions_currency(query: &str) -> usize {
+    let folded = fold_for_match(query);
+    let mut distinct: Vec<&'static str> = Vec::new();
+    for (_, code) in matches_in(&folded) {
+        if !distinct.contains(&code) {
+            distinct.push(code);
+        }
+    }
+    distinct.len()
+}
+
 /// Whether the query names a "to" word, which the caller uses only for phrasing.
 pub fn has_direction(query: &str) -> bool {
     let padded = format!(" {} ", fold_for_match(query));

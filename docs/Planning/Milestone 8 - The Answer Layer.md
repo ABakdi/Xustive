@@ -231,21 +231,21 @@ places a model is actually better than a table.
 
 ## M8-T07 — The deep calculator
 
-- [ ] M8-T07.1 Adopt `fend-core` (MIT, no dependencies, arbitrary precision, unit-aware) as the
+- [x] M8-T07.1 Adopt `fend-core` (MIT, no dependencies, arbitrary precision, unit-aware) as the
       **evaluation engine behind** the existing calculator and converter. Matching, confidence,
       localisation and digit folding stay ours — they are the parts that decide whether a card
       appears at all, and they are well tested
-- [ ] M8-T07.2 What that buys, none of which is expressible today: mixed-unit arithmetic
+- [x] M8-T07.2 What that buys, none of which is expressible today: mixed-unit arithmetic
       (`5 km + 3 miles in m`), unit-aware exponents, number bases, physical constants, and chained
       percentages
-- [ ] M8-T07.3 **Currency inside expressions** — T06's rates injected as the engine's exchange-rate
+- [x] M8-T07.3 **Currency inside expressions** — T06's rates injected as the engine's exchange-rate
       source, so `20 eur + 5 usd in dzd` is one answer with one `as_of`, not two cards
-- [ ] M8-T07.4 Bounded evaluation: the engine's interrupt wired to a hard time budget, expression
+- [x] M8-T07.4 Bounded evaluation: the engine's interrupt wired to a hard time budget, expression
       length and depth capped. A calculator is an arbitrary-expression evaluator facing the open
       internet, and it gets treated as one
-- [ ] M8-T07.5 The existing golden expressions must pass unchanged, and the decimal guarantee holds:
+- [x] M8-T07.5 The existing golden expressions must pass unchanged, and the decimal guarantee holds:
       `45*1.19` is `53.55`, not `53.549999999999997`
-- [ ] M8-T07.6 Localised rendering of engine output — the engine computes, our layer formats. An
+- [x] M8-T07.6 Localised rendering of engine output — the engine computes, our layer formats. An
       English unit name reaching an Arabic card is a bug the M1B unit table already tests for
 
 ## M8-T08 — Delivery and rendering

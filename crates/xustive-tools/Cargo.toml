@@ -7,6 +7,9 @@ license.workspace = true
 description = "Instant answers: matching, arbitration, and the tools themselves."
 
 [dependencies]
+# The unit-aware evaluation engine behind the calculator (M8-T07). MIT, and it pulls in no
+# dependencies of its own — which is why it clears `cargo deny` without argument.
+fend-core = "1.5"
 xustive-core = { path = "../xustive-core" }
 xustive-text = { path = "../xustive-text" }
 # For the transliterator card. The conversion already exists to serve retrieval; the tool surfaces

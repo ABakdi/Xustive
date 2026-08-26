@@ -309,6 +309,14 @@ impl Tool for UnitConverter {
     /// Convert, rendering unit names in `lang`.
     fn answer_in(&self, query: &str, lang: &str) -> Option<Answer> {
         let folded = fold_digits(query).to_lowercase();
+        // An arithmetic operator means this is an expression, not a single quantity, and this tool
+        // converts one quantity. `5 km + 3 miles in m` used to answer "5000 metre" — it read the
+        // first term and silently dropped the rest, which is a wrong answer rather than a missing
+        // one. Declining hands it to the unit-aware engine, which can actually add the two
+        // (M8-T07.2).
+        if folded.contains('+') || folded.contains('*') || folded.contains('/') {
+            return None;
+        }
         let tokens: Vec<&str> = folded.split_whitespace().collect();
         if tokens.len() < 2 {
             return None;

@@ -48,15 +48,32 @@ impl Tool for Calculator {
             return None;
         }
 
-        let value = Parser::new(expr).evaluate()?;
+        // The exact decimal parser first, and it keeps its results. It is proven, it groups
+        // thousands, and every golden expression is written against it.
+        if let Some(value) = Parser::new(expr).evaluate() {
+            return Some(Answer {
+                tool: self.name(),
+                // Structural: the string parsed as an expression and nothing was left over, so
+                // this is as certain as matching gets.
+                confidence: 0.98,
+                interpretation: pretty(expr),
+                value: render(value),
+                detail: None,
+                as_of: None,
+            });
+        }
 
+        // Only what the decimal parser cannot take reaches the unit-aware engine (M8-T07): mixed
+        // units, bases, constants. Currency is deliberately not available here — rates live in a
+        // cache this crate cannot reach, so the API builds those answers where the cache is.
+        let value = crate::deep::evaluate(expr, None)?;
         Some(Answer {
             tool: self.name(),
-            // Structural: the string parsed as an expression and nothing was left over, so this
-            // is as certain as matching gets.
-            confidence: 0.98,
+            // A shade lower than the exact path. The engine accepts a wider language, so a string
+            // it happens to reduce is slightly weaker evidence that a calculation was intended.
+            confidence: 0.9,
             interpretation: pretty(expr),
-            value: render(value),
+            value,
             detail: None,
             as_of: None,
         })
