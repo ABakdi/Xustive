@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { knowledgePanel, type EntityFact, type EntityPanel as Panel } from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
 import { Icon, type IconName } from '@/components/ui/Icon'
+import { SUBJECT_EVENT } from '@/components/search/ListPanel'
 
 /**
  * The entity panel (M8-T08).
@@ -20,11 +21,17 @@ export default function EntityPanel({
   lang,
   t,
   className = '',
+  subject,
+  kinds = [],
 }: {
   q: string
   lang: string
   t: Messages
   className?: string
+  /** What to look up instead of the query — the film in "cast of the matrix". */
+  subject?: string
+  /** What the subject must be, when the query says so. */
+  kinds?: string[]
 }) {
   // `undefined` is "still asking", `null` is "asked, and there is nothing" — a distinction the
   // panel's whole rendering depends on and which a single nullable would lose.
@@ -35,18 +42,37 @@ export default function EntityPanel({
   // worse than no rail at all and is what M8-T08.5 exists to prevent.
   const [asking, setAsking] = useState(false)
 
+  // Follow the relation row: when the reader picks another part or season there, this panel
+  // shows it at once, by id — no re-resolution, no page load.
+  useEffect(() => {
+    const onPick = (e: Event) => {
+      const id = (e as CustomEvent<{ id?: string }>).detail?.id
+      if (!id) return
+      setPanel(undefined)
+      setAsking(true)
+      fetch(`/api/knowledge-live?id=${encodeURIComponent(id)}&lang=${encodeURIComponent(lang)}`)
+        .then(async (res) => (res.ok && res.status !== 204 ? ((await res.json()) as Panel) : null))
+        .then(setPanel)
+        .catch(() => setPanel(null))
+    }
+    window.addEventListener(SUBJECT_EVENT, onPick)
+    return () => window.removeEventListener(SUBJECT_EVENT, onPick)
+  }, [lang])
+
+  const lookup = subject ?? q
+  const kindHint = kinds.length ? `&kind=${encodeURIComponent(kinds.join(','))}` : ''
   useEffect(() => {
     const controller = new AbortController()
     setPanel(undefined)
     setAsking(true)
-    knowledgePanel(q, lang, controller.signal)
+    knowledgePanel(lookup, lang, controller.signal, kinds)
       // The store first — a millisecond, and the answer for anything harvested. Then the live
       // fallback through the web tier for what the store does not hold yet; the miss was
       // recorded, so the harvester catches up and this second hop stops being taken for it.
       .then(async (data) => {
         if (data) return data
         const res = await fetch(
-          `/api/knowledge-live?q=${encodeURIComponent(q)}&lang=${encodeURIComponent(lang)}`,
+          `/api/knowledge-live?q=${encodeURIComponent(lookup)}&lang=${encodeURIComponent(lang)}${kindHint}`,
           { signal: controller.signal },
         )
         return res.ok && res.status !== 204 ? ((await res.json()) as Panel) : null
@@ -56,7 +82,8 @@ export default function EntityPanel({
       // because the rail is additive and nothing on the page depends on it.
       .catch(() => setPanel(null))
     return () => controller.abort()
-  }, [q, lang])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookup, lang, kindHint])
 
   if (!asking) return null
   if (panel === undefined) return <PanelSkeleton className={className} label={t.knowledgeLoading} />

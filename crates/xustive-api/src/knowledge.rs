@@ -33,6 +33,11 @@ pub struct PanelQuery {
     pub q: String,
     #[serde(default)]
     pub lang: Option<String>,
+    /// `kind=film,series` — what the caller knows the entity must be. The relation row asks
+    /// for the film's own panel this way, so "the matrix" beside its cast is the film and not
+    /// the album of the same name.
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 /// `GET /api/v1/knowledge?q=&lang=` — the entity for this query, or nothing.
@@ -53,7 +58,15 @@ pub async fn panel(
     }
 
     let candidates = candidates(&state, raw).await;
-    let Some(resolution) = resolve::choose(raw, &candidates) else {
+    let prefer: Vec<xustive_knowledge::Kind> = params
+        .kind
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .filter(|k| !k.trim().is_empty())
+        .filter_map(|k| serde_json::from_value(json!(k.trim())).ok())
+        .collect();
+    let Some(resolution) = resolve::choose_preferring(raw, &candidates, &prefer) else {
         // Nobody has harvested this. Record the gap so the store converges on what this audience
         // actually asks for rather than on a guess about it (M8-T09) — through the *same*
         // k-anonymous mechanism weak coverage already uses, under the same floor, in the same

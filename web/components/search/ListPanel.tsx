@@ -26,11 +26,17 @@ type Card = {
   links: { key: string; url: string }[]
 }
 
+type Related = { group: 'series' | 'seasons'; items: { id: string; title: string; year: string | null }[] }
+
 type ListAnswer = {
   relation: Relation
   subject: { id: string; title: string }
+  related: Related | null
   cards: Card[]
 }
+
+/** The event the row raises when the reader picks another part: the side panel follows it. */
+export const SUBJECT_EVENT = 'xustive:subject'
 
 const LINK_NAMES: Record<string, string> = {
   wikipedia: 'Wikipedia',
@@ -58,6 +64,10 @@ const RELATION_ICON: Record<Relation, IconName> = {
 export default function ListPanel({ q, lang, t }: { q: string; lang: string; t: Messages }) {
   const [answer, setAnswer] = useState<ListAnswer | null | undefined>(undefined)
   const [asking, setAsking] = useState(false)
+  // A part or season the reader picked from "see also"; null is "whatever the query resolves to".
+  const [picked, setPicked] = useState<string | null>(null)
+  // The "see also" row survives a pick: it belongs to the family, not to the member shown.
+  const [family, setFamily] = useState<Related | null>(null)
   const row = useRef<HTMLUListElement>(null)
   const [edges, setEdges] = useState<{ start: boolean; end: boolean }>({ start: false, end: false })
 
@@ -91,17 +101,32 @@ export default function ListPanel({ q, lang, t }: { q: string; lang: string; t: 
   }
 
   useEffect(() => {
+    setPicked(null)
+    setFamily(null)
+  }, [q, lang])
+
+  useEffect(() => {
     const controller = new AbortController()
     setAnswer(undefined)
     setAsking(true)
-    fetch(`/api/knowledge-list?q=${encodeURIComponent(q)}&lang=${encodeURIComponent(lang)}`, {
+    const pick = picked ? `&subject=${encodeURIComponent(picked)}` : ''
+    fetch(`/api/knowledge-list?q=${encodeURIComponent(q)}&lang=${encodeURIComponent(lang)}${pick}`, {
       signal: controller.signal,
     })
       .then(async (res) => (res.ok && res.status !== 204 ? ((await res.json()) as ListAnswer) : null))
-      .then(setAnswer)
+      .then((a) => {
+        setAnswer(a)
+        if (a?.related && !picked) setFamily(a.related)
+      })
       .catch(() => setAnswer(null))
     return () => controller.abort()
-  }, [q, lang])
+  }, [q, lang, picked])
+
+  const pick = (id: string, title: string) => {
+    setPicked(id)
+    // The side panel shows the same thing the row does, at once, without a page load.
+    window.dispatchEvent(new CustomEvent(SUBJECT_EVENT, { detail: { id, title } }))
+  }
 
   if (!asking) return null
   if (answer === undefined) {
@@ -111,7 +136,7 @@ export default function ListPanel({ q, lang, t }: { q: string; lang: string; t: 
       </section>
     )
   }
-  if (!answer || answer.cards.length === 0) return null
+  if ((!answer || answer.cards.length === 0) && !family) return null
 
   const headings: Record<Relation, string> = {
     cast: t.listCast,
@@ -120,9 +145,43 @@ export default function ListPanel({ q, lang, t }: { q: string; lang: string; t: 
     albums: t.listAlbums,
   }
   // The primary link is the first authority — Wikipedia when there is an article.
+  const relation: Relation = answer?.relation ?? 'cast'
+  const current = picked ?? answer?.subject.id ?? null
   return (
-    <section className="rise mb-6" aria-label={headings[answer.relation]}>
-      <h2 className="m-0 mb-2 flex items-center gap-2 text-base font-semibold" dir="auto">
+    <section className="rise mb-8" aria-label={headings[relation]}>
+      {family && (
+        <p className="m-0 mb-3 flex flex-wrap items-center gap-2 text-sm" dir="auto">
+          <span style={{ color: 'var(--fg-muted)' }}>
+            {t.listSeeAlso} · {family.group === 'seasons' ? t.listSeasons : t.listSeries}
+          </span>
+          {family.items.map((it) => {
+            const active = it.id === current
+            return (
+              <button
+                key={it.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => pick(it.id, it.title)}
+                className="rounded-[var(--radius-pill)] border px-2.5 py-1 text-xs transition-colors"
+                style={{
+                  borderColor: active ? 'var(--accent)' : 'var(--line)',
+                  background: active ? 'var(--accent-wash)' : 'transparent',
+                  color: active ? 'var(--accent)' : 'var(--fg)',
+                }}
+              >
+                <bdi>{it.title}</bdi>
+                {it.year && (
+                  <span className="ms-1" style={{ color: 'var(--fg-muted)' }}>
+                    {it.year}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </p>
+      )}
+      {answer && (
+      <h2 className="m-0 mb-3 flex items-center gap-2 text-base font-semibold" dir="auto">
         <span
           className="inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] px-2 py-0.5 text-xs font-medium"
           style={{ background: 'var(--accent-wash)', color: 'var(--accent)' }}
@@ -132,19 +191,20 @@ export default function ListPanel({ q, lang, t }: { q: string; lang: string; t: 
         </span>
         <bdi>{answer.subject.title}</bdi>
       </h2>
+      )}
       <div className="group relative">
       <ul
         ref={row}
         onScroll={measure}
-        className="list-row m-0 flex list-none gap-3 overflow-x-auto p-0"
+        className="list-row m-0 flex list-none gap-4 overflow-x-auto p-0 pb-1"
         style={{ scrollSnapType: 'x proximity' }}
       >
-        {answer.cards.map((c) => {
+        {(answer?.cards ?? []).map((c) => {
           const primary = c.links[0]
           return (
             <li
               key={c.id}
-              className="flex w-40 shrink-0 flex-col rounded-lg border"
+              className="flex w-44 shrink-0 flex-col rounded-lg border"
               style={{ borderColor: 'var(--line)', background: 'var(--bg-sunk)', scrollSnapAlign: 'start' }}
               dir="auto"
             >
@@ -157,18 +217,18 @@ export default function ListPanel({ q, lang, t }: { q: string; lang: string; t: 
                     alt=""
                     loading="lazy"
                     referrerPolicy="no-referrer"
-                    className="block h-40 w-full rounded-t-lg object-cover"
+                    className="block h-44 w-full rounded-t-lg object-cover"
                   />
                 ) : (
                   <span
                     aria-hidden
-                    className="flex h-40 w-full items-center justify-center rounded-t-lg"
+                    className="flex h-44 w-full items-center justify-center rounded-t-lg"
                     style={{ color: 'var(--fg-faint)' }}
                   >
-                    <Icon name={RELATION_ICON[answer.relation] === 'users' ? 'user' : RELATION_ICON[answer.relation]} size={28} />
+                    <Icon name={RELATION_ICON[relation] === 'users' ? 'user' : RELATION_ICON[relation]} size={28} />
                   </span>
                 )}
-                <span className="block px-2 pt-2 text-sm font-medium leading-snug" style={{ color: 'var(--fg)' }}>
+                <span className="block px-3 pt-2.5 text-sm font-medium leading-snug" style={{ color: 'var(--fg)' }}>
                   <bdi>{c.title}</bdi>
                   {c.year && (
                     <span className="ms-1 text-xs font-normal" style={{ color: 'var(--fg-muted)' }}>
@@ -178,11 +238,11 @@ export default function ListPanel({ q, lang, t }: { q: string; lang: string; t: 
                 </span>
               </a>
               {c.description && (
-                <span className="line-clamp-2 px-2 pt-0.5 text-xs" style={{ color: 'var(--fg-muted)' }}>
+                <span className="line-clamp-2 px-3 pt-1 text-xs leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
                   {c.description}
                 </span>
               )}
-              <span className="mt-auto flex flex-wrap gap-1 px-2 pb-2 pt-1.5">
+              <span className="mt-auto flex flex-wrap gap-1.5 px-3 pb-3 pt-2.5">
                 {c.links.map((l) => (
                   <a
                     key={l.key}

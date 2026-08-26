@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { viaUpstream } from '@/lib/upstream'
 
-import { detectRelation, type Relation } from '@/lib/relations'
+import { detectRelation, SUBJECT_KINDS, type Relation } from '@/lib/relations'
 import { commonsThumbUrl } from '@/lib/commons'
 import { signThumb } from '@/lib/thumb'
 
@@ -109,14 +109,6 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
   return out
 }
 
-/** What kind of thing each relation's subject must be. The hint that keeps "films by
- *  spielberg" from resolving to the Austrian town whose name is an exact match. */
-const SUBJECT_KINDS: Record<Relation, string[]> = {
-  cast: ['film', 'series'],
-  books: ['person'],
-  films: ['person'],
-  albums: ['person', 'music'],
-}
 
 /** The subject's Wikidata id, from the store first and the live path second. */
 async function subjectId(
@@ -124,7 +116,7 @@ async function subjectId(
   relation: Relation,
   lang: string,
   origin: string,
-): Promise<{ id: string; title: string } | null> {
+): Promise<Subject | null> {
   const kinds = SUBJECT_KINDS[relation]
   const stored = (await json(
     `${API}/api/v1/knowledge?q=${encodeURIComponent(subject)}&lang=${encodeURIComponent(lang)}`,
@@ -132,12 +124,90 @@ async function subjectId(
   // The store answers without a hint; a stored entity of the wrong kind is passed over for the
   // live path, which can be told what to prefer.
   if (stored?.id && (!stored.kind || kinds.includes(stored.kind))) {
-    return { id: stored.id, title: stored.title ?? subject }
+    return { id: stored.id, title: stored.title ?? subject, kind: stored.kind ?? null }
   }
   const live = (await json(
     `${origin}/api/knowledge-live?q=${encodeURIComponent(subject)}&lang=${encodeURIComponent(lang)}&kind=${kinds.join(',')}`,
-  )) as { id?: string; title?: string } | null
-  return live?.id ? { id: live.id, title: live.title ?? subject } : null
+  )) as { id?: string; title?: string; kind?: string } | null
+  return live?.id ? { id: live.id, title: live.title ?? subject, kind: live.kind ?? null } : null
+}
+
+type Subject = { id: string; title: string; kind: string | null }
+
+/** A subject named by id — the reader picked it from "see also" — with its label in `lang`. */
+async function subjectById(id: string, lang: string): Promise<Subject | null> {
+  const l = lang === 'ary' ? 'ar' : lang
+  const r = (await json(
+    `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${id}&props=labels|claims&languages=${l}|en|mul&format=json`,
+  )) as { entities?: Record<string, { labels?: Record<string, { value?: string }>; claims?: Claims }> } | null
+  const e = r?.entities?.[id]
+  if (!e) return null
+  const title = e.labels?.[l]?.value ?? e.labels?.mul?.value ?? e.labels?.en?.value ?? id
+  const p31 = ids(e.claims, 'P31')
+  const kind = p31.some((c) => SERIES_CLASSES.has(c)) ? 'series' : p31.some((c) => FILM_CLASSES.has(c)) ? 'film' : null
+  return { id, title, kind }
+}
+
+type Claims = Record<string, { mainsnak?: { datavalue?: { value?: { id?: string; time?: string } } } }[]>
+
+/** The item ids a property points at. */
+function ids(claims: Claims | undefined, prop: string): string[] {
+  return (claims?.[prop] ?? [])
+    .map((c) => c.mainsnak?.datavalue?.value?.id)
+    .filter((x): x is string => typeof x === 'string')
+}
+
+const FILM_CLASSES = new Set(['Q11424', 'Q24862', 'Q202866', 'Q506240', 'Q226730'])
+const SERIES_CLASSES = new Set(['Q5398426', 'Q15416', 'Q581714', 'Q63952888'])
+
+type Related = { group: 'series' | 'seasons'; items: { id: string; title: string; year: string | null }[] }
+
+/**
+ * The other parts of what the subject belongs to: the films of its series (`P179` → the series'
+ * `P527`), or a series' seasons (its own `P527`). Ten at most, in the order Wikidata lists them,
+ * which is release order for every series anyone has curated. Nothing when the subject stands
+ * alone — a row of one chip would be noise.
+ */
+async function related(subject: Subject, lang: string): Promise<Related | null> {
+  const wd = 'https://www.wikidata.org/w/api.php'
+  const own = (await json(`${wd}?action=wbgetclaims&entity=${subject.id}&property=P179&format=json`)) as
+    | { claims?: Claims }
+    | null
+  const series = ids(own?.claims, 'P179')[0]
+  let group: Related['group']
+  let members: string[]
+  if (series) {
+    const parts = (await json(`${wd}?action=wbgetclaims&entity=${series}&property=P527&format=json`)) as
+      | { claims?: Claims }
+      | null
+    group = 'series'
+    members = ids(parts?.claims, 'P527')
+  } else if (subject.kind === 'series') {
+    const parts = (await json(`${wd}?action=wbgetclaims&entity=${subject.id}&property=P527&format=json`)) as
+      | { claims?: Claims }
+      | null
+    group = 'seasons'
+    members = ids(parts?.claims, 'P527')
+  } else {
+    return null
+  }
+  members = members.slice(0, 10)
+  if (members.length < 2) return null
+  const l = lang === 'ary' ? 'ar' : lang
+  const r = (await json(
+    `${wd}?action=wbgetentities&ids=${members.join('|')}&props=labels|claims&languages=${l}|en|mul&format=json`,
+  )) as { entities?: Record<string, { labels?: Record<string, { value?: string }>; claims?: Claims }> } | null
+  if (!r?.entities) return null
+  const items = members
+    .map((id) => {
+      const e = r.entities?.[id]
+      if (!e) return null
+      const title = e.labels?.[l]?.value ?? e.labels?.mul?.value ?? e.labels?.en?.value ?? id
+      const time = (e.claims?.P577 ?? e.claims?.P580 ?? [])[0]?.mainsnak?.datavalue?.value?.time
+      return { id, title, year: time ? time.slice(1, 5) : null }
+    })
+    .filter((x): x is Related['items'][number] => x !== null)
+  return items.length ? { group, items } : null
 }
 
 /** The SPARQL pattern that lists the members of a relation for subject `S`. */
@@ -281,13 +351,19 @@ export async function GET(req: NextRequest) {
   if (!rq) return new NextResponse(null, { status: 204 })
 
   const origin = req.nextUrl.origin
-  const subject = await subjectId(rq.subject, rq.relation, lang, origin)
+  // `subject=Q189600` — the reader picked a part or a season from "see also": that one, by id.
+  const picked = (req.nextUrl.searchParams.get('subject') ?? '').trim()
+  if (picked && !/^Q\d{1,12}$/.test(picked)) return new NextResponse(null, { status: 400 })
+  const subject = picked ? await subjectById(picked, lang) : await subjectId(rq.subject, rq.relation, lang, origin)
   if (!subject) {
     console.warn(`[knowledge-list] no subject for relation=${rq.relation}`)
     return new NextResponse(null, { status: 204 })
   }
 
-  const rows = await members(subject.id, rq.relation, lang)
+  const [rows, siblings] = await Promise.all([
+    members(subject.id, rq.relation, lang),
+    rq.relation === 'cast' ? related(subject, lang).catch(() => null) : Promise.resolve(null),
+  ])
   console.warn(`[knowledge-list] relation=${rq.relation} subject=${subject.id} members=${rows.length}`)
   if (rows.length === 0) return new NextResponse(null, { status: 204 })
 
@@ -332,7 +408,7 @@ export async function GET(req: NextRequest) {
   })
 
   return NextResponse.json(
-    { relation: rq.relation, subject: { id: subject.id, title: subject.title }, wiki, cards },
+    { relation: rq.relation, subject: { id: subject.id, title: subject.title }, related: siblings, wiki, cards },
     { headers: { 'Cache-Control': 'private, max-age=300' } },
   )
 }

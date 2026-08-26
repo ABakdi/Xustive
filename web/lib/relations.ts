@@ -56,6 +56,17 @@ const PATTERNS: [Relation, RegExp][] = [
 ]
 
 /** The relation a query asks for, or `null` for an ordinary search. */
+/**
+ * What kind of thing each relation's subject must be. The hint that keeps "films by spielberg"
+ * on the director and not the town, and lets the side panel ask for the film itself.
+ */
+export const SUBJECT_KINDS: Record<Relation, string[]> = {
+  cast: ['film', 'series'],
+  books: ['person'],
+  films: ['person'],
+  albums: ['person', 'music'],
+}
+
 export function detectRelation(raw: string): RelationQuery | null {
   const q = raw.trim().replace(/[?？؟]+$/, '').replace(/\s+/g, ' ')
   if (q.length < 4 || q.length > 80) return null

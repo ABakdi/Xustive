@@ -364,6 +364,23 @@ places a model is actually better than a table.
 > pointer is over it. Books show the cover, the year and the doors — no rating; the Open Library
 > number next to a Goodreads link invited the wrong reading.
 >
+> **2026-08-27 — which Matrix, and the rest of the family.** "the matrix" resolved to *The
+> Matrix Reloaded* and "dune" to the 1984 film. Not a relevance judgement at all: every strong
+> candidate scored a clamped 1.0 (exact name + kind lift + capped prominence) and the tie-break
+> was the id string — Q189600 sorts before Q83495. The resolver now orders by the unclamped
+> score, then by how many articles the thing has, then a small lift for a release in the last two
+> years (the conversation is about the new one), then the *earliest* — a shared name means the
+> original unless something above said otherwise. Tested: Matrix, Dune, a this-year remake, and
+> that a partial name never beats an exact one on recency alone.
+>
+> With the subject right, the page shows the rest of the family: a "See also · The series /
+> Seasons" row of chips above the cards (the series' parts via `P179`→`P527`, or a series' own
+> seasons), and a pick swaps the cast row *and* the side panel at once — the panel listens for
+> the row's `xustive:subject` event and loads the picked entity by id (`/api/knowledge-live?id=`),
+> no page load. The side panel on a relation query now asks for the subject itself with the
+> relation's kind hint, so beside the cast of The Matrix stands The Matrix — released, director,
+> runtime, IMDb and Rotten Tomatoes — rather than nothing.
+>
 > Known limitation: a bare Arabic surname (*أفلام سبيلبرغ*) misses on the live path, because
 > Wikidata's search is prefix-based on the label and the Arabic label is "ستيفن سبيلبرغ". Entities
 > in the store resolve by alias in any script; this is one more reason to harvest.

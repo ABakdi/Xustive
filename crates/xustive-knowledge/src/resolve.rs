@@ -8,7 +8,7 @@
 //! Pure and index-free. The caller does the searching; this decides what the results mean, so the
 //! judgement can be tested against fixed candidate sets rather than a live index.
 
-use crate::entity::Entity;
+use crate::entity::{Entity, Value};
 
 /// Shortest and longest query worth resolving. Below two characters there is nothing to match;
 /// above sixty a person is describing rather than naming.
@@ -186,6 +186,44 @@ pub fn choose_preferring(
     candidates: &[Candidate],
     prefer: &[crate::kind::Kind],
 ) -> Option<Resolution> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    choose_preferring_at(query, candidates, prefer, now)
+}
+
+/// A release inside this window is what people mean *now*: "dune" in 2022 was the new film, not
+/// the 1984 one. Two years, because a film's conversation outlives its release by about that.
+const RECENT_WITHIN_SECS: i64 = 2 * 365 * 86_400;
+/// Small on purpose: it decides between two otherwise equal readings of one name, and must never
+/// lift a partial match over an exact one.
+const RECENCY: f32 = 0.05;
+
+/// When an entity was released, published or founded — the date a same-named pair differ by.
+fn released_at(entity: &Entity) -> Option<i64> {
+    entity
+        .facts
+        .iter()
+        .find(|f| {
+            matches!(
+                f.key.as_str(),
+                "release_date" | "publication_date" | "inception"
+            )
+        })
+        .and_then(|f| match f.value {
+            Value::Date { at, .. } => Some(at),
+            _ => None,
+        })
+}
+
+/// [`choose_preferring`] at a given moment, so the recency signal is testable.
+pub fn choose_preferring_at(
+    query: &str,
+    candidates: &[Candidate],
+    prefer: &[crate::kind::Kind],
+    now: i64,
+) -> Option<Resolution> {
     if !is_panel_shaped(query) || candidates.is_empty() {
         return None;
     }
@@ -208,20 +246,40 @@ pub fn choose_preferring(
             } else {
                 KIND_PREFERENCE
             };
-            ((score(query, c) + lift).min(1.0), c)
+            let recent = released_at(&c.entity)
+                .map(|at| at <= now && now - at <= RECENT_WITHIN_SECS)
+                .unwrap_or(false);
+            // Not clamped here. Clamping before the sort flattened every strong candidate to
+            // 1.0 and left the id string to decide — which is how "the matrix" became The Matrix
+            // Reloaded (Q189600 sorts before Q83495) and "dune" the 1984 film. The reported
+            // confidence is clamped below; the ordering keeps every signal.
+            let raw = score(query, c) + lift + if recent { RECENCY } else { 0.0 };
+            (raw, c)
         })
         .collect();
     if scored.is_empty() {
         return None;
     }
-    // Descending, with the id as a tie-break so an identical pair resolves the same way every
-    // time rather than depending on the order the index happened to return.
+    // Descending by score; then the better-known one (more articles about it); then the
+    // earliest — a name shared by an original and its remakes means the original unless
+    // something above said otherwise; then the id, so an identical pair resolves the same way
+    // every time rather than depending on the order the index returned.
     scored.sort_by(|a, b| {
         b.0.partial_cmp(&a.0)
             .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| b.1.entity.prominence.cmp(&a.1.entity.prominence))
+            .then_with(
+                || match (released_at(&a.1.entity), released_at(&b.1.entity)) {
+                    (Some(x), Some(y)) => x.cmp(&y),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => std::cmp::Ordering::Equal,
+                },
+            )
             .then_with(|| a.1.entity.id.cmp(&b.1.entity.id))
     });
 
+    let scored: Vec<(f32, &Candidate)> = scored.iter().map(|(s, c)| (s.min(1.0), *c)).collect();
     let (confidence, best) = scored[0];
     if confidence < MIN_CONFIDENCE {
         return None;
@@ -334,6 +392,96 @@ mod tests {
                 .entity
                 .id,
             "Q_SS"
+        );
+    }
+
+    fn film(id: &str, label: &str, sitelinks: u32, released: i64) -> Candidate {
+        use crate::entity::{DatePrecision, Fact, Provenance};
+        let mut c = candidate(id, label, sitelinks, 50);
+        c.entity.kind = Kind::Film;
+        c.entity.facts.push(Fact {
+            key: "release_date".into(),
+            value: Value::Date {
+                at: released,
+                precision: DatePrecision::Day,
+            },
+            provenance: Provenance::wikidata(id),
+            as_of: None,
+        });
+        c
+    }
+
+    const Y1984: i64 = 471_830_400;
+    const Y1999: i64 = 922_838_400;
+    const Y2003: i64 = 1_053_000_000;
+    const Y2021: i64 = 1_634_000_000;
+    const Y2026: i64 = 1_780_000_000;
+    const NOW_2026: i64 = 1_787_000_000;
+
+    #[test]
+    fn a_sequel_never_outranks_the_original_it_is_named_after() {
+        // "the matrix" resolved to The Matrix Reloaded: both scored a flattened 1.0 and the id
+        // string decided (Q189600 < Q83495). The original has the exact name and more articles.
+        let original = film("Q83495", "The Matrix", 114, Y1999);
+        let sequel = film("Q189600", "The Matrix Reloaded", 66, Y2003);
+        let r = choose_preferring_at("the matrix", &[sequel, original], &[Kind::Film], NOW_2026)
+            .unwrap();
+        assert_eq!(r.entity.id, "Q83495");
+    }
+
+    #[test]
+    fn between_same_named_films_the_better_known_one_wins() {
+        // "dune" is the 2021 film (70 articles), not the 1984 one (60), and not because it is
+        // newer: five years on, it is simply the one people write about.
+        let old = film("Q114819", "Dune", 60, Y1984);
+        let new = film("Q60834962", "Dune", 70, Y2021);
+        assert_eq!(
+            choose_preferring_at("dune", &[old, new], &[Kind::Film], NOW_2026)
+                .unwrap()
+                .entity
+                .id,
+            "Q60834962"
+        );
+    }
+
+    #[test]
+    fn a_release_this_year_is_what_the_name_means_this_year() {
+        // A remake out this year with fewer articles so far still wins: the conversation is
+        // about it. The lift is small enough that an exact name still beats a partial one.
+        let classic = film("Q_OLD", "Remake", 90, Y1984);
+        let this_year = film("Q_NEW", "Remake", 40, Y2026);
+        assert_eq!(
+            choose_preferring_at(
+                "remake",
+                &[classic.clone(), this_year],
+                &[Kind::Film],
+                NOW_2026
+            )
+            .unwrap()
+            .entity
+            .id,
+            "Q_NEW"
+        );
+        let partial = film("Q_PART", "Remake Two", 40, Y2026);
+        assert_eq!(
+            choose_preferring_at("remake", &[classic, partial], &[Kind::Film], NOW_2026)
+                .unwrap()
+                .entity
+                .id,
+            "Q_OLD"
+        );
+    }
+
+    #[test]
+    fn all_else_equal_the_earliest_is_the_one_meant() {
+        let remake = film("Q_A", "Same", 30, Y2003);
+        let original = film("Q_B", "Same", 30, Y1984);
+        assert_eq!(
+            choose_preferring_at("same", &[remake, original], &[Kind::Film], NOW_2026)
+                .unwrap()
+                .entity
+                .id,
+            "Q_B"
         );
     }
 

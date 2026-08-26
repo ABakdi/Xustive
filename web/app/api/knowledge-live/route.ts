@@ -258,9 +258,13 @@ export async function GET(req: NextRequest) {
     .split(',')
     .map((k) => k.trim())
     .filter(Boolean)
-  if (q.length < 2 || q.length > 60) return new NextResponse(null, { status: 204 })
+  // `id=Q83495` — a known entity, no resolution: the relation row's "see also" names the film
+  // by id, and the panel must show that one and not re-guess from its name.
+  const id = (req.nextUrl.searchParams.get('id') ?? '').trim()
+  if (!id && (q.length < 2 || q.length > 60)) return new NextResponse(null, { status: 204 })
+  if (id && !/^Q\d{1,12}$/.test(id)) return new NextResponse(null, { status: 400 })
 
-  const doc = await resolve(q, lang, preferKinds)
+  const doc = id ? await fullDocument(id) : await resolve(q, lang, preferKinds)
   if (!doc) return new NextResponse(null, { status: 204 })
 
   const extract = await extractFor(doc, lang)

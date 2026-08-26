@@ -4,7 +4,7 @@ import { Filters } from '@/components/search/Filters'
 import { Pagination } from '@/components/search/Pagination'
 import ListPanel from '@/components/search/ListPanel'
 import { ImageGrid, VideoList } from '@/components/search/MediaGrid'
-import { detectRelation } from '@/lib/relations'
+import { detectRelation, SUBJECT_KINDS } from '@/lib/relations'
 import { ResultCard } from '@/components/search/ResultCard'
 import { InteractionBeacon } from '@/components/search/InteractionBeacon'
 import { SearchBox } from '@/components/search/SearchBox'
@@ -127,6 +127,7 @@ export default async function SearchPage({
   // almost never shown.
   const languages = data.instant?.tool === 'translate' ? await translateLanguages() : []
 
+  const relation = detectRelation(q)
   return (
     <Shell
       lang={lang}
@@ -136,7 +137,7 @@ export default async function SearchPage({
       // above everything, across the full width the rail would otherwise leave empty (M8-T11).
       // The server decides cheaply whether to mount it; the cards arrive after paint, and an
       // empty answer collapses to nothing.
-      banner={detectRelation(q) ? <ListPanel q={q} lang={lang} t={t} /> : undefined}
+      banner={relation ? <ListPanel q={q} lang={lang} t={t} /> : undefined}
       aside={
         // The rail takes a stack now (M8-T08.3). The entity panel comes from our own harvested
         // store and answers with facts; the Wikipedia panel stays underneath as the fallback for
@@ -146,7 +147,15 @@ export default async function SearchPage({
         // the web tier — with the Wikipedia extract folded in — so the older Wikipedia-only
         // panel would only ever duplicate it.
         <div className="mt-6 flex flex-col gap-4 self-start lg:mt-0 lg:sticky lg:top-20">
-          <EntityPanel q={q} lang={lang} t={t} />
+          <EntityPanel
+            q={q}
+            lang={lang}
+            t={t}
+            // On a relation query the rail shows the subject itself — the film beside its cast —
+            // not whatever "cast of the matrix" happens to resolve to, which is nothing.
+            subject={relation?.subject}
+            kinds={relation ? SUBJECT_KINDS[relation.relation] : undefined}
+          />
         </div>
       }
     >

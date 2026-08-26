@@ -197,9 +197,11 @@ export async function knowledgePanel(
   q: string,
   lang: string,
   signal?: AbortSignal,
+  kinds: string[] = [],
 ): Promise<EntityPanel | null> {
+  const kind = kinds.length ? `&kind=${encodeURIComponent(kinds.join(','))}` : ''
   const res = await fetch(
-    `${BASE}/api/v1/knowledge?q=${encodeURIComponent(q)}&lang=${encodeURIComponent(lang)}`,
+    `${BASE}/api/v1/knowledge?q=${encodeURIComponent(q)}&lang=${encodeURIComponent(lang)}${kind}`,
     { signal, cache: 'no-store' },
   )
   if (res.status === 204 || !res.ok) return null
