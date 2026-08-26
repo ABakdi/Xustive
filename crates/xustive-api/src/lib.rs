@@ -168,6 +168,10 @@ pub fn app(state: AppState) -> Router {
             axum::routing::post(admin_crawler::enqueue),
         )
         .route("/crawler/pause", axum::routing::post(admin_crawler::pause))
+        .route(
+            "/crawler/registry",
+            axum::routing::post(admin_crawler::registry_edit),
+        )
         .route("/politeness", axum::routing::post(admin::set_politeness))
         .route("/status", get(admin::status))
         .route("/config", get(admin::config))
@@ -180,6 +184,14 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/queue", get(admin_queue::status))
         .route("/queue/replay", axum::routing::post(admin_queue::replay))
+        .route(
+            "/queue/dead/replay",
+            axum::routing::post(admin_queue::replay_one),
+        )
+        .route(
+            "/queue/dead/drop",
+            axum::routing::post(admin_queue::drop_one),
+        )
         .route(
             "/takedown",
             axum::routing::post(admin_maintenance::takedown),

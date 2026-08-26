@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 
-import { getQueue, replayDlq, type QueueStatus } from '@/lib/admin'
+import { dropDeadOne, getQueue, replayDeadOne, replayDlq, type QueueStatus } from '@/lib/admin'
 import { PageHead, usePoll } from '@/components/admin/ui'
 
 function Tile({ n, label }: { n: number | string; label: string }) {
@@ -24,6 +24,22 @@ export default function QueuePage() {
   const [msg, setMsg] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Per-item actions (PROB-003). `armed` is the drop awaiting its second click; `gone` hides rows
+  // acted on until the next poll catches up.
+  const [armed, setArmed] = useState<string | null>(null)
+  const [gone, setGone] = useState<Set<string>>(new Set())
+
+  async function actOne(entryId: string, act: 'replay' | 'drop') {
+    setMsg('')
+    try {
+      const r = act === 'replay' ? await replayDeadOne(entryId) : await dropDeadOne(entryId)
+      setGone((g) => new Set(g).add(entryId))
+      setArmed(null)
+      setMsg(r.found ? (act === 'replay' ? 'replayed one dead letter' : 'dropped one dead letter') : 'that letter was already gone')
+    } catch (e) {
+      setMsg((e as Error).message)
+    }
+  }
 
   async function replay() {
     setBusy(true)
@@ -106,10 +122,11 @@ export default function QueuePage() {
                   <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>reason</th>
                   <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>attempts</th>
                   <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>failed at</th>
+                  <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}></th>
                 </tr>
               </thead>
               <tbody>
-                {dead.map((d, i) => (
+                {dead.filter((d) => !d.entry_id || !gone.has(d.entry_id)).map((d, i) => (
                   <tr key={`${d.url}-${i}`}>
                     <td className="border-b py-1" style={{ borderColor: 'var(--line)' }} title={d.url} dir="ltr">
                       <span className="line-clamp-1">{d.url || '(no url)'}</span>
@@ -118,6 +135,29 @@ export default function QueuePage() {
                     <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{d.attempts}</td>
                     <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>
                       {d.failed_at ? new Date(d.failed_at * 1000).toLocaleString() : '—'}
+                    </td>
+                    <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>
+                      {d.entry_id ? (
+                        <span className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => actOne(d.entry_id!, 'replay')}
+                            className="rounded border px-2 py-0.5"
+                            style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}
+                          >
+                            replay
+                          </button>
+                          {/* Drop discards the payload for good, so it takes a second click. */}
+                          <button
+                            type="button"
+                            onClick={() => (armed === d.entry_id ? actOne(d.entry_id!, 'drop') : setArmed(d.entry_id!))}
+                            className="rounded border px-2 py-0.5"
+                            style={{ borderColor: armed === d.entry_id ? 'var(--warn)' : 'var(--line)', color: armed === d.entry_id ? 'var(--warn)' : 'var(--fg-muted)' }}
+                          >
+                            {armed === d.entry_id ? 'drop for good?' : 'drop'}
+                          </button>
+                        </span>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

@@ -474,6 +474,15 @@ fn row_json(
         "trust_tier": source.map(|s| format!("{:?}", s.trust_tier)),
         "approved": source.map(|s| s.approved),
         "crawlable": source.map(|s| s.is_crawlable()),
+        // The crawl policy, so the health page can offer the lifecycle/policy controls (PROB-003)
+        // next to the numbers that motivate using them.
+        "policy": source.map(|s| json!({
+            "enabled": s.crawl_policy.enabled,
+            "frequency": format!("{:?}", s.crawl_policy.frequency).to_lowercase(),
+            "max_docs_per_run": s.crawl_policy.max_docs_per_run,
+            "crawl_delay_ms": s.crawl_policy.crawl_delay_ms,
+            "depth_limit": s.crawl_policy.depth_limit,
+        })),
         "counts": {
             "fetched": m.fetched,
             "failed": m.failed,
@@ -797,5 +806,215 @@ pub async fn remove_source(
         "removed": removed,
         // Said explicitly, because the obvious assumption is the opposite.
         "note": "documents already crawled from this source remain in the index",
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RegistryEdit {
+    pub id: String,
+    /// One of `approve`, `activate`, `disable`. Absent when only the policy changes.
+    #[serde(default)]
+    pub action: Option<String>,
+    /// Recorded on `disable` — the registry keeps *why* a human turned a source off.
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub policy: Option<PolicyEdit>,
+}
+
+/// Every field optional: the operator changes one knob, the rest stay as they are.
+#[derive(Debug, Deserialize)]
+pub struct PolicyEdit {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub frequency: Option<String>,
+    #[serde(default)]
+    pub max_docs_per_run: Option<u32>,
+    #[serde(default)]
+    pub crawl_delay_ms: Option<u64>,
+    #[serde(default)]
+    pub depth_limit: Option<u8>,
+}
+
+/// `POST /admin/crawler/registry` — the registry lifecycle and per-source crawl policy (PROB-003).
+///
+/// The same transitions as `xustive registry approve|activate|disable`, plus the policy fields the
+/// CLI never had a verb for (frequency, per-run doc cap, crawl delay, depth). The guards match the
+/// CLI exactly — an archived source must be re-proposed, not resurrected from a console button —
+/// and the policy floors keep a typo from becoming an impolite crawler: the delay can be raised
+/// freely but never set below 500 ms, and `respect_robots` is not editable at all.
+pub async fn registry_edit(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+    Json(req): Json<RegistryEdit>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
+
+    let bad = |code: &str, message: String| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": {"code": code, "message": message}})),
+        )
+    };
+
+    let path = &state.config.crawl.registry_path;
+    let mut reg = xustive_core::Registry::load(path).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": {"code": "registry_unreadable", "message": e.to_string()}})),
+        )
+    })?;
+    let Some(s) = reg.get_mut(req.id.trim()) else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": {"code": "unknown_source", "message": "no source with that id"}})),
+        ));
+    };
+
+    let mut changed: Vec<&'static str> = Vec::new();
+
+    match req.action.as_deref() {
+        None => {}
+        Some("approve") => {
+            if s.lifecycle == xustive_core::Lifecycle::Archived {
+                return Err(bad(
+                    "archived",
+                    "this source is archived; re-propose it before approving".into(),
+                ));
+            }
+            s.approved = true;
+            s.lifecycle = xustive_core::Lifecycle::Approved;
+            changed.push("approved");
+        }
+        Some("activate") => {
+            if s.lifecycle == xustive_core::Lifecycle::Archived {
+                return Err(bad(
+                    "archived",
+                    "this source is archived; re-propose it before activating".into(),
+                ));
+            }
+            s.approved = true;
+            s.lifecycle = xustive_core::Lifecycle::Active;
+            changed.push("activated");
+        }
+        Some("disable") => {
+            let reason = req
+                .reason
+                .as_deref()
+                .map(str::trim)
+                .filter(|r| !r.is_empty())
+                .unwrap_or("operator disabled (console)");
+            if !s.disable_at(reason, xustive_core::now_unix()) {
+                return Err(bad(
+                    "already_disabled",
+                    "this source is already disabled or archived".into(),
+                ));
+            }
+            changed.push("disabled");
+        }
+        Some(other) => {
+            return Err(bad(
+                "unknown_action",
+                format!("unknown action {other:?} — expected approve, activate, or disable"),
+            ));
+        }
+    }
+
+    if let Some(p) = &req.policy {
+        if let Some(enabled) = p.enabled {
+            s.crawl_policy.enabled = enabled;
+            changed.push("policy.enabled");
+        }
+        if let Some(f) = p.frequency.as_deref() {
+            s.crawl_policy.frequency = match f {
+                "realtime" => xustive_core::CrawlFrequency::Realtime,
+                "hourly" => xustive_core::CrawlFrequency::Hourly,
+                "daily" => xustive_core::CrawlFrequency::Daily,
+                "weekly" => xustive_core::CrawlFrequency::Weekly,
+                other => {
+                    return Err(bad(
+                        "bad_frequency",
+                        format!(
+                            "unknown frequency {other:?} — expected realtime, hourly, daily, or weekly"
+                        ),
+                    ));
+                }
+            };
+            changed.push("policy.frequency");
+        }
+        if let Some(n) = p.max_docs_per_run {
+            if !(1..=100_000).contains(&n) {
+                return Err(bad(
+                    "bad_max_docs",
+                    "max_docs_per_run must be between 1 and 100000".into(),
+                ));
+            }
+            s.crawl_policy.max_docs_per_run = n;
+            changed.push("policy.max_docs_per_run");
+        }
+        if let Some(ms) = p.crawl_delay_ms {
+            // The politeness floor: the console can slow a source down as far as it likes, but
+            // never below half a second — the same spirit as robots.rs never undercutting a
+            // declared Crawl-delay.
+            if ms < 500 {
+                return Err(bad(
+                    "bad_delay",
+                    "crawl_delay_ms must be at least 500".into(),
+                ));
+            }
+            s.crawl_policy.crawl_delay_ms = ms;
+            changed.push("policy.crawl_delay_ms");
+        }
+        if let Some(d) = p.depth_limit {
+            if !(1..=10).contains(&d) {
+                return Err(bad(
+                    "bad_depth",
+                    "depth_limit must be between 1 and 10".into(),
+                ));
+            }
+            s.crawl_policy.depth_limit = d;
+            changed.push("policy.depth_limit");
+        }
+    }
+
+    if changed.is_empty() {
+        return Err(bad(
+            "nothing_to_do",
+            "no action and no policy field given".into(),
+        ));
+    }
+
+    let lifecycle = format!("{:?}", s.lifecycle).to_lowercase();
+    let crawlable = s.is_crawlable();
+
+    // Written whole through a temporary file, like the seed list: a partial registry is sources
+    // vanishing on the crawler's next start.
+    let text = reg.to_jsonl().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": {"code": "serialize_failed", "message": e.to_string()}})),
+        )
+    })?;
+    let tmp = format!("{path}.tmp");
+    if std::fs::write(&tmp, &text).is_err() || std::fs::rename(&tmp, path).is_err() {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(
+                json!({"error": {"code": "write_failed", "message": "could not write the registry"}}),
+            ),
+        ));
+    }
+
+    tracing::info!(peer = ?peer, id = %req.id, ?changed, %lifecycle, "registry edited");
+    Ok(Json(json!({
+        "ok": true,
+        "id": req.id,
+        "changed": changed,
+        "lifecycle": lifecycle,
+        "crawlable": crawlable,
+        // The crawler reads the registry when it seeds, not continuously.
+        "note": "takes effect on the crawler's next seeding pass",
     })))
 }

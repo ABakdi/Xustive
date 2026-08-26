@@ -67,6 +67,20 @@ impl Queue {
 
     /// Read dead letters without consuming them.
     pub async fn peek_dead(&self, count: usize) -> Result<Vec<DeadLetter>, QueueError> {
+        Ok(self
+            .peek_dead_with_ids(count)
+            .await?
+            .into_iter()
+            .map(|(_, letter)| letter)
+            .collect())
+    }
+
+    /// Read dead letters with their stream entry ids — the handle the per-item actions
+    /// ([`Queue::replay_dead_one`], [`Queue::drop_dead`]) need to address one letter.
+    pub async fn peek_dead_with_ids(
+        &self,
+        count: usize,
+    ) -> Result<Vec<(String, DeadLetter)>, QueueError> {
         use redis::AsyncCommands;
         let dead = self.dead_letter();
         let mut conn = self.conn().await?;
@@ -78,9 +92,52 @@ impl Queue {
             .into_iter()
             .filter_map(|entry| {
                 let raw: String = entry.get("payload")?;
-                serde_json::from_str(&raw).ok()
+                let letter: DeadLetter = serde_json::from_str(&raw).ok()?;
+                Some((entry.id, letter))
             })
             .collect())
+    }
+
+    /// Fetch one dead letter by its stream entry id.
+    async fn dead_by_id(&self, entry_id: &str) -> Result<Option<DeadLetter>, QueueError> {
+        use redis::AsyncCommands;
+        let dead = self.dead_letter();
+        let mut conn = self.conn().await?;
+        let reply: redis::streams::StreamRangeReply =
+            conn.xrange(&dead.stream, entry_id, entry_id).await?;
+        Ok(reply.ids.into_iter().find_map(|entry| {
+            let raw: String = entry.get("payload")?;
+            serde_json::from_str(&raw).ok()
+        }))
+    }
+
+    /// Put one dead letter back on the main queue and remove it from the dead stream. Returns
+    /// `false` when no letter has that id (already replayed, dropped, or a stale row on the page).
+    ///
+    /// Re-enqueue first, delete second — the same ordering argument as [`Queue::dead_letter_job`]:
+    /// this can duplicate a job on a crash between the two, which is recoverable; the other order
+    /// can lose it, which is not.
+    pub async fn replay_dead_one(&self, entry_id: &str) -> Result<bool, QueueError> {
+        let Some(letter) = self.dead_by_id(entry_id).await? else {
+            return Ok(false);
+        };
+        self.produce(&letter.payload).await?;
+        use redis::AsyncCommands;
+        let mut conn = self.conn().await?;
+        let _: i64 = conn.xdel(&self.dead_letter().stream, &[entry_id]).await?;
+        Ok(true)
+    }
+
+    /// Delete one dead letter without replaying it. Returns `false` when no letter has that id.
+    ///
+    /// This is the only place a dead letter is discarded on purpose — for a job whose cause is
+    /// understood and whose payload is not wanted back (a permanently gone page, a malformed
+    /// document). Everything else keeps the evidence.
+    pub async fn drop_dead(&self, entry_id: &str) -> Result<bool, QueueError> {
+        use redis::AsyncCommands;
+        let mut conn = self.conn().await?;
+        let removed: i64 = conn.xdel(&self.dead_letter().stream, &[entry_id]).await?;
+        Ok(removed > 0)
     }
 
     /// Put dead letters back on the main queue.

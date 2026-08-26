@@ -477,3 +477,47 @@ async fn a_producer_connection_creates_no_group() {
         .query_async::<()>(&mut conn)
         .await;
 }
+
+#[tokio::test]
+async fn one_dead_letter_can_be_replayed_or_dropped_without_touching_the_rest() {
+    let q = require!("dead-one");
+    q.dead_letter().destroy().await.ok();
+
+    for i in 0..3 {
+        q.dead_letter_job(
+            &format!("0-{i}"),
+            serde_json::json!({ "url": format!("https://example.dz/{i}") }),
+            3,
+            "test poison",
+        )
+        .await
+        .unwrap();
+    }
+    assert_eq!(q.dead_count().await.unwrap(), 3);
+
+    let letters = q.peek_dead_with_ids(10).await.unwrap();
+    assert_eq!(letters.len(), 3);
+    let (replay_id, replay_letter) = letters[0].clone();
+    let (drop_id, _) = letters[1].clone();
+
+    // Replaying one puts exactly that payload back on the main queue and removes only it.
+    assert!(q.replay_dead_one(&replay_id).await.unwrap());
+    assert_eq!(q.dead_count().await.unwrap(), 2);
+    assert_eq!(q.depth().await.unwrap(), 1);
+    let back: Vec<serde_json::Value> = q
+        .consume::<serde_json::Value>("t", 1, Duration::from_millis(200))
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|d| d.payload)
+        .collect();
+    assert_eq!(back[0]["url"], replay_letter.payload["url"]);
+
+    // Dropping one removes only it, and a second attempt honestly reports it gone.
+    assert!(q.drop_dead(&drop_id).await.unwrap());
+    assert!(!q.drop_dead(&drop_id).await.unwrap());
+    assert_eq!(q.dead_count().await.unwrap(), 1);
+
+    q.destroy().await.ok();
+    q.dead_letter().destroy().await.ok();
+}

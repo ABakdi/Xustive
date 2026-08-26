@@ -62,6 +62,13 @@ export interface SourceHealthRow {
   lifecycle: string | null
   trust_tier: string | null
   crawlable: boolean | null
+  policy: {
+    enabled: boolean
+    frequency: 'realtime' | 'hourly' | 'daily' | 'weekly'
+    max_docs_per_run: number
+    crawl_delay_ms: number
+    depth_limit: number
+  } | null
   counts: { fetched: number; failed: number; indexed: number; thin: number; duplicate: number }
   quality: {
     fetch_success_rate: number | null
@@ -73,6 +80,26 @@ export interface SourceHealthRow {
 }
 export const getSourceHealth = (signal?: AbortSignal) =>
   getJSON<{ sources: SourceHealthRow[] }>('/crawler/sources/health', signal).then((d) => d.sources)
+
+/** Registry lifecycle + policy edit (PROB-003). Same transitions and guards as
+ *  `xustive registry approve|activate|disable`; policy floors are enforced server-side. */
+export interface RegistryEdit {
+  id: string
+  action?: 'approve' | 'activate' | 'disable'
+  reason?: string
+  policy?: {
+    enabled?: boolean
+    frequency?: 'realtime' | 'hourly' | 'daily' | 'weekly'
+    max_docs_per_run?: number
+    crawl_delay_ms?: number
+    depth_limit?: number
+  }
+}
+export const editRegistry = (edit: RegistryEdit) =>
+  postJSON<{ ok: boolean; changed: string[]; lifecycle: string; crawlable: boolean; note?: string }>(
+    '/crawler/registry',
+    edit,
+  )
 
 // --- weak coverage ---------------------------------------------------------------------------
 export interface WeakCoverage {
@@ -335,7 +362,7 @@ export interface QueueStatus {
   unavailable: boolean
   backlog?: number
   dead_count?: number
-  dead?: { url: string; attempts: number; reason: string; failed_at: number }[]
+  dead?: { entry_id?: string; url: string; attempts: number; reason: string; failed_at: number }[]
   /** The capacity alarm (PROB-001): Redis memory vs its ceiling + frontier size. Null when the
    *  frontier store is unreachable; pct null when Redis runs uncapped. */
   capacity?: {
@@ -381,6 +408,12 @@ export interface EvalStatus {
 }
 export const getEval = (signal?: AbortSignal) => getJSON<EvalStatus>('/eval', signal)
 export const replayDlq = () => postJSON<{ replayed?: number }>('/queue/replay', {})
+/** Put one dead letter back on the queue. found:false means it was already gone. */
+export const replayDeadOne = (entry_id: string) =>
+  postJSON<{ ok: boolean; found: boolean }>('/queue/dead/replay', { entry_id })
+/** Discard one dead letter for good — the only deliberate discard in the queue. */
+export const dropDeadOne = (entry_id: string) =>
+  postJSON<{ ok: boolean; found: boolean }>('/queue/dead/drop', { entry_id })
 
 // --- maintenance (takedown) ------------------------------------------------------------------
 export interface TakedownResult {

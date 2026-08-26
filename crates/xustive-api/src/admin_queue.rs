@@ -57,10 +57,10 @@ pub async fn status(
         }
         Err(_) => json!(null),
     };
-    let dead = q.peek_dead(20).await.unwrap_or_default();
+    let dead = q.peek_dead_with_ids(20).await.unwrap_or_default();
     let dead_json: Vec<serde_json::Value> = dead
         .iter()
-        .map(|d| {
+        .map(|(entry_id, d)| {
             // The payload is a crawled document; show just enough to recognise it, never the body.
             let url = d
                 .payload
@@ -69,7 +69,7 @@ pub async fn status(
                 .and_then(|v| v.as_str())
                 .or_else(|| d.payload.get("url").and_then(|v| v.as_str()))
                 .unwrap_or("");
-            json!({ "url": url, "attempts": d.attempts, "reason": d.reason, "failed_at": d.failed_at })
+            json!({ "entry_id": entry_id, "url": url, "attempts": d.attempts, "reason": d.reason, "failed_at": d.failed_at })
         })
         .collect();
 
@@ -108,4 +108,72 @@ pub async fn replay(
             Json(json!({"error": {"code": "replay_failed", "message": e.to_string()}})),
         )),
     }
+}
+
+#[derive(serde::Deserialize)]
+pub struct DeadItem {
+    pub entry_id: String,
+}
+
+/// Per-item dead-letter actions (PROB-003): the all-or-nothing replay is right when one bug killed
+/// a batch, wrong when one poisoned job sits among salvageable ones. Both take the stream entry id
+/// the status endpoint now returns, and both answer `found: false` for an id that is already gone
+/// rather than erroring — the page may be a poll behind reality.
+async fn dead_action(
+    state: &AppState,
+    entry_id: &str,
+    act: &str,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if entry_id.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": {"code": "missing_entry_id", "message": "entry_id is required"}})),
+        ));
+    }
+    let Some(q) = queue(state).await else {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(
+                json!({"error": {"code": "queue_unavailable", "message": "cannot reach the queue"}}),
+            ),
+        ));
+    };
+    let outcome = match act {
+        "replay" => q.replay_dead_one(entry_id.trim()).await,
+        _ => q.drop_dead(entry_id.trim()).await,
+    };
+    match outcome {
+        Ok(found) => Ok(Json(json!({ "ok": true, "found": found }))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": {"code": "dead_action_failed", "message": e.to_string()}})),
+        )),
+    }
+}
+
+/// `POST /admin/queue/dead/replay` — put one dead letter back on the queue.
+pub async fn replay_one(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+    Json(req): Json<DeadItem>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
+    let out = dead_action(&state, &req.entry_id, "replay").await?;
+    tracing::warn!(entry_id = %req.entry_id, "one dead letter replayed by operator");
+    Ok(out)
+}
+
+/// `POST /admin/queue/dead/drop` — discard one dead letter for good. The only deliberate discard
+/// in the queue; the UI confirms it, and the log keeps the trace.
+pub async fn drop_one(
+    State(state): State<AppState>,
+    Peer(peer): Peer,
+    headers: HeaderMap,
+    Json(req): Json<DeadItem>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
+    let out = dead_action(&state, &req.entry_id, "drop").await?;
+    tracing::warn!(entry_id = %req.entry_id, "one dead letter dropped by operator");
+    Ok(out)
 }
