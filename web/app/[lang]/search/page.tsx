@@ -2,7 +2,9 @@ import { notFound, redirect } from 'next/navigation'
 
 import { Filters } from '@/components/search/Filters'
 import { Pagination } from '@/components/search/Pagination'
+import ListPanel from '@/components/search/ListPanel'
 import { ImageGrid, VideoList } from '@/components/search/MediaGrid'
+import { detectRelation } from '@/lib/relations'
 import { ResultCard } from '@/components/search/ResultCard'
 import { InteractionBeacon } from '@/components/search/InteractionBeacon'
 import { SearchBox } from '@/components/search/SearchBox'
@@ -185,6 +187,11 @@ export default async function SearchPage({
         ) : (
           <ToolCard answer={data.instant} t={t} locale={lang} />
         ))}
+
+      {/* A relation query — the cast of a film, the books of an author — gets a row of cards
+          above the results (M8-T11). The server decides cheaply whether to mount it at all; the
+          cards themselves arrive after paint, and an empty answer collapses to nothing. */}
+      {detectRelation(q) && <ListPanel q={q} lang={lang} t={t} />}
 
       {/* A question gets its answer first.
           Someone typing a topic wants a list of pages; someone asking a question wants an answer,

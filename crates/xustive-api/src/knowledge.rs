@@ -323,11 +323,18 @@ pub async fn resolve_live(
             corpus_mentions,
         });
     }
-    let Some(resolution) = resolve::choose(query, &candidates) else {
+    // The kinds the caller expects — a relation query knows what its subject must be.
+    let prefer: Vec<xustive_knowledge::Kind> = req
+        .prefer_kinds
+        .iter()
+        .filter_map(|k| serde_json::from_value(json!(k)).ok())
+        .collect();
+    let Some(resolution) = resolve::choose_preferring(query, &candidates, &prefer) else {
         return Err(StatusCode::NO_CONTENT);
     };
     Ok(Json(json!({
         "id": resolution.entity.id,
+        "kind": resolution.entity.kind.as_str(),
         "confidence": resolution.confidence,
         "also": resolution.also.map(|a| a.id),
     })))
@@ -339,4 +346,7 @@ pub struct ResolveLiveRequest {
     /// Entities from `wbgetentities`, as Wikidata returned them.
     #[serde(default)]
     pub docs: Vec<Value>,
+    /// Kinds to lift — `person`, `film`, … — when the caller knows what the subject must be.
+    #[serde(default)]
+    pub prefer_kinds: Vec<String>,
 }

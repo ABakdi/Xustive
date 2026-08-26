@@ -167,6 +167,25 @@ fn normalise(s: &str) -> String {
 /// Candidates arrive in whatever order the index ranked them; this re-ranks by the signals above
 /// and refuses anything under [`MIN_CONFIDENCE`].
 pub fn choose(query: &str, candidates: &[Candidate]) -> Option<Resolution> {
+    choose_preferring(query, candidates, &[])
+}
+
+/// How much a candidate of an expected kind is lifted. Enough to beat an exact-name tie against
+/// the wrong kind of thing — a town called Spielberg against the director — and not enough to
+/// lift a non-match over a match.
+const KIND_PREFERENCE: f32 = 0.20;
+
+/// [`choose`], preferring candidates of the given kinds.
+///
+/// A relation query says what kind of thing its subject is: *films by X* needs a person, *cast
+/// of X* needs a film or a series. Without the hint, "spielberg" resolved to the Austrian town —
+/// an exact label — over the director, whose surname is merely a word of his name. The hint is
+/// a lift, not a filter: a preferred kind that does not match the name still loses.
+pub fn choose_preferring(
+    query: &str,
+    candidates: &[Candidate],
+    prefer: &[crate::kind::Kind],
+) -> Option<Resolution> {
     if !is_panel_shaped(query) || candidates.is_empty() {
         return None;
     }
@@ -174,10 +193,23 @@ pub fn choose(query: &str, candidates: &[Candidate]) -> Option<Resolution> {
     // weight that a strong enough name match plus prominence can outvote, and "a bare label is not
     // knowledge" is meant as a guarantee, not a preference — the first version scored it and a
     // maximally-prominent bare label still won.
+    // When the caller knows the kind, a candidate of another kind is not a weaker answer — it is
+    // the wrong answer. "cast of the matrix" once resolved to a boxer nicknamed The Matrix
+    // because the film's kind lookup had failed upstream and, with no lift to apply, prominence
+    // decided. So the preference is a filter after all, and a lift only among what passes it: if
+    // nothing of the expected kind is on offer, the honest answer is no answer.
     let mut scored: Vec<(f32, &Candidate)> = candidates
         .iter()
         .filter(|c| c.entity.is_renderable())
-        .map(|c| (score(query, c), c))
+        .filter(|c| prefer.is_empty() || prefer.contains(&c.entity.kind))
+        .map(|c| {
+            let lift = if prefer.is_empty() {
+                0.0
+            } else {
+                KIND_PREFERENCE
+            };
+            ((score(query, c) + lift).min(1.0), c)
+        })
         .collect();
     if scored.is_empty() {
         return None;
@@ -279,6 +311,58 @@ mod tests {
         let person = candidate("Q_ZZ", "Zinedine Zidane", 180, 20);
         let game = candidate("Q_GAME", "Zidane Football Generation 2002", 4, 0);
         assert_eq!(choose("zidane", &[game, person]).unwrap().entity.id, "Q_ZZ");
+    }
+
+    #[test]
+    fn a_relation_lifts_the_kind_it_expects_over_an_exact_name_of_the_wrong_kind() {
+        // "films by spielberg": the Austrian town is an exact label, the director a word of his
+        // name. Without a hint the town wins; with "a person is expected" the director does.
+        let mut town = candidate("Q_TOWN", "Spielberg", 30, 40);
+        town.entity.kind = Kind::Place;
+        let mut director = candidate("Q_SS", "Steven Spielberg", 200, 40);
+        director.entity.kind = Kind::Person;
+        assert_eq!(
+            choose("spielberg", &[town.clone(), director.clone()])
+                .unwrap()
+                .entity
+                .id,
+            "Q_TOWN"
+        );
+        assert_eq!(
+            choose_preferring("spielberg", &[town, director], &[Kind::Person])
+                .unwrap()
+                .entity
+                .id,
+            "Q_SS"
+        );
+    }
+
+    #[test]
+    fn a_candidate_of_the_wrong_kind_is_never_chosen_when_a_kind_is_expected() {
+        // "cast of the matrix" resolved to a boxer nicknamed The Matrix when the film's kind
+        // lookup failed upstream. With a kind expected, the wrong kind is not an answer at all —
+        // even when it is the only exact match, and even when nothing else is left.
+        let mut boxer = candidate("Q_BOX", "Vasyl Lomachenko", 300, 50);
+        boxer.entity.kind = Kind::Person;
+        boxer
+            .entity
+            .names
+            .aliases
+            .push(("en".into(), "The Matrix".into()));
+        let mut film = candidate("Q_F", "The Matrix", 150, 20);
+        film.entity.kind = Kind::Film;
+        assert_eq!(
+            choose_preferring(
+                "the matrix",
+                &[boxer.clone(), film],
+                &[Kind::Film, Kind::Series]
+            )
+            .unwrap()
+            .entity
+            .id,
+            "Q_F"
+        );
+        assert!(choose_preferring("the matrix", &[boxer], &[Kind::Film, Kind::Series]).is_none());
     }
 
     #[test]

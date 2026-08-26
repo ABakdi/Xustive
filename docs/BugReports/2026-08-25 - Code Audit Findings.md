@@ -3,7 +3,7 @@ tags:
   - bugs
   - audit
 date: 2026-08-25
-status: resolved
+status: open
 ---
 # Code Audit Findings — 2026-08-25
 
@@ -298,3 +298,20 @@ to 800 round trips for a 200-document pool.
 
 **Measured after:** 55 searches under the same indexing load → **55 × 200**, mean 343 ms
 (one 500 seen once during the run, not reproduced across 30 more — noted below if found).
+
+### BUG-042 [high] — Behind the web tier, every reader shares one rate-limit bucket — **open**
+`ratelimit.rs` keys buckets on the connection's peer address and deliberately ignores
+`X-Forwarded-For` (a client that can pick its own bucket is worse than no limiter — the reasoning
+is right). But since ADR-0010 every browser request reaches the API through the Next.js rewrite
+proxy, so the peer address the API sees is **the web tier's**, for everyone. In production that
+makes `SEARCH` (60/min) a limit on the whole site, not on a neighbourhood — sixty searches a
+minute across all readers, then 429s. In dev a single person plus a test burst crosses it, which
+is one of the "Something went wrong" shapes reported in BUG-041 (now at least named on the page).
+
+Fix shape, deliberately not done inline with BUG-041 because ADR-0020 says it is an ADR-level
+call: `api.trusted_proxies = [...]`; when — and only when — the peer is in that list, key on the
+first `X-Forwarded-For` hop instead. The bucket stays `HMAC(salt, ip/24)`, memory-only, daily
+rotated, so nothing about what is *stored* changes; what changes is which address is hashed. Needs
+the web tier to forward the header (verify Next's rewrite does), a config guard that refuses a
+non-loopback trusted proxy in dev, and the pinned test in `ratelimit.rs` rewritten to say the new
+rule rather than deleted.

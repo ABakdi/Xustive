@@ -308,6 +308,54 @@ places a model is actually better than a table.
 - [x] M8-T09.3 Surfaced on the admin console beside weak coverage — including, honestly, when
       nothing is chasing the queue
 
+## M8-T11 — List answers: the cast, the books, the films
+
+> Asked for after close: *search the cast of a film or the books of an author and get cards —
+> click a person and land on their Wikipedia page; a book shows its titles, links to the
+> authorities, and its rating.* A relation query is an entity plus a relationship, and the answer
+> is a list, so it gets a row of cards rather than a panel.
+
+- [x] M8-T11.1 Relation detection — `cast of X`, `X cast`, `books by Y`, `films de Z`,
+      `طاقم فيلم …`, `روايات …` — pure regular expressions in the four scripts, run on the server for
+      every search to decide whether to mount the row at all. Precision over recall: a list of the
+      wrong people is worse than no list
+- [x] M8-T11.2 The subject resolves through what exists — the store first, the live path second —
+      never a third resolver
+- [~] M8-T11.3 Members from **one Wikidata SPARQL query** in the web tier, the egress ADR-0014
+      allows: cast (`P161`), works by author (`P50`, restricted to written-work classes), films by
+      director or with actor (`P57` ∪ `P161`), albums by performer (`P175`). Sixteen at most.
+      **Settled with a fallback:** SPARQL queues under load — 6.8 s for a trivial six-id lookup was
+      measured — so it gets a 6 s leash and the subject's own claims (`P161`, else `P800` notable
+      works) answer when it stalls. Reverse relations are shorter that way, and honest about it
+- [x] M8-T11.4 Every card links to authorities **by identifier**: Wikipedia in the reader's
+      language (else Wikidata), IMDb (`P345`, person or title URL), Goodreads (`P2969`), Open
+      Library (`P648`), Google Books by ISBN (`P212`). Nothing fetched from any of them
+- [x] M8-T11.5 **Ratings, honestly.** Goodreads has had no public API since 2020 and forbids
+      scraping, so a Goodreads rating cannot be shown. Open Library publishes ratings openly
+      (`/works/{id}/ratings.json`); those are shown, named as the source, and the note under the
+      row says why the Goodreads link is a link and not a number
+- [x] M8-T11.6 Images proxied and signed like every other; the row is direction-agnostic and
+      bidi-isolated; collapses to nothing when empty
+
+> **Status of T11, 2026-08-26.** Built and verified where the upstream let it be: *livres de
+> kateb yacine* → three books, Nedjma with an Open Library rating of 4 and Goodreads/Open Library
+> links; *albums by cheb khaled* → eleven albums; *for all mankind cast* → sixteen people with
+> photos and IMDb links. Then Wikimedia's edge began intermittently refusing this host's
+> connections (`UND_ERR_CONNECT_TIMEOUT` from plain Node as well as from the app) after a day of
+> testing that made hundreds of requests — the same throttling ADR-0019 predicts for any
+> per-request fan-out, arriving on the live path instead. Three things landed in response: one
+> shared keep-alive agent with a four-connection cap and IPv4 pinned (the resolver returns an
+> IPv6 address this host cannot route), a single retry on a refused connect, and a rule in the
+> resolver that a subject of the wrong kind is **never** chosen when the relation names the kind —
+> found because, with the kind lookup failing upstream, "cast of the matrix" briefly resolved to a
+> boxer nicknamed The Matrix. The remaining cases (*cast of the matrix*, *films by spielberg*)
+> could not be re-verified before the throttle lifted; the harvester's demand queue is the design
+> answer, since a subject held in the store never takes the live path at all.
+>
+> Known limitation: a bare Arabic surname (*أفلام سبيلبرغ*) misses on the live path, because
+> Wikidata's search is prefix-based on the label and the Arabic label is "ستيفن سبيلبرغ". Entities
+> in the store resolve by alias in any script; this is one more reason to harvest.
+
 ## M8-T10 — Gates
 
 - [x] M8-T10.1 `make egress-test` green with every new component in the topology: the serving plane
