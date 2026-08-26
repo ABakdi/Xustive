@@ -3,7 +3,7 @@ tags:
   - planning
   - milestone
 milestone: 9
-status: planned
+status: done
 updated: 2026-08-26
 ---
 # Milestone 9 - Images and Videos
@@ -61,6 +61,20 @@ a click — the reader chooses the disclosure. And no code path downloads video 
 [[Milestone 2 - Ingestion at Scale|M2-T10.8]] already required and this milestone pins with a test.
 
 ---
+
+> **Closed 2026-08-26.** Measured against the exit gate: `?v=images` renders **66 tiles with
+> script off, none hotlinked** — every one through the signed proxy, which serves real JPEGs on a
+> valid signature and 403 on a tampered or missing one; `?v=videos` lists posters that link out
+> and embeds nothing; both tabs name themselves when empty; egress, no-JS, bidi, telemetry and
+> the bundle budget (181 KB of 195) are green. 15 crate suites pass.
+>
+> One finding worth keeping: Next compiles server components and route handlers as separate
+> bundles with separate module instances, so a module-level random secret was two secrets and the
+> proxy refused every signature the page produced. `globalThis` is what the bundles share.
+>
+> One honest gap: the Videos tab is empty today. The parser now extracts video, but the raw store
+> has never been on (`crawl.raw_ttl_days = 0`), so the repass had nothing to work from and the
+> tab fills at the pace of the revisit crawl. Turning the store on is the operator's storage call.
 
 ## M9-T01 — Video extraction and a filterable media type
 
@@ -128,10 +142,10 @@ a click — the reader chooses the disclosure. And no code path downloads video 
 ## M9-T05 — Gates
 
 - [x] M9-T05.1 `scripts/no-js-check.sh` extended: `?v=images` renders tiles with script off
-- [ ] M9-T05.2 `make egress-test` green — the web tier's fetch is the same class as ADR-0014's;
+- [x] M9-T05.2 `make egress-test` green — the web tier's fetch is the same class as ADR-0014's;
       the serving plane's no-egress is untouched
 - [x] M9-T05.3 Bundle budget holds — the grid ships no JavaScript at all
-- [ ] M9-T05.4 Telemetry lint: no image URL in a log line (a URL is a page someone read)
+- [x] M9-T05.4 Telemetry lint: no image URL in a log line (a URL is a page someone read)
 
 ## Deliberately not in this milestone
 
