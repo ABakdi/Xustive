@@ -2,6 +2,7 @@ import type { InstantAnswer } from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
 
 import { CopyButton } from './CopyButton'
+import { WeatherDetail } from './WeatherDetail'
 import { DismissTool } from './DismissTool'
 
 /**
@@ -100,6 +101,12 @@ export function ToolCard({
           <span className="text-xs">{t.alternatives}: </span>
           <bdi>{alternatives.join(' · ')}</bdi>
         </p>
+      )}
+
+      {/* The weather card's body: the forecast that has been on the wire since M1B and never
+          drawn. Server-rendered like the rest of the card, so it survives the no-JS path. */}
+      {answer.tool === 'weather' && (
+        <WeatherDetail detail={answer.detail} t={t} locale={locale} />
       )}
 
       {/* Only present when the value has a time dimension. Arithmetic has none; an exchange rate

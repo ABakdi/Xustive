@@ -201,16 +201,16 @@ places a model is actually better than a table.
       `ratelimit.rs` already applies to the same value
 - [x] M8-T05.2 Extend the fetcher to hourly (48 h) and seven days, with the existing validation,
       movement guard and partial-write refusal. Cadence and cache key version bump together
-- [ ] M8-T05.3 Render the forecast that has been on the wire since M1B: today in full, a day strip,
+- [x] M8-T05.3 Render the forecast that has been on the wire since M1B: today in full, a day strip,
       and a **week** toggle
-- [ ] M8-T05.4 Graphs — temperature and precipitation, drawn as **server-rendered SVG**. A canvas
+- [x] M8-T05.4 Graphs — temperature and precipitation, drawn as **server-rendered SVG**. A canvas
       chart library would fail the no-JS path and cost more than the whole page budget; an inline
       SVG polyline costs bytes we can count
 - [x] M8-T05.5 Named places keep working and gain the same depth: `weather oran`, `طقس وهران`,
       `météo à Alger`
-- [ ] M8-T05.6 A location we cannot place falls back to the largest nearby wilaya and **says so**.
+- [x] M8-T05.6 A location we cannot place falls back to the largest nearby wilaya and **says so**.
       A wrong city stated confidently is the failure mode to avoid
-- [ ] M8-T05.7 Custom line icons per WMO code, the [[Milestone 1B - Frontend and Instant Answers|M1B-T05.5]] loose end
+- [x] M8-T05.7 Custom line icons per WMO code, the [[Milestone 1B - Frontend and Instant Answers|M1B-T05.5]] loose end
 
 ## M8-T06 — Currency and rates
 
