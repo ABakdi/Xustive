@@ -72,7 +72,23 @@ a click — the reader chooses the disclosure. And no code path downloads video 
 > bundles with separate module instances, so a module-level random secret was two secrets and the
 > proxy refused every signature the page produced. `globalThis` is what the bundles share.
 >
-> One honest gap: the Videos tab is empty today. The parser now extracts video, but the raw store
+> **Reopened and closed again the same day for T06 — federated images and videos.** The Videos
+> tab is no longer empty: with federation on, a search federates in its own category, the eager
+> index stores each hit's media, and the crawl follows. Measured after one query: 21 federated
+> video documents local within a minute, and the crawler had already fetched the YouTube watch
+> pages and the new parser extracted the video from the real HTML — the whole loop, closed.
+>
+> T06 found three latent faults, none in the new path: SearXNG's `null` fields failed the
+> deserialisation of an entire body (118 hits → 0); the gateway's 2 s transport timeout sat under
+> the API's 6 s budget; and the strip wait equalled `timeout_search_ms` in dev, so every vertical
+> 504'd whenever SearXNG was slow — unseen because federation was off. All fixed.
+>
+> One caveat that stands: SearXNG's image and video engines answer in 1.2–1.6 s, longer than the
+> ~0.75 s strip wait dev can afford, so media tiles usually arrive on the *second* search via the
+> eager index rather than blended into the first. That is ADR-0017's convergence working as
+> designed, not a defect — the All tab, whose engines are faster, blends live.
+>
+> One honest gap that used to be here: the Videos tab was empty at first close. The parser now extracts video, but the raw store
 > has never been on (`crawl.raw_ttl_days = 0`), so the repass had nothing to work from and the
 > tab fills at the pace of the revisit crawl. Turning the store on is the operator's storage call.
 
@@ -146,18 +162,18 @@ a click — the reader chooses the disclosure. And no code path downloads video 
 > already covers it: one gateway, one budget, fail-open, and every hit queued so the index
 > converges. What changes is a `categories` parameter and a tile instead of a card.
 
-- [ ] M9-T06.1 `Category` (`web` / `images` / `videos`) on the gateway request and the SearXNG
+- [x] M9-T06.1 `Category` (`web` / `images` / `videos`) on the gateway request and the SearXNG
       call; `FederatedHit` gains an optional `media` — the image (`img_src`, `thumbnail_src`,
       resolution) or the video (**the watch page, never `iframe_src`**, thumbnail, length). Defaulted
       on the wire so a gateway and an API of different builds still agree
-- [ ] M9-T06.2 The Images and Videos tabs federate in their own category on page 1, exactly as All
+- [x] M9-T06.2 The Images and Videos tabs federate in their own category on page 1, exactly as All
       does: detached fetch, short strip wait, "from the web" badge on the tile
-- [ ] M9-T06.3 The eager index stores the hit's `media` on the placeholder document, so the next
+- [x] M9-T06.3 The eager index stores the hit's `media` on the placeholder document, so the next
       search finds the picture **locally** before the crawl lands; the page is queued for crawl
       like any federated URL
-- [ ] M9-T06.4 Thumbnails from the engines go through the signed proxy like every other — a
+- [x] M9-T06.4 Thumbnails from the engines go through the signed proxy like every other — a
       Bing-hosted preview is still a third-party host the reader did not choose
-- [ ] M9-T06.5 Fixture tests on the live JSON shapes; a video hit's `src` is asserted to be the
+- [x] M9-T06.5 Fixture tests on the live JSON shapes; a video hit's `src` is asserted to be the
       watch page and never an embed
 
 ## M9-T05 — Gates
