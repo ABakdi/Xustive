@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Icon } from '@/components/ui/Icon'
 
 import { summarise, type SummaryResponse } from '@/lib/api'
 
@@ -24,6 +25,7 @@ export function Summary({
   loadingLabel,
   sourcesLabel,
   prominent = false,
+  badge,
 }: {
   token: string
   note: string
@@ -39,6 +41,7 @@ export function Summary({
    * where it sat would be two features pretending to be one.
    */
   prominent?: boolean
+  badge: string
 }) {
   const [data, setData] = useState<SummaryResponse | null>(null)
 
@@ -68,6 +71,7 @@ export function Summary({
           dir="auto"
           style={{ color: 'var(--fg-muted)' }}
         >
+          <Icon name="sparkle" size={14} style={{ color: 'var(--accent)' }} />
           <LoadingDots />
           {loadingLabel}
         </p>
@@ -84,6 +88,17 @@ export function Summary({
       // appeared above where they are reading.
       aria-live="polite"
     >
+      {/* A badge that says what this is — the engine's own words, from the sources below — so it
+          cannot be mistaken for a quotation from one of them. Accent and wash, like the entity
+          panel's kind chip: the same one colour, the same job. */}
+      <span
+        className="mb-2 inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] px-2 py-0.5 text-xs font-medium"
+        style={{ background: 'var(--accent-wash)', color: 'var(--accent)' }}
+        dir="auto"
+      >
+        <Icon name="sparkle" size={14} />
+        {badge}
+      </span>
       <p
         dir="auto"
         className={prominent ? 'm-0 text-lg' : 'm-0 text-base'}
@@ -98,14 +113,19 @@ export function Summary({
           Shown under every summary — a grounded answer should always show what it is grounded in,
           and each number jumps to the result card where the domain and title already appear. */}
       {(data.citations?.length ?? 0) > 0 && (
-        <ul className="mt-3 mb-0 flex flex-wrap items-center gap-x-3 gap-y-1 list-none p-0 text-xs">
-          <li style={{ color: 'var(--fg-faint)' }}>{sourcesLabel}</li>
+        <ul className="mt-3 mb-0 flex flex-wrap items-center gap-x-2 gap-y-1 list-none p-0 text-xs">
+          <li className="inline-flex items-center gap-1" style={{ color: 'var(--fg-faint)' }}>
+            <Icon name="link" size={12} />
+            {sourcesLabel}
+          </li>
           {data.citations!.map((c) => (
             <li key={c.n}>
+              {/* Numbered chips, not bare brackets: the number is a control that jumps to the
+                  result, and a control should look like one. */}
               <a
                 href={`#result-${c.result_id}`}
-                className="no-underline hover:underline"
-                style={{ color: 'var(--fg-muted)' }}
+                className="inline-block rounded-[var(--radius-pill)] border px-2 py-0.5 no-underline hover:underline"
+                style={{ borderColor: 'var(--line)', color: 'var(--accent)' }}
               >
                 {/* The citation carries an id, not a domain. Numbered rather than named, and
                     the link jumps to the result itself where the domain is already shown —

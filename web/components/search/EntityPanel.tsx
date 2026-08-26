@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 
 import { knowledgePanel, type EntityFact, type EntityPanel as Panel } from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
+import { Icon, type IconName } from '@/components/ui/Icon'
 
 /**
  * The entity panel (M8-T08).
@@ -89,6 +90,17 @@ export default function EntityPanel({
         />
       )}
       <div className="p-4">
+        {/* The kind, as a small accent-washed chip with its icon: the one glance that says
+            "this is a film" before a single fact is read. Accent and wash only — the design
+            language allows one colour, and the chip is where it goes. */}
+        <span
+          className="mb-2 inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] px-2 py-0.5 text-xs font-medium"
+          style={{ background: 'var(--accent-wash)', color: 'var(--accent)' }}
+          dir="auto"
+        >
+          <Icon name={KIND_ICON[panel.kind] ?? 'bulb'} size={14} />
+          {(t as unknown as Record<string, string>)[`kind_${panel.kind}`] ?? panel.kind}
+        </span>
         <h2 className="m-0 text-lg font-semibold tracking-tight" dir="auto">
           {panel.title}
         </h2>
@@ -118,8 +130,9 @@ export default function EntityPanel({
         )}
 
         {panel.extract && (
-          <p className="mt-3 text-sm leading-relaxed" dir="auto">
-            {panel.extract.text}
+          <p className="mt-3 flex gap-2 text-sm leading-relaxed" dir="auto">
+            <Icon name="quote" size={16} className="mt-1" style={{ color: 'var(--accent)' }} />
+            <span>{panel.extract.text}</span>
           </p>
         )}
 
@@ -131,10 +144,19 @@ export default function EntityPanel({
                   href={a.url}
                   target="_blank"
                   rel="noopener nofollow noreferrer"
-                  className="rounded border px-2 py-0.5"
-                  style={{ borderColor: 'var(--line)' }}
+                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] border px-2.5 py-1 no-underline"
+                  style={{ borderColor: 'var(--line)', color: 'var(--fg)' }}
                 >
-                  <bdi>{AUTHORITY_NAMES[a.key] ?? a.key}</bdi> ↗
+                  {/* A brand mark per authority: the one place a second colour earns its keep,
+                      because a reader recognises IMDb's yellow and Rotten Tomatoes' red faster
+                      than the word — and it stays a dot, not a surface. */}
+                  <span
+                    aria-hidden
+                    className="inline-block h-2 w-2 rounded-full"
+                    style={{ background: AUTHORITY_MARK[a.key] ?? 'var(--fg-faint)' }}
+                  />
+                  <bdi>{AUTHORITY_NAMES[a.key] ?? a.key}</bdi>
+                  <Icon name="link" size={12} style={{ color: 'var(--fg-faint)' }} />
                 </a>
               </li>
             ))}
@@ -150,8 +172,10 @@ export default function EntityPanel({
 
         {/* Attribution is not optional decoration: the claims are CC0, the extract is share-alike,
             and each image carries its own licence. Naming the sources is what the licences ask for. */}
-        <p className="mt-3 text-xs" style={{ color: 'var(--fg-faint)' }} dir="auto">
-          {t.entitySources}: <bdi>{sources.join(' · ')}</bdi>
+        <p className="mt-3 flex items-center gap-1.5 text-xs" style={{ color: 'var(--fg-faint)' }} dir="auto">
+          <Icon name="check" size={12} />
+          <span>
+            {t.entitySources}: <bdi>{sources.join(' · ')}</bdi>
           {image?.credit_url && (
             <>
               {' · '}
@@ -160,10 +184,69 @@ export default function EntityPanel({
               </a>
             </>
           )}
+          </span>
         </p>
       </div>
     </aside>
   )
+}
+
+/** One icon per kind — the glance that says what this is. */
+const KIND_ICON: Record<string, IconName> = {
+  person: 'user',
+  film: 'film',
+  series: 'tv',
+  place: 'pin',
+  organisation: 'building',
+  product: 'box',
+  book: 'book',
+  music: 'music',
+  event: 'calendar',
+  species: 'leaf',
+  concept: 'bulb',
+}
+
+/** One icon per fact key. A row without one shows no icon rather than a wrong one. */
+const FACT_ICON: Record<string, IconName> = {
+  occupation: 'briefcase',
+  birth_date: 'cake',
+  death_date: 'cross',
+  birth_place: 'pin',
+  citizenship: 'flag',
+  member_of_team: 'shirt',
+  position_held: 'briefcase',
+  notable_work: 'star',
+  release_date: 'calendar',
+  director: 'camera',
+  screenwriter: 'book',
+  cast: 'users',
+  genre: 'tag',
+  duration: 'clock',
+  original_language: 'globe',
+  review_score: 'star',
+  country: 'flag',
+  located_in: 'pin',
+  population: 'people',
+  area: 'ruler',
+  inception: 'calendar',
+  headquarters: 'building',
+  founder: 'user',
+  chief_executive: 'user',
+  author: 'user',
+  publisher: 'building',
+  performer: 'music',
+  taxon_name: 'leaf',
+}
+
+/** Brand marks for the authority chips. A dot, deliberately — recognisable, never a surface. */
+const AUTHORITY_MARK: Record<string, string> = {
+  imdb: '#F5C518',
+  rotten_tomatoes: '#FA320A',
+  tmdb: '#01B4E4',
+  metacritic: '#FFCC33',
+  musicbrainz: '#BA478F',
+  facebook: '#1877F2',
+  x: '#000000',
 }
 
 /** Authority names are brands, not translatable strings — IMDb is IMDb in every language. */
@@ -206,7 +289,8 @@ function FactRow({
   if (!label) return null
   return (
     <>
-      <dt style={{ color: 'var(--fg-muted)' }} dir="auto">
+      <dt className="flex items-center gap-1.5" style={{ color: 'var(--fg-muted)' }} dir="auto">
+        {FACT_ICON[factKey] && <Icon name={FACT_ICON[factKey]} size={14} />}
         {label}
       </dt>
       <dd className="m-0" dir="auto">
@@ -236,14 +320,27 @@ function FactValue({ fact, lang }: { fact: EntityFact; lang: string }) {
           {new Intl.NumberFormat(lang).format(v.v.amount)} {v.v.unit}
         </bdi>
       )
-    case 'score':
+    case 'score': {
       // The reviewer is part of the fact, never dropped: 99/100 means something different from
       // Metacritic than from an audience, which is why an unattributed score is never stored.
+      // Drawn as a short accent bar beside the number: a score is a proportion, and a proportion
+      // is read faster as a length than as a fraction.
+      const pct = v.v.best > 0 ? Math.max(0, Math.min(100, (v.v.value / v.v.best) * 100)) : 0
       return (
-        <bdi>
-          {v.v.value}/{v.v.best} — {v.v.reviewer}
-        </bdi>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            aria-hidden
+            className="inline-block h-1.5 w-12 overflow-hidden rounded-[var(--radius-pill)]"
+            style={{ background: 'var(--accent-wash)' }}
+          >
+            <span className="block h-full" style={{ width: `${pct}%`, background: 'var(--accent)' }} />
+          </span>
+          <bdi>
+            {v.v.value}/{v.v.best} — {v.v.reviewer}
+          </bdi>
+        </span>
       )
+    }
     case 'date':
       return <bdi>{formatDate(v.v.at, v.v.precision, lang)}</bdi>
   }

@@ -175,6 +175,7 @@ export default async function SearchPage({
           note={t.summaryNote}
           loadingLabel={t.summaryLoading}
           sourcesLabel={t.sources}
+          badge={t.summaryBadge}
           prominent
         />
       )}
@@ -237,6 +238,7 @@ export default async function SearchPage({
               note={t.summaryNote}
               loadingLabel={t.summaryLoading}
               sourcesLabel={t.sources}
+              badge={t.summaryBadge}
             />
           )}
 
