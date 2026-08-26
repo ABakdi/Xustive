@@ -10,7 +10,7 @@ groups:
       # Warning fires before the serving plane starts withholding cards, so there is a window to
       # fix it while the feature still works.
       - alert: ToolDataAgeing
-        expr: xustive_data_age_seconds > 5400
+        expr: xustive_data_age_seconds{dataset="weather"} > 5400
         for: 10m
         labels:
           severity: warning
@@ -25,7 +25,7 @@ groups:
       # Past the staleness limit the serving plane withholds the card entirely, so by this point
       # the feature is already gone for users.
       - alert: ToolDataStale
-        expr: xustive_data_age_seconds > 10800
+        expr: xustive_data_age_seconds{dataset="weather"} > 10800
         for: 5m
         labels:
           severity: critical
@@ -49,6 +49,47 @@ groups:
           description: >-
             Either Redis was flushed, or xustive-toold has never completed a pass. Distinct from
             ToolDataStale, which means the data exists but is old.
+
+      # The knowledge store ages on a completely different scale from weather, so it gets its own
+      # thresholds rather than sharing the ones above. Facts about a person or a film change over
+      # weeks, the harvester re-fetches an entity every 7 days, and applying the 90-minute weather
+      # warning here would fire permanently and teach everyone to ignore the alert.
+      - alert: KnowledgeAgeing
+        expr: xustive_data_age_seconds{dataset="knowledge"} > 864000
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "The oldest harvested entity is {{ $value | humanizeDuration }} old"
+          description: >-
+            An entity has gone more than 10 days without a re-harvest, against a 7-day cadence.
+            Panels still render — stale facts, not missing ones — so this is the window to fix it.
+            Check that xustive-toold is running and can reach Wikidata.
+
+      - alert: KnowledgeStale
+        expr: xustive_data_age_seconds{dataset="knowledge"} > 1814400
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "The knowledge store has not been harvested in three weeks"
+          description: >-
+            Panels are rendering facts nobody has checked in 21 days. Unlike weather, nothing is
+            withheld — an entity has no staleness cutoff — so users see old data presented as
+            current. Search itself is unaffected.
+
+      # Absence, for the same reason as ToolDataMissing: the gauge is not published when the store
+      # is empty, so a wiped index would silence the rules above rather than trip them.
+      - alert: KnowledgeMissing
+        expr: absent(xustive_data_age_seconds{dataset="knowledge"})
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No entities are stored at all"
+          description: >-
+            Either the knowledge index was dropped or the harvester has never completed a pass.
+            Every entity panel is silently absent; results pages are otherwise normal.
 
       # Partial failure. The oldest-entry gauge catches a fetcher that stopped completely, but a
       # publisher that started refusing a subset of wilayas would keep the age healthy while

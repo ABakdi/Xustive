@@ -109,7 +109,7 @@ places a model is actually better than a table.
       an unattributed reproduction
 - [x] M8-T01.6 Refresh policy: an entity is re-harvested on a schedule proportional to how often it
       is asked for, floored so nothing goes stale forever. Dead entities age out
-- [ ] M8-T01.7 `xustive_data_age_seconds{dataset="knowledge"}` — which first requires
+- [x] M8-T01.7 `xustive_data_age_seconds{dataset="knowledge"}` — which first requires
       `dataage.rs::sample()` to loop over datasets instead of hard-coding weather
 
 > **Status as of 2026-08-26.** T01 is built and proven against live data. One `--once` pass
@@ -131,18 +131,18 @@ places a model is actually better than a table.
 
 ## M8-T02 — Resolution: query → entity
 
-- [ ] M8-T02.1 A resolver that is *quiet by default*. Precision over recall: a panel on the wrong
+- [x] M8-T02.1 A resolver that is *quiet by default*. Precision over recall: a panel on the wrong
       entity is worse than no panel, and far worse than it looks — it is a confident wrong answer
       in the position readers trust most
-- [ ] M8-T02.2 Gate before resolving, reusing the shape `web/app/api/knowledge/route.ts` already
+- [x] M8-T02.2 Gate before resolving, reusing the shape `web/app/api/knowledge/route.ts` already
       proved: length bounds, word count, no question markers in any of the four languages. A
       question is for the summariser; a noun phrase is for the panel
-- [ ] M8-T02.3 Score candidates on exact-alias match, script match, entity prominence, and
+- [x] M8-T02.3 Score candidates on exact-alias match, script match, entity prominence, and
       agreement with the local corpus — a name the crawled Algerian web talks about outranks a
       same-named entity it has never mentioned
-- [ ] M8-T02.4 Ambiguity is surfaced, not guessed: when the top two candidates are close, the panel
+- [x] M8-T02.4 Ambiguity is surfaced, not guessed: when the top two candidates are close, the panel
       shows the leader with a "did you mean" line for the runner-up rather than silently picking
-- [ ] M8-T02.5 Below the confidence floor, render nothing at all. Assert it: a precision corpus of
+- [x] M8-T02.5 Below the confidence floor, render nothing at all. Assert it: a precision corpus of
       ordinary queries that must resolve to no entity, alongside per-kind positive cases — the
       [[Milestone 1B - Frontend and Instant Answers|M1B-T04.6]] matcher-corpus discipline applied to entities
 
@@ -156,23 +156,23 @@ places a model is actually better than a table.
 > forbid it, and [[ADR-0013 - Direct SERP Collection for Discovery]] confined that whole class of
 > behaviour to the ingestion plane for discovery only.
 
-- [ ] M8-T03.1 A `Kind → template` table, exhaustive over the enum, each naming the facts to show
+- [x] M8-T03.1 A `Kind → template` table, exhaustive over the enum, each naming the facts to show
       and the authorities to link
-- [ ] M8-T03.2 **Film / series** — year, director, runtime, genres, cast head; scores from `P444`
+- [x] M8-T03.2 **Film / series** — year, director, runtime, genres, cast head; scores from `P444`
       with each reviewer named and dated; links out to IMDb, Rotten Tomatoes, TMDB built from the
       stored ids
-- [ ] M8-T03.3 **Person** — image, birth and death, nationality, occupation, notable works,
+- [x] M8-T03.3 **Person** — image, birth and death, nationality, occupation, notable works,
       positions held; for footballers and public figures the club or office, because that is what
       the question usually means
-- [ ] M8-T03.4 **Place** — image, wilaya or country, population, coordinates, and a link into the
+- [x] M8-T03.4 **Place** — image, wilaya or country, population, coordinates, and a link into the
       local corpus for what the Algerian web says about it. Algerian places also carry the wilaya
       code, which [[Milestone 1B - Frontend and Instant Answers|M1B-T07.1]] already compiles in
-- [ ] M8-T03.5 **Organisation, product, work (book/album/song), event, species, concept** — one
+- [x] M8-T03.5 **Organisation, product, work (book/album/song), event, species, concept** — one
       template each, each honest about having fewer facts than a film
-- [ ] M8-T03.6 **Concept fallback** — when the kind is unknown or has no template, render the
+- [x] M8-T03.6 **Concept fallback** — when the kind is unknown or has no template, render the
       description and extract, which is exactly today's Wikipedia panel. The floor never gets worse
       than what ships now
-- [ ] M8-T03.7 Every fact carries its source and every panel names them. A fact with no attributable
+- [x] M8-T03.7 Every fact carries its source and every panel names them. A fact with no attributable
       source is not shown — the [[Instant Answers]] §2 rule, extended from tools to entities
 - [ ] M8-T03.8 Images: proxied same-origin through the existing allowlisted route, `<img>` not
       `next/image`, licence and author rendered beneath. Extend the allowlist deliberately, one

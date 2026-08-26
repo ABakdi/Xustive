@@ -51,6 +51,7 @@ pub async fn sample(state: &AppState) -> Vec<(&'static str, u64)> {
     let now = xustive_core::now_unix();
     let mut out = Vec::new();
 
+    // Weather: 58 wilaya entries in the Redis tool cache.
     let mut oldest: Option<u64> = None;
     let mut present = 0usize;
     for wilaya in xustive_toold::weather::targets() {
@@ -63,24 +64,62 @@ pub async fn sample(state: &AppState) -> Vec<(&'static str, u64)> {
             oldest = Some(oldest.map_or(age, |o: u64| o.max(age)));
         }
     }
-
-    // A dataset with nothing cached publishes no age. There is no honest number for "how old is
-    // data that does not exist", and a zero would silence the alert precisely when the cache has
-    // been wiped. Absence is caught by a separate `absent()` rule.
     if let Some(age) = oldest {
-        state
-            .metrics
-            .set_labelled_gauge(METRIC, HELP, &[("dataset", "weather")], age);
-        state.metrics.set_labelled_gauge(
-            "xustive_data_entries",
-            "Number of cached entries for a tool dataset",
-            &[("dataset", "weather")],
-            present as u64,
-        );
+        publish(state, "weather", age, present);
         out.push(("weather", age));
     }
 
+    // Knowledge: entities in the search index rather than the Redis cache, so it is sampled
+    // differently — sorted by `updated_at` ascending, one hit, which asks the engine for the
+    // oldest entity instead of dragging the whole index across to compute it here.
+    if let Some((age, count)) = knowledge_age(state, now).await {
+        publish(state, "knowledge", age, count);
+        out.push(("knowledge", age));
+    }
+
     out
+}
+
+/// Publish one dataset's gauges.
+///
+/// A dataset with nothing cached publishes no age at all. There is no honest number for "how old
+/// is data that does not exist", and a zero would silence the alert precisely when the store has
+/// been wiped — absence is caught by a separate `absent()` rule.
+fn publish(state: &AppState, dataset: &'static str, age: u64, entries: usize) {
+    state
+        .metrics
+        .set_labelled_gauge(METRIC, HELP, &[("dataset", dataset)], age);
+    state.metrics.set_labelled_gauge(
+        "xustive_data_entries",
+        "Number of cached entries for a tool dataset",
+        &[("dataset", dataset)],
+        entries as u64,
+    );
+}
+
+/// The age of the least recently harvested entity, and how many entities exist.
+///
+/// The same "oldest, not mean" reasoning as weather: one entity stuck at a year old is invisible
+/// in an average over thousands, and the failure this catches is a harvester that quietly stopped.
+async fn knowledge_age(state: &AppState, now: i64) -> Option<(u64, usize)> {
+    use xustive_knowledge::index;
+    let query = xustive_search::Query::new("")
+        .limit(1)
+        .sort(&[&format!("{}:asc", index::F_UPDATED_AT)]);
+    let response = state
+        .search
+        .search::<serde_json::Value>(index::INDEX, &query)
+        .await
+        .ok()?;
+    let oldest = response
+        .hits
+        .first()?
+        .get(index::F_UPDATED_AT)
+        .and_then(|v| v.as_i64())?;
+    Some((
+        now.saturating_sub(oldest).max(0) as u64,
+        response.estimated_total_hits,
+    ))
 }
 
 /// Run the sampler until the process ends.

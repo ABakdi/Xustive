@@ -185,6 +185,64 @@ and verify a weather card reappears.
 
 ---
 
+## KnowledgeAgeing · warning
+
+**Fires:** `xustive_data_age_seconds{dataset="knowledge"} > 864000` (10 days) for an hour.
+
+**Means:** an entity has gone more than ten days without a re-harvest, against the seven-day
+cadence `xustive-toold --knowledge-max-age` sets. Panels still render; the facts on them are just
+older than intended. Nobody sees an error.
+
+**Confirm:** `curl -s localhost:7700/indexes/knowledge/stats` for the document count, and check the
+`toold` log for a line reading `knowledge pass complete`. A pass that ran but wrote nothing reports
+`written=0`.
+
+**Resolve, in order:**
+1. Check `xustive-toold` is running and reached Wikidata — the pass is skipped silently when
+   `--meili` is unset, and logs `knowledge pass failed` when the fetch errors.
+2. Run one pass by hand: `xustive-toold --once --meili "$MEILI_URL"`.
+3. If Wikidata is rate-limiting, the pace is deliberately conservative (300 ms between requests);
+   a 429 in the log means something else is sharing the address, not that the pace is wrong.
+
+---
+
+## KnowledgeStale · page
+
+**Fires:** `xustive_data_age_seconds{dataset="knowledge"} > 1814400` (21 days) for an hour.
+
+**Means:** the harvester has been dead for three weeks. Unlike weather, **nothing is withheld** —
+an entity has no staleness cutoff — so readers are being shown facts nobody has checked since the
+last pass, presented as current. That is the reason this pages rather than warns.
+
+**Confirm:** as KnowledgeAgeing.
+
+**Resolve:** as KnowledgeAgeing. If the harvester cannot be restored quickly, consider whether
+three-week-old entity facts are acceptable for the entity kinds in your seed list — for places and
+historical films they are; for office-holders and squad membership they are not.
+
+---
+
+## KnowledgeMissing · warning
+
+**Fires:** `absent(xustive_data_age_seconds{dataset="knowledge"})` for 30 minutes.
+
+**Means:** there are **no** entities stored at all — distinct from stale, which means old ones
+exist. Either the `knowledge` index was dropped or the harvester has never completed a pass. Every
+entity panel is silently absent; results pages are otherwise entirely normal, which is why this is
+a warning rather than a page.
+
+**Confirm:** `curl -s localhost:7700/indexes/knowledge/stats`. A 404 means the index does not
+exist; `numberOfDocuments: 0` means it exists and is empty.
+
+**Resolve, in order:**
+1. Run a pass: `xustive-toold --once --meili "$MEILI_URL"`. It creates the index and applies its
+   settings before writing, so a missing index is self-healing.
+2. If the pass reports `written=0` with `rejected` non-zero, seeds are being refused because the
+   harvested entity did not match the name the seed expected — read the warnings, then fix the
+   ids in `data/knowledge/seeds.tsv`.
+
+---
+
 ## ToolDataMissing  · page
 
 **Fires:** `absent(xustive_data_age_seconds{dataset="weather"})` for 15 minutes.
