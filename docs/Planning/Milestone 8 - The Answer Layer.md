@@ -3,7 +3,7 @@ tags:
   - planning
   - milestone
 milestone: 8
-status: planned
+status: done
 updated: 2026-08-26
 ---
 # Milestone 8 - The Answer Layer
@@ -112,7 +112,23 @@ places a model is actually better than a table.
 - [x] M8-T01.7 `xustive_data_age_seconds{dataset="knowledge"}` — which first requires
       `dataage.rs::sample()` to loop over datasets instead of hard-coding weather
 
-> **Status as of 2026-08-26.** T01 is built and proven against live data. One `--once` pass
+> **Closed 2026-08-26.** Every task group is done. What the exit gate asked for, measured:
+> the entity panel serves from local storage at **p95 31 ms** against a 100 ms budget with zero
+> serving-plane egress; `طقس` with no place in it answers from an in-process lookup that never
+> stores an address; `20 eur to dzd` answers **3105.44 DZD** with a dated official rate; the
+> precision corpus finds **zero wrong-entity panels** across 24 negative and 6 positive cases; and
+> `make egress-test`, the telemetry lint, the bidi lint, the no-JS check, the bundle budget and
+> `cargo deny check licenses` are all green.
+>
+> Two findings the gates produced that code review had not. The federator was logging query text
+> in `?q=` form — the code was already correct and its regression test passed, but the *running
+> image* predated the fix, which only a live log scan could have caught. And `cargo-deny` had
+> never actually run on this machine, which was hiding a real advisory in a crate this milestone
+> added (`maxminddb` 0.24, RUSTSEC-2025-0132). Both fixed and verified.
+>
+> One claim in this document was wrong when written and now says so: T04.3.
+>
+> **Status as of 2026-08-26 (T01).** T01 is built and proven against live data. One `--once` pass
 > harvests the seed list; `وهران` resolves to Oran in **1 ms** across six aliases in three scripts;
 > *The Battle of Algiers* comes back as `kind: film` with IMDb, Rotten Tomatoes, TMDB and
 > Metacritic links built from CC0 identifiers, a resolved director and cast, a 117-minute runtime,
