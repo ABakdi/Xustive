@@ -14,6 +14,7 @@
 //! pattern is identical whether one person searched or a million did.
 
 pub mod knowledge;
+pub mod rates;
 pub mod store;
 pub mod validate;
 pub mod weather;

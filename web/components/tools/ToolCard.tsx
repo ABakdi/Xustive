@@ -28,8 +28,20 @@ export function ToolCard({
   // `detail` is whatever the tool chose to attach, so it is validated rather than trusted: a
   // non-array here would throw during render and take the whole result page with it.
   const detail = answer.detail as
-    | { alternatives?: unknown; administered?: unknown; official?: unknown }
+    | {
+        alternatives?: unknown
+        administered?: unknown
+        official?: unknown
+        parallel_available?: unknown
+        unit_rate?: unknown
+        from?: unknown
+        to?: unknown
+      }
     | undefined
+  // Validated rather than trusted, like everything else read out of `detail`.
+  const unitRate = typeof detail?.unit_rate === 'number' ? detail.unit_rate : undefined
+  const rateFrom = typeof detail?.from === 'string' ? detail.from : ''
+  const rateTo = typeof detail?.to === 'string' ? detail.to : ''
   const raw = detail?.alternatives
   const alternatives = Array.isArray(raw) ? raw.filter((a): a is string => typeof a === 'string') : []
 
@@ -101,6 +113,27 @@ export function ToolCard({
           <span className="text-xs">{t.alternatives}: </span>
           <bdi>{alternatives.join(' · ')}</bdi>
         </p>
+      )}
+
+      {/* The currency card names its rate and says what it is not showing.
+          A reader who assumes this is what a bureau on the street would give them has been
+          misled by omission, and the square-market rate is absent because no source publishes it
+          verifiably — not because it does not matter (M8-T06.4). */}
+      {answer.tool === 'currency' && (
+        <div className="mt-2">
+          {typeof unitRate === 'number' && (
+            <p className="text-sm" style={{ color: 'var(--fg-muted)' }} dir="auto">
+              {t.currencyRate}: <bdi>1 {String(rateFrom)} = {unitRate.toFixed(unitRate >= 1 ? 2 : 6)} {String(rateTo)}</bdi>
+              {' · '}
+              <span>{t.currencyOfficial}</span>
+            </p>
+          )}
+          {detail?.parallel_available === false && (
+            <p className="mt-1 text-xs" style={{ color: 'var(--fg-faint)' }} dir="auto">
+              {t.currencyNoParallel}
+            </p>
+          )}
+        </div>
       )}
 
       {/* The weather card's body: the forecast that has been on the wire since M1B and never

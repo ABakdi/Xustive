@@ -9,6 +9,7 @@ pub mod admin_crawler;
 pub mod admin_eval;
 pub mod admin_maintenance;
 pub mod admin_queue;
+pub mod currency;
 pub mod dataage;
 pub mod deadline;
 pub mod error;

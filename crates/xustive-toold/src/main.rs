@@ -12,7 +12,7 @@ use std::time::Duration;
 use anyhow::Result;
 use clap::Parser;
 use xustive_toold::store::Store;
-use xustive_toold::{knowledge, weather, Dataset};
+use xustive_toold::{knowledge, rates, weather, Dataset};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -84,6 +84,13 @@ async fn main() -> Result<()> {
             failed = stats.failed,
             "weather pass complete"
         );
+
+        match fetch_rates(&client, &store).await {
+            Ok(()) => tracing::info!("rates pass complete"),
+            // Never fatal, and never clears the previous table: slightly old and correct beats
+            // fresh and wrong, which is the whole posture of this process.
+            Err(e) => tracing::warn!(error = %e, "rates pass failed; keeping previous table"),
+        }
 
         if let Some(meili) = &meili {
             match harvest_knowledge(&client, meili, &args).await {
@@ -317,4 +324,29 @@ async fn recently_harvested(
         }
         offset += page.len() as u64;
     }
+}
+
+/// One exchange-rate pass (M8-T06.1).
+///
+/// One request for the whole table, unlike weather's 58: the publisher quotes every currency in a
+/// single document, so there is nothing to pace.
+async fn fetch_rates(client: &reqwest::Client, store: &Store) -> anyhow::Result<()> {
+    let dataset = rates::Rates;
+    let now = xustive_core::now_unix();
+    let ttl = dataset.staleness_limit().as_secs() * 4;
+    let key = rates::key(dataset.key_prefix());
+
+    let previous = store
+        .get::<rates::RateTable>(&key)
+        .await
+        .ok()
+        .flatten()
+        .map(|c| c.payload);
+
+    let fresh = rates::fetch(client, now, previous.as_ref()).await?;
+    store
+        .put(&key, &fresh, ttl)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(())
 }

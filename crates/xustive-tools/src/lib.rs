@@ -24,6 +24,7 @@
 //! no card.
 
 pub mod calculator;
+pub mod currency;
 pub mod datetime;
 pub mod exam;
 pub mod fuel;

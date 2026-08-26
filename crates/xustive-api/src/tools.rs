@@ -41,6 +41,12 @@ pub fn inventory() -> Vec<ToolInfo> {
         id: "weather",
         keyword: "weather",
     });
+    // Currency, for the same reason: its rates live in the cache, so it cannot be a pure matcher,
+    // but it is a tool a reader can switch off like any other.
+    tools.push(ToolInfo {
+        id: "currency",
+        keyword: "currency",
+    });
 
     tools.sort_by_key(|t| t.id);
     tools
@@ -57,9 +63,10 @@ mod tests {
     #[test]
     fn every_registered_tool_is_listed() {
         let listed = inventory();
-        // The registry plus weather. If a tool is added to the registry and this count is not
-        // updated, the assertion below still holds — the point is that nothing is dropped.
-        assert_eq!(listed.len(), xustive_tools::registry().len() + 1);
+        // The registry plus the two cache-backed tools — weather and currency — which cannot be
+        // pure matchers. If a tool is added to the registry and this count is not updated, the
+        // assertion below still holds; the point is that nothing is dropped.
+        assert_eq!(listed.len(), xustive_tools::registry().len() + 2);
         for tool in xustive_tools::registry() {
             assert!(
                 listed.iter().any(|t| t.id == tool.name()),

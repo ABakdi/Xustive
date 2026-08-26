@@ -277,7 +277,14 @@ pub async fn handler(
     // when nothing pure matched.
     let instant = match xustive_tools::best_in(&raw, ui_lang) {
         Some(answer) => Some(answer),
-        None => crate::weather::answer(&state, &raw, ui_lang, peer).await,
+        // Weather and currency both live in the tool cache, so they are consulted only when no
+        // pure matcher answered — otherwise every search that is not about either would pay a
+        // Redis round trip. Currency first: `20 eur dzd` names no weather word, and the two
+        // cannot both match.
+        None => match crate::currency::answer(&state, &raw, ui_lang).await {
+            Some(a) => Some(a),
+            None => crate::weather::answer(&state, &raw, ui_lang, peer).await,
+        },
     };
     if let Some(a) = &instant {
         state.metrics.incr(

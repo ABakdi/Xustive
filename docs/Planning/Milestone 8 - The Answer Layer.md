@@ -214,19 +214,19 @@ places a model is actually better than a table.
 
 ## M8-T06 — Currency and rates
 
-- [ ] M8-T06.1 A `rates` dataset in the tool data plane: ECB reference rates for the majors, plus a
+- [x] M8-T06.1 A `rates` dataset in the tool data plane: ECB reference rates for the majors, plus a
       DZD-carrying source, fetched on a fixed daily cadence with a 48 h staleness limit. Both
       candidates are free, keyless, and self-hostable, which is what makes this survive traffic
-- [ ] M8-T06.2 A `currency` tool in the registry, slotted where [[Instant Answers]] §4.2 says:
+- [x] M8-T06.2 A `currency` tool in the registry, slotted where [[Instant Answers]] §4.2 says:
       after the unit converter, before prayer times
-- [ ] M8-T06.3 Every rate carries `as_of` from the publisher's own timestamp, and a stale rate is
+- [x] M8-T06.3 Every rate carries `as_of` from the publisher's own timestamp, and a stale rate is
       **withheld rather than shown aged** — the weather rule, for the same reason
-- [ ] M8-T06.4 **The parallel rate ships disabled.** [[Milestone 1B - Frontend and Instant Answers|M1B-T06.7]]
+- [x] M8-T06.4 **The parallel rate ships disabled.** [[Milestone 1B - Frontend and Instant Answers|M1B-T06.7]]
       settled this: if no honest source exists, it ships off rather than invented. None exists; the
       square-market rate is quoted by no publisher we can verify. The card names the rate it shows
       as official and says plainly that the parallel rate is absent for want of a source, which is
       more useful than a confident wrong number and is the whole of [[Instant Answers]] §2
-- [ ] M8-T06.5 Arabic, French and English phrasings, Arabic-Indic digits, and the dinar formatted
+- [x] M8-T06.5 Arabic, French and English phrasings, Arabic-Indic digits, and the dinar formatted
       the way Algerian print formats it
 
 ## M8-T07 — The deep calculator
