@@ -42,9 +42,10 @@ Task id format: `M<milestone>-T<task>` → `M1-T04`. Subtasks are `M1-T04.3`.
 | **M5** | [[Milestone 5 - Beta Launch]] | legal, a11y, launch | legal checklist clear; a11y AA; public beta |
 | **M6** | [[Milestone 6 - Adaptive Ranking from Interaction Signals]] | learn from anonymous use | replayed clicks lift clicked docs; every privacy test green; default off |
 | **M7** | [[Milestone 7 - Federated Retrieval and External Tools]] | retrieval quality + live web federation | recall up with federation off; federation fail-open within budget; egress stays one allowlisted hop |
+| **M8** | [[Milestone 8 - The Answer Layer]] | answer the query, not just link to it | entity panel p95 ≤ 100 ms from local storage with zero serving-plane egress; weather answers an unnamed location without storing an IP; `20 eur to dzd` answers or declines |
 
 ```
-M0 ──► M1 ──► M1B ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7
+M0 ──► M1 ──► M1B ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7 ──► M8
 ```
 
 **Ingestion runs before multimodal.** They are technically independent after M1 and were originally
