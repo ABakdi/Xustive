@@ -298,7 +298,7 @@ places a model is actually better than a table.
       `X-Forwarded-For` or to cache by IP has to delete a test that says why not
 - [x] M8-T10.4 Panel latency: p95 ≤ 100 ms served from the local store, measured cold
 - [x] M8-T10.5 Precision: zero wrong-entity panels across the T02.5 corpus. Not "few"
-- [ ] M8-T10.6 Every new dependency clears `cargo deny check licenses` — the
+- [x] M8-T10.6 Every new dependency clears `cargo deny check licenses` — the
       [[Qwen licence|non-commercial-model]] lesson, applied before the dependency lands rather than
       after
 

@@ -13,7 +13,7 @@ xustive-toold = { path = "../xustive-toold" }
 xustive-tools = { path = "../xustive-tools" }
 xustive-search = { path = "../xustive-search" }
 xustive-knowledge = { path = "../xustive-knowledge" }
-maxminddb = "0.24"
+maxminddb = "0.27"
 xustive-lang = { path = "../xustive-lang" }
 blake3.workspace = true
 xustive-ml = { path = "../xustive-ml", default-features = false }

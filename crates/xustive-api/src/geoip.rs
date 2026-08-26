@@ -65,14 +65,17 @@ impl GeoIp {
         if !is_global(ip) {
             return None;
         }
-        let city: maxminddb::geoip2::City = self.reader.lookup(ip).ok()?;
+        // 0.27 separates the lookup from the decode, so an address in no network and an address
+        // whose record will not decode are distinguishable. Both mean the same thing here — no
+        // assumed location — but only one of them is a bug worth knowing about later.
+        let city: maxminddb::geoip2::City = self.reader.lookup(ip).ok()?.decode().ok()??;
         // Only Algerian addresses get a wilaya. Someone in Paris is not "probably Tamanrasset",
         // and the honest answer for them is no assumed location at all.
-        let country = city.country.as_ref()?.iso_code?;
+        let country = city.country.iso_code?;
         if !country.eq_ignore_ascii_case("DZ") {
             return None;
         }
-        let location = city.location.as_ref()?;
+        let location = &city.location;
         nearest_wilaya(location.latitude?, location.longitude?)
     }
 }

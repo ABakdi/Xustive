@@ -23,6 +23,11 @@ allow = [
     "CC0-1.0",
     "MPL-2.0",
     "OpenSSL",
+    # `webpki-roots` — the Mozilla root CA list, reached through reqwest. A *data* licence on a
+    # crate that is data: it ships certificate authorities, not code. Permissive, with no
+    # copyleft and no attribution obligation on a binary, so it clears the same bar as the rest
+    # of this list.
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.9
 
