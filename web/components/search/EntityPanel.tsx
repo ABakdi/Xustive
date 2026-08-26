@@ -95,6 +95,17 @@ export default function EntityPanel({
           </dl>
         )}
 
+        {/* A written line, shown only where there is no encyclopedic paragraph and always marked
+            as generated. Unlabelled machine prose beside human prose is the thing to avoid. */}
+        {!panel.extract && panel.blurb && (
+          <p className="mt-3 text-sm leading-relaxed" dir="auto">
+            {panel.blurb.text}{' '}
+            <span className="text-xs" style={{ color: 'var(--fg-faint)' }}>
+              {t.entityGenerated}
+            </span>
+          </p>
+        )}
+
         {panel.extract && (
           <p className="mt-3 text-sm leading-relaxed" dir="auto">
             {panel.extract.text}

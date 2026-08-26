@@ -169,6 +169,9 @@ export interface EntityPanel {
   facts: EntityFact[]
   authorities: { key: string; id: string; url: string }[]
   images: { url: string; author?: string; licence: string; credit_url?: string }[]
+  /** A sentence the local model wrote from the stored claims, when there is no encyclopedic
+   *  paragraph. Always labelled: a reader is entitled to know which sentence a machine wrote. */
+  blurb?: { text: string; generated: boolean }
   /** A near-tie the resolver refused to swallow — offered as "did you mean" rather than hidden. */
   also: { id: string; title: string | null; description: string | null } | null
   updated_at: number

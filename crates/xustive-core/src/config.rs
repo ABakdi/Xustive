@@ -795,6 +795,15 @@ pub struct MlConfig {
     /// ([[ADR-0005]] keeps the local model the default; the privacy page documents the egress).
     /// Needs `federation.federator_url` plus the gateway's `EXTERNAL_LLM_*` environment.
     pub external_summaries: bool,
+    /// Whether the model may write a one-line description for an entity that has facts but no
+    /// encyclopedic paragraph (M8-T04).
+    ///
+    /// **Default off.** The panel is fully useful without it, the output is cached against the
+    /// entity so the cost is once per entity rather than once per search, and everything it
+    /// produces is validated against the stored claims — but it is still a model writing prose a
+    /// reader will take as fact, and that should be a deliberate choice.
+    #[serde(default)]
+    pub knowledge_assist: bool,
 }
 
 impl Default for MlConfig {
@@ -808,6 +817,7 @@ impl Default for MlConfig {
             deadline_ms: 30_000,
             summaries_enabled: true,
             external_summaries: false,
+            knowledge_assist: false,
         }
     }
 }

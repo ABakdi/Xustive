@@ -18,6 +18,7 @@ pub mod geoip;
 pub mod image_search;
 pub mod interaction;
 pub mod knowledge;
+pub mod knowledge_model;
 pub mod metrics;
 pub mod ocr;
 pub mod ratelimit;

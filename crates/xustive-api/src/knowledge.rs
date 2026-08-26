@@ -62,10 +62,39 @@ pub async fn panel(
         return Err(StatusCode::NO_CONTENT);
     };
 
-    Ok((
-        StatusCode::OK,
-        Json(render(&resolution.entity, resolution.also.as_ref(), lang)),
-    ))
+    // When the resolver left a near-tie, the model may break it (M8-T04.1). Live and bounded; if
+    // it declines or is too slow, the deterministic leader ships — which is what happens today.
+    let resolution = match resolution.also.as_ref() {
+        Some(runner_up) => {
+            let options = [&resolution.entity, runner_up];
+            match crate::knowledge_model::disambiguate(&state, raw, &options, lang).await {
+                // The model preferred the runner-up: swap them, and keep the leader as the
+                // alternative so the ambiguity is still visible rather than merely re-hidden.
+                Some(1) => resolve::Resolution {
+                    entity: runner_up.clone(),
+                    also: Some(resolution.entity.clone()),
+                    ..resolution
+                },
+                _ => resolution,
+            }
+        }
+        None => resolution,
+    };
+
+    // A written line, only for an entity that has facts and no encyclopedic paragraph, only when
+    // the operator turned it on, and cached against the entity so the model runs once per entity
+    // rather than once per search (M8-T04).
+    let blurb = crate::knowledge_model::blurb(&state, &resolution.entity, lang).await;
+
+    let mut body = render(&resolution.entity, resolution.also.as_ref(), lang);
+    if let Some(text) = blurb {
+        body["blurb"] = json!({
+            "text": text,
+            // Labelled, always. A reader is entitled to know which sentence a machine wrote.
+            "generated": true,
+        });
+    }
+    Ok((StatusCode::OK, Json(body)))
 }
 
 /// Fetch and score the candidate entities for a query.

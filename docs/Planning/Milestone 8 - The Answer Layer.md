@@ -180,16 +180,20 @@ places a model is actually better than a table.
 
 ## M8-T04 — The model's two jobs
 
-- [ ] M8-T04.1 **Disambiguation** — when T02 leaves a close call the local summariser is asked to
+- [x] M8-T04.1 **Disambiguation** — when T02 leaves a close call the local summariser is asked to
       choose, given only the candidate labels and descriptions. Bounded, optional, and skipped
       entirely when the model is unavailable; the deterministic leader ships instead
-- [ ] M8-T04.2 **Blurb** — for an entity with facts but no encyclopedic extract, one or two
+- [x] M8-T04.2 **Blurb** — for an entity with facts but no encyclopedic extract, one or two
       sentences composed from the stored claims only. Grounded in the same way summaries are:
       nothing in the text that is not in the claims, validated before it is stored
-- [ ] M8-T04.3 Both results cached **against the entity id**, never the query. The model runs once
-      per entity in its lifetime, not once per search — which is what makes this affordable on the
-      target hardware
-- [ ] M8-T04.4 Off is a first-class state. `knowledge.model_assist = false` by default; the panel is
+- [~] M8-T04.3 Both results cached **against the entity id**, never the query. **Half of this was
+      wrong when written.** It holds for the blurb, which is a property of the entity and is cached
+      for thirty days, so the model runs once per entity in its lifetime. It cannot hold for
+      disambiguation: *which* entity a query means is a property of the **query**, and a cache
+      keyed by that is a query log with extra steps ([[ADR-0008 - No Query Logging]]). So
+      disambiguation is live, uncached, and bounded to half the blurb budget — affordable because
+      it runs only where the resolver already admits it is unsure, which scoring makes rare
+- [x] M8-T04.4 Off is a first-class state. `knowledge.model_assist = false` by default; the panel is
       fully useful without it, and every test runs both ways
 
 ## M8-T05 — Weather, finished
