@@ -293,7 +293,16 @@ fn score_weights(
 ) -> (f64, f64) {
     let (mut sum_rbo, mut sum_ndcg) = (0.0, 0.0);
     for ((reference, hits), norm) in pools.iter().zip(normalized) {
-        let ranked = rank::rerank(hits, norm, now, trust, authority, interaction, weights);
+        let ranked = rank::rerank(
+            hits,
+            norm,
+            now,
+            trust,
+            authority,
+            interaction,
+            weights,
+            None,
+        );
         let ours = domains_of(
             ranked
                 .iter()

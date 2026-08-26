@@ -118,6 +118,10 @@ const RELEVANCE_DECAY: f32 = 10.0;
 pub struct Weights {
     /// Textual relevance. Deliberately the largest by a wide margin.
     pub relevance: f32,
+    /// A document written in the language the reader chose in the nav bar. A tie-breaker like
+    /// the rest — it lifts same-language documents among equally relevant ones, and cannot lift an
+    /// irrelevant one over a relevant one. Darija and Arabic count as each other's language.
+    pub ui_language: f32,
     pub freshness: f32,
     pub trust: f32,
     /// Domain fame/authority — the "famous websites" signal (`authority.tsv`), keyed on the host
@@ -147,11 +151,15 @@ impl Default for Weights {
             // numbers work out — adding the interaction signal (M6) rebalanced the others down to
             // keep it, rather than widening the side budget.
             relevance: 0.55,
-            freshness: 0.13,
-            trust: 0.07,
+            // Rebalanced again for the reader's-language signal, the same way the interaction
+            // signal was folded in: the additive side weights still sum to 0.47, under the 0.48
+            // relevance gap across twenty positions.
+            freshness: 0.10,
+            trust: 0.06,
             authority: 0.09,
-            quality: 0.06,
-            interaction: 0.08,
+            quality: 0.05,
+            interaction: 0.07,
+            ui_language: 0.10,
             spam_penalty: 0.15,
             unknown_date_factor: 0.5,
             per_domain_cap: 3,
@@ -169,6 +177,7 @@ pub struct Explain {
     pub authority: f32,
     pub quality: f32,
     pub interaction: f32,
+    pub ui_language: f32,
     pub spam: f32,
     pub total: f32,
     pub age_days: f32,
@@ -234,10 +243,14 @@ pub fn rerank(
     authority_of: &HashMap<String, f32>,
     interaction_of: &HashMap<String, f32>,
     weights: &Weights,
+    ui_lang: Option<&str>,
 ) -> Vec<Ranked> {
     if hits.is_empty() {
         return Vec::new();
     }
+    // The reader's language, folded so Darija and Arabic match each other: a reader who chose
+    // Darija reads Arabic, and one who chose Arabic reads Darija.
+    let wanted = ui_lang.map(|l| if l == "ary" { "ar" } else { l });
 
     let ages: Vec<f32> = hits.iter().map(|h| age_days(h, now)).collect();
     let intent = infer_intent(normalized_query, &ages);
@@ -292,12 +305,28 @@ pub fn rerank(
                 .and_then(|id| interaction_of.get(&id).copied())
                 .unwrap_or(0.0);
 
+            // In the reader's language, or not. Binary and bounded, so it reorders equals and
+            // nothing else — a French reader still sees the best Arabic page for an Arabic query,
+            // just after the French pages that are as good.
+            let lang_match = match (wanted, string_field(hit, "language")) {
+                (Some(w), Some(l)) => {
+                    let l = if l == "ary" { "ar".to_string() } else { l };
+                    if l == w {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+                _ => 0.0,
+            };
+
             let total = weights.relevance * relevance
                 + weights.freshness * freshness
                 + weights.trust * trust
                 + weights.authority * authority
                 + weights.quality * quality
                 + weights.interaction * interaction
+                + weights.ui_language * lang_match
                 - weights.spam_penalty * spam;
 
             Ranked {
@@ -308,6 +337,7 @@ pub fn rerank(
                     authority: weights.authority * authority,
                     quality: weights.quality * quality,
                     interaction: weights.interaction * interaction,
+                    ui_language: weights.ui_language * lang_match,
                     spam: -weights.spam_penalty * spam,
                     total,
                     age_days: age,
@@ -478,6 +508,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         let pos = out.iter().position(|r| r.hit["id"] == "boosted").unwrap();
         assert!(
@@ -500,6 +531,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         // `old` is first by engine rank; a year of age should not be enough to keep it there.
         assert_eq!(
@@ -548,6 +580,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         let g = out.iter().find(|r| r.hit["id"] == "guessed").unwrap();
         let k = out.iter().find(|r| r.hit["id"] == "known").unwrap();
@@ -568,6 +601,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         let a = out.iter().find(|r| r.hit["id"] == "a").unwrap();
         let c = out.iter().find(|r| r.hit["id"] == "c").unwrap();
@@ -594,6 +628,7 @@ mod tests {
             &auth,
             &interaction(),
             &Weights::default(),
+            None,
         );
         assert_eq!(
             out[0].hit["id"], "famous",
@@ -616,6 +651,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         assert_eq!(out[0].hit["id"], "clean");
         let s = out.iter().find(|r| r.hit["id"] == "spam").unwrap();
@@ -641,6 +677,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         assert_eq!(out.len(), 1, "near-duplicates should collapse");
         assert_eq!(out[0].collapsed.len(), 1);
@@ -662,6 +699,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         assert_eq!(out.len(), 2);
     }
@@ -686,6 +724,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         assert_eq!(out.len(), 1);
         assert_eq!(
@@ -709,6 +748,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         let top4: Vec<&str> = out
             .iter()
@@ -732,6 +772,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         assert_eq!(out.len(), 10, "capping must reorder, never discard");
     }
@@ -746,6 +787,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         let e = &out[0].explain;
         let sum = e.relevance + e.freshness + e.trust + e.authority + e.quality + e.spam;
@@ -761,7 +803,8 @@ mod tests {
             &trust(),
             &authority(),
             &interaction(),
-            &Weights::default()
+            &Weights::default(),
+            None,
         )
         .is_empty());
     }
@@ -776,6 +819,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         assert_eq!(out.len(), 1);
     }
@@ -793,6 +837,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         let b = rerank(
             &hits,
@@ -802,6 +847,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         let ids_a: Vec<&Value> = a.iter().map(|r| &r.hit["id"]).collect();
         let ids_b: Vec<&Value> = b.iter().map(|r| &r.hit["id"]).collect();
@@ -873,6 +919,7 @@ mod tests {
             &authority(),
             &interaction(),
             &Weights::default(),
+            None,
         );
         let pos = |out: &[Ranked], id: &str| out.iter().position(|r| r.hit["id"] == id).unwrap();
         assert!(
@@ -891,6 +938,7 @@ mod tests {
             &authority(),
             &ctr,
             &Weights::default(),
+            None,
         );
         assert!(
             pos(&after, "d2") < pos(&baseline, "d2"),
@@ -930,6 +978,7 @@ mod tests {
             &authority(),
             &interaction,
             &Weights::default(),
+            None,
         );
         assert_ne!(
             out[0].hit["id"], "d20",

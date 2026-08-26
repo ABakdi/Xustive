@@ -1403,6 +1403,7 @@ async fn cmd_search(
             &xustive_search::authority::load(),
             &std::collections::HashMap::new(),
             &xustive_search::rank::Weights::default(),
+            None,
         ))
     } else {
         None

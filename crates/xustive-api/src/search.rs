@@ -672,6 +672,7 @@ pub async fn handler(
         state.authority.as_ref(),
         &interaction_of,
         &state.ranking,
+        Some(ui_lang),
     );
     state.metrics.observe(
         metrics::SEARCH_DURATION,
@@ -791,7 +792,9 @@ pub async fn handler(
         (!passages.is_empty()).then(|| {
             state.pending.insert(
                 normalized.clone(),
-                xustive_ml::OutputLang::from_detected(language.as_str()),
+                // The reader's language, not the query's: the nav-bar choice is what they want
+                // to read, whatever language the pages it cites were written in.
+                xustive_ml::OutputLang::from_ui(ui_lang),
                 passages,
             )
         })

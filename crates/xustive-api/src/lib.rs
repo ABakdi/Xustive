@@ -252,6 +252,26 @@ pub fn app(state: AppState) -> Router {
         .layer(RequestBodyLimitLayer::new(state.config.stt.max_audio_bytes))
         .with_state(state.clone());
 
+    // The live entity fallback's render call carries a whole Wikidata document — a country's
+    // runs to a few megabytes — so, like OCR, it lives outside the global 8 KB body limit (a limit
+    // applied outside a route binds it regardless of any looser inner one) and is merged at the
+    // top level with its own.
+    let knowledge_render = Router::new()
+        .route(
+            "/knowledge/render",
+            axum::routing::post(knowledge::render_document),
+        )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            limit_knowledge,
+        ))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            Duration::from_millis(state.config.api.timeout_search_ms),
+        ))
+        .layer(RequestBodyLimitLayer::new(6 * 1024 * 1024))
+        .with_state(state.clone());
+
     let core = Router::new()
         .nest(
             "/api/v1",
@@ -271,6 +291,7 @@ pub fn app(state: AppState) -> Router {
     Router::new()
         .merge(core)
         .nest("/api/v1", ocr_route)
+        .nest("/api/v1", knowledge_render)
         .nest("/api/v1", stt_route)
         // Request ids, outermost after panic catching so even a shed or rejected request
         // carries one. A ULID rather than a UUID: it sorts by time, so grepping a log for ids

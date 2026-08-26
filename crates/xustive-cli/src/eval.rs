@@ -335,6 +335,7 @@ pub(crate) fn rerank_ids(
         authority,
         interaction,
         weights,
+        None,
     );
     let results = ranked
         .iter()

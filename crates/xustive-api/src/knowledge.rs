@@ -207,3 +207,88 @@ async fn record_miss(state: &AppState, query: &str) {
         w.record(&normalised).await;
     }
 }
+
+/// `POST /api/v1/knowledge/render` — render a Wikidata document the **web tier** fetched (M8-T03
+/// live fallback).
+///
+/// The serving plane has no egress, so it cannot look an entity up when the store lacks one. The
+/// web tier can, exactly as ADR-0014's Wikipedia panel does — and rather than teach it a second,
+/// weaker parser, it hands the raw document here, where the store's own parser and templates turn
+/// it into the same panel a harvested entity gets. Nothing is fetched and nothing is written: the
+/// miss was already recorded k-anonymously by [`panel`], so the harvester will hold the entity
+/// next time and this path stops being needed for it.
+///
+/// Two-round shape: the first call returns `unresolved` — the ids of directors, units and
+/// reviewers whose labels the document does not carry — and the web tier fetches those labels and
+/// calls again with them. Two cheap local calls instead of one that needs the internet.
+pub async fn render_document(
+    State(_state): State<AppState>,
+    Json(req): Json<RenderRequest>,
+) -> Result<Json<Value>, StatusCode> {
+    let lang = req.lang.as_deref().unwrap_or("ar");
+    let now = xustive_core::now_unix();
+    let Some(mut entity) = xustive_knowledge::wikidata::parse(&req.doc, now) else {
+        return Err(StatusCode::UNPROCESSABLE_ENTITY);
+    };
+    if !req.labels.is_empty() {
+        xustive_knowledge::wikidata::fill_entity_labels(&mut entity, &req.labels);
+    }
+    if let Some(x) = req.extract {
+        if !x.text.trim().is_empty() {
+            xustive_knowledge::wikidata::attach_extract(&mut entity, &x.lang, x.text, x.url);
+        }
+    }
+    if !entity.is_renderable() {
+        return Err(StatusCode::NO_CONTENT);
+    }
+
+    // What the second round needs: every reference the templates would show whose label is still
+    // an id. Only the *shown* facts, so the web tier does not fetch labels for a cast of forty.
+    let mut unresolved: Vec<String> = Vec::new();
+    for fact in template::select(&entity) {
+        match &fact.value {
+            xustive_knowledge::Value::Entity { id, label } if label.is_empty() => {
+                unresolved.push(id.clone())
+            }
+            xustive_knowledge::Value::Score { reviewer, .. }
+                if xustive_knowledge::wikidata::is_qid(reviewer) =>
+            {
+                unresolved.push(reviewer.clone())
+            }
+            xustive_knowledge::Value::Quantity { unit, .. }
+                if xustive_knowledge::wikidata::is_qid(unit) =>
+            {
+                unresolved.push(unit.clone())
+            }
+            _ => {}
+        }
+    }
+    unresolved.sort();
+    unresolved.dedup();
+
+    let mut body = render(&entity, None, lang);
+    body["unresolved"] = json!(unresolved);
+    body["live"] = json!(true);
+    Ok(Json(body))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct RenderRequest {
+    /// One entity from `wbgetentities`, as Wikidata returned it.
+    pub doc: Value,
+    #[serde(default)]
+    pub lang: Option<String>,
+    /// `(id, label)` pairs from the second round.
+    #[serde(default)]
+    pub labels: Vec<(String, String)>,
+    #[serde(default)]
+    pub extract: Option<RenderExtract>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct RenderExtract {
+    pub lang: String,
+    pub text: String,
+    #[serde(default)]
+    pub url: String,
+}

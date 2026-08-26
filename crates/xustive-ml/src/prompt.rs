@@ -86,6 +86,16 @@ impl OutputLang {
         }
     }
 
+    /// The language the reader chose in the nav bar, which is the language they want to read.
+    ///
+    /// Distinct from [`Self::from_detected`], which maps the *query's* language: a French reader
+    /// asking about an Arabic topic wants the answer in French, and the passages it cites can be
+    /// in whatever language the web wrote them. Darija maps to Arabic for the reason given on the
+    /// enum.
+    pub fn from_ui(code: &str) -> Self {
+        Self::from_detected(code)
+    }
+
     fn name(self) -> &'static str {
         match self {
             Self::Arabic => "Modern Standard Arabic",

@@ -39,6 +39,17 @@ export default function EntityPanel({
     setPanel(undefined)
     setAsking(true)
     knowledgePanel(q, lang, controller.signal)
+      // The store first — a millisecond, and the answer for anything harvested. Then the live
+      // fallback through the web tier for what the store does not hold yet; the miss was
+      // recorded, so the harvester catches up and this second hop stops being taken for it.
+      .then(async (data) => {
+        if (data) return data
+        const res = await fetch(
+          `/api/knowledge-live?q=${encodeURIComponent(q)}&lang=${encodeURIComponent(lang)}`,
+          { signal: controller.signal },
+        )
+        return res.ok && res.status !== 204 ? ((await res.json()) as Panel) : null
+      })
       .then((data) => setPanel(data))
       // An aborted fetch is a re-render, not a failure. Anything else is treated as "no panel",
       // because the rail is additive and nothing on the page depends on it.
@@ -72,7 +83,7 @@ export default function EntityPanel({
         <img
           src={`/api/wiki-image?u=${encodeURIComponent(image.url)}`}
           alt=""
-          className="max-h-56 w-full rounded-t-lg object-cover"
+          className="max-h-72 w-full rounded-t-lg object-cover"
           loading="lazy"
           referrerPolicy="no-referrer"
         />

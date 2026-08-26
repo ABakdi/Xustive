@@ -209,6 +209,7 @@ async fn our_domains(
         authority,
         &std::collections::HashMap::new(),
         weights,
+        None,
     );
     Ok(domains_of(
         ranked

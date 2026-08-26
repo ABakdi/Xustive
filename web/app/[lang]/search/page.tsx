@@ -9,7 +9,6 @@ import { SearchBox } from '@/components/search/SearchBox'
 import { Summary } from '@/components/search/Summary'
 import { Verticals } from '@/components/search/Verticals'
 import EntityPanel from '@/components/search/EntityPanel'
-import { KnowledgePanel } from '@/components/search/KnowledgePanel'
 import { ToolCard } from '@/components/tools/ToolCard'
 import { TranslateCard } from '@/components/tools/TranslateCard'
 import { readDisabledTools } from '@/lib/tools'
@@ -115,9 +114,11 @@ export default async function SearchPage({
         // store and answers with facts; the Wikipedia panel stays underneath as the fallback for
         // entities the store does not hold yet, which is what keeps today's behaviour as the
         // floor rather than a regression while coverage grows.
+        // One panel now: the entity panel answers from the store or, failing that, live through
+        // the web tier — with the Wikipedia extract folded in — so the older Wikipedia-only
+        // panel would only ever duplicate it.
         <div className="mt-6 flex flex-col gap-4 self-start lg:mt-0 lg:sticky lg:top-20">
           <EntityPanel q={q} lang={lang} t={t} />
-          <KnowledgePanel q={q} lang={lang} t={t} />
         </div>
       }
     >
@@ -346,7 +347,7 @@ async function Shell({
         {aside ? (
           // Two columns on large screens: results (capped for readability) + a sticky knowledge
           // rail. One column below that, where the rail falls under the results.
-          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-8">
+          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-8">
             <div className="min-w-0">{children}</div>
             {aside}
           </div>
