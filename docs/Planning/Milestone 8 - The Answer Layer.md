@@ -174,7 +174,7 @@ places a model is actually better than a table.
       than what ships now
 - [x] M8-T03.7 Every fact carries its source and every panel names them. A fact with no attributable
       source is not shown — the [[Instant Answers]] §2 rule, extended from tools to entities
-- [ ] M8-T03.8 Images: proxied same-origin through the existing allowlisted route, `<img>` not
+- [x] M8-T03.8 Images: proxied same-origin through the existing allowlisted route, `<img>` not
       `next/image`, licence and author rendered beneath. Extend the allowlist deliberately, one
       host at a time, in the ADR
 
@@ -250,19 +250,19 @@ places a model is actually better than a table.
 
 ## M8-T08 — Delivery and rendering
 
-- [ ] M8-T08.1 The panel is fetched **out of band**, like the summary: the search response carries a
+- [x] M8-T08.1 The panel is fetched **out of band**, like the summary: the search response carries a
       token, the browser asks for the panel, and the search path costs nothing. This is the grain
       the codebase already has — instant answers are never deadline-gated and the knowledge panel
       already fetches after paint
-- [ ] M8-T08.2 A real loading state, unlike today's panel. The operator asked for the placeholder
+- [x] M8-T08.2 A real loading state, unlike today's panel. The operator asked for the placeholder
       and they are right *for this panel*: it is wide, it is expected, and a reader who is going to
       get a face and five facts should be told they are coming. `Summary.tsx`'s three states —
       loading, resolved-empty (collapse silently), resolved-full — with `aria-live` and
       `aria-busy`, and no layout shift when it lands
-- [ ] M8-T08.3 The rail takes a stack, not a single node: `Shell({ aside })` widens to accept the
+- [x] M8-T08.3 The rail takes a stack, not a single node: `Shell({ aside })` widens to accept the
       entity panel above the existing Wikipedia panel, with the latter becoming a fallback rather
       than a peer once T03.6 lands
-- [ ] M8-T08.4 RTL and bidi correctness throughout, `scripts/lint-bidi.sh` green: Latin titles,
+- [x] M8-T08.4 RTL and bidi correctness throughout, `scripts/lint-bidi.sh` green: Latin titles,
       years and scores inside Arabic panels are `<bdi>`-isolated
 - [ ] M8-T08.5 No-JS: the tool cards (weather, currency, calculator) are server-rendered and must
       work with JavaScript off, as they do now. The entity panel is the one part that legitimately

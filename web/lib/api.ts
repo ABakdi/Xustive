@@ -143,6 +143,56 @@ export async function summarise(token: string, signal?: AbortSignal): Promise<Su
   return res.json() as Promise<SummaryResponse>
 }
 
+/** One typed fact on an entity panel (M8). Values stay typed so they format in the reader's
+ *  language; `key` is a machine key the interface translates. */
+export type EntityValue =
+  | { type: 'text'; v: string }
+  | { type: 'date'; v: { at: number; precision: 'year' | 'month' | 'day' } }
+  | { type: 'number'; v: number }
+  | { type: 'quantity'; v: { amount: number; unit: string } }
+  | { type: 'score'; v: { value: number; best: number; reviewer: string } }
+  | { type: 'entity'; v: { id: string; label: string } }
+
+export interface EntityFact {
+  key: string
+  value: EntityValue
+  provenance: { source: string; licence: string; url?: string }
+  as_of?: number
+}
+
+export interface EntityPanel {
+  id: string
+  kind: string
+  title: string | null
+  description: string | null
+  extract: { text: string; lang: string; source: string; licence: string; url?: string } | null
+  facts: EntityFact[]
+  authorities: { key: string; id: string; url: string }[]
+  images: { url: string; author?: string; licence: string; credit_url?: string }[]
+  /** A near-tie the resolver refused to swallow — offered as "did you mean" rather than hidden. */
+  also: { id: string; title: string | null; description: string | null } | null
+  updated_at: number
+}
+
+/**
+ * The entity panel for a query, or `null`.
+ *
+ * Fetched out of band so the search path never waits for it. A 204 means "this query is not about
+ * an entity", which is most queries — a different thing from an error, and handled as such.
+ */
+export async function knowledgePanel(
+  q: string,
+  lang: string,
+  signal?: AbortSignal,
+): Promise<EntityPanel | null> {
+  const res = await fetch(
+    `${BASE}/api/v1/knowledge?q=${encodeURIComponent(q)}&lang=${encodeURIComponent(lang)}`,
+    { signal, cache: 'no-store' },
+  )
+  if (res.status === 204 || !res.ok) return null
+  return res.json() as Promise<EntityPanel>
+}
+
 /**
  * The tool inventory.
  *

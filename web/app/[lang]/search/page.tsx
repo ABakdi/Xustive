@@ -7,6 +7,7 @@ import { InteractionBeacon } from '@/components/search/InteractionBeacon'
 import { SearchBox } from '@/components/search/SearchBox'
 import { Summary } from '@/components/search/Summary'
 import { Verticals } from '@/components/search/Verticals'
+import EntityPanel from '@/components/search/EntityPanel'
 import { KnowledgePanel } from '@/components/search/KnowledgePanel'
 import { ToolCard } from '@/components/tools/ToolCard'
 import { TranslateCard } from '@/components/tools/TranslateCard'
@@ -109,12 +110,14 @@ export default async function SearchPage({
       t={t}
       q={q}
       aside={
-        <KnowledgePanel
-          q={q}
-          lang={lang}
-          t={t}
-          className="mt-6 self-start lg:mt-0 lg:sticky lg:top-20"
-        />
+        // The rail takes a stack now (M8-T08.3). The entity panel comes from our own harvested
+        // store and answers with facts; the Wikipedia panel stays underneath as the fallback for
+        // entities the store does not hold yet, which is what keeps today's behaviour as the
+        // floor rather than a regression while coverage grows.
+        <div className="mt-6 flex flex-col gap-4 self-start lg:mt-0 lg:sticky lg:top-20">
+          <EntityPanel q={q} lang={lang} t={t} />
+          <KnowledgePanel q={q} lang={lang} t={t} />
+        </div>
       }
     >
       <p className="mb-5 text-sm" style={{ color: 'var(--fg-muted)' }}>
