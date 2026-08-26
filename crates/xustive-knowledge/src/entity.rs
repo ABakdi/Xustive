@@ -97,8 +97,13 @@ impl Provenance {
 }
 
 /// A typed value. Formatting happens at render time, in the reader's language.
+///
+/// Adjacently tagged rather than internally tagged: an internal tag cannot serialise a newtype
+/// variant holding a primitive, so `Number(f64)` fails at runtime rather than at compile time. It
+/// reached a live harvest before anything caught it, because the round-trip test below was written
+/// against an entity with no facts.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", content = "v", rename_all = "snake_case")]
 pub enum Value {
     Text(String),
     /// Unix seconds plus the precision the publisher actually asserted. A year-precision birth date

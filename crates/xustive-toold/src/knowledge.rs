@@ -130,10 +130,16 @@ pub fn unresolved_references(harvested: &[Harvested]) -> Vec<String> {
     let mut ids: BTreeSet<String> = BTreeSet::new();
     for h in harvested {
         for fact in &h.entity.facts {
-            if let Value::Entity { id, label } = &fact.value {
-                if label.is_empty() {
+            match &fact.value {
+                Value::Entity { id, label } if label.is_empty() => {
                     ids.insert(id.clone());
                 }
+                // A reviewer arrives as a bare QID, and a score attributed to `Q105584` is not
+                // attributed at all.
+                Value::Score { reviewer, .. } if wikidata::is_qid(reviewer) => {
+                    ids.insert(reviewer.clone());
+                }
+                _ => {}
             }
         }
     }

@@ -88,29 +88,46 @@ places a model is actually better than a table.
 
 > The spine. Everything else in T02-T04 reads from here, so it lands first.
 
-- [ ] M8-T01.1 `xustive-knowledge` crate: `Entity { id, kind, names, description, claims,
+- [x] M8-T01.1 `xustive-knowledge` crate: `Entity { id, kind, names, description, claims,
       authorities, images, updated_at }`, where `id` is a Wikidata QID and `kind` is a closed enum
       resolved from *instance of* (`P31`). A closed enum, not a free string: the panel template is
       chosen by exhaustive match, so a new kind is a compile error rather than a blank card
-- [ ] M8-T01.2 Harvest on the ingestion plane — a new `xustive-knowledged` (or a `Dataset` in
+- [x] M8-T01.2 Harvest on the ingestion plane — a new `xustive-knowledged` (or a `Dataset` in
       [[Tool Data Plane|xustive-toold]], whichever keeps `toold` free of its current single-dataset
       assumption): Wikidata entity data + Wikipedia extract + Commons image reference, for a seed
       set of Algeria-relevant and globally notable entities. Fixed cadence, never per-request,
       never any user input — the `toold` contract, unchanged
-- [ ] M8-T01.3 Storage: a **Meilisearch index**, not Redis. Resolution is a name lookup with
+- [x] M8-T01.3 Storage: a **Meilisearch index**, not Redis. Resolution is a name lookup with
       aliases, transliteration and typo tolerance across four scripts — which is a search problem,
       and we already run a search engine that is good at it. Redis holds no entity text
-- [ ] M8-T01.4 Multilingual by construction: `names` carries `ar`, `ary`, `fr`, `en` labels and
+- [x] M8-T01.4 Multilingual by construction: `names` carries `ar`, `ary`, `fr`, `en` labels and
       aliases from Wikidata, so `سبيلبرغ`, `Spielberg` and `spielberg` resolve to one entity.
       Darija falls back to Arabic, never English — the [[Milestone 1B - Frontend and Instant Answers|M1B-T08.4]] rule
-- [ ] M8-T01.5 Licensing carried per field, not per entity: Wikidata claims are CC0, Wikipedia
+- [x] M8-T01.5 Licensing carried per field, not per entity: Wikidata claims are CC0, Wikipedia
       extracts are CC BY-SA, Commons images each carry their own licence and author. The panel
       renders the attribution the licence requires, so a licence that changes cannot silently become
       an unattributed reproduction
-- [ ] M8-T01.6 Refresh policy: an entity is re-harvested on a schedule proportional to how often it
+- [x] M8-T01.6 Refresh policy: an entity is re-harvested on a schedule proportional to how often it
       is asked for, floored so nothing goes stale forever. Dead entities age out
 - [ ] M8-T01.7 `xustive_data_age_seconds{dataset="knowledge"}` — which first requires
       `dataage.rs::sample()` to loop over datasets instead of hard-coding weather
+
+> **Status as of 2026-08-26.** T01 is built and proven against live data. One `--once` pass
+> harvests the seed list; `وهران` resolves to Oran in **1 ms** across six aliases in three scripts;
+> *The Battle of Algiers* comes back as `kind: film` with IMDb, Rotten Tomatoes, TMDB and
+> Metacritic links built from CC0 identifiers, a resolved director and cast, a 117-minute runtime,
+> extracts in three languages, and scores of 9.1/10 (Rotten Tomatoes), 96/100 (Metacritic) and
+> 8.1/10 (IMDb) — each attributed, none scraped. Riyad Mahrez returns birth date, occupation, dual
+> citizenship and six clubs.
+>
+> Two things the live run taught, both now fixed: an internally-tagged `Value` enum could not
+> serialise a float and panicked mid-pass (the round-trip test had been written against an entity
+> with no facts, so nothing exercised it), and a score attributed to `Q105584` is not attributed at
+> all, so reviewer ids are now resolved on the same pass as directors.
+>
+> **Known limitation for T03:** a referenced label is resolved once, not per language, so an entity
+> lacking an English label surfaces its Arabic name on a French page. The fix belongs with the
+> templates.
 
 ## M8-T02 — Resolution: query → entity
 

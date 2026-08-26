@@ -397,16 +397,33 @@ fn unix_from_civil(year: i64, month: i64, day: i64) -> i64 {
 ///
 /// References whose label is still unknown keep an empty one, and the renderer drops those — a
 /// director shown as `Q8877` is worse than a director not shown.
+///
+/// Review-score reviewers are filled here too. They arrive as a bare QID, and the whole reason a
+/// score without a named reviewer is refused is that `99/100` means nothing until you know who
+/// said it — `Q105584` names the reviewer no better than nothing does.
 pub fn fill_entity_labels(entity: &mut Entity, labels: &[(String, String)]) {
+    let lookup = |id: &str| labels.iter().find(|(k, _)| k == id).map(|(_, l)| l.clone());
     for fact in &mut entity.facts {
-        if let Value::Entity { id, label } = &mut fact.value {
-            if label.is_empty() {
-                if let Some((_, l)) = labels.iter().find(|(k, _)| k == id) {
-                    *label = l.clone();
+        match &mut fact.value {
+            Value::Entity { id, label } if label.is_empty() => {
+                if let Some(l) = lookup(id) {
+                    *label = l;
                 }
             }
+            Value::Score { reviewer, .. } if is_qid(reviewer) => {
+                if let Some(l) = lookup(reviewer) {
+                    *reviewer = l;
+                }
+            }
+            _ => {}
         }
     }
+}
+
+/// Whether a string is still an unresolved entity id rather than a name.
+pub fn is_qid(s: &str) -> bool {
+    s.strip_prefix('Q')
+        .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// Attach a Wikipedia extract, which is CC BY-SA rather than CC0 and therefore carries different
@@ -571,6 +588,31 @@ mod tests {
             imdb_url("tt0133093"),
             "https://www.imdb.com/title/tt0133093/"
         );
+    }
+
+    #[test]
+    fn a_reviewer_qid_is_resolved_to_a_name_like_any_other_reference() {
+        // The point of demanding P447 was attribution. `Q105584` attributes a score no better
+        // than nothing does, so the reviewer is resolved on the same pass as a director.
+        let mut e = parse(&film(), 0).unwrap();
+        fill_entity_labels(
+            &mut e,
+            &[("Q105584".to_string(), "Rotten Tomatoes".to_string())],
+        );
+        assert!(matches!(
+            e.fact("review_score").map(|f| &f.value),
+            Some(Value::Score { reviewer, .. }) if reviewer == "Rotten Tomatoes"
+        ));
+    }
+
+    #[test]
+    fn a_resolved_reviewer_name_is_not_mistaken_for_an_id() {
+        // "Q Score" is a real audience-measurement brand; treating any leading Q as an id would
+        // re-resolve a name that was already correct.
+        assert!(is_qid("Q105584"));
+        assert!(!is_qid("Q Score"));
+        assert!(!is_qid("Quentin"));
+        assert!(!is_qid("Q"));
     }
 
     #[test]

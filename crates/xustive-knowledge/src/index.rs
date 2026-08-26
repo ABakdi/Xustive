@@ -33,6 +33,10 @@ pub const F_ENTITY: &str = "entity";
 pub const INDEX: &str = "knowledge";
 
 /// Flatten an entity into an index document.
+///
+/// The nested entity is serialised defensively. A shape that will not serialise is a bug, but it
+/// is a bug that would otherwise take down a whole harvest pass from inside a loop — and an entity
+/// that writes as null is read back as absent, which costs one panel instead of every panel.
 pub fn to_document(entity: &Entity) -> Json {
     json!({
         F_ID: entity.id,
@@ -45,7 +49,7 @@ pub fn to_document(entity: &Entity) -> Json {
             .collect::<Vec<_>>(),
         F_PROMINENCE: entity.prominence,
         F_UPDATED_AT: entity.updated_at,
-        F_ENTITY: entity,
+        F_ENTITY: serde_json::to_value(entity).unwrap_or(Json::Null),
     })
 }
 
@@ -61,11 +65,44 @@ pub fn from_document(doc: &Json) -> Option<Entity> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entity::Names;
+    use crate::entity::{Names, Value};
     use crate::kind::Kind;
 
     fn entity() -> Entity {
+        use crate::entity::{DatePrecision, Fact, Provenance};
         let mut e = Entity::new("Q83495", Kind::Film, 1_700_000_000);
+        // Every `Value` variant, because the first version of this test used an entity with no
+        // facts at all — so nothing exercised the enum, and an unserialisable tagging reached a
+        // live harvest and panicked mid-pass.
+        let prov = Provenance::wikidata("Q83495");
+        for value in [
+            Value::Text("text".into()),
+            Value::Date {
+                at: 922_838_400,
+                precision: DatePrecision::Day,
+            },
+            Value::Number(136.0),
+            Value::Quantity {
+                amount: 136.0,
+                unit: "Q7727".into(),
+            },
+            Value::Score {
+                value: 83.0,
+                best: 100.0,
+                reviewer: "Q105584".into(),
+            },
+            Value::Entity {
+                id: "Q510034".into(),
+                label: "Lana Wachowski".into(),
+            },
+        ] {
+            e.facts.push(Fact {
+                key: "sample".into(),
+                value,
+                provenance: prov.clone(),
+                as_of: None,
+            });
+        }
         e.names = Names {
             labels: vec![
                 ("en".into(), "The Matrix".into()),
