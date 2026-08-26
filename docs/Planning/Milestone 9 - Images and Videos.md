@@ -115,12 +115,15 @@ a click — the reader chooses the disclosure. And no code path downloads video 
 
 ## M9-T04 — Repass, so the tabs are not empty on day one
 
-- [ ] M9-T04.1 `xustive media-repass`: walk the index, re-extract media from the **raw store**
+- [x] M9-T04.1 `xustive media-repass`: walk the index, re-extract media from the **raw store**
       body where one is still held (`crawl.raw_ttl_days`), and patch only `media`. No refetch —
       the whole point is not to pay a crawl for a parser change
-- [ ] M9-T04.2 Honest about coverage: reports how many documents had a stored body and how many
+- [~] M9-T04.2 Honest about coverage: reports how many documents had a stored body and how many
       did not. The ones that did not get their video entries on the next revisit, which the
-      adaptive recrawl already schedules
+      adaptive recrawl already schedules. **Run against dev: refused correctly — `crawl.raw_ttl_days`
+      is 0 and the raw store has never held a body, so there was nothing to repass.** Turning it on
+      is a storage decision (bodies × days, in the Redis that PROB-001 bounded), left to the
+      operator; until then the Videos tab fills at the pace of the revisit crawl
 
 ## M9-T05 — Gates
 

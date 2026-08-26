@@ -274,6 +274,20 @@ enum Command {
     },
     /// Show index document counts.
     Stats,
+    /// Re-extract `media[]` for indexed documents from the raw store, without refetching (M9-T04).
+    ///
+    /// A parser change — video extraction — only reaches a page when that page is crawled again.
+    /// The raw store keeps bodies for `crawl.raw_ttl_days`, so for those pages the media can be
+    /// re-extracted now, for free. Pages whose body has aged out get theirs on the next revisit.
+    /// Only `media` is written; everything else on the document is left as it is.
+    MediaRepass {
+        /// Stop after this many documents (0 = all).
+        #[arg(long, default_value_t = 0)]
+        limit: usize,
+        /// Report what would change without writing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Delete image vectors whose parent document is gone from the index (orphan reconciliation).
     ///
     /// A takedown or reindex can remove a document from the lexical index while its image
@@ -545,6 +559,9 @@ async fn main() -> Result<()> {
         Command::Dlq { action, limit } => worker::dlq(&config, &action, limit).await,
         Command::Keys { show } => cmd_keys(&client, show).await,
         Command::Stats => cmd_stats(&client, &config).await,
+        Command::MediaRepass { limit, dry_run } => {
+            cmd_media_repass(&client, &config, limit, dry_run).await
+        }
         Command::Takedown { domain, yes } => cmd_takedown(&client, &config, &domain, yes).await,
         Command::Reindex {
             index,
@@ -1566,4 +1583,107 @@ mod tests {
         let declared = json!({ "disableOnAttributes": ["entities"] });
         assert!(!values_equal(&declared, &json!({})));
     }
+}
+
+/// Re-extract media from stored raw bodies (M9-T04).
+///
+/// Honest about coverage by construction: the report says how many documents still had a body
+/// and how many did not, because "the Videos tab is sparse" has two very different causes and an
+/// operator needs to know which one they are looking at.
+async fn cmd_media_repass(
+    client: &MeiliClient,
+    config: &Config,
+    limit: usize,
+    dry_run: bool,
+) -> Result<()> {
+    use xustive_ingest::parse::{ParseConfig, Parser};
+
+    if config.crawl.raw_ttl_days == 0 {
+        anyhow::bail!(
+            "crawl.raw_ttl_days is 0: no raw bodies are kept, so there is nothing to repass"
+        );
+    }
+    let raw = xustive_ingest::raw_store::RawStore::connect_in(
+        &config.queue.url,
+        "frontier",
+        Duration::from_secs(config.crawl.raw_ttl_days * 86_400),
+    )
+    .context("connecting to the raw store")?;
+    let parser = Parser::new(ParseConfig::default());
+    let index = client.resolve(xustive_search::settings::DOCUMENTS).await?;
+
+    let (mut seen, mut with_body, mut changed, mut videos) = (0usize, 0usize, 0usize, 0usize);
+    let mut batch: Vec<serde_json::Value> = Vec::new();
+    let mut offset = 0u64;
+    'pages: loop {
+        let page = client
+            .documents_page_fields(
+                &index,
+                offset,
+                500,
+                &["id", "url", "source_id", "source_type", "media"],
+            )
+            .await?;
+        if page.is_empty() {
+            break;
+        }
+        offset += page.len() as u64;
+        for doc in page {
+            if limit > 0 && seen >= limit {
+                break 'pages;
+            }
+            seen += 1;
+            let (Some(id), Some(url)) = (
+                doc.get("id").and_then(|v| v.as_str()),
+                doc.get("url").and_then(|v| v.as_str()),
+            ) else {
+                continue;
+            };
+            let Some(body) = raw.get(url).await else {
+                continue;
+            };
+            with_body += 1;
+            let source_id = doc.get("source_id").and_then(|v| v.as_str()).unwrap_or("");
+            let source_type: xustive_core::model::SourceType = doc
+                .get("source_type")
+                .cloned()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or(xustive_core::model::SourceType::Web);
+            let Ok(parsed) = parser.parse(&body, url, source_id, source_type) else {
+                continue;
+            };
+            let fresh = serde_json::to_value(&parsed.document.media)?;
+            if doc.get("media") == Some(&fresh) {
+                continue;
+            }
+            videos += parsed
+                .document
+                .media
+                .iter()
+                .filter(|m| m.kind == xustive_core::model::MediaKind::Video)
+                .count();
+            changed += 1;
+            batch.push(serde_json::json!({ "id": id, "media": fresh }));
+            if batch.len() >= 200 && !dry_run {
+                let task = client.update_documents(&index, &batch).await?;
+                client.wait_task(task).await?;
+                batch.clear();
+            }
+        }
+    }
+    if !batch.is_empty() && !dry_run {
+        let task = client.update_documents(&index, &batch).await?;
+        client.wait_task(task).await?;
+    }
+
+    println!(
+        "media repass{}: {seen} documents seen, {with_body} still had a raw body, {changed} changed, \
+         {videos} video entries found",
+        if dry_run { " (dry run)" } else { "" }
+    );
+    println!(
+        "  the {} without a body get their media on the next revisit — the adaptive recrawl already schedules it",
+        seen.saturating_sub(with_body)
+    );
+    Ok(())
 }

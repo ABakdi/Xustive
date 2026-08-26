@@ -560,6 +560,22 @@ impl MeiliClient {
         Ok(t.task_uid)
     }
 
+    /// Merge fields into existing documents (`PUT`, Meilisearch's add-or-update).
+    ///
+    /// Unlike [`Self::add_documents`], a document here need only carry its `id` and the fields
+    /// that change: the engine merges them into what it holds. This is what a repass wants — the
+    /// media repass (M9-T04) rewrites `media` and must not touch the body, the dates, or the
+    /// enrichment another job wrote.
+    pub async fn update_documents<T: Serialize>(
+        &self,
+        index: &str,
+        docs: &[T],
+    ) -> Result<u64, SearchError> {
+        let url = self.url(&format!("/indexes/{index}/documents?primaryKey=id"))?;
+        let t: TaskRef = self.send(self.http.put(url).json(docs)).await?;
+        Ok(t.task_uid)
+    }
+
     /// One page of raw documents from an index, with **all** stored fields (the documents endpoint
     /// is not restricted by `displayedAttributes`, unlike search — so a reindex copy keeps `body`
     /// and everything else). Empty when the page is past the end.
