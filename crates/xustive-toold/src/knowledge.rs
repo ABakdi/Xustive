@@ -51,7 +51,7 @@ pub async fn fetch_entities(
     let mut out = Vec::new();
     for chunk in ids.chunks(BATCH) {
         let url = format!(
-            "{WIKIDATA_API}?action=wbgetentities&ids={}&props=labels|descriptions|aliases|claims|sitelinks&languages=ar|ary|fr|en&format=json",
+            "{WIKIDATA_API}?action=wbgetentities&ids={}&props=labels|descriptions|aliases|claims|sitelinks&languages=ar|ary|fr|en|mul&format=json",
             chunk.join("|")
         );
         let body: Json = get_json(client, &url).await?;
@@ -102,7 +102,7 @@ pub async fn resolve_labels(
     let mut out = Vec::new();
     for chunk in ids.chunks(BATCH) {
         let url = format!(
-            "{WIKIDATA_API}?action=wbgetentities&ids={}&props=labels&languages=ar|ary|fr|en&format=json",
+            "{WIKIDATA_API}?action=wbgetentities&ids={}&props=labels&languages=ar|ary|fr|en|mul&format=json",
             chunk.join("|")
         );
         let body: Json = get_json(client, &url).await?;
@@ -112,7 +112,7 @@ pub async fn resolve_labels(
         for (id, doc) in entities {
             // English first here, unlike a panel title: this is a director's name or an
             // occupation, and the alternative to a Latin-script label is usually no label at all.
-            let label = ["en", "fr", "ar", "ary"].iter().find_map(|l| {
+            let label = ["en", "mul", "fr", "ar", "ary"].iter().find_map(|l| {
                 doc.pointer(&format!("/labels/{l}/value"))
                     .and_then(Json::as_str)
             });

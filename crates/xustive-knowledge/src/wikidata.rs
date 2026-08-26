@@ -256,7 +256,7 @@ fn names(doc: &Json) -> Names {
     let mut aliases = Vec::new();
     if let Some(map) = doc.get("aliases").and_then(Json::as_object) {
         for (lang, list) in map {
-            if !LANGS.contains(&lang.as_str()) {
+            if !LANGS.contains(&lang.as_str()) && lang != crate::entity::MUL {
                 continue;
             }
             for a in list.as_array().into_iter().flatten() {
@@ -274,7 +274,11 @@ fn names(doc: &Json) -> Names {
 fn per_language(node: Option<&Json>) -> Vec<(String, String)> {
     let mut out = Vec::new();
     if let Some(map) = node.and_then(Json::as_object) {
-        for lang in LANGS {
+        for lang in LANGS
+            .iter()
+            .copied()
+            .chain(std::iter::once(crate::entity::MUL))
+        {
             if let Some(v) = map
                 .get(lang)
                 .and_then(|e| e.get("value"))

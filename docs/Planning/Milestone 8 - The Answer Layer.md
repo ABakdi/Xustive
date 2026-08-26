@@ -186,6 +186,13 @@ places a model is actually better than a table.
       code, which [[Milestone 1B - Frontend and Instant Answers|M1B-T07.1]] already compiles in
 - [x] M8-T03.5 **Organisation, product, work (book/album/song), event, species, concept** — one
       template each, each honest about having fewer facts than a film
+- [x] M8-T03.6b **Live fallback, done properly (2026-08-26).** The Wikipedia-only fallback took the
+      first search hit blindly — *ronaldo* gave the name-list article and *for all mankind* gave
+      nothing. The web tier now resolves through Wikidata (disambiguation/given-name/family-name
+      pages removed, the rest ranked by sitelink count) and hands the raw document to
+      `POST /api/v1/knowledge/render`, so the store's own parser and templates build the live panel
+      too. Verified in the browser: For All Mankind → series with IMDb/RT/Metacritic; ronaldo →
+      Cristiano Ronaldo; the Arabic page renders the panel in Arabic
 - [x] M8-T03.6 **Concept fallback** — when the kind is unknown or has no template, render the
       description and extract, which is exactly today's Wikipedia panel. The floor never gets worse
       than what ships now

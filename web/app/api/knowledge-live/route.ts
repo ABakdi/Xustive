@@ -81,7 +81,7 @@ async function resolve(q: string, lang: string): Promise<Doc | null> {
 
   const r = (await json(
     `${wd}?action=wbgetentities&ids=${ids.slice(0, CANDIDATES).join('|')}` +
-      `&props=labels|descriptions|aliases|claims|sitelinks&languages=ar|ary|fr|en&format=json`,
+      `&props=labels|descriptions|aliases|claims|sitelinks&languages=ar|ary|fr|en|mul&format=json`,
   )) as { entities?: Record<string, Doc> } | null
   const docs = Object.values(r?.entities ?? {}).filter((d) => d && d.id)
 
@@ -141,11 +141,11 @@ export async function GET(req: NextRequest) {
   }
   const r = (await json(
     `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${unresolved.slice(0, 50).join('|')}` +
-      `&props=labels&languages=${lang === 'ary' ? 'ar' : lang}|en&format=json`,
+      `&props=labels&languages=${lang === 'ary' ? 'ar' : lang}|en|mul&format=json`,
   )) as { entities?: Record<string, { labels?: Record<string, { value?: string }> }> } | null
   const labels: [string, string][] = []
   for (const [id, e] of Object.entries(r?.entities ?? {})) {
-    const l = e.labels?.[lang === 'ary' ? 'ar' : lang]?.value ?? e.labels?.en?.value
+    const l = e.labels?.[lang === 'ary' ? 'ar' : lang]?.value ?? e.labels?.mul?.value ?? e.labels?.en?.value
     if (l) labels.push([id, l])
   }
   const second = (await render({ doc, lang, extract, labels })) ?? first

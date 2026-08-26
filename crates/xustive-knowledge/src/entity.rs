@@ -18,6 +18,11 @@ use crate::kind::Kind;
 /// never English, which is the rule [[Milestone 1B - Frontend and Instant Answers]] settled.
 pub const LANGS: [&str; 4] = ["ar", "ary", "fr", "en"];
 
+/// Wikidata's *multilingual* label — the one it moved proper names to in 2024. Lionel Messi has no
+/// `en` label any more, only `mul`; a fallback chain that stops at our four languages renders him
+/// in whichever of them happens to exist, which on an English page was Arabic.
+pub const MUL: &str = "mul";
+
 /// Labels and aliases per language.
 ///
 /// Aliases are what make resolution work across scripts: `سبيلبرغ`, `Spielberg` and `Steven
@@ -45,11 +50,14 @@ impl Names {
     /// Arabic, then the interface language, then any language at all — a name in the wrong script
     /// still identifies the thing, whereas no name identifies nothing.
     pub fn best_label(&self, lang: &str) -> Option<&str> {
+        // `mul` sits right after the reader's own language: a name is a name in every script
+        // it is written in, so the multilingual label beats a translation into a language the
+        // reader did not choose.
         let chain: &[&str] = match lang {
-            "ary" => &["ary", "ar", "fr", "en"],
-            "ar" => &["ar", "ary", "fr", "en"],
-            "fr" => &["fr", "en", "ar"],
-            _ => &["en", "fr", "ar"],
+            "ary" => &["ary", "ar", MUL, "fr", "en"],
+            "ar" => &["ar", "ary", MUL, "fr", "en"],
+            "fr" => &["fr", MUL, "en", "ar"],
+            _ => &["en", MUL, "fr", "ar"],
         };
         chain
             .iter()
@@ -298,6 +306,23 @@ mod tests {
         // The M1B-T08.4 rule. An Algerian reader who set Darija gets Arabic, which they read, and
         // not English, which the generic "first available" fallback would have handed them.
         assert_eq!(names().best_label("ary"), Some("ستيفن سبيلبرغ"));
+    }
+
+    #[test]
+    fn the_multilingual_label_beats_a_translation_the_reader_did_not_choose() {
+        // Messi after Wikidata's 2024 migration: no `en`, a `mul` and an `ar`. An English reader
+        // gets the multilingual "Lionel Messi", not the Arabic that happened to exist.
+        let n = Names {
+            labels: vec![
+                ("ar".into(), "ليونيل ميسي".into()),
+                (MUL.into(), "Lionel Messi".into()),
+            ],
+            aliases: vec![],
+        };
+        assert_eq!(n.best_label("en"), Some("Lionel Messi"));
+        assert_eq!(n.best_label("fr"), Some("Lionel Messi"));
+        // But a reader's own language still wins over `mul`.
+        assert_eq!(n.best_label("ar"), Some("ليونيل ميسي"));
     }
 
     #[test]
