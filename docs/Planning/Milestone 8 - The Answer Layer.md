@@ -6,6 +6,7 @@ milestone: 8
 status: done
 updated: 2026-08-26
 ---
+
 # Milestone 8 - The Answer Layer
 
 > **Goal:** answer the query on the page. Search returns links; this milestone returns the thing

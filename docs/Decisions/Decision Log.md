@@ -38,6 +38,7 @@ updated: 2026-08-06
 | [[ADR-0018 - Anonymous Search History]] | identifier-free retention of the normalised term + counts; storage always identifier-free, `k` a multi-user surfacing floor; amends 0008's durable-storage row | accepted | [[Security and Privacy]], [[Observability]], [[Interaction Signals]] |
 | [[ADR-0019 - The Knowledge Layer]] | entity-keyed local knowledge store harvested on the ingestion plane; authorities linked by identifier, never scraped; extends 0014 rather than superseding it | accepted | [[Knowledge Layer]], [[Instant Answers]], [[Tool Data Plane]], [[UI - Results Page]] |
 | [[ADR-0020 - Approximate Location from a Local Database]] | client address resolved to a wilaya in-process against a bundled database, used for one request, never stored or sent | accepted | [[Instant Answers]], [[API Gateway]], [[Security and Privacy]] |
+| [[ADR-0021 - Proxied Thumbnails with Signed URLs]] | thumbnails for the Images/Videos tabs served through a same-origin proxy that accepts only server-signed URLs; generalises 0014's allowlist to the open web without an open proxy; video linked, never embedded or fetched | accepted | [[UI - Search Verticals]], [[UI - Results Page]], [[Security and Privacy]] |
 
 ---
 

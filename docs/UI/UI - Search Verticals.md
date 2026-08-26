@@ -21,8 +21,8 @@ A tab is a promise that there is something behind it. Today most of these have n
 | **All** | yes | — |
 | **News** | yes | — a filter over what is already indexed |
 | **Files** | **no** | the fetcher accepts seven text MIME types and refuses PDFs outright ([[Web Fetcher]] `INDEXABLE`) |
-| **Images** | **no** | [[Image Pipeline]] — M3 |
-| **Videos** | **no** | video metadata; no source produces it |
+| **Images** | **yes** (M9) | pages already carry `media[]` images; [[Milestone 9 - Images and Videos]] filters and renders them |
+| **Videos** | **yes** (M9) | the parser now extracts `og:video`, `<video>` and YouTube/Dailymotion/Vimeo embeds; fills as pages are (re)parsed |
 | **Short videos** | **no** | TikTok / Reels — the social connectors, M2-T08–T10 |
 | **Social** | **no** | same |
 
@@ -43,8 +43,8 @@ not.
 | All | no filter |
 | News | `source_type = web` and the document has a publication date and an article-shaped body |
 | Files | `content_type` in a document set — PDF, DOCX, XLSX, PPTX |
-| Images | documents from [[Image Pipeline]], ranked by CLIP embedding and OCR text |
-| Videos | documents with a video `media[]` entry over a duration threshold |
+| Images | `media.type = image`; a tile is a page that has the image, ranked by page relevance and OCR text; thumbnails proxied per [[ADR-0021 - Proxied Thumbnails with Signed URLs]] |
+| Videos | `media.type = video`; poster + link out, never an embedded player |
 | Short videos | video documents under that threshold, plus platform origin |
 | Social | `source_type != web` |
 
@@ -85,7 +85,7 @@ would cover the born-digital minority and silently miss the rest.
 1. **News** — a filter over existing content. Real on day one.
 2. **Files** — fetcher change, PDF extraction, caps. Useful for `.gov.dz` immediately.
 3. **Social** — arrives with the connectors, which are already tracked.
-4. **Images / Videos / Short videos** — M3.
+4. **Images / Videos** — [[Milestone 9 - Images and Videos]]. Short videos with the connectors.
 
 ## 6. Related
 
