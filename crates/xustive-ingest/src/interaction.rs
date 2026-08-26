@@ -264,28 +264,39 @@ impl Interactions {
     /// Smoothed CTR for each candidate doc under `query`. A `(query, doc)` signal is used only above
     /// the k floor; below it, the doc's global CTR (if *that* clears k); otherwise the doc is absent
     /// and the ranker treats it as the neutral prior.
+    ///
+    /// One round trip for the whole candidate set (BUG-041). The first version issued two to four
+    /// sequential `GET`s per document — up to 800 round trips for a 200-candidate pool — which put
+    /// ~140 ms on every search under the "rerank" stage while the engine itself answered in 65.
+    /// Four keys per document go out in a single `MGET`; the k-floor logic is unchanged.
     pub async fn ctr_for(&self, query: &str, docs: &[String]) -> HashMap<String, f32> {
         let mut out = HashMap::new();
+        if docs.is_empty() {
+            return out;
+        }
         let mut conn = self.conn();
         let qh = self.qhash(query);
+        let ns = &self.namespace;
+        let mut keys: Vec<String> = Vec::with_capacity(docs.len() * 4);
         for d in docs {
-            let qd_imp = self
-                .get_u32(&mut conn, &format!("{}:qd:{qh}:{d}:imp", self.namespace))
-                .await;
+            keys.push(format!("{ns}:qd:{qh}:{d}:imp"));
+            keys.push(format!("{ns}:qd:{qh}:{d}:clk"));
+            keys.push(format!("{ns}:doc:{d}:imp"));
+            keys.push(format!("{ns}:doc:{d}:clk"));
+        }
+        let values: Vec<Option<u32>> =
+            match redis::cmd("MGET").arg(&keys).query_async(&mut conn).await {
+                Ok(v) => v,
+                // Redis down or slow: no signal, which the ranker treats as the neutral prior. A search
+                // never waits on, or fails for, an optional nudge.
+                Err(_) => return out,
+            };
+        for (i, d) in docs.iter().enumerate() {
+            let at = |j: usize| values.get(i * 4 + j).copied().flatten().unwrap_or(0);
+            let (qd_imp, qd_clk, doc_imp, doc_clk) = (at(0), at(1), at(2), at(3));
             if surfaceable(qd_imp, self.k) {
-                let qd_clk = self
-                    .get_u32(&mut conn, &format!("{}:qd:{qh}:{d}:clk", self.namespace))
-                    .await;
                 out.insert(d.clone(), wilson_lower_bound(qd_clk, qd_imp));
-                continue;
-            }
-            let doc_imp = self
-                .get_u32(&mut conn, &format!("{}:doc:{d}:imp", self.namespace))
-                .await;
-            if surfaceable(doc_imp, self.k) {
-                let doc_clk = self
-                    .get_u32(&mut conn, &format!("{}:doc:{d}:clk", self.namespace))
-                    .await;
+            } else if surfaceable(doc_imp, self.k) {
                 out.insert(d.clone(), wilson_lower_bound(doc_clk, doc_imp));
             }
         }

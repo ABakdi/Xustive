@@ -9,7 +9,9 @@ environment = "dev"
 bind_addr = "0.0.0.0:8080"
 max_concurrent = 64
 body_limit_default = 8192
-timeout_search_ms = 1500
+# 2500, up from 1500 (BUG-041): the deadline ladder needs room to degrade under indexing load
+# rather than expire. The ladder's floors are fractions of this, so every stage scales with it.
+timeout_search_ms = 2500
 timeout_suggest_ms = 150
 cors_origins = ["http://localhost:3000"]
 static_dir = "web/public"
@@ -40,7 +42,10 @@ comments_index = "comments"
 candidate_pool = 200
 default_hits_per_page = 20
 max_hits_per_page = 50
-timeout_ms = 800
+# The engine answers a 200-candidate query in ~65 ms idle; while it is also indexing a crawl
+# backlog it can take several hundred. 800 tripped "That search took too long" under exactly that
+# load (BUG-041). Still well inside api.timeout_search_ms, so the deadline ladder keeps the last say.
+timeout_ms = 1200
 
 [telemetry]
 log_filter = "info,xustive_api=debug,xustive_search=debug"

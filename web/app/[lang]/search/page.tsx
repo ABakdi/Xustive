@@ -80,13 +80,34 @@ export default async function SearchPage({
   try {
     data = await search(query)
   } catch (error) {
-    const message = error instanceof SearchFailed ? error.message : t.errorTitle
+    // Say what actually happened, and offer the way back (BUG-041). Three failures used to read
+    // as the same two sentences: the API answering slowly, the rate limiter saying no, and the
+    // API not being there at all during a restart. They need different words and, mostly, the
+    // same next step — try again — which the page never offered.
+    const failed = error instanceof SearchFailed ? error : null
+    const status = failed?.status ?? 0
+    const detail =
+      status === 504 || failed?.code === 'upstream_timeout'
+        ? t.errorSlow
+        : status === 429
+          ? t.errorRateLimited
+          : status === 503 || failed?.code === 'search_unavailable'
+            ? t.errorUnavailable
+            : failed
+              ? failed.message
+              : t.errorUnreachable
+    const retryHref = `/${lang}/search?${new URLSearchParams({ q }).toString()}`
     return (
       <Shell lang={lang} t={t} q={q}>
         <div className="py-16 text-center">
           <p className="text-xl">{t.errorTitle}</p>
-          <p className="mt-2 text-sm" style={{ color: 'var(--fg-muted)' }}>
-            {message}
+          <p className="mt-2 text-sm" style={{ color: 'var(--fg-muted)' }} dir="auto">
+            {detail}
+          </p>
+          <p className="mt-4 text-sm">
+            <a href={retryHref} style={{ color: 'var(--accent)' }}>
+              {t.errorRetry}
+            </a>
           </p>
         </div>
       </Shell>

@@ -54,6 +54,9 @@ use tower_http::timeout::TimeoutLayer;
 
 use crate::state::AppState;
 
+/// Time the transport timeout allows past the search deadline for the ladder to answer (BUG-041).
+const SEARCH_GRACE_MS: u64 = 1_000;
+
 /// Build the router with the full middleware stack.
 ///
 /// **JSON and operations only.** HTML comes from the Next.js frontend
@@ -71,9 +74,16 @@ pub fn app(state: AppState) -> Router {
     // is simpler, but it silently caps every route at the search budget — which turned every
     // summary into a 504 the first time this was wired up, since generation legitimately takes
     // tens of seconds on CPU.
+    // The transport cut sits *above* the search's own deadline, not on it (BUG-041). The deadline
+    // ladder exists to degrade a slow search — drop the summary, the expansion, the facets, the
+    // rerank, and still answer — but it can only do that if it fires before this layer does. With
+    // the two equal, any slack consumed anywhere let the layer cut the request first and answer a
+    // bare 504 with no body, which the web tier could only render as "Search failed". The grace
+    // is the time the ladder needs to shape and send a degraded page after its last stage; the
+    // layer is now the backstop for a search that has genuinely hung, not the common case.
     let search_budget = TimeoutLayer::with_status_code(
         StatusCode::GATEWAY_TIMEOUT,
-        Duration::from_millis(state.config.api.timeout_search_ms),
+        Duration::from_millis(state.config.api.timeout_search_ms + SEARCH_GRACE_MS),
     );
 
     let api = Router::new()

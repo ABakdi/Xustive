@@ -508,11 +508,41 @@ pub async fn handler(
 
     let retrieval_started = Instant::now();
     let index = state.documents_index();
-    let mut hits = state
-        .search
-        .search::<Value>(&index, &query)
-        .await
-        .map_err(ApiError::from)?;
+    let mut retrieval_narrowed = false;
+    let mut hits = match state.search.search::<Value>(&index, &query).await {
+        Ok(h) => h,
+        // Narrow rather than fail (BUG-041). The ladder degrades every stage but this one, and
+        // this one is where a busy engine actually shows: while Meilisearch is also indexing a
+        // crawl backlog, the 200-candidate query with facets and highlighting takes several
+        // hundred milliseconds and trips the engine timeout — which used to be a 504 reading
+        // "That search took too long". A page's worth with nothing extra answers in ~30 ms even
+        // then. Worse ranking (a smaller pool to re-rank), no filter chips — but results, and the
+        // reader cannot tell a search that returns nothing from an outage.
+        Err(xustive_search::SearchError::Timeout(_)) => {
+            retrieval_narrowed = true;
+            state.metrics.incr(
+                metrics::DEGRADED,
+                metrics::DEGRADED_HELP,
+                &[("stage", "retrieval")],
+            );
+            let mut narrow = Query::new(&normalized)
+                .limit((offset + hits_per_page).min(xustive_search::settings::MAX_TOTAL_HITS))
+                .offset(0)
+                .ranking_score(true);
+            if let Some(expr) = filters.to_expression(SPAM_THRESHOLD) {
+                narrow = narrow.filter(expr);
+            }
+            if !sort.is_empty() {
+                narrow = narrow.sort(&sort);
+            }
+            state
+                .search
+                .search::<Value>(&index, &narrow)
+                .await
+                .map_err(ApiError::from)?
+        }
+        Err(e) => return Err(ApiError::from(e)),
+    };
 
     // --- short-query stop-word guard (M7-T01.5) -------------------------------------------
     // A query made entirely of stop words ("the and", "من في") is stripped to nothing by the
@@ -956,7 +986,7 @@ pub async fn handler(
         },
         // Facets were asked for but the deadline cut them, versus simply absent. Only the first is
         // a degradation worth signalling.
-        facets_degraded: !want_facets,
+        facets_degraded: !want_facets || retrieval_narrowed,
         related,
     }))
 }

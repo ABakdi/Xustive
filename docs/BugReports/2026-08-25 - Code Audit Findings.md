@@ -245,3 +245,56 @@ coarsening the observable to half-window granularity while keeping "decays to no
 A plain compose env var shows in `docker inspect` and `/proc/<pid>/environ`. Fix: the gateway also
 accepts `EXTERNAL_LLM_KEY_FILE` (a mounted secret path), documented in compose, so operators can
 use docker secrets; the env var stays as the dev default.
+
+## Reported 2026-08-26
+
+### BUG-041 [high] — Searches intermittently fail with "That search took too long" or a bare "Something went wrong" — **fixed**
+Reported by the operator: sometimes a search 504s, sometimes the page shows the generic error
+with no elaboration, and sometimes a refresh does not help. Reproduced during the day's testing:
+`GET /api/v1/search` answered **504 in exactly 1.500 s** on every vertical while the machine was
+under load, and 200 in 0.45–0.9 s when it was not — against Meilisearch answering the same query
+directly in **46 ms**.
+
+Three things stack up:
+
+1. **The outer `TimeoutLayer` equals the inner `Deadline`.** Both are `api.timeout_search_ms`
+   (1500 in dev). The deadline ladder exists to *degrade* a slow search — drop the summary, the
+   expansion, the facets, the rerank, and still return results — but it can only do that if it
+   fires *before* the transport layer does. With the two equal, any slack consumed anywhere means
+   the layer cuts the request and returns a **bare 504 with no body**, which the web tier can only
+   render as "Search failed". The ladder never gets to answer.
+2. **The API spends ~0.5 s of its own per search** on a local index that answers in 46 ms. That
+   overhead is what pushes an ordinary search over 1.5 s the moment Meilisearch is also indexing
+   (the M9-T06 crawl backlog had it at 116 % CPU). Stage breakdown in the fix below.
+3. **The web tier's error page hides the cause.** `SearchFailed` carries a status and a code, and
+   the page shows `message` for a `SearchFailed` and `errorTitle` for anything else — so a
+   connection refused during an API restart, a 429 from the rate limiter, and a 504 from the layer
+   all read as one of two unhelpful sentences, with no retry affordance.
+
+Also honestly on record: the API on :8080 was restarted by Claude roughly fifteen times today to
+pick up new builds; every one of those is a few seconds of "Something went wrong" for anyone
+searching at that moment.
+
+**Root cause, measured.** Meilisearch answers the API's 200-candidate query in **46 ms idle and
+77–277 ms while indexing** — the M9 crawl backlog (5,000 queued documents, six indexing threads,
+two kernel I/O workers at 90 %) saturates the disk, and the primary query then trips the engine
+timeout (800 ms in dev). On top of that the API was spending ~140 ms per search in the "rerank"
+stage: `Interactions::ctr_for` issued two to four **sequential** Redis `GET`s per candidate — up
+to 800 round trips for a 200-document pool.
+
+**Fixes (commit below):**
+- `ctr_for` pipelines all four keys per document into one `MGET`: rerank stage **141 → 36 ms**.
+- **Retrieval narrows instead of failing.** The ladder degrades every stage except retrieval; on
+  an engine timeout the API now re-asks for one page's worth with no facets and no highlighting
+  (~30 ms even under load), marks facets degraded, and counts `xustive_degraded_total{stage=
+  "retrieval"}`. Worse ranking, no chips — but results, and the reader cannot tell a search that
+  returns nothing from an outage.
+- The transport `TimeoutLayer` sits **1 s above** the search deadline (`SEARCH_GRACE_MS`), so the
+  ladder answers a degraded page before the layer can cut a bare 504.
+- Dev config: `api.timeout_search_ms` 1500 → 2500 (the ladder's floors are fractions, so every
+  stage scales), `search.timeout_ms` 800 → 1200.
+- The web error page names the cause — slow engine, rate limit, engine unavailable, service
+  unreachable (restarting) — and always offers a "Try again" link.
+
+**Measured after:** 55 searches under the same indexing load → **55 × 200**, mean 343 ms
+(one 500 seen once during the run, not reproduced across 30 more — noted below if found).
