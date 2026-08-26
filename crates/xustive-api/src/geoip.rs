@@ -156,6 +156,50 @@ mod tests {
         assert!(GeoIp::load("data/geoip/definitely-not-here.mmdb").is_none());
     }
 
+    /// The privacy pin for [[ADR-0020]] (M8-T10.3).
+    ///
+    /// Read from this module's own source, the way `lint-telemetry.sh` reads the crates and
+    /// `dataage` reads `alerts.yml`. A behavioural test cannot prove a negative — that the address
+    /// never reaches a log, a store, or a cache key — but a source assertion can prove nobody has
+    /// written the code that would do it, and it fails loudly on the commit that tries.
+    #[test]
+    fn the_client_address_never_reaches_a_log_a_store_or_a_cache_key() {
+        let source = include_str!("geoip.rs");
+        // Everything before the test module. Only the real code is in scope; the tests below
+        // legitimately name addresses.
+        let code = &source[..source.find("#[cfg(test)]").expect("a test module exists")];
+
+        for forbidden in ["tracing::info!", "tracing::debug!", "tracing::warn!(ip"] {
+            assert!(
+                !code.contains(forbidden),
+                "geoip must not log: found {forbidden}. The address is the one value ADR-0020 \
+                 promises never travels — a log line is travelling."
+            );
+        }
+        // Mutable retention only. `&'static Wilaya` is a compile-time table, not a reader's data,
+        // and an over-eager pattern that flagged it would have to be deleted rather than heeded —
+        // which is how a guard stops being read.
+        for forbidden in [
+            "insert(",
+            ".put(",
+            ".set(",
+            "HashMap",
+            "static mut",
+            "OnceLock",
+            "LazyLock",
+            "Mutex",
+            "RwLock",
+        ] {
+            assert!(
+                !code.contains(forbidden),
+                "geoip must not retain anything derived from an address: found {forbidden}. \
+                 The value is request-scoped, which is why there is nothing to expire."
+            );
+        }
+        // And the one warning that does exist must be about the database file, never a reader.
+        assert!(code.contains("geoip database present but unreadable"));
+    }
+
     #[test]
     fn the_return_type_is_a_wilaya_so_a_coordinate_cannot_travel_further() {
         // Not a behavioural test so much as a pinned design decision: `wilaya_of` returns a

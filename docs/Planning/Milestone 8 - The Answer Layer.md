@@ -282,18 +282,18 @@ places a model is actually better than a table.
 
 ## M8-T10 — Gates
 
-- [ ] M8-T10.1 `make egress-test` green with every new component in the topology: the serving plane
+- [x] M8-T10.1 `make egress-test` green with every new component in the topology: the serving plane
       still reaches nothing. A new fetcher on `ingest` gets its own assertion, per the
       [[ADR-0017 - Query-Time Federation with External Metasearch]] commitment that no-egress cannot
       silently widen
-- [ ] M8-T10.2 Telemetry lint green: no entity name, place name, or expression anywhere near a log
+- [x] M8-T10.2 Telemetry lint green: no entity name, place name, or expression anywhere near a log
       line, metric label, or span attribute. A resolved entity id is not exempt — it is a query with
       a lookup applied
-- [ ] M8-T10.3 A privacy test that the client address reaches the location lookup and **no further**,
+- [x] M8-T10.3 A privacy test that the client address reaches the location lookup and **no further**,
       pinned the way `ratelimit.rs:390` pins its own rule, so a future change to accept
       `X-Forwarded-For` or to cache by IP has to delete a test that says why not
-- [ ] M8-T10.4 Panel latency: p95 ≤ 100 ms served from the local store, measured cold
-- [ ] M8-T10.5 Precision: zero wrong-entity panels across the T02.5 corpus. Not "few"
+- [x] M8-T10.4 Panel latency: p95 ≤ 100 ms served from the local store, measured cold
+- [x] M8-T10.5 Precision: zero wrong-entity panels across the T02.5 corpus. Not "few"
 - [ ] M8-T10.6 Every new dependency clears `cargo deny check licenses` — the
       [[Qwen licence|non-commercial-model]] lesson, applied before the dependency lands rather than
       after
