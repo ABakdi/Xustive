@@ -57,6 +57,21 @@ pub async fn answer(state: &AppState, query: &str, ui_lang: &str) -> Option<xust
         })
         .collect();
 
+    // The hourly series, rounded on the way out. The card draws it as a graph; a client that
+    // ignores it loses nothing, which is why an absent series is not an error anywhere.
+    let hours: Vec<serde_json::Value> = f
+        .hours
+        .iter()
+        .map(|h| {
+            serde_json::json!({
+                "time": h.time,
+                "temperature": h.temperature_c.round(),
+                "precipitation_chance": h.precipitation_chance.round(),
+                "code": h.code,
+            })
+        })
+        .collect();
+
     Some(xustive_tools::Answer {
         tool: "weather",
         confidence: request.confidence,
@@ -70,6 +85,7 @@ pub async fn answer(state: &AppState, query: &str, ui_lang: &str) -> Option<xust
             "wind_kmh": f.wind_kmh.round(),
             "humidity": f.humidity.round(),
             "days": days,
+            "hours": hours,
             // Carried into the card. A reader cannot judge a number we did not measure ourselves
             // without knowing who did.
             "source": cached.source,

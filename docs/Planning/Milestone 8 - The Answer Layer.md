@@ -199,7 +199,7 @@ places a model is actually better than a table.
       Never logged, never cached, never sent anywhere. Governed by
       [[ADR-0020 - Approximate Location from a Local Database]]; the discipline is the one
       `ratelimit.rs` already applies to the same value
-- [ ] M8-T05.2 Extend the fetcher to hourly (48 h) and seven days, with the existing validation,
+- [x] M8-T05.2 Extend the fetcher to hourly (48 h) and seven days, with the existing validation,
       movement guard and partial-write refusal. Cadence and cache key version bump together
 - [ ] M8-T05.3 Render the forecast that has been on the wire since M1B: today in full, a day strip,
       and a **week** toggle

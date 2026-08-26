@@ -19,8 +19,11 @@ use crate::{Cached, Dataset, FetchError};
 pub struct Weather;
 
 impl Dataset for Weather {
+    /// Bumped to `v2` for M8-T05.2, which added the hourly series and the sixth and seventh days.
+    /// A version rather than a migration: entries written by the older build simply stop being
+    /// read and age out, which is cheaper and safer than teaching the reader two shapes.
     fn key_prefix(&self) -> &'static str {
-        "tool:weather:v1"
+        "tool:weather:v2"
     }
 
     fn cadence(&self) -> Duration {
@@ -44,6 +47,21 @@ pub struct Forecast {
     pub wind_kmh: f64,
     pub humidity: f64,
     pub days: Vec<Day>,
+    /// The next 48 hours. Defaulted so a `v1` entry still deserialises during a rollback.
+    #[serde(default)]
+    pub hours: Vec<Hour>,
+}
+
+/// One hour of the near-term series (M8-T05.2), which is what the graph is drawn from.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Hour {
+    /// `YYYY-MM-DDTHH:MM`, local to Algiers like every other time here.
+    pub time: String,
+    pub temperature_c: f64,
+    /// Probability of precipitation, 0-100. The second series on the graph, and the one people
+    /// actually decide things on.
+    pub precipitation_chance: f64,
+    pub code: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -66,11 +84,25 @@ pub fn key(prefix: &str, wilaya: u8) -> String {
 const MIN_C: f64 = -25.0;
 const MAX_C: f64 = 58.0;
 
+/// How much of the hourly series to keep. Two days: beyond that an hourly figure is false
+/// precision, and a graph with 168 points is a smear rather than a forecast.
+const HOURS_KEPT: usize = 48;
+
 /// The Open-Meteo response, as much of it as we use.
 #[derive(Debug, Deserialize)]
 struct ApiResponse {
     current: Current,
     daily: Daily,
+    #[serde(default)]
+    hourly: Option<Hourly>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Hourly {
+    time: Vec<String>,
+    temperature_2m: Vec<f64>,
+    precipitation_probability: Vec<Option<f64>>,
+    weather_code: Vec<u8>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -102,7 +134,8 @@ pub async fn fetch(
         "https://api.open-meteo.com/v1/forecast?latitude={:.4}&longitude={:.4}\
          &current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m\
          &daily=weather_code,temperature_2m_max,temperature_2m_min\
-         &timezone=Africa%2FAlgiers&forecast_days=5",
+         &hourly=temperature_2m,precipitation_probability,weather_code\
+         &timezone=Africa%2FAlgiers&forecast_days=7",
         wilaya.latitude, wilaya.longitude
     );
 
@@ -200,6 +233,44 @@ fn build(
         }
     }
 
+    // The hourly series is capped at two days: beyond that an hourly number is false precision,
+    // and the graph it feeds is unreadable at 168 points anyway.
+    let hours: Vec<Hour> = match &body.hourly {
+        Some(h) => h
+            .time
+            .iter()
+            .zip(h.temperature_2m.iter())
+            .zip(h.weather_code.iter())
+            .enumerate()
+            .take(HOURS_KEPT)
+            .map(|(i, ((time, temp), code))| Hour {
+                time: time.clone(),
+                temperature_c: *temp,
+                // Open-Meteo sends null past the model horizon rather than omitting the entry, so
+                // a missing probability is "not forecast", which is 0 rather than a rejection.
+                precipitation_chance: h
+                    .precipitation_probability
+                    .get(i)
+                    .copied()
+                    .flatten()
+                    .unwrap_or(0.0),
+                code: *code,
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+    for hour in &hours {
+        validate::bounded("hourly temperature", hour.temperature_c, MIN_C, MAX_C)
+            .map_err(reject)?;
+        validate::bounded(
+            "precipitation chance",
+            hour.precipitation_chance,
+            0.0,
+            100.0,
+        )
+        .map_err(reject)?;
+    }
+
     Ok(Cached {
         fetched_at: now,
         observed_at,
@@ -213,6 +284,7 @@ fn build(
             wind_kmh: body.current.wind_speed_10m,
             humidity: body.current.relative_humidity_2m,
             days,
+            hours,
         },
     })
 }
@@ -265,12 +337,48 @@ mod tests {
                 temperature_2m_min: vec![22.0, 23.0],
                 weather_code: vec![0, 1],
             },
+            hourly: Some(Hourly {
+                time: vec!["2026-08-07T11:00".into(), "2026-08-07T12:00".into()],
+                temperature_2m: vec![temp, temp + 0.5],
+                precipitation_probability: vec![Some(10.0), None],
+                weather_code: vec![1, 2],
+            }),
         }
     }
 
     /// 7 August 2026, 12:00 Algiers time.
     fn now() -> i64 {
         parse_local_time("2026-08-07T12:00").unwrap()
+    }
+
+    #[test]
+    fn the_hourly_series_is_kept_and_a_null_probability_reads_as_not_forecast() {
+        // Open-Meteo sends null past the model horizon rather than omitting the entry. That is
+        // "not forecast", which is 0 — rejecting the whole response over it would lose a valid
+        // forecast to a field nobody reads.
+        let cached = build(response(31.0, "2026-08-07T11:30"), algiers(), now(), None).unwrap();
+        assert_eq!(cached.payload.hours.len(), 2);
+        assert_eq!(cached.payload.hours[0].precipitation_chance, 10.0);
+        assert_eq!(cached.payload.hours[1].precipitation_chance, 0.0);
+    }
+
+    #[test]
+    fn an_absent_hourly_block_is_not_a_rejection() {
+        // The card's headline is the current reading; the graph is an addition. A publisher that
+        // stopped sending hourly data should cost the graph, not the weather.
+        let mut body = response(31.0, "2026-08-07T11:30");
+        body.hourly = None;
+        let cached = build(body, algiers(), now(), None).unwrap();
+        assert!(cached.payload.hours.is_empty());
+        assert_eq!(cached.payload.temperature_c, 31.0);
+    }
+
+    #[test]
+    fn an_impossible_hourly_temperature_is_refused_like_any_other() {
+        // The hourly series gets the same bounds as everything else — it is the same sensor.
+        let mut body = response(31.0, "2026-08-07T11:30");
+        body.hourly.as_mut().unwrap().temperature_2m = vec![31.0, 900.0];
+        assert!(build(body, algiers(), now(), None).is_err());
     }
 
     #[test]
