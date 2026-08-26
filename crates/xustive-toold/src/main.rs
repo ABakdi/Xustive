@@ -43,6 +43,19 @@ struct Args {
     #[arg(long, default_value = "data/knowledge/seeds.tsv")]
     seeds: String,
 
+    /// The ephemeral signals store holding recorded entity demand. Empty disables the demand
+    /// queue, which is the default: it should only run where the operator turned recording on.
+    #[arg(long, env = "XUSTIVE_SIGNALS_URL", default_value = "")]
+    signals: String,
+
+    /// The k-anonymity floor demand must clear. Must match the serving plane's, or this would read
+    /// counts the other side considered too small to surface.
+    #[arg(long, default_value_t = 20)]
+    k_anonymity: u32,
+
+    #[arg(long, default_value_t = 30)]
+    demand_window_days: u64,
+
     /// Harvest an entity at most this often. Facts about a person or a film change on the scale of
     /// weeks; re-fetching them hourly would be traffic spent on nothing.
     #[arg(long, default_value_t = 7 * 24 * 3600)]
@@ -215,6 +228,14 @@ async fn harvest_knowledge(
         )
         .await?;
 
+    // Names people asked for that the store does not hold (M8-T09.2). Read from the same
+    // k-anonymous store the serving plane writes to, so a name fewer than k people searched for
+    // was never recorded and cannot be harvested. Resolved to ids and appended to the seed set for
+    // this pass only — nothing is written back to the seed file, because promoting a name into a
+    // curated list is a human's decision.
+    let demand = demand_seeds(client, &args, &seeds).await;
+    let seeds: Vec<knowledge::Seed> = seeds.into_iter().chain(demand).collect();
+
     let now = xustive_core::now_unix();
     // Only what is due. Facts about a person or a film change on the scale of weeks, so
     // re-fetching everything every pass would be traffic spent on nothing and rudeness towards a
@@ -349,4 +370,49 @@ async fn fetch_rates(client: &reqwest::Client, store: &Store) -> anyhow::Result<
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(())
+}
+
+/// Turn recorded entity demand into seeds for this pass.
+///
+/// Best-effort throughout: no signals store, no demand, no harm. The cap exists because this runs
+/// every pass and a large backlog would otherwise turn one pass into a very long one.
+async fn demand_seeds(
+    client: &reqwest::Client,
+    args: &Args,
+    existing: &[knowledge::Seed],
+) -> Vec<knowledge::Seed> {
+    const MAX_PER_PASS: usize = 10;
+
+    if args.signals.trim().is_empty() {
+        return Vec::new();
+    }
+    let Some(store) = xustive_ingest::weak_coverage::WeakCoverage::connect_in(
+        &args.signals,
+        "entity",
+        args.k_anonymity.max(1),
+        Duration::from_secs(args.demand_window_days * 86_400),
+    ) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    for term in store.weak_terms(MAX_PER_PASS * 3).await {
+        if out.len() >= MAX_PER_PASS {
+            break;
+        }
+        match knowledge::resolve_name(client, &term.term, "en").await {
+            Ok(Some(id)) if !existing.iter().any(|s| s.id == id) => {
+                tracing::info!(id = %id, "harvesting an entity people asked for");
+                out.push(knowledge::Seed {
+                    id,
+                    // No expected name: nobody wrote one, so there is nothing to check against.
+                    expect: String::new(),
+                    note: "from demand".into(),
+                });
+            }
+            Ok(_) => {}
+            Err(e) => tracing::debug!(error = %e, "could not resolve a demanded name"),
+        }
+    }
+    out
 }

@@ -28,10 +28,16 @@ export default function EntityPanel({
   // `undefined` is "still asking", `null` is "asked, and there is nothing" — a distinction the
   // panel's whole rendering depends on and which a single nullable would lose.
   const [panel, setPanel] = useState<Panel | null | undefined>(undefined)
+  // Whether the fetch has actually started, which is only true once an effect has run — so only
+  // ever in a browser with JavaScript. Without it the skeleton would be server-rendered into the
+  // HTML and, with scripting off, would sit there forever: a permanently loading frame, which is
+  // worse than no rail at all and is what M8-T08.5 exists to prevent.
+  const [asking, setAsking] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
     setPanel(undefined)
+    setAsking(true)
     knowledgePanel(q, lang, controller.signal)
       .then((data) => setPanel(data))
       // An aborted fetch is a re-render, not a failure. Anything else is treated as "no panel",
@@ -40,6 +46,7 @@ export default function EntityPanel({
     return () => controller.abort()
   }, [q, lang])
 
+  if (!asking) return null
   if (panel === undefined) return <PanelSkeleton className={className} label={t.knowledgeLoading} />
   if (!panel) return null
 

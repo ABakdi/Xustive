@@ -10,6 +10,7 @@ description = "Scheduled fetch of external tool data into a cache the serving pl
 xustive-core = { path = "../xustive-core" }
 xustive-tools = { path = "../xustive-tools" }
 xustive-knowledge = { path = "../xustive-knowledge" }
+xustive-ingest = { path = "../xustive-ingest" }
 xustive-search = { path = "../xustive-search" }
 serde.workspace = true
 serde_json.workspace = true

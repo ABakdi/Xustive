@@ -125,6 +125,32 @@ pub async fn resolve_labels(
     Ok(out)
 }
 
+/// Resolve a name to an entity id (M8-T09.2).
+///
+/// Used only for the demand queue — names people searched for that the store does not hold. Seeds
+/// written by a human keep their expected-name check; a name promoted from demand has no human
+/// expectation to check against, which is why [`matches_expectation`] waves those through.
+///
+/// Takes the publisher's own top hit rather than re-ranking: this is a harvest decision, not a
+/// serving one, and a wrong entity harvested is a wasted fetch rather than a wrong panel — the
+/// resolver still has to accept it at query time before any reader sees it.
+pub async fn resolve_name(
+    client: &reqwest::Client,
+    name: &str,
+    lang: &str,
+) -> Result<Option<String>, FetchError> {
+    let url = format!(
+        "{WIKIDATA_API}?action=wbsearchentities&search={}&language={lang}&uselang={lang}&type=item&limit=1&format=json",
+        urlencode(name)
+    );
+    let body: Json = get_json(client, &url).await?;
+    tokio::time::sleep(PACE).await;
+    Ok(body
+        .pointer("/search/0/id")
+        .and_then(Json::as_str)
+        .map(str::to_string))
+}
+
 /// Every entity id referenced by a fact whose label is still unknown.
 pub fn unresolved_references(harvested: &[Harvested]) -> Vec<String> {
     let mut ids: BTreeSet<String> = BTreeSet::new();

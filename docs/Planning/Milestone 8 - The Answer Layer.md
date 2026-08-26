@@ -264,10 +264,10 @@ places a model is actually better than a table.
       than a peer once T03.6 lands
 - [x] M8-T08.4 RTL and bidi correctness throughout, `scripts/lint-bidi.sh` green: Latin titles,
       years and scores inside Arabic panels are `<bdi>`-isolated
-- [ ] M8-T08.5 No-JS: the tool cards (weather, currency, calculator) are server-rendered and must
+- [x] M8-T08.5 No-JS: the tool cards (weather, currency, calculator) are server-rendered and must
       work with JavaScript off, as they do now. The entity panel is the one part that legitimately
       requires it, and its absence must degrade to nothing visible rather than to a broken frame
-- [ ] M8-T08.6 Bundle budget holds. `scripts/bundle-budget.sh` is the gate; an SVG sparkline and a
+- [x] M8-T08.6 Bundle budget holds. `scripts/bundle-budget.sh` is the gate; an SVG sparkline and a
       panel component must not cost what a chart library costs
 
 ## M8-T09 — Demand-driven coverage
@@ -275,7 +275,7 @@ places a model is actually better than a table.
 - [x] M8-T09.1 A resolution miss is recorded through the **existing k-anonymous weak-coverage
       mechanism** — the same floor, the same window, the same ephemeral signals instance. An entity
       asked for by fewer than `k` people is never written anywhere
-- [ ] M8-T09.2 The harvester works that queue: what people actually ask for gets fetched, so the
+- [x] M8-T09.2 The harvester works that queue: what people actually ask for gets fetched, so the
       store converges on this audience rather than on a guess about it
 - [x] M8-T09.3 Surfaced on the admin console beside weak coverage — including, honestly, when
       nothing is chasing the queue

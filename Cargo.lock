@@ -4015,6 +4015,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "xustive-core",
+ "xustive-ingest",
  "xustive-knowledge",
  "xustive-search",
  "xustive-tools",
