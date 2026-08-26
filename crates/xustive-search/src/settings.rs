@@ -108,7 +108,11 @@ pub fn documents_settings() -> Value {
             "content_type",
             // So image-similarity results can be resolved back to documents with `id IN [...]`
             // in one query (M3-T05). The primary key is not filterable unless declared.
-            "id"
+            "id",
+            // The Images and Videos verticals (M9) filter on the media an article carries.
+            // Meilisearch flattens arrays of objects, so `media.type` selects any document with
+            // at least one entry of that type — a settings change, not a reindex.
+            "media.type", "media.provider"
         ],
         "sortableAttributes": [
             "published_at", "crawled_at", "quality_score", "engagement.likes"

@@ -212,6 +212,10 @@ pub struct Media {
     /// Perceptual hash, for image dedup and embedding reuse.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phash: Option<String>,
+    /// For video: where a click takes the reader — `youtube`, `dailymotion`, `vimeo`, `self`
+    /// (M9-T01.3). Named on the tile because leaving our site is the reader's choice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

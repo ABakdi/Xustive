@@ -499,6 +499,7 @@ mod tests {
             published_at: Some(123),
             is_nsfw: false,
             phash: Some("abcd".into()),
+            provider: None,
         };
         let v = serde_json::to_value(&p).unwrap();
         let back: Payload = serde_json::from_value(v).unwrap();

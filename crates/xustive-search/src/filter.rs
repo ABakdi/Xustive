@@ -24,6 +24,9 @@ pub struct Filters {
     pub domain: Option<String>,
     /// Fetched MIME, set by the Files vertical to select documents (`application/pdf`).
     pub content_type: Option<String>,
+    /// `image` or `video`: the Images and Videos verticals (M9). A saved filter over `media.type`,
+    /// which Meilisearch flattens out of the array of objects, so no reindex was needed.
+    pub media_kind: Option<String>,
     /// Hide documents suppressed as spam. On by default.
     pub exclude_spam: bool,
     /// Hide documents whose publish date we guessed. Set when a date filter is active, because
@@ -40,6 +43,7 @@ impl Filters {
             && self.published_to.is_none()
             && self.domain.is_none()
             && self.content_type.is_none()
+            && self.media_kind.is_none()
     }
 
     /// Render as a Meilisearch filter expression.
@@ -78,6 +82,9 @@ impl Filters {
         }
         if let Some(ct) = &self.content_type {
             clauses.push(format!("content_type = {}", quote(ct)));
+        }
+        if let Some(kind) = &self.media_kind {
+            clauses.push(format!("media.type = {}", quote(kind)));
         }
         if self.exclude_spam {
             clauses.push(format!("spam_score < {spam_threshold}"));

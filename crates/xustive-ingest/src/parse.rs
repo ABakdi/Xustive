@@ -416,6 +416,7 @@ impl Parser {
                     ocr_lang: None,
                     embedding_id: None,
                     phash: None,
+                    provider: None,
                 });
             }
         }
@@ -448,11 +449,49 @@ impl Parser {
                             ocr_lang: None,
                             embedding_id: None,
                             phash: None,
+                            provider: None,
                         });
                     }
                 }
             }
         }
+
+        // Video (M9-T01). Metadata only, never bytes: `og:video`, the page's own `<video>`, and
+        // the embed players of the known providers. `<iframe>` is on the invisible list for
+        // *text* and stays there; this reads its `src`, which is a different thing.
+        let mut videos: Vec<Media> = Vec::new();
+        let mut push_video = |v: crate::video::Video| {
+            if videos.len() < self.config.max_media && !videos.iter().any(|m| m.url == v.watch_url)
+            {
+                videos.push(v.into_media());
+            }
+        };
+        for key in ["og:video", "og:video:url", "og:video:secure_url"] {
+            if let Some(v) = meta(doc, "property", key).and_then(|u| crate::video::from_url(&u)) {
+                push_video(v);
+            }
+        }
+        if let Ok(sel) = Selector::parse("iframe[src], embed[src]") {
+            for el in doc.select(&sel) {
+                if let Some(v) = el
+                    .value()
+                    .attr("src")
+                    .and_then(|src| absolutise(src, base))
+                    .and_then(|u| crate::video::from_url(&u))
+                {
+                    push_video(v);
+                }
+            }
+        }
+        if let Ok(sel) = Selector::parse("video") {
+            for el in doc.select(&sel) {
+                // The poster is an image URL and safe to keep; `src` is a stream and is not.
+                let poster = el.value().attr("poster").and_then(|p| absolutise(p, base));
+                push_video(crate::video::self_hosted(base, poster));
+                break; // One self-hosted entry per page: the page *is* the watch page.
+            }
+        }
+        out.extend(videos);
         out
     }
 
@@ -1286,5 +1325,74 @@ mod tests {
         let t = truncate_bytes(&s, 50);
         assert!(t.len() <= 50);
         assert!(std::str::from_utf8(t.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn embedded_players_become_video_media_pointing_at_the_watch_page() {
+        // M9-T01.1: iframes stay invisible for *text* but their src is read for video. The stored
+        // url is the watch page, never the embed or a stream.
+        let html = format!(
+            r#"<html><head><meta property="og:video" content="https://www.youtube.com/watch?v=dQw4w9WgXcQ"></head>
+            <body><article><p>{LONG_AR}</p>
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0"></iframe>
+            <iframe src="https://geo.dailymotion.com/embed/video/x8abcde"></iframe>
+            <iframe src="https://example.com/ads/frame"></iframe>
+            </article></body></html>"#
+        );
+        let r = p()
+            .parse(&html, "https://example.dz/a", "test", SourceType::Web)
+            .unwrap();
+        let videos: Vec<&xustive_core::model::Media> = r
+            .document
+            .media
+            .iter()
+            .filter(|m| m.kind == xustive_core::model::MediaKind::Video)
+            .collect();
+        // og:video and the YouTube iframe are the same video: one entry, not two.
+        assert_eq!(videos.len(), 2, "{videos:?}");
+        assert_eq!(videos[0].url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+        assert_eq!(videos[0].provider.as_deref(), Some("youtube"));
+        assert!(videos[0]
+            .thumb_url
+            .as_deref()
+            .unwrap()
+            .contains("hqdefault"));
+        assert_eq!(videos[1].provider.as_deref(), Some("dailymotion"));
+        // The ad frame is not a video.
+        assert!(!videos.iter().any(|v| v.url.contains("example.com")));
+        // And the iframe text is still invisible to the body.
+        assert!(!r.document.body.contains("youtube"));
+    }
+
+    #[test]
+    fn a_self_hosted_video_keeps_its_poster_and_never_its_stream() {
+        let html = format!(
+            r#"<html><body><article><p>{LONG_AR}</p>
+            <video src="/media/clip.mp4" poster="/media/clip.jpg"></video>
+            </article></body></html>"#
+        );
+        let r = p()
+            .parse(&html, "https://example.dz/a", "test", SourceType::Web)
+            .unwrap();
+        let v = r
+            .document
+            .media
+            .iter()
+            .find(|m| m.kind == xustive_core::model::MediaKind::Video)
+            .expect("a video entry");
+        assert_eq!(
+            v.url, "https://example.dz/a",
+            "the watch page is the page itself"
+        );
+        assert_eq!(
+            v.thumb_url.as_deref(),
+            Some("https://example.dz/media/clip.jpg")
+        );
+        assert_eq!(v.provider.as_deref(), Some("self"));
+        let all = serde_json::to_string(&r.document.media).unwrap();
+        assert!(
+            !all.contains("clip.mp4"),
+            "a stream URL must never be stored"
+        );
     }
 }

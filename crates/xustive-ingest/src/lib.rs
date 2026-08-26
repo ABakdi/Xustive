@@ -47,6 +47,7 @@ pub mod sitemap_poll;
 pub mod spam;
 pub mod text_embed;
 pub mod topics;
+pub mod video;
 pub mod weak_coverage;
 
 pub use fetch::{FetchConfig, FetchError, Fetched, Fetcher};

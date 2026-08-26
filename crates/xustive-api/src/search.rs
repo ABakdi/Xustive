@@ -108,6 +108,72 @@ pub struct ResultCard {
     /// search returns it as a normal local result and this flag disappears.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub from_web: bool,
+    /// The media an article carries, for the Images and Videos tabs (M9-T01.6). Capped so one
+    /// gallery article cannot fill a whole grid; empty for ordinary results.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub media: Vec<MediaOut>,
+}
+
+/// One image or video on a result, as the tile needs it. The upstream URL is never handed to
+/// the browser as-is — the web tier signs and proxies it ([[ADR-0021]]).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaOut {
+    pub kind: String,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumb_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub width: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub height: u32,
+}
+
+fn is_zero_u32(n: &u32) -> bool {
+    *n == 0
+}
+
+/// How many images one page may contribute to a grid. Three keeps a photo gallery from being the
+/// whole first screen while still showing that a page has several.
+const MEDIA_PER_CARD: usize = 3;
+
+/// The media entries worth putting on the wire.
+///
+/// Tracking pixels and layout spacers were already dropped at parse time; what is left here is
+/// the `og:image` and the article figures. Videos are all kept — a page rarely has more than one.
+fn media_of(hit: &Value) -> Vec<MediaOut> {
+    let Some(items) = hit.get("media").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut images = 0usize;
+    items
+        .iter()
+        .filter_map(|m| {
+            let kind = m.get("type")?.as_str()?;
+            let url = m.get("url")?.as_str()?;
+            if kind == "image" {
+                images += 1;
+                if images > MEDIA_PER_CARD {
+                    return None;
+                }
+            }
+            Some(MediaOut {
+                kind: kind.to_string(),
+                url: url.to_string(),
+                thumb_url: m
+                    .get("thumb_url")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                provider: m
+                    .get("provider")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                width: m.get("width").and_then(Value::as_u64).unwrap_or(0) as u32,
+                height: m.get("height").and_then(Value::as_u64).unwrap_or(0) as u32,
+            })
+        })
+        .collect()
 }
 
 fn is_zero(n: &usize) -> bool {
@@ -1107,6 +1173,10 @@ fn parse_filters(p: &SearchParams) -> Result<Filters, ApiError> {
         Some("files") => {
             f.content_type = Some("application/pdf".to_string());
         }
+        // Images and Videos (M9): pages that carry media of that kind. A tile is a page that has
+        // the picture, ranked by the page's relevance and the image's OCR text.
+        Some("images") => f.media_kind = Some("image".to_string()),
+        Some("videos") => f.media_kind = Some("video".to_string()),
         _ => {}
     }
 
@@ -1209,6 +1279,7 @@ pub(crate) fn to_card(hit: &Value) -> ResultCard {
         sentiment,
         engagement: hit.get("engagement").cloned().unwrap_or(Value::Null),
         language: s(hit, "language"),
+        media: media_of(hit),
         thumbnail_url: hit
             .get("media")
             .and_then(Value::as_array)
@@ -1268,6 +1339,7 @@ fn federated_card(
     id: String,
 ) -> ResultCard {
     ResultCard {
+        media: Vec::new(),
         id,
         title: if hit.title.is_empty() {
             canonical.to_string()

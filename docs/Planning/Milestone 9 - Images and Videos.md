@@ -64,21 +64,21 @@ a click — the reader chooses the disclosure. And no code path downloads video 
 
 ## M9-T01 — Video extraction and a filterable media type
 
-- [ ] M9-T01.1 The parser reads `og:video` / `og:video:url`, `<video src>` and `<video><source>`,
+- [x] M9-T01.1 The parser reads `og:video` / `og:video:url`, `<video src>` and `<video><source>`,
       and the embed iframes of YouTube, Dailymotion and Vimeo — `<iframe>` comes **off** the
       invisible list for this one purpose and stays invisible for text. Each becomes a
       `Media { kind: Video }` whose `url` is the **watch page**, never a stream
-- [ ] M9-T01.2 A poster for every video that has one derivable without a fetch: YouTube and
+- [x] M9-T01.2 A poster for every video that has one derivable without a fetch: YouTube and
       Dailymotion publish thumbnails at URLs computable from the id. Stored in `thumb_url`, so the
       tab can render on day one with zero extra crawling
-- [ ] M9-T01.3 `provider` on video media (`youtube` / `dailymotion` / `vimeo` / `self`), because
+- [x] M9-T01.3 `provider` on video media (`youtube` / `dailymotion` / `vimeo` / `self`), because
       the tile names where a click will take the reader
-- [ ] M9-T01.4 **No video bytes, ever.** A test greps the fetcher for video MIME acceptance and
+- [x] M9-T01.4 **No video bytes, ever.** A test greps the fetcher for video MIME acceptance and
       the parser for stream URLs, and fails on the commit that adds either
-- [ ] M9-T01.5 `media.type` and `media.provider` become filterable; `Filters` gains `media_kind`;
+- [x] M9-T01.5 `media.type` and `media.provider` become filterable; `Filters` gains `media_kind`;
       `?v=images` and `?v=videos` map to it beside `news` and `files`. Unknown verticals still fall
       back to All
-- [ ] M9-T01.6 The result card carries `media[]` on the wire — url, thumb, kind, provider,
+- [x] M9-T01.6 The result card carries `media[]` on the wire — url, thumb, kind, provider,
       dimensions — capped per page so one gallery article cannot fill a whole grid
 
 ## M9-T02 — The signed thumbnail proxy
