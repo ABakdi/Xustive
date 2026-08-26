@@ -1,0 +1,11 @@
+[package]
+name = "xustive-knowledge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Entities the product knows about: the model, the type table, and Wikidata parsing."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

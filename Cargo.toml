@@ -7,6 +7,7 @@ members = [
     "crates/xustive-queue",
     "crates/xustive-toold",
     "crates/xustive-lang",
+    "crates/xustive-knowledge",
     "crates/xustive-ingest",
     "crates/xustive-media",
     "crates/xustive-vector",

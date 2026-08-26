@@ -3868,6 +3868,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "xustive-knowledge"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "xustive-lang"
 version = "0.1.0"
 dependencies = [
