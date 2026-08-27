@@ -1,7 +1,7 @@
 ---
 tags:
   - adr
-status: accepted
+status: accepted, amended by ADR-0029 (the picture may now go to a reverse-image service without identity; words-only stays the default until one is wired)
 date: 2026-08-27
 updated: 2026-08-27
 ---

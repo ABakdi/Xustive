@@ -1,7 +1,7 @@
 ---
 tags: [adr]
 adr-id: "0020"
-status: partly implemented
+status: partly implemented; amended by ADR-0029 on 2026-08-27 — precise location may be used later with consent under the first-party data ADR; the local database stays the default
 date: 2026-08-26
 ---
 # ADR-0020 - Approximate Location from a Local Database

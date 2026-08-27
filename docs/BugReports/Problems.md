@@ -8,6 +8,10 @@ status: resolved
 ---
 # Problems Register
 
+> **2026-08-27:** a second register, [[Privacy Relaxation Audit]], lists what the original
+> privacy posture held back now that [[ADR-0029 - Raw Queries May Leave, Identities Never; First-Party Data Comes Later]]
+> has relaxed it — seventeen items, ranked, none fixed yet.
+
 > All three problems are solved; each entry links to its solution document, indexed in
 > [[README|Solutions/]] ([Solutions/README.md](<Solutions/README.md>)). The analyses below are
 > preserved as the record of what was wrong.

@@ -62,6 +62,13 @@ M4 is a redesign away; each is a corpus, a run, or a schedule away.
 
 ---
 
+
+> **Decision 2026-08-27 — [[ADR-0029 - Raw Queries May Leave, Identities Never; First-Party Data Comes Later]].**
+> Raw queries, images and audio may now go to third parties (never an identity); first-party
+> collection comes later under its own ADR. Everything that decision unblocks is ranked in
+> [[Privacy Relaxation Audit]] (PRIV-001…017); PRIV-001 (the policy and README must tell the
+> truth first) and PRIV-002 (one audited egress client) come before any feature.
+
 ## 3. Confirmed Open Items
 
 Verified open on 2026-08-27. Grouped by what unblocks them.

@@ -2,7 +2,7 @@
 tags:
   - adr
 adr-id: "0008"
-status: partly implemented
+status: partly implemented; amended by ADR-0029 on 2026-08-27 — raw queries may leave to third parties without identity, the no-identity half stands
 date: 2026-08-06
 ---
 

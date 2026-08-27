@@ -163,6 +163,8 @@ The current, verified picture — open items, what is deliberately not built, an
 is kept in **[TODO](docs/Planning/TODO.md)**; the problem register is
 [Problems](docs/BugReports/Problems.md).
 
+> **Decision of 2026-08-27 ([ADR-0029](docs/Decisions/ADR-0029%20-%20Raw%20Queries%20May%20Leave%2C%20Identities%20Never%3B%20First-Party%20Data%20Comes%20Later.md)):** the privacy posture below is being relaxed — raw queries, images and recordings may be sent to third-party services, never with an identity; first-party collection comes later. The guarantees listed here describe the build *as it is today*; the [audit](docs/BugReports/Privacy%20Relaxation%20Audit.md) lists what changes, and PRIV-001 there is rewriting this section and the privacy page truthfully before anything goes out.
+
 ## Guarantees enforced by the build
 
 - **No query logging.** `scripts/lint-telemetry.sh` fails CI if a query or credential field appears
@@ -274,6 +276,7 @@ Why the system is the way it is. Index: [Decision Log](docs/Decisions/Decision%2
 - [ADR-0026 - The Reader's Language as a Bounded Ranking Signal](docs/Decisions/ADR-0026%20-%20The%20Reader%27s%20Language%20as%20a%20Bounded%20Ranking%20Signal.md)
 - [ADR-0027 - Narrow the Search Under Load Instead of Failing](docs/Decisions/ADR-0027%20-%20Narrow%20the%20Search%20Under%20Load%20Instead%20of%20Failing.md)
 - [ADR-0028 - Reverse Image Search Sends Words to the Web, Never the Picture](docs/Decisions/ADR-0028%20-%20Reverse%20Image%20Search%20Sends%20Words%20to%20the%20Web%2C%20Never%20the%20Picture.md)
+- [ADR-0029 - Raw Queries May Leave, Identities Never; First-Party Data Comes Later](docs/Decisions/ADR-0029%20-%20Raw%20Queries%20May%20Leave%2C%20Identities%20Never%3B%20First-Party%20Data%20Comes%20Later.md)
 
 ### User interface
 
@@ -325,6 +328,7 @@ differently says so.
 - [Milestone 10 - Reverse Image Search](docs/Planning/Milestone%2010%20-%20Reverse%20Image%20Search.md)
 - [TODO](docs/Planning/TODO.md) — the verified current picture
 - [Problems](docs/BugReports/Problems.md) — the problem register
+- [Privacy Relaxation Audit](docs/BugReports/Privacy%20Relaxation%20Audit.md) — what the original privacy posture held back, ranked, after ADR-0029
 - [2026-08-25 - Code Audit Findings](docs/BugReports/2026-08-25%20-%20Code%20Audit%20Findings.md) — the audit findings (BUG-0xx)
 - [PROB-001 - Bounded Frontier and Queue](docs/BugReports/Solutions/PROB-001%20-%20Bounded%20Frontier%20and%20Queue.md) · [PROB-002 - Crawl and Index Throughput](docs/BugReports/Solutions/PROB-002%20-%20Crawl%20and%20Index%20Throughput.md) · [PROB-003 - Admin Console Coverage](docs/BugReports/Solutions/PROB-003%20-%20Admin%20Console%20Coverage.md)
 
