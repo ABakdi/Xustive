@@ -88,7 +88,7 @@ is also the privacy property.
       image against each prompt of the style vocabulary, and `subjects`: the top-k of the subject
       vocabulary. Prompts are templated ("a photo of …", "a 3D render of …") and their vectors are
       computed once at start and cached in the process
-- [x] M10-T01.3 `POST /classify` takes vectors, not bytes — `{"vectors": [[…]]}` → the same
+- [x] M10-T01.3 `POST /classify` takes vectors, not bytes — `{"vectors": …}` → the same
       `styles`/`subjects` per vector — so the points already in Qdrant can be labelled without
       re-fetching a single image
 - [x] M10-T01.4 The vocabularies are files, not code: `data/styles.tsv` (id, prompt, then a

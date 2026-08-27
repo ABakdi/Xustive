@@ -517,7 +517,7 @@ reader's address or referrer.
 - `POST /api/v1/search/image` — raw image body, ≤ `media.max_image_bytes` (5 MiB). Reply:
   `images[] {url, thumb_url?, ext?, style?, score?, group: same|similar|web, page {id, title,
   url, display_url, source_name?, from_web?}}`, `query {style?, ext?, labels[], web_query?}`,
-  `facets {ext: [[value, count]], style: [[value, count]]}`, `results[]` (the M3 page cards,
+  `facets {ext: `[[value, count]]`, style: `[[value, count]]`}`, `results[]` (the M3 page cards,
   kept one release), `matched_images`. 503 `image_search_unavailable` when `[vector]` is off or
   its services are down; 400 `empty_image` / `image_too_large`. Own rate bucket, 10/min.
 - `GET /api/v1/search/image/web?q=<description>` — the web group for a description the endpoint

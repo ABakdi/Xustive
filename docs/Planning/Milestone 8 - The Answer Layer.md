@@ -90,7 +90,7 @@ places a model is actually better than a table.
 > half-cached against the query, T11.3 SPARQL in the web tier) stand as written. Today's work is
 > recorded in the T11 status block below and in `a231f0b` (resolver tie-break: unclamped score,
 > sitelinks, recent release, then earliest; the "See also" family row) and `1ce4f9e` (relation
-> cards). Governing decisions written up as [[ADR-0022 - Entity Resolution Prefers Silence to a > Wrong Panel]] and [[ADR-0023 - Live Wikidata Fallback Judged by the Local Resolver]]. Known
+> cards). Governing decisions written up as [[ADR-0022 - Entity Resolution Prefers Silence to a Wrong Panel]] and [[ADR-0023 - Live Wikidata Fallback Judged by the Local Resolver]]. Known
 > limits carried to [[TODO]]: no legitimate Goodreads ratings, Arabic bare surnames miss on the
 > live path, Wikimedia throttles the live path — harvest is the answer to both.
 
