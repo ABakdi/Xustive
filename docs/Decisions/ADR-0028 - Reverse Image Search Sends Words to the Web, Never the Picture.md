@@ -19,8 +19,7 @@ saw, CLIP vectors for them, and a pHash for exact copies. *What else on the web 
 needs the web, and our only door to the web at query time is the federation gateway to a
 self-hosted SearXNG ([[ADR-0017 - Query-Time Federation with External Metasearch]]) — which takes
 a string of text and nothing else. There is no reverse-image engine behind it, and if there were,
-handing a reader's photograph to a third party would be a disclosure [[ADR-0008 - No Query
-Logging]] exists to prevent. A photograph is the most identifying query a person can make.
+handing a reader's photograph to a third party would be a disclosure [[ADR-0008 - No Query Logging]] exists to prevent. A photograph is the most identifying query a person can make.
 
 ## Decision
 

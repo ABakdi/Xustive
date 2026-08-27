@@ -40,8 +40,7 @@ Three things are missing, all measured on 2026-08-27:
   cannot be drawn from the response.
 - **Nothing describes an image.** The sidecar loads the full CLIP model and exposes only
   `get_image_features` (`services/clip-embed/app.py:100`); the text tower is unreachable, so there
-  is no zero-shot label, no "this is a screenshot", and — the item [[Milestone 9 - Images and
-  Videos]] parked — no text-to-image ranking either. `Media` has no extension and no style field
+  is no zero-shot label, no "this is a screenshot", and — the item [[Milestone 9 - Images and Videos]] parked — no text-to-image ranking either. `Media` has no extension and no style field
   (`crates/xustive-core/src/model.rs:193-218`).
 - **The web cannot take a picture.** SearXNG's only input is a query string
   (`crates/xustive-federation/src/lib.rs:250-275`); there is no reverse-image capability behind

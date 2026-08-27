@@ -10,8 +10,7 @@ amends: ADR-0008, ADR-0018, ADR-0020, ADR-0028
 # ADR-0029 - Raw Queries May Leave, Identities Never; First-Party Data Comes Later
 
 > Part of [[Decision Log]] · Amends [[ADR-0008 - No Query Logging]],
-> [[ADR-0018 - Anonymous Search History]], [[ADR-0020 - Approximate Location from a Local
-> Database]], [[ADR-0028 - Reverse Image Search Sends Words to the Web, Never the Picture]] ·
+> [[ADR-0018 - Anonymous Search History]], [[ADR-0020 - Approximate Location from a Local Database]], [[ADR-0028 - Reverse Image Search Sends Words to the Web, Never the Picture]] ·
 > Audit of what this unblocks: [[Privacy Relaxation Audit]]
 
 ## Context

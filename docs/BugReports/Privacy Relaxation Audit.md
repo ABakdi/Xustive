@@ -9,8 +9,7 @@ decision: ADR-0029
 ---
 # Privacy Relaxation Audit — what the old rule held back, ranked
 
-> Governed by [[ADR-0029 - Raw Queries May Leave, Identities Never; First-Party Data Comes
-> Later]]. Sibling of [[Problems]] (capacity) and the bug register. Every entry below is a place
+> Governed by [[ADR-0029 - Raw Queries May Leave, Identities Never; First-Party Data Comes Later]]. Sibling of [[Problems]] (capacity) and the bug register. Every entry below is a place
 > where [[ADR-0008 - No Query Logging]] and the rules that followed it — no egress from the
 > serving plane, no query-keyed stores, k-anonymous counts only, words-never-pictures — limited,
 > degraded or disabled something that search or the AI systems need. Each carries the evidence
