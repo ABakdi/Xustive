@@ -495,17 +495,11 @@ export interface EventRow {
   latency_ms?: number
 }
 export function getEventsOverview(days: number) {
-  return (signal?: AbortSignal) => getJSON<EventsOverview>(`/api/v1/admin/events/overview?days=${days}`, signal)
+  return (signal?: AbortSignal) => getJSON<EventsOverview>(`/events/overview?days=${days}`, signal)
 }
 export function getVisitorEvents(visitor: string, signal?: AbortSignal) {
-  return getJSON<{ visitor: string; events: EventRow[] }>(`/api/v1/admin/events/visitor?visitor=${encodeURIComponent(visitor)}`, signal)
+  return getJSON<{ visitor: string; events: EventRow[] }>(`/events/visitor?visitor=${encodeURIComponent(visitor)}`, signal)
 }
-export async function forgetVisitor(visitor: string): Promise<{ deleted: number }> {
-  const res = await fetch('/api/v1/admin/events/forget', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ visitor }),
-  })
-  if (!res.ok) throw new Error(`forget failed: ${res.status}`)
-  return (await res.json()) as { deleted: number }
+export function forgetVisitor(visitor: string): Promise<{ deleted: number }> {
+  return postJSON<{ deleted: number }>('/events/forget', { visitor })
 }

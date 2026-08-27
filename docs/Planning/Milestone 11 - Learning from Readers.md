@@ -4,7 +4,8 @@ tags:
   - milestone
 milestone: 11
 status: in-progress
-updated: 2026-08-27
+updated: 2026-08-28
+progress: built 2026-08-27; open — T02.3 (counters on the documents page), a scheduler for the sweep
 ---
 # Milestone 11 - Learning from Readers
 
@@ -46,60 +47,64 @@ cases that need a look.
 
 ## M11-T01 — The events store
 
-- [ ] M11-T01.1 `events` index: `id` (ULID), `kind`, `at` (unix s), `visitor`, `session`,
+- [x] M11-T01.1 `events` index: `id` (ULID), `kind`, `at` (unix s), `visitor`, `session`,
       `query`, `normalized`, `ui`, `lang`, `vertical`, `page`, `total_hits`, `shown[]`
       (document ids in rank order), `doc`, `rank`, `reason`, `latency_ms`. Filterable on
       `kind, at, visitor, session, doc, vertical, ui, total_hits, reason`; sortable on `at`;
       searchable on `query`. In `xustive migrate`
-- [ ] M11-T01.2 `[collection]`: `enabled` (default false; dev true), `retention_days` (365)
-- [ ] M11-T01.3 The search handler writes a `search` event after the response is built (never on
+- [x] M11-T01.2 `[collection]`: `enabled` (default false; dev true), `retention_days` (365)
+- [x] M11-T01.3 The search handler writes a `search` event after the response is built (never on
       the critical path: fire-and-forget into a bounded channel drained by one writer task, so a
       slow index cannot slow a search). Visitor/session from the `xv`/`xs` cookies
-- [ ] M11-T01.4 The token store keeps the query text beside the hash while collection is on, so
+- [x] M11-T01.4 The token store keeps the query text beside the hash while collection is on, so
       `POST /interaction` writes a `click` event with the query, the doc and the rank
-- [ ] M11-T01.5 `POST /api/v1/report` — `{t, d, r}` — writes a `report` event; always 204
-- [ ] M11-T01.6 `xustive events sweep` deletes events older than `retention_days`;
+- [x] M11-T01.5 `POST /api/v1/report` — `{t, d, r}` — writes a `report` event; always 204
+- [x] M11-T01.6 `xustive events sweep` deletes events older than `retention_days`;
       `xustive events forget <visitor>` deletes a visitor's events and answers with the count
 
 ## M11-T02 — Documents remember
 
-- [ ] M11-T02.1 `Document.hits { opens, reports, last_opened_at }`; filterable/sortable on
+- [x] M11-T02.1 `Document.hits { opens, reports, last_opened_at }`; filterable/sortable on
       `hits.opens` and `hits.reports`
-- [ ] M11-T02.2 A click increments `opens` and stamps `last_opened_at`; a report increments
-      `reports`. Read-modify-write through the same writer task, batched
-- [ ] M11-T02.3 The documents admin page shows the counters and can sort by them
+- [x] M11-T02.2 A click increments `opens` and stamps `last_opened_at`; a report increments
+      `reports`. Read-modify-write through the same writer task, batched. *Settled: the
+      counters are partial updates the index merges; a re-crawl that rewrites the document
+      resets them, and `xustive events rebuild-hits` recomputes them from the events. Noted on
+      the dev box: single-document updates queue behind the crawler's batches in Meilisearch and
+      can take minutes to apply — the events themselves do too. Correct, not instant*
+- [ ] M11-T02.3 The documents admin page shows the counters and can sort by them — *open; the counters are in the index (`hits`, filterable and sortable), the page does not show them yet*
 
 ## M11-T03 — Readers can say no
 
-- [ ] M11-T03.1 A quiet *Not relevant* control on every result card (all four languages); one tap,
+- [x] M11-T03.1 A quiet *Not relevant* control on every result card (all four languages); one tap,
       then *Thanks* — no dialog, no reason list yet
-- [ ] M11-T03.2 Beacons `{t, d, r: "irrelevant"}` to `/api/v1/report`; works with the click
+- [x] M11-T03.2 Beacons `{t, d, r: "irrelevant"}` to `/api/v1/report`; works with the click
       beacon's token; absent when collection is off
-- [ ] M11-T03.3 The control is a `<button>` with an accessible name, not a link; keyboard-reachable
+- [x] M11-T03.3 The control is a `<button>` with an accessible name, not a link; keyboard-reachable
 
 ## M11-T04 — The admin page
 
-- [ ] M11-T04.1 `GET /api/v1/admin/events/overview?days=` — searches, clicks, reports, CTR,
+- [x] M11-T04.1 `GET /api/v1/admin/events/overview?days=` — searches, clicks, reports, CTR,
       zero-result rate; **zero-result queries** (top, with counts); **searched, never opened**
       (queries with results and no click, top); **reported results** (doc, title, query, count);
       **most opened** (doc, title, opens, reports); recent events (last 100)
-- [ ] M11-T04.2 `/admin/searches`: the five lists above as tables with the action each implies
+- [x] M11-T04.2 `/admin/searches`: the five lists above as tables with the action each implies
       (add a synonym, check the ranking, re-crawl, look at the page), a day-range picker, and
       the raw recent events; the sidebar entry
-- [ ] M11-T04.3 A visitor lookup: every event of one visitor id, and a *Forget* button that
+- [x] M11-T04.3 A visitor lookup: every event of one visitor id, and a *Forget* button that
       calls the deletion — the rights of ADR-0030 §6, operable
 
 ## M11-T05 — Policy and gates
 
-- [ ] M11-T05.1 The privacy page, four languages: what is kept (searches, results shown,
+- [x] M11-T05.1 The privacy page, four languages: what is kept (searches, results shown,
       results opened, reports, a visitor cookie), for what (improving and personalising search,
       our own AI), for how long, never shared, how to be forgotten; and the ADR-0029 sentence
       that queries may be processed by third parties without identity and may leak. The home
       page line *Searches are never linked to you* goes
-- [ ] M11-T05.2 README §Guarantees rewritten to what the build enforces now
-- [ ] M11-T05.3 Tests: an event per action with the right fields; the click beacon still carries
+- [x] M11-T05.2 README §Guarantees rewritten to what the build enforces now
+- [x] M11-T05.3 Tests: an event per action with the right fields; the click beacon still carries
       no query text; `lint-telemetry` green; `events forget` removes everything for a visitor
-- [ ] M11-T05.4 [[Search Events]] component note; [[Interaction Signals]], [[Security and
+- [x] M11-T05.4 [[Search Events]] component note; [[Interaction Signals]], [[Security and
       Privacy]], [[Legal and Compliance]] §5, [[API Contract]], [[UI - Admin Console]],
       [[UI - Results Page]] updated
 
@@ -109,3 +114,13 @@ cases that need a look.
   personalisation. Each is a later task with this milestone's data as input.
 - Accounts. The visitor id is a cookie; accounts bind to it when they come.
 - Reasons for a report beyond *not relevant*.
+
+---
+
+> **Status 2026-08-28.** Built and verified end to end on the dev box: a search from a browser
+> with the visitor cookie, its "not relevant" report from the card ("Thanks, noted"), and its
+> click each landed as one event with the query, the rank (1), the 20 ids shown and the 118
+> hits; `/admin/searches` lists the reported page under the query that produced it and shows
+> the raw events; `xustive events forget <visitor>` deleted the visitor's six events. Open:
+> the documents page does not yet show `hits`, nothing schedules the sweep, and a public
+> deployment must not turn `[collection]` on before [[Legal and Compliance]] §5 is settled.

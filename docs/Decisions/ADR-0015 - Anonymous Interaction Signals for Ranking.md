@@ -91,3 +91,5 @@ The rules, and how each is enforced structurally rather than by good behaviour:
 - **Divergence, deliberate:** `EXPIRE` is re-armed only when the remaining TTL has fallen below half the window, not on every `INCR` (`crates/xustive-ingest/src/interaction.rs`, BUG-039) — refreshing on every write made `window − TTL` a per-term last-event timestamp, which ADR-0018 forbids.
 - Ranking: Wilson lower bound, `interaction: 0.07`, additive tie-breaker only (`crates/xustive-search/src/rank.rs`). Re-crawl: the hot-doc hint is read by `crawld` (`crates/xustive-ingest/src/interaction.rs`), never pushed.
 - Operator surface: `GET /admin/interaction` (`crates/xustive-api/src/lib.rs`).
+
+> **2026-08-27 — ADR-0030.** First-party per-event data (search, click, report, with a visitor cookie) now lives beside these counters in the `events` index ([[Search Events]]). The Wilson CTR term still feeds the ranker unchanged; a learner on the events will get its own ADR and this one its supersession note then.

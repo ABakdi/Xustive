@@ -2,7 +2,7 @@
 tags:
   - adr
 adr-id: "0018"
-status: partly implemented; amended by ADR-0029 on 2026-08-27 — first-party collection, including identifiable data, is decided and will get its own ADR; the k-anonymous counts stay until then
+status: partly implemented; amended by ADR-0029 on 2026-08-27 — first-party collection, including identifiable data, is decided and will get its own ADR; the k-anonymous counts stay beside it; ADR-0030 (2026-08-27) now keeps the per-event, first-party record
 date: 2026-08-25
 ---
 # ADR-0018 - Anonymous Search History
