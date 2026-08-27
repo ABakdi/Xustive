@@ -165,3 +165,21 @@ does not require re-recording.
 
 [[Speech to Text]] · [[API Contract]] · [[UI - Home Page]] · [[UI - States and Errors]] ·
 [[UI - Accessibility]] · [[Security and Privacy]]
+
+## Revision, 2026-08-27 — inline and live
+
+The dialog is gone. The field itself is the recorder: the microphone button turns red and
+breathes, a four-bar level meter beside it shows the microphone is hearing you, the placeholder
+says "Listening…", and **the words appear in the box while you speak** — every 1.5 s the audio so
+far is sent again to our own transcriber and the box shows the newest reading, dimmed; on stop
+(the button again, or Esc to cancel) one last pass gives the final words, undimmed and editable.
+Still never submitted for you.
+
+Failure is visible now. The first version announced "unavailable" in a screen-reader-only span,
+so a page with no transcriber looked like a mute button. A 503/404 on the first partial stops the
+recording at once and puts the message in red under the field.
+
+Verified with a synthetic microphone (an oscillator handed to `getUserMedia`) against a stub
+sidecar: 2 words at 5 s, 4 at 7 s, final on stop; and the red message with the sidecar down.
+Not yet verified against Whisper itself — the sidecar needs `faster-whisper` and the `small`
+weights (~480 MB), which are not on this machine.

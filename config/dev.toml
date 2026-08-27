@@ -195,8 +195,10 @@ text_search_limit = 50
 
 [stt]
 # Voice search. Off by default: needs the STT sidecar (services/stt-sidecar) and its whisper model.
-# Whisper small runs CPU-only, so voice is not GPU-gated — only opt-in until the model is provisioned.
-enabled = false
+# Whisper small runs CPU-only, so voice is not GPU-gated. On in dev so the field's voice button
+# answers honestly — "unavailable" while the sidecar is down, words once it is up — instead of a
+# 404 that reads as a broken button.
+enabled = true
 endpoint = "http://127.0.0.1:8093/transcribe"
 timeout_ms = 30000
 max_audio_bytes = 8388608

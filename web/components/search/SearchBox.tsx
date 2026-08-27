@@ -7,7 +7,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 
 import { suggest, type Suggestion } from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
-import { VoiceButton } from './VoiceButton'
+import { VoiceButton, type VoiceState } from './VoiceButton'
 
 const DEBOUNCE_MS = 90
 const MIN_PREFIX = 2
@@ -45,6 +45,11 @@ export function SearchBox({
   const [items, setItems] = useState<Suggestion[]>([])
   const [active, setActive] = useState(-1)
   const [open, setOpen] = useState(false)
+  // What the voice button is doing, so the field can show it: a red pulsing button, a level meter,
+  // the elapsed seconds, and — visibly, under the field — why it stopped when it could not go on.
+  const [voice, setVoice] = useState<VoiceState>({ phase: 'idle', seconds: 0, level: 0, error: '' })
+  // Words that arrived while still recording: shown in the box, dimmed, replaced by the final ones.
+  const [interim, setInterim] = useState(false)
   // What was actually typed, so arrowing through options and back returns it.
   const typedRef = useRef(initialQuery)
 
@@ -142,9 +147,13 @@ export function SearchBox({
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
-          placeholder={t.searchPlaceholder}
-          style={{ paddingBlock: compact ? '0.5rem' : '0.75rem' }}
+          placeholder={voice.phase === 'recording' ? t.voiceListening : t.searchPlaceholder}
+          style={{
+            paddingBlock: compact ? '0.5rem' : '0.75rem',
+            color: interim ? 'var(--fg-muted)' : undefined,
+          }}
           onChange={(e) => {
+            setInterim(false)
             typedRef.current = e.target.value
             setValue(e.target.value)
             setOpen(true)
@@ -191,10 +200,32 @@ export function SearchBox({
         {/* Voice search — records, transcribes on our own server, and drops the text into this box
             editable. Renders nothing where the browser cannot record, so it never shows a dead
             control. The transcript is never auto-submitted. */}
+        {voice.phase !== 'idle' && (
+          <span
+            className="flex shrink-0 items-center gap-2 text-xs tabular-nums"
+            style={{ color: 'var(--fg-muted)' }}
+            aria-live="polite"
+          >
+            <span className="voice-meter" aria-hidden>
+              {[0.15, 0.4, 0.7, 1].map((th, i) => (
+                <i key={i} style={{ opacity: voice.level >= th * 0.6 ? 1 : 0.25 }} />
+              ))}
+            </span>
+            {voice.phase === 'recording' ? `${voice.seconds}s` : t.voiceTranscribing}
+          </span>
+        )}
         <VoiceButton
           t={t}
           uiLang={lang}
+          size={compact ? 16 : 18}
+          onState={setVoice}
+          onInterim={(text) => {
+            setInterim(true)
+            setValue(text)
+            setOpen(false)
+          }}
           onTranscript={(text) => {
+            setInterim(false)
             typedRef.current = text
             setValue(text)
             setOpen(false)
@@ -214,6 +245,12 @@ export function SearchBox({
           <Camera size={compact ? 16 : 18} aria-hidden />
         </Link>
       </div>
+
+      {voice.error && (
+        <p role="status" className="m-0 mt-1.5 px-5 text-xs" style={{ color: 'var(--danger, #c0392b)' }} dir="auto">
+          {voice.error}
+        </p>
+      )}
 
       {open && items.length > 0 && (
         <ul

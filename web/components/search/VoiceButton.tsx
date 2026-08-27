@@ -1,61 +1,81 @@
 'use client'
 
-import { Loader2, Mic } from 'lucide-react'
+import { Mic, Square } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { SearchFailed, transcribe } from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
 
 /**
- * Voice search ([[UI - Voice Search]], M3-T03).
+ * Voice search ([[UI - Voice Search]], M3-T03) — inline, and live.
  *
- * A microphone button that records a short clip, transcribes it on our own server, and drops the
- * result **into the search box, editable and not auto-submitted** (M3-T03.6). The last step is the
- * whole ethic of it: Darija transcription is imperfect, so the person confirms the words before
- * searching rather than being sent somewhere on the model's guess.
+ * Tap the microphone and the field itself becomes the recorder: the button turns red and pulses,
+ * a small level meter shows the microphone is hearing you, and the words appear **in the search
+ * box as you speak**. The transcription still happens on our own server and nothing else's
+ * (M3-T03): every second and a half the audio so far is sent again and the box shows the newest
+ * reading, so the text grows while you talk; on stop, one last pass gives the final words. The
+ * result stays editable and is never submitted for you (M3-T03.6) — Darija transcription is
+ * imperfect, and the person confirms the words before searching.
  *
- * # Progressive, permissionless-until-asked
+ * The first version put all this behind a modal dialog with a timer in it and pasted the text at
+ * the end. It looked like a phone call, not a search box, and when the server was off it failed
+ * in a message only screen readers could hear. Errors are visible now, under the field.
  *
- * The button renders only where `getUserMedia` and `MediaRecorder` exist (M3-T03.1), and asks for
- * the microphone **on tap, never on load** (M3-T03.2). On completion or cancel every track is
- * stopped so the browser's recording indicator clears (M3-T03.7) — a mic left live after a search
- * is both a privacy problem and the kind of thing that makes people distrust a page.
+ * # Permissionless until asked, and released after
  *
- * # Bounds
- *
- * A 30-second hard cap (announced), so a forgotten recording cannot run forever. Transcription is
- * cancellable by closing the overlay.
+ * The button renders only where `getUserMedia` and `MediaRecorder` exist (M3-T03.1) and asks for
+ * the microphone on tap, never on load (M3-T03.2). On stop or cancel every track is stopped so
+ * the browser's recording indicator clears (M3-T03.7). A 30-second cap ends a forgotten recording.
  */
 const MAX_MS = 30_000
+/** How often the audio so far is re-read while recording. */
+const PARTIAL_EVERY_MS = 1_500
 
-type Phase = 'idle' | 'recording' | 'transcribing'
+type Phase = 'idle' | 'recording' | 'finishing'
+
+export type VoiceState = { phase: Phase; seconds: number; level: number; error: string }
 
 export function VoiceButton({
   t,
   uiLang,
+  size = 18,
+  onInterim,
   onTranscript,
+  onState,
 }: {
   t: Messages
   uiLang: string
+  size?: number
+  /** A reading of the words so far, while still recording. Replaces the previous reading. */
+  onInterim: (text: string) => void
+  /** The final words. Never submitted here. */
   onTranscript: (text: string) => void
+  /** What the field should show around the button: phase, elapsed seconds, mic level, error. */
+  onState: (state: VoiceState) => void
 }) {
   const [supported, setSupported] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
-  const [error, setError] = useState<string>('')
-  const [elapsed, setElapsed] = useState(0)
 
   const recorder = useRef<MediaRecorder | null>(null)
   const stream = useRef<MediaStream | null>(null)
   const chunks = useRef<Blob[]>([])
-  const abort = useRef<AbortController | null>(null)
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const inFlight = useRef<AbortController | null>(null)
+  const ticker = useRef<ReturnType<typeof setInterval> | null>(null)
   const cap = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const dialogRef = useRef<HTMLDialogElement>(null)
-  // Set on cancel so the recorder's `stop` handler knows not to transcribe.
+  const audio = useRef<{ ctx: AudioContext; analyser: AnalyserNode; raf: number } | null>(null)
+  const startedAt = useRef(0)
+  const lastPartial = useRef(0)
   const cancelled = useRef(false)
+  const state = useRef<VoiceState>({ phase: 'idle', seconds: 0, level: 0, error: '' })
 
-  // Capability detection runs in an effect, so the server render (which cannot know) and the first
-  // client render agree — the button appears only after mount, and only where it can work.
+  const emit = useCallback(
+    (patch: Partial<VoiceState>) => {
+      state.current = { ...state.current, ...patch }
+      onState(state.current)
+    },
+    [onState],
+  )
+
   useEffect(() => {
     setSupported(
       typeof navigator !== 'undefined' &&
@@ -65,11 +85,16 @@ export function VoiceButton({
     )
   }, [])
 
-  const cleanup = useCallback(() => {
-    if (timer.current) clearInterval(timer.current)
+  const release = useCallback(() => {
+    if (ticker.current) clearInterval(ticker.current)
     if (cap.current) clearTimeout(cap.current)
-    timer.current = null
+    ticker.current = null
     cap.current = null
+    if (audio.current) {
+      cancelAnimationFrame(audio.current.raf)
+      void audio.current.ctx.close().catch(() => undefined)
+      audio.current = null
+    }
     // Stopping the tracks is what clears the browser's mic indicator.
     stream.current?.getTracks().forEach((tr) => tr.stop())
     stream.current = null
@@ -78,32 +103,77 @@ export function VoiceButton({
 
   useEffect(() => {
     return () => {
-      abort.current?.abort()
-      cleanup()
+      inFlight.current?.abort()
+      release()
     }
-  }, [cleanup])
+  }, [release])
 
-  async function send(blob: Blob) {
-    setPhase('transcribing')
-    abort.current?.abort()
+  /** The audio so far, as one blob. WebM chunks from one recorder concatenate into a valid file. */
+  function soFar(): Blob {
+    return new Blob(chunks.current, { type: recorder.current?.mimeType || 'audio/webm' })
+  }
+
+  async function read(blob: Blob, final: boolean) {
+    inFlight.current?.abort()
     const controller = new AbortController()
-    abort.current = controller
+    inFlight.current = controller
     try {
       const out = await transcribe(blob, uiLang, controller.signal)
       if (controller.signal.aborted) return
-      // The text goes to the box; the person edits and submits. We never submit for them.
-      if (out.text.trim()) onTranscript(out.text.trim())
-      close()
+      const text = out.text.trim()
+      if (final) {
+        if (text) onTranscript(text)
+        finish('')
+      } else if (text) {
+        onInterim(text)
+      }
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') return
-      setError(err instanceof SearchFailed && err.status === 503 ? t.voiceUnavailable : t.voiceFailed)
-      setPhase('idle')
+      const message =
+        err instanceof SearchFailed && (err.status === 503 || err.status === 404)
+          ? t.voiceUnavailable
+          : t.voiceFailed
+      // A failed partial is not worth interrupting for — the next one may land; a failed final
+      // is the answer, and it is shown.
+      if (final) finish(message)
+      else if (err instanceof SearchFailed && (err.status === 503 || err.status === 404)) {
+        // The server has no transcriber at all: stop early and say so, rather than record thirty
+        // seconds into nothing.
+        cancelled.current = false
+        stopRecording(message)
+      }
+    } finally {
+      if (inFlight.current === controller) inFlight.current = null
+    }
+  }
+
+  function meter(s: MediaStream) {
+    try {
+      const ctx = new AudioContext()
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 512
+      ctx.createMediaStreamSource(s).connect(analyser)
+      const buf = new Uint8Array(analyser.frequencyBinCount)
+      const tick = () => {
+        analyser.getByteTimeDomainData(buf)
+        let sum = 0
+        for (const v of buf) {
+          const d = (v - 128) / 128
+          sum += d * d
+        }
+        const rms = Math.sqrt(sum / buf.length)
+        emit({ level: Math.min(1, rms * 4) })
+        if (audio.current) audio.current.raf = requestAnimationFrame(tick)
+      }
+      audio.current = { ctx, analyser, raf: requestAnimationFrame(tick) }
+    } catch {
+      // No meter is fine; the words still arrive.
     }
   }
 
   async function start() {
-    setError('')
     cancelled.current = false
+    emit({ error: '', seconds: 0, level: 0 })
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true })
       stream.current = s
@@ -112,132 +182,108 @@ export function VoiceButton({
       recorder.current = rec
       rec.ondataavailable = (e) => {
         if (e.data.size > 0) chunks.current.push(e.data)
+        // A partial reading, when the last one is old enough and nothing is still being read.
+        const now = Date.now()
+        if (
+          rec.state === 'recording' &&
+          !inFlight.current &&
+          now - lastPartial.current >= PARTIAL_EVERY_MS &&
+          chunks.current.length > 0
+        ) {
+          lastPartial.current = now
+          void read(soFar(), false)
+        }
       }
       rec.onstop = () => {
-        const blob = new Blob(chunks.current, { type: rec.mimeType || 'audio/webm' })
-        cleanup()
+        const blob = soFar()
+        release()
         if (cancelled.current || blob.size === 0) {
-          if (cancelled.current) close()
+          // A cancel keeps whatever message stopped it; an empty recording is its own message.
+          finish(cancelled.current ? undefined : t.voiceFailed)
           return
         }
-        void send(blob)
+        setPhase('finishing')
+        emit({ phase: 'finishing', level: 0 })
+        void read(blob, true)
       }
-      rec.start()
+      // Timesliced, so the audio arrives as it is spoken rather than all at the end.
+      rec.start(500)
+      startedAt.current = Date.now()
+      lastPartial.current = Date.now()
       setPhase('recording')
-      dialogRef.current?.showModal()
-
-      setElapsed(0)
-      const startedAt = Date.now()
-      timer.current = setInterval(() => setElapsed(Date.now() - startedAt), 200)
-      // Hard cap: stop cleanly at 30 s rather than recording forever.
-      cap.current = setTimeout(() => stop(), MAX_MS)
+      emit({ phase: 'recording' })
+      meter(s)
+      ticker.current = setInterval(
+        () => emit({ seconds: Math.floor((Date.now() - startedAt.current) / 1000) }),
+        250,
+      )
+      cap.current = setTimeout(() => stopRecording(), MAX_MS)
     } catch {
-      // Permission denied, no device, or insecure context. A denied permission is not an error to
-      // shout about — show the guidance and stay idle.
-      setError(t.voicePermission)
-      setPhase('idle')
-      cleanup()
+      // Permission denied, no device, or an insecure context. Guidance, not an alarm.
+      release()
+      finish(t.voicePermission)
     }
   }
 
-  function stop() {
+  function stopRecording(errorAfter = '') {
+    if (errorAfter) {
+      // Stop without a final read: the server already said it cannot.
+      cancelled.current = true
+      inFlight.current?.abort()
+      if (recorder.current?.state === 'recording') recorder.current.stop()
+      else release()
+      finish(errorAfter)
+      return
+    }
     if (recorder.current?.state === 'recording') recorder.current.stop()
   }
 
   function cancel() {
     cancelled.current = true
-    abort.current?.abort()
+    inFlight.current?.abort()
     if (recorder.current?.state === 'recording') {
-      recorder.current.stop() // onstop sees `cancelled` and closes
+      recorder.current.stop() // onstop sees `cancelled`
     } else {
-      cleanup()
-      close()
+      release()
+      finish('')
     }
   }
 
-  function close() {
+  /** Back to idle. `undefined` leaves the current message alone; a string replaces it. */
+  function finish(error: string | undefined) {
     setPhase('idle')
-    setElapsed(0)
-    if (dialogRef.current?.open) dialogRef.current.close()
+    emit({ phase: 'idle', seconds: 0, level: 0, ...(error === undefined ? {} : { error }) })
   }
+
+  useEffect(() => {
+    if (phase !== 'recording') return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        cancel()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase])
 
   if (!supported) return null
 
-  const seconds = Math.floor(elapsed / 1000)
-
+  const recording = phase === 'recording'
   return (
-    <>
-      <button
-        type="button"
-        aria-label={t.voiceSearch}
-        title={t.voiceSearch}
-        className="shrink-0 p-1"
-        style={{ color: 'var(--fg-faint)', borderRadius: 'var(--radius)' }}
-        onClick={() => void start()}
-      >
-        <Mic size={18} aria-hidden />
-      </button>
-
-      {error && (
-        <span role="status" className="sr-only">
-          {error}
-        </span>
-      )}
-
-      <dialog
-        ref={dialogRef}
-        className="rounded border p-0"
-        style={{ borderColor: 'var(--line-strong)', background: 'var(--bg)', color: 'var(--fg)' }}
-        onCancel={(e) => {
-          // Esc closes the dialog — treat it as cancel so the mic is released.
-          e.preventDefault()
-          cancel()
-        }}
-        aria-label={t.voiceSearch}
-      >
-        <div className="flex min-w-[280px] flex-col items-center gap-4 p-6 text-center">
-          <p className="m-0 flex items-center gap-2 text-lg font-medium" aria-live="polite">
-            {phase === 'transcribing' ? (
-              <>
-                <Loader2 size={18} aria-hidden className="animate-spin" />
-                {t.voiceTranscribing}
-              </>
-            ) : (
-              <>
-                <span
-                  aria-hidden
-                  className="motion-safe:animate-pulse"
-                  style={{ inlineSize: 12, blockSize: 12, borderRadius: '50%', background: '#c0392b', display: 'inline-block' }}
-                />
-                {t.voiceListening}
-                <span className="tabular-nums" style={{ color: 'var(--fg-faint)' }}>
-                  {seconds}s
-                </span>
-              </>
-            )}
-          </p>
-
-          <p className="m-0 text-xs" style={{ color: 'var(--fg-faint)' }}>
-            {t.voiceHint}
-          </p>
-
-          <div className="flex items-center gap-2">
-            {phase === 'recording' && (
-              <button
-                type="button"
-                className="chip chip-active cursor-pointer"
-                onClick={() => stop()}
-              >
-                {t.voiceStop}
-              </button>
-            )}
-            <button type="button" className="chip cursor-pointer" onClick={() => cancel()}>
-              {t.voiceCancel}
-            </button>
-          </div>
-        </div>
-      </dialog>
-    </>
+    <button
+      type="button"
+      aria-label={recording ? t.voiceStop : t.voiceSearch}
+      title={recording ? t.voiceStop : t.voiceSearch}
+      aria-pressed={recording}
+      className={`voice-button relative shrink-0 p-1 ${recording ? 'is-recording' : ''}`}
+      style={{ color: recording ? '#fff' : 'var(--fg-faint)', borderRadius: '50%' }}
+      disabled={phase === 'finishing'}
+      onClick={() => (recording ? stopRecording() : void start())}
+    >
+      {recording ? <Square size={size - 4} aria-hidden fill="currentColor" /> : <Mic size={size} aria-hidden />}
+    </button>
   )
 }
 
