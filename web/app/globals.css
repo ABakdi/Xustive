@@ -499,3 +499,8 @@ bdi,
 .voice-meter i:nth-child(2) { block-size: 8px; }
 .voice-meter i:nth-child(3) { block-size: 11px; }
 .voice-meter i:nth-child(4) { block-size: 14px; }
+
+/* The picture-search dialog (M10): dim the page behind it. */
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}

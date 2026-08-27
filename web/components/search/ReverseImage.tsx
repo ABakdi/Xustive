@@ -8,9 +8,13 @@ import {
   imageSearch,
   imageSearchByUrl,
   imageSearchWeb,
+  ocrImage,
+  search as textSearch,
   SearchFailed,
   type ImageHit,
   type ImageSearchAnswer,
+  type OcrResult,
+  type ResultCard,
 } from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
 import { prepareImage, takeHandOff } from '@/lib/image-prep'
@@ -41,11 +45,14 @@ export function ReverseImage({
   lang,
   t,
   byUrl,
+  withText = false,
 }: {
   lang: string
   t: Messages
   /** A picture already on the Images tab, as its signed thumbnail URL (`?u=&s=`). */
   byUrl?: { u: string; s: string }
+  /** Also read the picture's text (OCR) and show results for it — the popup flow. */
+  withText?: boolean
 }) {
   const router = useRouter()
   const fileInput = useRef<HTMLInputElement>(null)
@@ -59,6 +66,11 @@ export function ReverseImage({
   const [kind, setKind] = useState<string | null>(null)
   const [format, setFormat] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
+  // The picture's text, when asked for: what OCR read, the reader's edits, and results for it.
+  const [ocr, setOcr] = useState<OcrResult | null | 'reading'>(null)
+  const [text, setText] = useState('')
+  const [textResults, setTextResults] = useState<ResultCard[] | null>(null)
+  const [copied, setCopied] = useState(false)
 
   // Two lifetimes, two effects. The preview's object URL dies when it is replaced; the in-flight
   // request dies only when the page does. Tying both to `preview` aborted every search the
@@ -115,14 +127,44 @@ export function ReverseImage({
           if (old) URL.revokeObjectURL(old)
           return url
         })
+        // The text and the pictures are read at the same time; neither waits for the other.
+        if (withText) void readText(prepared, controller)
         await settle(imageSearch(prepared, controller.signal), controller)
       } catch (error) {
         if ((error as Error)?.name === 'AbortError') return
         setPhase('failed')
       }
     },
-    [settle],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [settle, withText],
   )
+
+  async function readText(blob: Blob, controller: AbortController) {
+    setOcr('reading')
+    setText('')
+    setTextResults(null)
+    try {
+      const out = await ocrImage(blob, controller.signal)
+      if (controller.signal.aborted) return
+      setOcr(out)
+      const found = out.usable ? out.text.trim() : ''
+      setText(found)
+      if (found) {
+        // A few results for the text as read — the reader edits and searches for more.
+        const params = new URLSearchParams({ q: found.slice(0, 200), ui: lang })
+        textSearch(params)
+          .then((r) => {
+            if (!controller.signal.aborted) setTextResults(r.results.slice(0, 5))
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) setTextResults([])
+          })
+      }
+    } catch (error) {
+      if ((error as Error)?.name === 'AbortError') return
+      setOcr({ text: '', usable: false, confidence: 0, backend: '' })
+    }
+  }
 
   // Two ways in without a file: a picture the previous page handed off, or one already on the
   // Images tab named by its signed URL.
@@ -227,6 +269,77 @@ export function ReverseImage({
       <p className="m-0 mt-2 text-xs" style={{ color: 'var(--fg-faint)' }}>
         {t_(t, 'reversePrivacy', '')}
       </p>
+
+      {withText && ocr !== null && (
+        <section className="mt-6" aria-label={t_(t, 'reverseTextTitle', 'Text in the picture')}>
+          <h2 className="m-0 mb-2 text-base font-semibold" dir="auto">
+            {t_(t, 'reverseTextTitle', 'Text in the picture')}
+          </h2>
+          {ocr === 'reading' ? (
+            <p className="m-0 text-sm" style={{ color: 'var(--fg-muted)' }}>{t_(t, 'reverseReadingText', 'Reading the text…')}</p>
+          ) : !ocr.usable || !ocr.text.trim() ? (
+            <p className="m-0 text-sm" style={{ color: 'var(--fg-muted)' }}>{t_(t, 'reverseNoText', 'No readable text in the picture.')}</p>
+          ) : (
+            <>
+              {/* Editable and selectable: the reader fixes a word before searching, or copies it. */}
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                dir="auto"
+                rows={Math.min(6, Math.max(2, text.split('\n').length))}
+                className="w-full rounded border p-2 text-sm"
+                style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }}
+                aria-label={t_(t, 'reverseTextTitle', 'Text in the picture')}
+              />
+              <p className="m-0 mt-2 flex flex-wrap gap-2 text-sm">
+                <button
+                  type="button"
+                  className="chip chip-active cursor-pointer"
+                  disabled={!text.trim()}
+                  onClick={() => router.push(`/${lang}/search?q=${encodeURIComponent(text.trim())}`)}
+                >
+                  <Search size={14} aria-hidden /> {t_(t, 'reverseSearchText', 'Search this text')}
+                </button>
+                <button
+                  type="button"
+                  className="chip cursor-pointer"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(text).then(() => {
+                      setCopied(true)
+                      setTimeout(() => setCopied(false), 1500)
+                    })
+                  }}
+                >
+                  {copied ? t_(t, 'reverseCopied', 'Copied') : t_(t, 'reverseCopy', 'Copy')}
+                </button>
+              </p>
+              {textResults && textResults.length > 0 && (
+                <div className="mt-3">
+                  <h3 className="m-0 mb-1 text-sm font-medium" style={{ color: 'var(--fg-muted)' }} dir="auto">
+                    {t_(t, 'reverseTextResults', 'Results for this text')}
+                  </h3>
+                  <ul className="m-0 list-none p-0">
+                    {textResults.map((r) => (
+                      <li key={r.id} className="py-1.5" dir="auto">
+                        {/* The API escapes everything and re-admits only the <em> that marks the
+                            matched terms — the same contract ResultCard renders under. */}
+                        <a
+                          href={r.url}
+                          className="block text-sm no-underline hover:underline"
+                          rel="noopener noreferrer nofollow"
+                          style={{ color: 'var(--accent)' }}
+                          dangerouslySetInnerHTML={{ __html: r.title }}
+                        />
+                        <span className="block truncate text-xs" style={{ color: 'var(--fg-faint)' }}>{r.display_url}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
 
       {(phase === 'reading' || phase === 'searching') && (
         <p className="mt-6 text-sm" role="status" aria-live="polite" style={{ color: 'var(--fg-muted)' }}>

@@ -8,6 +8,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { suggest, type Suggestion } from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
 import { VoiceButton, type VoiceState } from './VoiceButton'
+import { ImageSearchDialog, OPEN_IMAGE_SEARCH } from './ImageSearchDialog'
 
 const DEBOUNCE_MS = 90
 const MIN_PREFIX = 2
@@ -236,16 +237,22 @@ export function SearchBox({
         {/* Search by image — the Lens-style entry. A real link, not a button: it navigates to the
             image tool, which works without JavaScript and can be opened in a new tab. The tool reads
             the photo to text and hands it back editable; nothing is searched automatically. */}
-        <Link
+        <a
           href={`/${lang}/tools/ocr`}
           aria-label={t.ocrByImage}
           title={t.ocrByImage}
           className="shrink-0 p-1"
           style={{ color: 'var(--fg-faint)', borderRadius: 'var(--radius)' }}
+          onClick={(e) => {
+            // With JavaScript: a dialog over the page (M10, revised). Without: the link.
+            e.preventDefault()
+            window.dispatchEvent(new Event(OPEN_IMAGE_SEARCH))
+          }}
         >
           <Camera size={compact ? 16 : 18} aria-hidden />
-        </Link>
+        </a>
       </div>
+      <ImageSearchDialog lang={lang} t={t} />
 
       {voice.error && (
         <p role="status" className="m-0 mt-1.5 px-5 text-xs" style={{ color: 'var(--danger, #c0392b)' }} dir="auto">

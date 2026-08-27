@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { LangSwitcher } from '@/components/layout/LangSwitcher'
@@ -36,9 +35,9 @@ export default async function ReverseImagePage({
   return (
     <>
       <div className="flex items-center justify-between gap-1 px-5 py-4">
-        <Link href={`/${lang}`} aria-label="Xustive">
-          <Wordmark lang={lang} />
-        </Link>
+        {/* The wordmark is itself the link home — wrapping it in another <a> nested two anchors
+            and broke hydration on every visit. */}
+        <Wordmark lang={lang} />
         <div className="flex items-center gap-1">
           <LangSwitcher current={lang} label={t.language} />
           <ThemeToggle

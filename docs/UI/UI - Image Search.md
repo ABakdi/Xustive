@@ -18,9 +18,16 @@ updated: 2026-08-27
 
 ## 0. Current behaviour (2026-08-27, after M10)
 
-Two pages, one entry. The camera icon in every search box is a real link to
-`/[lang]/tools/ocr` — the **text** path — and the Images tab, every image tile and that page all
-lead to `/[lang]/search/image` — the **picture** path ([[Milestone 10 - Reverse Image Search]]).
+One dialog, two pages behind it. The camera icon in every search box opens **a dialog over the
+page** (`web/components/search/ImageSearchDialog.tsx`): drop, paste, choose or photograph a
+picture and, in the same view, the picture's **text** (OCR — editable, selectable, *Copy*,
+*Search this text*, and a few results for it) and the **similar pictures** (the reverse search
+below). Without JavaScript the icon is still a link to `/[lang]/tools/ocr`. The Images tab,
+every image tile and the OCR page still lead to `/[lang]/search/image`, the full page
+([[Milestone 10 - Reverse Image Search]]). Found on 2026-08-27 and fixed: both tool pages
+wrapped the `Wordmark` — itself a link — in a second `<a>`, which broke hydration on every visit;
+and the OCR island aborted its own request when its preview appeared ("Reading the image…"
+forever).
 
 **Search with a picture** (`web/app/[lang]/search/image/page.tsx`, island
 `web/components/search/ReverseImage.tsx`):

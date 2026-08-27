@@ -60,12 +60,15 @@ export function ImageOcr({ lang, t }: { lang: string; t: Messages }) {
 
   // Revoke the last preview object URL when it is replaced or the component unmounts — an image
   // blob URL held forever is a real leak on a page someone keeps open.
+  // Two lifetimes: the preview's object URL dies when replaced; the request only with the page.
+  // Tying both to `preview` aborted the OCR call the moment its preview appeared, and the
+  // AbortError is the one error this ignores — "Reading the image…" forever.
   useEffect(() => {
     return () => {
       if (preview) URL.revokeObjectURL(preview)
-      abort.current?.abort()
     }
   }, [preview])
+  useEffect(() => () => abort.current?.abort(), [])
 
   const run = useCallback(
     async (file: Blob) => {
