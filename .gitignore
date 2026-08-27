@@ -18,3 +18,8 @@ data/tessdata/
 
 # Fetched separately by scripts/fetch-geoip.sh — tens of MB, republished monthly.
 data/geoip/
+services/stt-sidecar/.venv/
+
+# Model weights fetched by hand (STT sidecar and the like): hundreds of megabytes, never in git.
+/data/models/
+__pycache__/

@@ -22,9 +22,16 @@ Arabic audio is not mis-detected as something else on a short clip.
 ## Run it
 
 ```bash
-pip install -r requirements.txt        # needs ffmpeg on the host for PyAV
-uvicorn app:app --host 0.0.0.0 --port 8093
+uv venv -p 3.12 .venv && uv pip install -p .venv/bin/python -r requirements.txt   # 3.14 has no PyAV wheel yet
+STT_MODEL=$PWD/../../data/models/faster-whisper-small .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8093
 ```
+
+`STT_MODEL` may be a Whisper size (`small`, fetched into `HF_HOME` on first start) or a directory.
+Prefer the directory: on 2026-08-27 the hub client's unauthenticated download ran at ~60 KB/s
+while a plain fetch of the same files ran at 6 MB/s, so the weights are fetched by hand —
+`config.json`, `model.bin`, `tokenizer.json`, `vocabulary.txt` from
+`https://huggingface.co/Systran/faster-whisper-small/resolve/main/` into
+`data/models/faster-whisper-small/` (gitignored, ~486 MB). The model then loads in three seconds.
 
 Docker (weights mounted, not baked in):
 
