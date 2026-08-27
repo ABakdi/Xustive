@@ -179,11 +179,20 @@ golden: ## Regenerate the machine-judged golden set from the live index
 	./eval/build_golden.py --out eval/golden/v1.jsonl
 
 .PHONY: ui-gates
-ui-gates: ## Client asset budgets and the no-JavaScript path (needs web running on :3000)
+ui-gates: ## Client asset budgets, the no-JavaScript path, and the thumbnail proxy's refusals (needs web on :3000)
 	./scripts/bundle-budget.sh
 	./scripts/no-js-check.sh
 	./scripts/rtl-icons.sh
 	node scripts/contrast-audit.mjs
+	./scripts/thumb-proxy-check.sh
+
+.PHONY: eval-images
+eval-images: ## The reverse-image golden set: pictures the index holds must find themselves (needs API + Qdrant)
+	services/clip-embed/.venv/bin/python eval/images/run.py
+
+.PHONY: image-privacy
+image-privacy: ## A reverse image search leaves no trace in the given logs or in Redis: make image-privacy LOG=path
+	./scripts/test-image-privacy.sh $(LOG)
 
 .PHONY: scan-logs
 scan-logs: ## Scan a log file for leaked query text: make scan-logs LOG=/tmp/api.log
@@ -244,6 +253,7 @@ lint: ## Format check, clippy, and the privacy/topology/docs lints
 	./scripts/lint-telemetry.sh
 	./scripts/lint-compose.sh
 	./scripts/lint-docs.sh
+	./scripts/lint-no-face.sh
 	./scripts/check-alerts.sh
 	./scripts/lint-runbooks.sh
 	./scripts/lint-bidi.sh
