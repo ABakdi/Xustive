@@ -167,8 +167,9 @@ timeout_ms = 30000
 [vector]
 # Image-similarity search (reverse image search / the visual half of "search by image"). Off by
 # default: needs Qdrant reachable and the CLIP embed sidecar (services/clip-embed) running. CLIP
-# ViT-B/32 runs CPU-only, so this is not GPU-gated — only opt-in until its model + index exist.
-enabled = false
+# ViT-B/32 runs CPU-only, so this is not GPU-gated. On in dev since M10: the sidecar is
+# `services/clip-embed/.venv/bin/uvicorn app:app --port 8092`, Qdrant is in the dev compose.
+enabled = true
 qdrant_url = "http://127.0.0.1:6333"
 qdrant_key = ""
 collection = "image_clip"

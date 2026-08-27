@@ -408,6 +408,7 @@ impl Parser {
             if let Some(abs) = absolutise(&img, base) {
                 out.push(Media {
                     kind: MediaKind::Image,
+                    ext: xustive_media::ext::from_url(&abs).map(str::to_string),
                     url: abs,
                     thumb_url: None,
                     width: 0,
@@ -417,6 +418,7 @@ impl Parser {
                     embedding_id: None,
                     phash: None,
                     provider: None,
+                    style: None,
                 });
             }
         }
@@ -441,6 +443,7 @@ impl Parser {
                     if !out.iter().any(|m: &Media| m.url == abs) {
                         out.push(Media {
                             kind: MediaKind::Image,
+                            ext: xustive_media::ext::from_url(&abs).map(str::to_string),
                             url: abs,
                             thumb_url: None,
                             width: 0,
@@ -450,6 +453,7 @@ impl Parser {
                             embedding_id: None,
                             phash: None,
                             provider: None,
+                            style: None,
                         });
                     }
                 }

@@ -18,12 +18,32 @@
 
 use async_trait::async_trait;
 
+use crate::describe::{Described, Description};
 use crate::{VectorError, DIM};
 
-/// Anything that turns image bytes into a CLIP vector.
+/// Anything that turns image bytes into a CLIP vector — and, since M10, into words.
 #[async_trait]
 pub trait Embedder: Send + Sync {
     async fn embed(&self, image: Vec<u8>) -> Result<Vec<f32>, VectorError>;
+    /// The vector and a description (styles, subjects). The default has no words: an embedder
+    /// that cannot describe still embeds, and the callers treat an empty description as "unsure".
+    async fn describe(&self, image: Vec<u8>) -> Result<Described, VectorError> {
+        Ok(Described {
+            vector: self.embed(image).await?,
+            description: Description::default(),
+        })
+    }
+    /// Words for vectors already computed — the backfill path. Default: none.
+    async fn classify(&self, vectors: &[Vec<f32>]) -> Result<Vec<Description>, VectorError> {
+        Ok(vectors.iter().map(|_| Description::default()).collect())
+    }
+    /// CLIP's text tower, in the same space as the images. Default: unsupported.
+    async fn embed_text(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, VectorError> {
+        let _ = texts;
+        Err(VectorError::Unreachable(
+            "text embedding unsupported".into(),
+        ))
+    }
     /// Whether the embedder is ready, for the admin console. Default: true (an in-process embedder
     /// is always ready); the sidecar probes its `/health`.
     async fn healthy(&self) -> bool {
@@ -46,6 +66,18 @@ pub struct SidecarEmbedder {
 #[derive(serde::Deserialize)]
 struct EmbedReply {
     embedding: Vec<f32>,
+    #[serde(flatten)]
+    description: Description,
+}
+
+#[derive(serde::Deserialize)]
+struct ClassifyReply {
+    items: Vec<Description>,
+}
+
+#[derive(serde::Deserialize)]
+struct TextReply {
+    vectors: Vec<Vec<f32>>,
 }
 
 impl SidecarEmbedder {
@@ -77,16 +109,77 @@ impl Embedder for SidecarEmbedder {
         if !self.breaker.allow() {
             return Err(VectorError::Unreachable("circuit open".into()));
         }
-        match self.try_embed(image).await {
-            Ok(v) => {
+        match self.try_embed(image, false).await {
+            Ok(d) => {
                 self.breaker.on_success();
-                Ok(v)
+                Ok(d.vector)
             }
             Err(e) => {
                 self.breaker.on_failure();
                 Err(e)
             }
         }
+    }
+
+    async fn describe(&self, image: Vec<u8>) -> Result<Described, VectorError> {
+        if !self.breaker.allow() {
+            return Err(VectorError::Unreachable("circuit open".into()));
+        }
+        match self.try_embed(image, true).await {
+            Ok(d) => {
+                self.breaker.on_success();
+                Ok(d)
+            }
+            Err(e) => {
+                self.breaker.on_failure();
+                Err(e)
+            }
+        }
+    }
+
+    async fn classify(&self, vectors: &[Vec<f32>]) -> Result<Vec<Description>, VectorError> {
+        let resp = self
+            .http
+            .post(self.sibling("classify"))
+            .json(&serde_json::json!({ "vectors": vectors }))
+            .send()
+            .await
+            .map_err(|e| VectorError::Unreachable(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(VectorError::Backend {
+                status: resp.status().as_u16(),
+                body: resp.text().await.unwrap_or_default(),
+            });
+        }
+        let reply: ClassifyReply = resp
+            .json()
+            .await
+            .map_err(|e| VectorError::Decode(e.to_string()))?;
+        if reply.items.len() != vectors.len() {
+            return Err(VectorError::Decode("classify reply length mismatch".into()));
+        }
+        Ok(reply.items)
+    }
+
+    async fn embed_text(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, VectorError> {
+        let resp = self
+            .http
+            .post(self.sibling("embed/text"))
+            .json(&serde_json::json!({ "texts": texts }))
+            .send()
+            .await
+            .map_err(|e| VectorError::Unreachable(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(VectorError::Backend {
+                status: resp.status().as_u16(),
+                body: resp.text().await.unwrap_or_default(),
+            });
+        }
+        let reply: TextReply = resp
+            .json()
+            .await
+            .map_err(|e| VectorError::Decode(e.to_string()))?;
+        Ok(reply.vectors.into_iter().map(l2_normalise).collect())
     }
 
     /// Liveness probe against the sidecar's `/health` (the endpoint is the `/embed` path).
@@ -103,11 +196,25 @@ impl Embedder for SidecarEmbedder {
 }
 
 impl SidecarEmbedder {
-    /// The actual HTTP call, wrapped by the breaker in [`Embedder::embed`].
-    async fn try_embed(&self, image: Vec<u8>) -> Result<Vec<f32>, VectorError> {
+    /// A sibling route of the embed endpoint: `…/embed` → `…/classify`, `…/embed/text`.
+    fn sibling(&self, path: &str) -> String {
+        let base = self
+            .endpoint
+            .trim_end_matches("/embed")
+            .trim_end_matches('/');
+        format!("{base}/{path}")
+    }
+
+    /// The actual HTTP call, wrapped by the breaker in [`Embedder::embed`] / [`Embedder::describe`].
+    async fn try_embed(&self, image: Vec<u8>, describe: bool) -> Result<Described, VectorError> {
+        let url = if describe {
+            format!("{}?describe=1", self.endpoint)
+        } else {
+            self.endpoint.clone()
+        };
         let resp = self
             .http
-            .post(&self.endpoint)
+            .post(&url)
             .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
             .body(image)
             .send()
@@ -129,7 +236,10 @@ impl SidecarEmbedder {
                 reply.embedding.len()
             )));
         }
-        Ok(l2_normalise(reply.embedding))
+        Ok(Described {
+            vector: l2_normalise(reply.embedding),
+            description: reply.description,
+        })
     }
 }
 

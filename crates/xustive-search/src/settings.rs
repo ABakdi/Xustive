@@ -112,7 +112,9 @@ pub fn documents_settings() -> Value {
             // The Images and Videos verticals (M9) filter on the media an article carries.
             // Meilisearch flattens arrays of objects, so `media.type` selects any document with
             // at least one entry of that type — a settings change, not a reindex.
-            "media.type", "media.provider"
+            "media.type", "media.provider",
+            // The reverse-image chips, and the same filters on the Images tab (M10-T02.3).
+            "media.ext", "media.style"
         ],
         "sortableAttributes": [
             "published_at", "crawled_at", "quality_score", "engagement.likes"

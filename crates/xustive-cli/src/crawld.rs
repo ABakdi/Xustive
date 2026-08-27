@@ -732,7 +732,9 @@ fn now_ms() -> i64 {
 /// Returns `None` (rather than failing the crawl) when the embedder or Qdrant client will not
 /// build — image embedding is an enrichment, and a crawl must run without it. The Qdrant collection
 /// is ensured lazily by the serving side's startup; the crawler only writes.
-async fn build_image_embed(config: &Config) -> Option<xustive_ingest::media_embed::ImageEmbed> {
+pub(crate) async fn build_image_embed(
+    config: &Config,
+) -> Option<xustive_ingest::media_embed::ImageEmbed> {
     let v = &config.vector;
     let timeout = std::time::Duration::from_millis(v.timeout_ms);
     let key = (!v.qdrant_key.is_empty()).then(|| v.qdrant_key.clone());

@@ -1083,6 +1083,10 @@ fn ingest_federated(state: &AppState, hits: &[xustive_ingest::federation::Federa
                     } else {
                         xustive_core::model::MediaKind::Image
                     },
+                    ext: (m.kind != "video")
+                        .then(|| xustive_media::ext::from_url(&m.src).map(str::to_string))
+                        .flatten(),
+                    style: None,
                     url: m.src.clone(),
                     thumb_url: m.thumb.clone(),
                     width: 0,

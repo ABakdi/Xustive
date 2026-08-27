@@ -66,6 +66,10 @@ pub async fn embed_and_store(document: &mut Document, cfg: &ImageEmbed) {
             document.media[i].phash = xustive_media::phash::dhash(&bytes, ocr::MAX_PIXELS);
         }
         let phash = document.media[i].phash.clone();
+        // The bytes know the file type better than the URL did (M10-T02.1).
+        if let Some(ext) = xustive_media::ext::from_bytes(&bytes) {
+            document.media[i].ext = Some(ext.to_string());
+        }
 
         // Reuse the embedding of a structurally identical image if we have already computed one —
         // the same picture reposted at another URL costs a Redis read, not a model call.
@@ -73,15 +77,23 @@ pub async fn embed_and_store(document: &mut Document, cfg: &ImageEmbed) {
             (Some(cache), Some(h)) => cache.get(h).await,
             _ => None,
         };
-        let vector = match cached {
-            Some(v) => v,
-            None => match cfg.embedder.embed(bytes).await {
-                Ok(v) => {
+        // A cached vector comes without words; `classify` gets them from the vector itself, so
+        // a reposted picture is still described and still costs no image call.
+        let (vector, style) = match cached {
+            Some(v) => {
+                let style = match cfg.embedder.classify(std::slice::from_ref(&v)).await {
+                    Ok(mut d) => d.pop().and_then(|d| d.style_label()),
+                    Err(_) => None,
+                };
+                (v, style)
+            }
+            None => match cfg.embedder.describe(bytes).await {
+                Ok(d) => {
                     // Populate the cache for the next copy of this image.
                     if let (Some(cache), Some(h)) = (&cfg.cache, &phash) {
-                        cache.put(h, &v).await;
+                        cache.put(h, &d.vector).await;
                     }
-                    v
+                    (d.vector, d.description.style_label())
                 }
                 Err(e) => {
                     tracing::debug!(url = %url, error = %e, "image embed skipped");
@@ -89,6 +101,9 @@ pub async fn embed_and_store(document: &mut Document, cfg: &ImageEmbed) {
                 }
             },
         };
+        if style.is_some() {
+            document.media[i].style = style.clone();
+        }
         points.push(Point {
             id: point_id(&url),
             vector,
@@ -99,6 +114,8 @@ pub async fn embed_and_store(document: &mut Document, cfg: &ImageEmbed) {
                 published_at: (document.published_at > 0).then_some(document.published_at),
                 is_nsfw: document.is_nsfw,
                 phash,
+                ext: document.media[i].ext.clone(),
+                style,
             },
         });
     }

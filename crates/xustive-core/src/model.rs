@@ -216,6 +216,16 @@ pub struct Media {
     /// (M9-T01.3). Named on the tile because leaving our site is the reader's choice.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// File type of an image — `png`, `jpg`, `gif`, `webp`, `svg`, `avif`, `bmp`, `tiff` — from
+    /// the URL at extraction and corrected from the bytes when they are fetched (M10-T02.1).
+    /// `jpeg` is `jpg`. Absent when neither said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ext: Option<String>,
+    /// What kind of picture this is — `photo`, `illustration`, `screenshot`, `render_3d`… — the
+    /// top entry of `data/styles.tsv` when CLIP is sure enough (M10-T02.2). The chips on the
+    /// reverse-image page are the styles present in the results, so this is what makes them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

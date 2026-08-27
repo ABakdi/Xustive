@@ -20,6 +20,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+pub mod describe;
 pub mod embed;
 pub mod text;
 pub use embed::{l2_normalise, Embedder, SidecarEmbedder};
@@ -70,6 +71,13 @@ pub struct Payload {
     pub is_nsfw: bool,
     #[serde(default)]
     pub phash: Option<String>,
+    /// File type (`png`, `jpg`…) and style (`photo`, `screenshot`…) — the two chips of the
+    /// reverse-image page (M10-T02.2). Both optional: older points have neither until the
+    /// `vector-repass --describe` backfill.
+    #[serde(default)]
+    pub ext: Option<String>,
+    #[serde(default)]
+    pub style: Option<String>,
 }
 
 /// A search result: the stored payload and its similarity score.
@@ -234,6 +242,8 @@ impl Store {
             ("is_nsfw", "bool"),
             ("document_id", "keyword"),
             ("phash", "keyword"),
+            ("ext", "keyword"),
+            ("style", "keyword"),
         ] {
             let resp = self
                 .req(
@@ -375,6 +385,71 @@ impl Store {
         Ok(ids.into_iter().collect())
     }
 
+    /// One page of points **with vectors**, for the describe backfill (M10-T02.4).
+    ///
+    /// Returns the points and the offset of the next page (`None` when exhausted). Off the
+    /// serving path — a scan that carries 512 floats per point is a batch job by construction.
+    pub async fn scroll_vectors(
+        &self,
+        batch: usize,
+        offset: Option<Value>,
+    ) -> Result<(Vec<Point>, Option<Value>), VectorError> {
+        let mut body = json!({ "limit": batch, "with_payload": true, "with_vector": true });
+        if let Some(o) = offset {
+            body["offset"] = o;
+        }
+        let resp = self
+            .req(
+                reqwest::Method::POST,
+                &format!("/collections/{}/points/scroll", self.collection),
+            )
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| VectorError::Unreachable(e.to_string()))?;
+        let value = self.json(resp).await?;
+        let raw = value["result"]["points"]
+            .as_array()
+            .ok_or_else(|| VectorError::Decode("missing result.points".into()))?;
+        let mut points = Vec::with_capacity(raw.len());
+        for p in raw {
+            let id = p["id"]
+                .as_u64()
+                .ok_or_else(|| VectorError::Decode("point id".into()))?;
+            let vector: Vec<f32> = serde_json::from_value(p["vector"].clone())
+                .map_err(|e| VectorError::Decode(format!("point vector: {e}")))?;
+            let payload: Payload = serde_json::from_value(p["payload"].clone())
+                .map_err(|e| VectorError::Decode(format!("point payload: {e}")))?;
+            points.push(Point {
+                id,
+                vector,
+                payload,
+            });
+        }
+        let next = match value["result"].get("next_page_offset") {
+            Some(n) if !n.is_null() => Some(n.clone()),
+            _ => None,
+        };
+        Ok((points, next))
+    }
+
+    /// Merge `patch` into the payload of the given points, waiting for the write.
+    pub async fn set_payload(&self, ids: &[u64], patch: &Value) -> Result<(), VectorError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let resp = self
+            .req(
+                reqwest::Method::POST,
+                &format!("/collections/{}/points/payload?wait=true", self.collection),
+            )
+            .json(&json!({ "payload": patch, "points": ids }))
+            .send()
+            .await
+            .map_err(|e| VectorError::Unreachable(e.to_string()))?;
+        self.check(resp).await
+    }
+
     /// Total points in the collection — for metrics and tests.
     pub async fn count(&self) -> Result<u64, VectorError> {
         let resp = self
@@ -499,6 +574,8 @@ mod tests {
             published_at: Some(123),
             is_nsfw: false,
             phash: Some("abcd".into()),
+            ext: None,
+            style: None,
         };
         let v = serde_json::to_value(&p).unwrap();
         let back: Payload = serde_json::from_value(v).unwrap();

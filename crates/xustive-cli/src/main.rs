@@ -288,6 +288,22 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Describe the image vectors already stored — file type from the URL, style from CLIP's
+    /// text tower via the sidecar's `/classify` — and write both to Qdrant and to the documents'
+    /// `media[]`, so the reverse-image chips are not empty on day one (M10-T02.4). Reads vectors,
+    /// never images: no fetch, no crawl budget.
+    VectorRepass {
+        /// Stop after this many points (0 = all).
+        #[arg(long, default_value_t = 0)]
+        limit: usize,
+        /// Report what would change without writing.
+        #[arg(long)]
+        dry_run: bool,
+        /// First embed the images of documents that have no vector yet (fetches the images,
+        /// bounded like the crawler's own pass), then describe. The day-one fill.
+        #[arg(long)]
+        embed: bool,
+    },
     /// Delete image vectors whose parent document is gone from the index (orphan reconciliation).
     ///
     /// A takedown or reindex can remove a document from the lexical index while its image
@@ -561,6 +577,16 @@ async fn main() -> Result<()> {
         Command::Stats => cmd_stats(&client, &config).await,
         Command::MediaRepass { limit, dry_run } => {
             cmd_media_repass(&client, &config, limit, dry_run).await
+        }
+        Command::VectorRepass {
+            limit,
+            dry_run,
+            embed,
+        } => {
+            if embed {
+                cmd_vector_embed(&client, &config, limit, dry_run).await?;
+            }
+            cmd_vector_repass(&client, &config, limit, dry_run).await
         }
         Command::Takedown { domain, yes } => cmd_takedown(&client, &config, &domain, yes).await,
         Command::Reindex {
@@ -1591,6 +1617,238 @@ mod tests {
 /// Honest about coverage by construction: the report says how many documents still had a body
 /// and how many did not, because "the Videos tab is sparse" has two very different causes and an
 /// operator needs to know which one they are looking at.
+/// `vector-repass --embed`: embed the images of documents that have no point yet.
+async fn cmd_vector_embed(
+    client: &MeiliClient,
+    config: &Config,
+    limit: usize,
+    dry_run: bool,
+) -> Result<()> {
+    if !config.vector.enabled {
+        anyhow::bail!("[vector] enabled is false");
+    }
+    let Some(cfg) = crawld::build_image_embed(config).await else {
+        anyhow::bail!("could not build the embed pass (Qdrant, sidecar or fetcher)");
+    };
+    cfg.store
+        .ensure_collection()
+        .await
+        .context("ensuring the collection")?;
+    let have: std::collections::HashSet<String> = cfg
+        .store
+        .all_document_ids(1000)
+        .await?
+        .into_iter()
+        .collect();
+    let index = client.resolve(xustive_search::settings::DOCUMENTS).await?;
+    let (mut scanned, mut embedded, points_before) =
+        (0usize, 0usize, cfg.store.count().await.unwrap_or(0));
+    let mut offset = 0u64;
+    'pages: loop {
+        let page = client
+            .documents_page_fields(&index, offset, 200, &["*"])
+            .await?;
+        if page.is_empty() {
+            break;
+        }
+        offset += page.len() as u64;
+        for value in page {
+            let Some(id) = value.get("id").and_then(|v| v.as_str()).map(str::to_string) else {
+                continue;
+            };
+            if have.contains(&id) {
+                continue;
+            }
+            let has_image = value
+                .get("media")
+                .and_then(|m| m.as_array())
+                .is_some_and(|m| {
+                    m.iter()
+                        .any(|x| x.get("type").and_then(|t| t.as_str()) == Some("image"))
+                });
+            if !has_image {
+                continue;
+            }
+            scanned += 1;
+            if limit > 0 && scanned > limit {
+                break 'pages;
+            }
+            if dry_run {
+                continue;
+            }
+            let mut doc: xustive_core::Document = match serde_json::from_value(value) {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::debug!(id = %id, error = %e, "document does not deserialise; skipped");
+                    continue;
+                }
+            };
+            xustive_ingest::media_embed::embed_and_store(&mut doc, &cfg).await;
+            // Only `media` is written back: the pass stamped phash, ext and style on it.
+            client
+                .update_documents(
+                    &index,
+                    &[serde_json::json!({ "id": doc.id, "media": doc.media })],
+                )
+                .await?;
+            embedded += 1;
+            if embedded % 25 == 0 {
+                eprintln!("embedded {embedded} documents…");
+            }
+        }
+    }
+    let points_after = cfg.store.count().await.unwrap_or(0);
+    eprintln!(
+        "embed: {scanned} documents with images and no vector{}, {embedded} embedded, points {points_before} → {points_after}",
+        if dry_run { " (dry run)" } else { "" }
+    );
+    let _ = points_before;
+    Ok(())
+}
+
+async fn cmd_vector_repass(
+    client: &MeiliClient,
+    config: &Config,
+    limit: usize,
+    dry_run: bool,
+) -> Result<()> {
+    use xustive_vector::Embedder;
+
+    let v = &config.vector;
+    if !v.enabled {
+        anyhow::bail!("[vector] enabled is false: there are no image vectors to describe");
+    }
+    let timeout = Duration::from_millis(v.timeout_ms);
+    let key = (!v.qdrant_key.is_empty()).then(|| v.qdrant_key.clone());
+    let store = xustive_vector::Store::new(&v.qdrant_url, key, v.collection.clone(), timeout)
+        .context("connecting to Qdrant")?;
+    let embedder = xustive_vector::SidecarEmbedder::new(&v.embedder_endpoint, timeout)
+        .context("building the embed client")?;
+    if !embedder.healthy().await {
+        anyhow::bail!("the CLIP sidecar is not answering /health; start it first");
+    }
+
+    // Pass 1: Qdrant. Scroll with vectors, classify each page, patch the payloads grouped by
+    // label (one call per distinct style per page), and remember url → words for pass 2.
+    let mut words: std::collections::HashMap<String, (Option<String>, Option<String>)> =
+        std::collections::HashMap::new();
+    let (mut seen, mut labelled, mut typed) = (0usize, 0usize, 0usize);
+    let mut offset = None;
+    'scan: loop {
+        let (points, next) = store.scroll_vectors(128, offset).await?;
+        if points.is_empty() {
+            break;
+        }
+        let vectors: Vec<Vec<f32>> = points.iter().map(|p| p.vector.clone()).collect();
+        let described = embedder.classify(&vectors).await.context("classify")?;
+        let mut by_style: std::collections::HashMap<String, Vec<u64>> = Default::default();
+        let mut by_ext: std::collections::HashMap<String, Vec<u64>> = Default::default();
+        for (p, d) in points.iter().zip(described) {
+            seen += 1;
+            let style = d.style_label();
+            let ext =
+                p.payload.ext.clone().or_else(|| {
+                    xustive_media::ext::from_url(&p.payload.media_url).map(str::to_string)
+                });
+            if let Some(s) = &style {
+                if p.payload.style.as_deref() != Some(s) {
+                    by_style.entry(s.clone()).or_default().push(p.id);
+                }
+                labelled += 1;
+            }
+            if let Some(e) = &ext {
+                if p.payload.ext.is_none() {
+                    by_ext.entry(e.clone()).or_default().push(p.id);
+                }
+                typed += 1;
+            }
+            words.insert(p.payload.media_url.clone(), (style, ext));
+            if limit > 0 && seen >= limit {
+                break;
+            }
+        }
+        if !dry_run {
+            for (style, ids) in &by_style {
+                store
+                    .set_payload(ids, &serde_json::json!({ "style": style }))
+                    .await?;
+            }
+            for (ext, ids) in &by_ext {
+                store
+                    .set_payload(ids, &serde_json::json!({ "ext": ext }))
+                    .await?;
+            }
+        }
+        eprintln!("vectors: {seen} seen, {labelled} with a style, {typed} with a type");
+        if limit > 0 && seen >= limit {
+            break 'scan;
+        }
+        match next {
+            Some(n) => offset = Some(n),
+            None => break,
+        }
+    }
+
+    // Pass 2: the documents. Only `media` is written; everything else is left as it is.
+    let index = client.resolve(xustive_search::settings::DOCUMENTS).await?;
+    let (mut docs, mut changed) = (0usize, 0usize);
+    let mut batch: Vec<serde_json::Value> = Vec::new();
+    let mut page_offset = 0u64;
+    loop {
+        let page = client
+            .documents_page_fields(&index, page_offset, 500, &["id", "media"])
+            .await?;
+        if page.is_empty() {
+            break;
+        }
+        page_offset += page.len() as u64;
+        for mut doc in page {
+            docs += 1;
+            let mut touched = false;
+            if let Some(media) = doc.get_mut("media").and_then(|m| m.as_array_mut()) {
+                for m in media.iter_mut() {
+                    let Some(url) = m.get("url").and_then(|u| u.as_str()) else {
+                        continue;
+                    };
+                    let Some((style, ext)) = words.get(url) else {
+                        continue;
+                    };
+                    if let Some(s) = style {
+                        if m.get("style").and_then(|x| x.as_str()) != Some(s) {
+                            m["style"] = serde_json::Value::String(s.clone());
+                            touched = true;
+                        }
+                    }
+                    if let Some(e) = ext {
+                        if m.get("ext").is_none() {
+                            m["ext"] = serde_json::Value::String(e.clone());
+                            touched = true;
+                        }
+                    }
+                }
+            }
+            if touched {
+                changed += 1;
+                if !dry_run {
+                    batch.push(doc);
+                    if batch.len() >= 200 {
+                        client.update_documents(&index, &batch).await?;
+                        batch.clear();
+                    }
+                }
+            }
+        }
+    }
+    if !dry_run && !batch.is_empty() {
+        client.update_documents(&index, &batch).await?;
+    }
+    eprintln!(
+        "documents: {docs} scanned, {changed} {}",
+        if dry_run { "would change" } else { "updated" }
+    );
+    Ok(())
+}
+
 async fn cmd_media_repass(
     client: &MeiliClient,
     config: &Config,

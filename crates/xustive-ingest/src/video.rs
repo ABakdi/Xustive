@@ -59,6 +59,8 @@ impl Video {
             embedding_id: None,
             phash: None,
             provider: Some(self.provider.as_str().to_string()),
+            ext: None,
+            style: None,
         }
     }
 }
