@@ -3,195 +3,248 @@ tags:
   - ui
   - design
 type: ui
-status: specified
-updated: 2026-08-06
+status: built
+updated: 2026-08-27
 ---
 
 # UI - Component Library
 
-> Every reusable UI component: markup contract, states, and behaviour. Tokens come from
+> Every reusable UI component: file, props, states, and behaviour. Tokens come from
 > [[UI - Design Language]]. Screens that compose these live in [[UI - Home Page]],
-> [[UI - Results Page]], [[UI - Filters and Facets]].
+> [[UI - Results Page]], [[UI - Filters and Facets]], [[UI - Knowledge Panel]], [[UI - Tool Cards]].
+
+> **Audited 2026-08-27 against `web/components/**`.** The 2026-08-06 version described HTML
+> contracts with `data-component` attributes for a vanilla renderer. The components are React now
+> (Server Components wherever nothing is interactive) and this note names the actual files and
+> props. Superseded items are kept with the date so the reasoning survives.
 
 ---
 
 ## 1. Conventions
 
-- Components are plain HTML with `data-component="name"` and BEM-ish utility classes.
-- Behaviour attaches by `data-` attribute, never by class name — styling and behaviour stay
-  independent.
-- Every component defines: default, hover, focus-visible, active, disabled, loading, error, and
-  (where relevant) empty.
-- All components are logical-property based and therefore RTL-correct without a second stylesheet
-  ([[UI - RTL and Localization]]).
+- Server Components by default. `'use client'` appears only where there is state or an effect:
+  `SearchBox`, `VoiceButton`, `Summary`, `EntityPanel`, `ListPanel`, `InteractionBeacon`,
+  `OfflineBanner`, `LangSwitcher`, `ThemeToggle`, `DensityToggle`, and the interactive tool
+  pieces (`TranslateCard`, `ImageOcr`, `WeatherDetail`, `CopyButton`).
+- **No Radix / shadcn runtime.** shadcn is the reference for *structure* (variant prop,
+  `focus-visible` ring, state not carried by colour alone) but its primitives are client
+  components, and the result list shipping as markup is the most valuable property this frontend
+  has. `Button`, `Select`, `Toggle` are plain elements with a class.
+- Styling: Tailwind v4 utilities for layout plus a handful of semantic classes in `globals.css`
+  (`.field`, `.chip`, `.chip-active`, `.chip-clear`, `.chip-count`, `.card`, `.assert`, `.rise`,
+  `.ghost`, `.btn-quiet`, `.numeric`, `.rtl-flip`, `.list-row`, `.summary-answer`,
+  `.voice-button`, `.voice-meter`). Colours come from tokens (`var(--fg-muted)` etc.), never
+  literals — except two deliberate brand-dot maps in the knowledge components.
+- All components use logical properties (`ms-`, `start-`, `insetInlineStart`) and are therefore
+  RTL-correct without a second stylesheet ([[UI - RTL and Localization]]). Directional SVGs carry
+  `.rtl-flip`; `scripts/rtl-icons.sh` fails the build otherwise.
+- Every user-visible string is a key on `Messages` (`lib/i18n/messages.ts`), typed against the
+  Arabic catalogue so a missing key in another locale is a compile error. Components take `t`.
 
----
+*Superseded 2026-08-27*: `data-component="…"` / behaviour-by-`data-` attribute — there is no
+separate behaviour layer to attach.
 
-## 2. `SearchBox`
+## 2. `SearchBox` — `components/search/SearchBox.tsx` (client)
 
-```html
-<form data-component="search-box" role="search" action="/search" method="get">
-  <input type="search" name="q" autocomplete="off" spellcheck="false"
-         enterkeyhint="search" dir="auto"
-         aria-label="Search" aria-expanded="false" aria-controls="suggestions"
-         aria-autocomplete="list" role="combobox">
-  <button type="button" data-action="voice" aria-label="Search by voice">…</button>
-  <button type="button" data-action="image" aria-label="Search by image">…</button>
-  <button type="submit" aria-label="Search">…</button>
-</form>
-```
+Props: `lang`, `t`, `initialQuery?`, `compact?` (header variant: 38 px min height, 16 px icons;
+home: 48 px, 18 px).
+
+A real `<form role="search" action="/[lang]/search" method="get">` around a real
+`<input type="search" name="q">`, so it submits without JavaScript. The wrapper is `.field` — a
+**pill** (`--radius-pill`), lifted, with an inset accent-wash underline on hover/focus.
 
 | Aspect | Spec |
 |:---|:---|
-| Height | 56 px (`sm`), 60 px (`lg`) |
-| Radius | `--radius-full` |
-| `dir="auto"` | **critical** — the box flips to RTL as soon as the first Arabic character is typed ([[UI - RTL and Localization]] §4) |
-| Focus | `--shadow-md` + accent border, no layout shift |
-| Clear button | appears when non-empty, 44 px target |
-| Voice/image buttons | hidden when the API is unsupported or JS is off |
-| Max length | 512 (matches [[API Contract]] §2) |
-| Debounce | 120 ms before calling `/suggest` |
+| `dir="auto"` | the box flips to RTL on the first Arabic character ([[UI - RTL and Localization]] §4) |
+| `maxLength` | 512 ([[API Contract]] §2) |
+| ARIA | `role="combobox"`, `aria-expanded`, `aria-controls`, `aria-autocomplete="list"`, `aria-activedescendant` |
+| Debounce | **90 ms**, prefix ≥ 2 chars, `/api/v1/suggest?limit=8`, aborts the previous request |
+| Clear | one `✕` button (`aria-label="Clear"` — untranslated, see open questions) shown when non-empty; the browser's own `::-webkit-search-cancel-button` is hidden in CSS so there is never two |
+| Voice | `VoiceButton` inline — renders nothing where the browser cannot record; while recording the placeholder becomes `t.voiceListening`, a level meter (`.voice-meter`, four bars) and elapsed seconds appear, interim words show dimmed in the box, and stop **submits**. Errors appear as a `role="status"` line under the field ([[UI - Voice Search]]) |
+| Image | a `Camera` **link** to `/[lang]/tools/ocr` (`aria-label={t.ocrByImage}`) — a link, not a button, so it works without JS and opens in a new tab ([[UI - Image Search]]) |
+| Focus | `.field:focus-within` — border-strong + shadow, no layout shift |
+| Storage | nothing. No local history: "the most private thing a search engine holds is what you started to type and then deleted" |
 
-Keyboard: `↓`/`↑` move through suggestions, `Enter` submits the selected one or the raw text, `Esc`
-closes suggestions and restores the typed text, `/` from anywhere focuses the box.
+Keyboard: `↓`/`↑` move through suggestions and wrap to the typed text; `Enter` submits the
+highlighted suggestion or the raw text; `Esc` restores the typed text and closes; `Tab` closes.
+Arrow semantics do not flip in RTL — the list is vertical. The `/` global shortcut is **not built**.
 
-## 3. `SuggestionList`
+## 3. Suggestion list (inside `SearchBox`)
 
-`<ul id="suggestions" role="listbox">` with `role="option"` items and `aria-selected`. Rendered
-below the box, `--z-dropdown`, max 8 items.
+`<ul role="listbox">` with `role="option"` items and `aria-selected`; absolute, `--z-dropdown`,
+`max-block-size: 60vh`, opaque `--bg-sunk` surface with a `--line-strong` border (a floating panel
+must occlude what it covers). Items select on `mousedown` — `blur` fires before `click` and would
+close the list first.
 
-Each item: icon by `kind` (query / entity / transliteration / curated), the suggestion text with the
-typed prefix in `font-weight: 500`. **The prefix is highlighted by index, not by injecting markup**
-into the response string ([[Autocomplete Service]] §10).
+States: hidden (default), open, empty (hidden entirely — never "no suggestions"), loading (the
+previous list stays; no spinner).
 
-States: hidden (default), open, empty (hidden entirely — never "no suggestions"), loading (previous
-list stays, no spinner; a 40 ms spinner is worse than nothing).
+*Not built*: per-kind icons and prefix highlighting. Items render `item.text` only.
 
-## 4. `SummaryBlock`
+## 4. `Summary` — `components/search/Summary.tsx` (client)
 
-The AI summary above results. See [[UI - Results Page]] §3 for behaviour.
+Props: `token`, `note`, `loadingLabel`, `sourcesLabel`, `badge`, `prominent?`.
 
 | State | Rendering |
 |:---|:---|
-| `reserved` | fixed min-height 96 px placeholder, prevents CLS |
-| `generating` | shimmer lines (static bar if `prefers-reduced-motion`) + "Summarising…" |
-| `streaming` | text appears as it arrives; no per-token animation |
-| `done` | full text + citation chips `[1] [2]` linking to result cards |
-| `unavailable` | **block removed entirely**, results move up; no error text |
+| loading | `.assert.rise` section, `aria-busy`, sparkle + three pulsing dots + `loadingLabel` |
+| resolved, empty | **removed entirely**; no error text |
+| resolved | badge chip (`badge`, sparkle, accent wash) · text with `[n]` superscript links · sources row of `[n]` pill chips → `#result-<id>` · `note` in `text-xs` |
 
-The summary is inserted with `textContent`, never `innerHTML` — it is model output derived from
-untrusted crawled text ([[Security and Privacy]] §5).
+`prominent` (the query was a question) adds `.summary-answer` and `text-lg`; nothing else changes.
+Text is React children — escaped by construction — and only recognised `[n]` markers become
+markup. Full behaviour in [[UI - Results Page]] §3.
 
-Includes a persistent, non-dismissable label: *"AI summary — check the sources below."*
+*Superseded 2026-08-27*: the `reserved` / `generating` / `streaming` states of the SSE design.
+There is no stream and no reserved height.
 
-## 5. `ResultCard`
+## 5. `ResultCard` — `components/search/ResultCard.tsx` (server)
+
+Props: `result`, `t`, `locale`.
 
 ```html
-<article data-component="result-card" dir="auto">
-  <header>
-    <span data-slot="badge">…</span>
-    <a data-slot="url" href="…">elkhabar.com › economie</a>
-    <time datetime="2026-08-04">4 August 2026</time>
-    <span data-slot="sentiment">…</span>
-  </header>
-  <h3><a href="…" rel="noopener">Title</a></h3>
-  <p data-slot="excerpt">…<em>term</em>…</p>
-  <footer data-slot="engagement">…</footer>
-</article>
+<li id="result-<id>" class="card min-w-0 overflow-hidden scroll-mt-24" dir="auto">
+  <div class="text-xs muted">
+    <span class="border radius-sm">web</span>       <!-- t[source_type] -->
+    <span class="accent">From the web</span>         <!-- only when from_web -->
+    <bdi class="truncate">elkhabar.com › economie</bdi>
+    <bdi><time datetime="…">4 August 2026</time></bdi>   <!-- or t.dateUnknown -->
+    <span><span aria-hidden>▲</span> positive</span>     <!-- only when sentiment != null -->
+  </div>
+  <h2><a href="…" rel="noopener nofollow" data-doc="<id>">Title with <em>term</em></a></h2>
+  <p class="text-sm muted">excerpt with <em>term</em></p>
+</li>
 ```
 
-| Slot | Rules |
-|:---|:---|
-| `badge` | platform: web / Facebook / Instagram / TikTok, icon + text |
-| `url` | breadcrumb-style display URL, truncated with `text-overflow` |
-| `time` | absolute date; relative ("2 days ago") in `title`. If `precision = "unknown"`, render "date unknown" — **never a fabricated date** |
-| `sentiment` | icon + label; **omitted entirely when confidence is low** ([[Sentiment Engine]] §4.3) |
-| `title` | 2 lines max, `-webkit-line-clamp` |
-| `excerpt` | 3 lines max; only `<em>` from the server is preserved, everything else escaped |
-| `engagement` | shown for social results only; omitted when all counts are 0 |
-| `thumbnail` | 96 × 96, `loading="lazy"`, `referrerpolicy="no-referrer"`, `decoding="async"`; fixed box so a failed load does not shift layout |
-| `matched_comments` | up to 2, indented, with their own sentiment; collapsible |
-| `+N similar` | when the card represents a dedup cluster ([[Deduplication Service]] §4.5) |
+- `min-w-0 overflow-hidden` are load-bearing: one unbreakable percent-encoded Arabic slug once
+  widened the document to 4 487 px.
+- `data-doc` is read by `InteractionBeacon`'s delegated listener; the `href` stays the real
+  destination.
+- Never carries `.assert` — that mark means the engine is asserting something; a result is what
+  somebody else published.
+- The title is the link, not the whole card, so text is selectable and the URL copyable.
 
-The whole card is **not** one big link — the title is the link, so text is selectable and the URL is
-copyable. Hover raises the title colour only.
+*Not built*: thumbnail, engagement footer, `matched_comments`, `+N similar`, line clamps,
+relative-date `title`.
 
-## 6. `FilterChip` / `FilterBar`
+## 6. `Filters` — `components/search/Filters.tsx` (server)
 
-Toggle chips for source and sentiment; a date control for range. Full behaviour in
+Props: `lang`, `t`, `facets`, `active`, `q`. Three groups (`language`→`lang`, `source_type`→
+`source`, `sentiment.label`→`sentiment`), each `role="group" aria-label`, each value a `LinkButton`
+(`emphasis` + `aria-current="true"` when selected) with the count in `.numeric`. A group with fewer
+than two values and nothing selected is hidden; a "clear" `LinkButton.chip-clear` appears when
+anything is selected. Real links — every toggle is a navigation. Full behaviour in
 [[UI - Filters and Facets]].
 
-```html
-<button data-component="filter-chip" role="switch" aria-checked="false" aria-label="Facebook, 700 results">
-  <svg aria-hidden="true">…</svg> Facebook <span data-slot="count">700</span>
-</button>
-```
+*Superseded 2026-08-27*: `role="switch"` / `aria-checked` chips. These navigate, so they are links.
 
-States: default, selected (`--color-accent-weak` background, accent border), disabled (count 0),
-count-unavailable (count hidden when facets were dropped under load,
-[[Error Handling and Resilience]] §6).
+## 7. `Pagination` — `components/search/Pagination.tsx` (server)
 
-## 7. `Pagination`
+Words (`t.previous` / `t.next`), a five-page window around the current page, current page as
+`<span class="chip chip-active numeric" aria-current="page">`, others as `LinkButton`. Hidden
+when `total_pages ≤ 1`. Words rather than `‹ ›` because in RTL a literal chevron points the wrong
+way and mirroring it with a transform is worse than writing the word.
 
-Prev / page numbers / Next. 20 per page, max 100 pages. Current page has `aria-current="page"`.
-Arrow direction is **logical** — in RTL, "next" points left ([[UI - RTL and Localization]] §5).
-Result count renders as "about 1,800 results" when `estimated` is true.
-
-No infinite scroll: it breaks back-button behaviour, breaks "share this page of results", and is an
+No infinite scroll: it breaks the back button and "share this page of results", and is an
 engagement pattern rather than a utility one ([[UI Specification]] §2).
 
-## 8. `Sheet` (mobile) and `Rail` (desktop)
+## 8. `Verticals` — `components/search/Verticals.tsx` (server)
 
-Filters live in a bottom sheet below `lg` and a sticky rail at `lg`. The sheet is a `<dialog>` with
-focus trap, `Esc` to close, backdrop click to close, and scroll lock on the body. Same content in
-both — one component, two layouts.
+A `<nav>` of links: All, News, Files, Images, Videos; `?v=` in the URL; active tab has
+`aria-current="page"` and an accent bottom border. [[UI - Search Verticals]].
 
-## 9. `Toast`
+## 9. `MediaGrid` — `ImageGrid` / `VideoList` (server)
 
-Transient, `--z-toast`, `role="status"` (`aria-live="polite"`). Auto-dismiss at 5 s, manual close
-always available. Used for "Link copied", "Filters cleared", "Microphone unavailable". **Never** for
-errors that need action — those are inline ([[UI - States and Errors]]).
+Tile layouts for the Images and Videos tabs, `<img>` through the signed `/api/thumb` proxy.
+[[UI - Search Verticals]] and [[UI - Image Search]].
 
-## 10. `Skeleton`
+## 10. `EntityPanel` and `ListPanel` (client)
 
-Placeholder for the summary block and result cards during load. Matches the real component's
-dimensions exactly so nothing shifts. Shimmer via `background-position` animation; static under
-`prefers-reduced-motion`. Marked `aria-hidden="true"` with a single `aria-live` region announcing
-"Loading results".
+The knowledge rail and the relation row. Documented in [[UI - Knowledge Panel]]. (`KnowledgePanel.tsx`,
+the earlier Wikipedia-only rail, is still in the tree but no longer mounted — `EntityPanel` folds
+the Wikipedia extract in.)
 
-## 11. `EmptyState`
+## 11. `InteractionBeacon` — `components/search/InteractionBeacon.tsx` (client)
 
-Icon, one-line explanation, and **actionable** suggestions — not a shrug. For zero results:
-"No results for X" plus: remove a filter (with the filters listed), try the transliterated form
-(offered when the query looks Arabizi), broaden the date range. See [[UI - States and Errors]] §3.
+Props: `token`, `children`. A `<div>` with one capture-phase click listener that reads
+`a[data-doc]` and `navigator.sendBeacon('/api/v1/interaction', {t, d})`. Absent when the API sent
+no token. [[Interaction Signals]].
 
-## 12. `LanguageToggle`
+## 12. `Button` / `LinkButton` — `components/ui/Button.tsx` (server)
 
-Four options: العربية / Français / English / Darija (Arabizi input hint). Changes UI chrome language
-and sets `dir`. Persisted in `localStorage` as a plain enum — the only thing we store, and it is
-disclosed ([[UI Specification]] §9).
+`variant: 'default' | 'emphasis' | 'quiet'` → `.chip` / `.chip.chip-active` / `.btn-quiet`.
+`type` is **not defaulted** — HTML's default of `submit` is right in the Server Action forms and
+wrong elsewhere, so the caller says. `LinkButton` is a separate `next/link` wrapper rather than an
+`asChild` polymorph: a link must be a real `<a>`.
 
-## 13. `Badge`
+## 13. `Select` — `components/ui/Select.tsx` (server)
 
-Platform and metadata badges. Text + icon, `--text-xs`, `--radius-sm`. Platform colours are muted
-(not brand colours at full saturation) so a page of Facebook results does not turn blue.
+A **native** `<select>` with a visible label, styled `.chip`. The option list cannot be styled;
+that is the price of a control every mobile browser already renders well and that works without
+JavaScript.
+
+## 14. `Toggle` — `components/ui/Toggle.tsx` (server)
+
+A submit `Button` with `aria-pressed`, not `role="switch"`: it posts a Server Action and the page
+re-renders, which is a button. Used on `/[lang]/settings` for per-tool on/off (cookie
+`xustive-tools-off`).
+
+## 15. `Icon` — `components/ui/Icon.tsx` (server)
+
+Hand-picked 24-unit paths, `stroke="currentColor"`, `strokeWidth 1.75`, `aria-hidden`, drawn
+inline — an icon package would cost more JS than the whole entity panel. Names: `sparkle user film
+tv pin building box book music calendar leaf bulb cake cross flag shirt briefcase star clock globe
+tag people ruler link quote camera play check chevron-start chevron-end users`. The chevrons are
+logical (start/end) and flip under `dir="rtl"`.
+
+`lucide-react` is used only in client components that already ship JS (`SearchBox`, the header
+toggles, the tool cards).
+
+## 16. Header controls — `components/layout/*`
+
+| Component | Behaviour |
+|:---|:---|
+| `Wordmark` | `XUSTIVE`, always Latin, `dir="ltr"`, links to `/[lang]`; `size: 'lg' \| 'sm'` |
+| `LangSwitcher` | `.ghost` button (`aria-haspopup="menu"`, `aria-expanded`) opening a `role="menu"` of four **links** — العربية / الدارجة / Français / English, each named in its own language, `lang`+`dir` per item, `aria-current` on the active one — to the same path and query under the other locale. Only the disclosure needs JS. Switching changes chrome language, `dir`, the `ui=` ranking signal and the summary language ([[UI - RTL and Localization]]) |
+| `ThemeToggle` | cycles system → light → dark; writes `data-theme` on `<html>` immediately, then the `xustive-theme` cookie via a Server Action and `router.refresh()`. `aria-label` names the **current** state |
+| `DensityToggle` | comfortable ↔ compact, identical shape (`data-density`, `xustive-density` cookie); compact tightens `--result-gap` from 12 px to 6 px. Matters here because Arabic sets taller than Latin |
+| `OfflineBanner` | fixed top `role="status"`, assertive while offline, polite 3 s "back online" note on recovery; mounted in the `[lang]` layout |
+
+*Superseded 2026-08-27*: the `LanguageToggle` in `localStorage`. Language is the URL segment;
+theme, density and disabled tools are cookies, so the server can render the right thing on the
+first byte ([[UI - Frontend Architecture]] §6).
+
+## 17. Tool cards — `components/tools/*`
+
+`ToolCard` (the generic frame), `TranslateCard`, `WeatherDetail`, `ImageOcr`, `CopyButton`,
+`DismissTool`. [[UI - Tool Cards]].
+
+## 18. Not built
+
+`Sheet`/`Rail` (filters live inline), `Toast` (nothing transient to show yet; voice errors are an
+inline status line), `Skeleton` for the page (results arrive server-rendered; the entity panel has
+its own skeleton), `Badge` as a component (badges are spans with `.chip`-like classes), `EmptyState`
+as a component (the empty copy is inline in the search page).
 
 ---
 
-## 14. Component Checklist
+## 19. Component Checklist
 
 Every component ships with: all states styled, keyboard operation, an accessible name, RTL
-verification, a `prefers-reduced-motion` variant, a dark-mode check, and an entry in the visual
-regression suite ([[Testing Strategy]]).
+verification (`scripts/rtl-icons.sh`, `scripts/lint-bidi.sh`), a `prefers-reduced-motion` variant
+(`.rise` is gated on `no-preference`), a dark-mode check (`data-theme` tokens), and a contrast pass
+(`scripts/contrast-audit.mjs`). There is no visual-regression suite yet.
 
-## 15. Open Questions
+## 20. Open Questions
 
-- [ ] Should `ResultCard` show the domain favicon? It is a third-party request per card — likely
-      proxied or dropped ([[Security and Privacy]] §9).
-- [ ] Do citation chips in `SummaryBlock` scroll to the card, or highlight it in place?
-- [ ] Is `+N similar` an expand-in-place or a new search?
+- [ ] Should `ResultCard` show the domain favicon? A third-party request per card — would have to
+      go through `/api/thumb` like everything else ([[ADR-0021 - Proxied Thumbnails with Signed URLs]]).
+- [x] Citation chips: scroll to the card (`#result-<id>`). (2026-08-27)
+- [ ] `+N similar`: expand in place or a new search? (`similar_count` is in the contract, unused)
+- [ ] The clear button's `aria-label="Clear"` is the one untranslated string in the search box.
+- [ ] Delete `KnowledgePanel.tsx` and `/api/knowledge` now that `EntityPanel` covers them?
 
 ## Related
 
-[[UI - Design Language]] · [[UI - Results Page]] · [[UI - Home Page]] · [[UI - Accessibility]] ·
-[[UI - RTL and Localization]] · [[UI - States and Errors]]
+[[UI - Design Language]] · [[UI - Results Page]] · [[UI - Home Page]] · [[UI - Knowledge Panel]] ·
+[[UI - Accessibility]] · [[UI - RTL and Localization]] · [[UI - States and Errors]]

@@ -4,7 +4,7 @@ tags:
   - legal
 type: reference
 status: draft
-updated: 2026-08-06
+updated: 2026-08-27
 ---
 
 # Legal and Compliance
@@ -43,7 +43,9 @@ architecture implements them regardless of collection method:
 - upstream deletions propagate within 24 h
 - no person-centric profiling, no author-history view, no face recognition
 - EXIF/GPS stripped from all media
-- no user data held at all ([[ADR-0008 - No Query Logging]])
+- no *identifiable* user data held at all ([[ADR-0008 - No Query Logging]], as amended by
+  [[ADR-0018 - Anonymous Search History]]: normalised query terms may be kept as identifier-free
+  counts, off by default — the public privacy page states this in four languages)
 
 The open web is handled separately and conservatively throughout: robots-compliant, honestly
 identified, halt-on-block ([[Politeness and Robots]] §4.0).
@@ -80,7 +82,11 @@ Our posture, implemented in [[Politeness and Robots]] and [[Web Fetcher]]:
 
 **Copyright:** we index and display *title + short excerpt + link*, which is the standard search-engine
 posture. We do not republish full articles, and full `body` text is stored for retrieval and ranking
-but never served in full through the API ([[API Contract]] §2 `displayedAttributes` excludes it).
+but never served in full through the API — verified 2026-08-27: `displayedAttributes` in
+`crates/xustive-search/src/settings.rs` lists `excerpt` and `body_len` but not `body`
+([[Data Model]] §2). Remote thumbnails are proxied and signed rather than hot-linked
+([[ADR-0021 - Proxied Thumbnails with Signed URLs]]); the entity panel carries each image's credit
+and licence string inside the stored entity ([[Knowledge Store]]).
 
 **⚖ VERIFY** — Algerian copyright treatment of search excerpts and thumbnails; whether any
 press-publisher right applies.
@@ -145,7 +151,7 @@ understand it, and **⚖ VERIFY every line**:
 | Data minimisation | collect only what is needed | we index content, not profiles; no friend graphs, no author histories |
 | Rights of the person | access, rectification, erasure | takedown path, 72 h target ([[Admin and Source Submission]] §4.3) |
 | Sensitive data | heightened protection (political opinion, health, religion) | public posts inevitably contain it — we do not classify, target, or profile on it |
-| Cross-border transfer | restricted | **structurally impossible for user data**: `xustive-api`/`xustive-ml` have no egress ([[Deployment Topology]] §3) |
+| Cross-border transfer | restricted | the backends and sidecars sit on an `internal` Docker network with no route out (`scripts/test-egress.sh`); **as built the API itself is a host process**, so the guarantee is by construction for the stores and by code for the API ([[Security and Privacy]] P2). Two opt-in features cross the border by design and are **off by default** — the external summariser and federated search ([[ADR-0017 - Query-Time Federation with External Metasearch]]); the privacy page discloses both |
 
 ### Design decisions that already reduce exposure
 
@@ -178,10 +184,10 @@ if so, whether a representative in the EU is required.
 
 | Obligation | Implementation |
 |:---|:---|
-| Accept takedown requests | public contact route + `POST /admin/takedown` |
-| Act within a reasonable time | 72 h target, SLA-alerted |
-| Remove completely | document + comments + vectors + permanent URL blocklist ([[Indexer Worker]] §4.5) |
-| Prevent resurrection by re-crawl | blocklist is checked by [[Politeness and Robots]] before every fetch |
+| Accept takedown requests | public contact route + `POST /admin/takedown` — **as built (2026-08-27):** neither exists; removal is the operator CLI `xustive-cli takedown --domain <host> --yes`, which previews by default |
+| Act within a reasonable time | 72 h target, SLA-alerted — no alert configured yet |
+| Remove completely | documents + image vectors + raw bodies for the domain ([[Indexer Worker]] §4.5); comments have no producer yet |
+| Prevent resurrection by re-crawl | intended: blocklist checked by [[Politeness and Robots]] before every fetch. **As built:** pair the takedown with `registry disable <source-id>`; the exclusion `Blocklist` type exists but is not persisted or wired into the crawler ([[Runbooks]]) |
 | Keep a record | immutable audit log ([[Admin and Source Submission]] §4.4) |
 
 Categories we expect: defamation claims, copyright complaints, personal-data erasure requests, and
@@ -199,14 +205,25 @@ safe harbour exists and what it requires.
 |:---|:---|
 | Company registration / legal entity | **⚖ VERIFY** — required before accepting submissions or handling takedowns |
 | Hosting within Algeria | architectural commitment ([[Deployment Topology]]); **⚖ VERIFY** any licensing requirement for operating a public online service |
-| Privacy policy + terms of use | required before beta; must accurately describe [[Security and Privacy]] |
+| Privacy policy + terms of use | a privacy page ships at `/{lang}/privacy` in ar/fr/en/ary (`web/app/[lang]/privacy`, strings in `web/lib/i18n/messages.ts`) and matches the built behaviour: what is kept as counts, what never is, the two opt-in external features. **Terms of use: not written** (2026-08-27) |
 | Accessibility obligations | no known statutory requirement; we target WCAG 2.2 AA regardless ([[UI - Accessibility]]) |
-| Open-source licence compliance | AGPL-3.0 (Grafana) is self-hosted only and not distributed; all other components are MIT/Apache/BSD. `cargo-deny` enforces the allowlist in CI |
-| Model licences | each model file's licence recorded in `models/LICENSES.md` — some permit research use only, which would preclude production use |
+| Open-source licence compliance | AGPL-3.0 (Grafana) is self-hosted only and not distributed; all other components are MIT/Apache/BSD. `cargo-deny` (`make audit`, CI job `dependency audit`) enforces the allowlist |
+| Model licences | each model file's licence recorded in `models/LICENSES.md` (audited 2026-08-21) — see the finding below |
+| Data licences | DB-IP City Lite (approximate location, [[ADR-0020 - Approximate Location from a Local Database]]) is **CC BY 4.0**: attribution is required and **is not yet rendered in the UI** (2026-08-27; `scripts/fetch-geoip.sh` says the weather card carries it — it does not). Wikidata/Wikipedia facts are CC0 / CC BY-SA and the entity panel keeps per-image credits |
 
 The model-licence item is easy to miss and expensive to discover late: a summarisation model with a
 non-commercial licence would invalidate [[Summarizer]]'s design choice
 ([[ADR-0005 - Local Quantised LLM for Summaries]]).
+
+> [!warning] Finding (2026-08-21, still open 2026-08-27): the default summariser is not commercially licensed
+> The model file present by default is **Qwen2.5-3B-Instruct** (GGUF), released under the
+> **`qwen-research`** licence — research / non-commercial. The 3B size is the exception in its
+> family: Qwen2.5 **1.5B** and **7B** (and 0.5B/14B/32B) are **Apache-2.0**. Local evaluation under
+> the research licence is fine. For any commercial launch, pin an Apache-2.0 size via
+> `[ml] summariser_model` — 1.5B is already provisioned and is the fast option, 7B is the quality
+> option on a GPU — and remove the 3B file from `models/`. This keeps the "Chinese open models
+> first" choice intact; it changes a size, not a family. Tracked in `models/LICENSES.md` and the
+> checklist below.
 
 ---
 
@@ -217,9 +234,15 @@ Tracked as tasks in [[Milestone 5 - Beta Launch]]:
 - [ ] Legal entity established
 - [ ] Counsel engaged; **⚖ VERIFY** items resolved in writing (for exposure sizing)
 - [ ] ANPDP position clarified; notification/authorisation filed if required
-- [ ] Privacy policy and terms published, matching actual system behaviour
-- [ ] Takedown process documented, staffed, and tested end-to-end
-- [ ] Model and dependency licences audited for commercial use
+- [ ] Privacy policy and terms published, matching actual system behaviour — privacy page ✅
+      (2026-08-27), terms ❌
+- [ ] Takedown process documented, staffed, and tested end-to-end — the command exists
+      (`xustive-cli takedown --domain … --yes`, [[Runbooks]]); the contact route, the single-URL
+      form and the persisted blocklist do not (2026-08-27)
+- [ ] Model and dependency licences audited for commercial use — audit ✅ (`models/LICENSES.md`,
+      2026-08-21); **the 3B finding above is unresolved**; CLIP weights' licence field and the
+      tessdata / whisper conversions still carry ⚠️ "confirm at provisioning"
+- [ ] DB-IP CC BY 4.0 attribution rendered wherever the location-derived card appears
 - [ ] `/bot` page published with contact details and opt-out instructions — **covers open-web
       crawling**, which is the traffic site owners can see and identify
 - [ ] Data-processing record maintained
@@ -245,4 +268,5 @@ Tracked as tasks in [[Milestone 5 - Beta Launch]]:
 
 [[Security and Privacy]] · [[Data Sources Registry]] · [[Politeness and Robots]] ·
 [[Social Connector - Facebook]] · [[Social Connector - Instagram]] · [[Social Connector - TikTok]] ·
-[[Admin and Source Submission]] · [[Decision Log]] · [[Milestone 5 - Beta Launch]]
+[[Admin and Source Submission]] · [[Decision Log]] · [[Milestone 5 - Beta Launch]] ·
+[[ADR-0018 - Anonymous Search History]] · [[Knowledge Store]]

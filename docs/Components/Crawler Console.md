@@ -1,6 +1,10 @@
 ---
 tags:
   - component
+  - operations
+binary: xustive-api (JSON) + web (pages)
+status: built
+updated: 2026-08-27
 ---
 
 # Crawler Console
@@ -23,137 +27,159 @@ collecting the same page four hundred times, or stuck behind one host that stopp
 None of that shows up in a document count alone. This is the surface that makes it visible and
 gives someone a way to intervene without a deploy.
 
-## 2. Responsibilities
+## 2. Where it lives today
+
+| Piece | Path |
+|:---|:---|
+| JSON endpoints | `crates/xustive-api/src/admin_crawler.rs`, mounted under `/api/v1/admin/crawler/*` |
+| Queue endpoints (backlog, DLQ replay/drop) | `crates/xustive-api/src/admin_queue.rs` — [[Task Queue]] |
+| Counters the endpoints read | `crates/xustive-ingest/src/crawl_stats.rs` (`CrawlStats`, `Snapshot`) |
+| Pages | `web/app/(operator)/admin/{live,documents,sources,sources/health,discovery,weak-coverage,queue}` |
+
+The Rust side is **JSON only**. The first version rendered HTML from the API; the console is now a
+set of Next.js pages that reach these endpoints through the same `/api/v1/*` proxy as the search
+UI, so the frontend lives in one place. `/admin/crawler` is kept as a redirect to `/admin/live`
+because that was the old live-view URL.
+
+## 3. Responsibilities
 
 | Does | Does not |
 |:---|:---|
-| Start, stop and restart the crawl | Bypass politeness — that is a separate, guarded flag |
-| Show live throughput: fetched, indexed, failed, per minute | Replace metrics; Prometheus stays the record |
-| List and inspect what has been collected | Serve as a public search interface |
-| Push a URL to the front of the frontier | Let arbitrary URLs be fetched off-registry |
-| Force a re-fetch or re-index of a document | Edit document content by hand |
+| Pause and resume the crawl | Start or stop the `crawld` process — that is the host's job |
+| Show live throughput: fetched, revisited, parsed, indexed, failed, images, videos | Replace metrics; Prometheus stays the record |
+| List and inspect what has been collected, by provenance and media kind | Serve as a public search interface |
+| Push a URL into the frontier, optionally to the front | Let arbitrary URLs be fetched off-registry |
+| Bypass politeness — a separate, guarded flag (`POST /politeness`) | Edit document content by hand |
 
-## 3. Interface
+## 4. Interface
 
-All under `/admin`, same authorisation as the rest of the admin surface.
+All under `/api/v1/admin`, same authorisation as the rest of the admin surface
+([[Admin and Source Submission]]).
 
 | Method | Path | Purpose |
 |:---|:---|:---|
-| `GET` | `/admin/crawler` | The console page |
-| `GET` | `/admin/crawler/status` | State, throughput, per-host activity |
-| `POST` | `/admin/crawler/control` | `{"action": "start" \| "stop" \| "restart"}` |
-| `GET` | `/admin/crawler/events` | **SSE** — live counters, one frame per second |
-| `GET` | `/admin/crawler/documents` | Paged list of what has been collected |
-| `GET` | `/admin/crawler/documents/{id}` | One document: extracted text, metadata, raw fetch record |
-| `POST` | `/admin/crawler/enqueue` | `{"url": …, "priority": "front" \| "normal"}` |
-| `POST` | `/admin/crawler/documents/{id}/refetch` | Fetch again now, ignoring the revisit schedule |
-| `POST` | `/admin/crawler/documents/{id}/reindex` | Re-run extraction and indexing on the stored raw blob |
+| `GET` | `/crawler/status` | One `Snapshot`: state, pause flag, counters, recent URLs, per-host last-fetch, frontier depth |
+| `GET` | `/crawler/events` | **SSE** — the same snapshot, one frame per second, keep-alive every 15 s |
+| `GET` | `/crawler/documents` | Paged list from the index; filters `q`, `host`, `lang`, `channel`, `media=image\|video`, `page` |
+| `POST` | `/crawler/enqueue` | `{"url": …, "front": bool}` — queue as a trusted seed; `front` promotes it to the head of its host queue |
+| `POST` | `/crawler/pause` | `{"paused": bool}` — hold or release the crawl (PROB-003) |
+| `GET/POST` | `/crawler/sources`, `POST /crawler/sources/remove` | The seed list, read and edited in place |
+| `GET` | `/crawler/sources/health` | Per-source quality counters ([[Data Sources Registry]] §7) |
+| `POST` | `/crawler/registry` | Approve / activate / disable a registry row |
+| `GET` | `/crawler/channels` | Per-discovery-channel yield (seed, link, sitemap, federation, SERP…) |
+| `GET` | `/crawler/weak-coverage`, `POST …/forget` | The query-driven discovery queue and its dismiss button |
 
-### 3.1 Why the live view is SSE and not polling
+### 4.1 Why the live view is SSE and not polling
 
 The number people watch is the document count climbing, and a count that jumps in five-second
 steps reads as a stalled crawler. One frame per second over a single connection costs less than
-polling and looks like what is actually happening.
+polling and looks like what is actually happening. One connection carries every live number on the
+page; several would reconnect in a storm whenever the API restarts and drift apart between frames.
 
 The same stream carries the per-host activity, so a host that has stopped answering is visible as
 the row that stops moving rather than as an absence nobody notices.
 
-### 3.2 Stop means stop, not pause-and-lose
+### 4.2 Pause means hold, not lose
 
-`stop` drains: in-flight fetches finish, their results are indexed, and the frontier is left
-intact. A stop that discarded partial work would make the control something operators avoid using,
-which defeats the point of having it.
+The console has no start/stop/restart. `crawld` is a process the host supervises; what the console
+controls is whether the running workers *claim*. `pause` sets a flag in Redis beside the crawl
+state; every worker polls it in its guard probe (effect within seconds) and it survives restarts of
+both the console and the crawler. Pausing holds claims only — in-flight fetches finish, nothing is
+dropped, the frontier is untouched, so resuming costs nothing. The snapshot's `paused` is shown
+apart from `state` because a deliberately held crawl must not read as idle or broken.
 
-`restart` is stop-then-start with the frontier preserved. Rebuilding a frontier from seeds costs
-hours of re-discovery and re-fetches every site from scratch — polite crawling makes that
-expensive for the *sites*, not just for us.
+Rebuilding a frontier from seeds costs hours of re-discovery and re-fetches every site from
+scratch — polite crawling makes that expensive for the *sites*, not just for us — which is why the
+only thing that clears it is `crawld --reset`, on purpose, from a terminal.
 
-## 4. Internal Design
+## 5. Internal Design
 
-### 4.1 The counters are derived, not accumulated
+### 5.1 The counters are derived, not accumulated
 
-Throughput is computed from the orchestrator's own counters in Redis, which are the same ones the
-Prometheus metrics read. A separate tally maintained for the console would drift from the metrics,
-and the two disagreeing is worse than having only one — an operator cannot tell which is lying.
+Throughput is computed from the orchestrator's own counters in Redis (`CrawlStats`), which are the
+same ones the Prometheus metrics read. A separate tally maintained for the console would drift from
+the metrics, and the two disagreeing is worse than having only one — an operator cannot tell which
+is lying. Frames carry **absolute** values, never deltas, so a client that misses a frame loses
+nothing.
 
-### 4.2 Enqueueing is bounded by the registry
+`fetched` is split into fresh discovery and `revisited`, so the page shows whether the crawl is
+growing the corpus or keeping it current. `images` and `videos` are counted apart from pages (M9).
+`waiting`, `inflight` and `deferred` (pages booked for a revisit) come from the frontier itself.
 
-A URL pushed to the front still goes through the same checks as any other: `SafeUrl`, the
-blocklists, `robots.txt`, and the source registry. The console changes *ordering*, not
-*permission*. An admin form that could fetch any URL would be an SSRF hole with a login page in
-front of it, and the login is not the part that stops it.
+### 5.2 Enqueueing is bounded by the same rules as discovery
 
-`priority: "front"` places the URL at the head of its host's queue. It does not skip the host's
-crawl-delay — one host cannot be made to answer faster by an operator being impatient.
+A URL pushed from the console still goes through `SafeUrl`, the trap detectors and URL
+canonicalisation. The console changes *ordering*, not *permission*. An admin form that could fetch
+any URL would be an SSRF hole with a login page in front of it, and the login is not the part that
+stops it. An operator-typed URL is queued as a seed with trust 100 and depth 0; `front` promotes it
+to the head of its host's queue but does not skip the host's crawl-delay — one host cannot be made
+to answer faster by an operator being impatient.
 
-### 4.3 Refetch versus reindex
+### 5.3 Document list from the product index
+
+The list is a Meilisearch query against the documents index, sorted `crawled_at:desc`, so it is the
+same engine and fast at any corpus size. Two facets are computed over the scope (`host`/`lang`)
+*without* the drill-in filters: `composition` by `discovery` channel — the "crawler vs external
+tools" breakdown — and `media` by `media.type`. Keeping the facets scope-only means the breakdown
+always shows every channel and kind to pick from. Filters use the index's own field names
+(`domain`, `language`); the first version guessed `host` and `lang`, and Meilisearch silently
+matched nothing rather than erroring. `www.` is stripped and the host lower-cased before filtering
+for the same reason.
+
+### 5.4 Refetch versus reindex
 
 Two different repairs, and conflating them wastes somebody's bandwidth:
 
-- **Refetch** goes back to the site. For a page that has genuinely changed.
-- **Reindex** re-runs extraction on the raw blob we already hold. For when *our* parser was wrong —
-  a boilerplate rule that ate the article body, a date format we did not recognise. This is the
-  common case after a parser fix, and it needs no network at all.
+- **Refetch** goes back to the site. For a page that has genuinely changed. Today: enqueue it.
+- **Reindex** re-runs extraction on the raw body we already hold. For when *our* parser was wrong.
+  This needs no network, which is the reason raw bodies are stored at all ([[Web Fetcher]] §4.6).
 
-A bulk reindex after a parser change is therefore free to the sites we crawl, which is the reason
-raw blobs are stored at all ([[Web Fetcher]] §4.7).
+Neither is a per-document console button. What exists is CLI: `xustive-cli media-repass`
+re-extracts `media[]` from the raw store without refetching (M9), and `xustive-cli reindex`
+rebuilds the index into a staging copy and swaps it atomically. A per-document `refetch`/`reindex`
+endpoint is **not built** (2026-08-27) — see §9.
 
-## 5. Configuration
+## 6. Configuration
 
 | Key | Default | Notes |
 |:---|:---|:---|
-| `crawler.console_enabled` | `true` in dev, `false` in prod | The console is an operator tool; production access goes through the same guard as the rest of `/admin` |
-| `crawler.events_interval_ms` | `1000` | Frame rate of the live stream |
-| `crawler.documents_page_size` | `50` | |
+| `crawl.documents_page_size` | `50` | Rows per page in the document list |
+| `crawl.raw_ttl_days` | `0` (off) | How long raw bodies are kept for reindexing; 0 disables the store |
 
-## 6. Failure Modes
+There is no `console_enabled` and no frame-rate knob: the frame interval is a one-second constant
+in `admin_crawler.rs`, and the console is gated by the admin authorisation, not a switch.
+
+## 7. Failure Modes
 
 | Failure | Behaviour |
 |:---|:---|
-| Orchestrator not running | Console loads, shows `stopped`, `start` is the only enabled control |
-| Redis unavailable | Console shows an explicit "cannot read crawler state" rather than zeroes — a zero looks like a healthy idle crawler |
-| SSE connection drops | Client reconnects; counters are absolute, not deltas, so nothing is lost or double-counted |
-| A document's raw blob has expired | Reindex is refused with a reason, refetch is offered instead |
+| `crawld` not running | Console loads, shows the last stored state; pause still toggles the flag |
+| Redis unavailable | `Snapshot { unavailable: true, state: "unknown" }` — the page says "cannot read crawler state" rather than zeroes |
+| Redis was down at API start | The stats connection is retried once on the next request and cached, so the Live page self-heals |
+| SSE connection drops | Client reconnects; counters are absolute, so nothing is lost or double-counted |
+| Index unavailable for the document list | 503 `index_unavailable`; a facet failure alone is logged and the list still renders |
+| Enqueue with an unsafe or trap URL | 400 `unsafe_url` / `trap`, nothing queued |
 
 The Redis case is the one worth stating twice. **Rendering zero for "unknown" is the failure this
 whole surface exists to prevent** — an operator who sees `0 fetched, 0 failed` reasonably concludes
 the crawl is idle, when the truth is that we have no idea what it is doing.
 
-## 7. Observability
+## 8. Observability and security
 
 The console reads metrics; it does not replace them. Every number shown has a Prometheus
-counterpart, and the console is the thing you look at when you want to *act*, not when you want to
-know what happened last Tuesday.
+counterpart ([[Observability]]). Pause toggles log at `warn`, enqueues at `info` with the peer, so
+they can be attributed afterwards. Document contents are shown as **text**, never rendered as
+HTML — a crawled page is untrusted input, and an admin console that renders it is a stored-XSS
+hole aimed at the one account with the most authority.
 
-Actions taken from the console are logged at `info` with the peer that took them — start, stop,
-enqueue and refetch are all things worth being able to attribute afterwards.
+## 9. Open Questions
 
-## 8. Security
+- [ ] Per-document refetch/reindex buttons: the raw store makes reindex free, but a bulk reindex
+      is also the easiest way to saturate the index queue by accident. CLI-only for now.
+- [ ] How much history does the document list need? The useful view is "recent, plus search", which
+      is what the index-backed list already is; an explicit retention rule is still open.
 
-- Same authorisation as `/admin`, which is not exposed publicly.
-- Enqueued URLs pass every check a discovered URL passes. The console reorders; it does not grant.
-- Document contents are shown as **text**, never rendered as HTML. A crawled page is untrusted
-  input by definition, and an admin console that renders it is a stored-XSS hole aimed at the one
-  account with the most authority.
-
-## 9. Testing
-
-- Start, stop, restart, and assert the frontier survives a restart.
-- Enqueue a blocked URL and assert it is refused, not merely deprioritised.
-- Enqueue a private-address URL and assert `SafeUrl` refuses it through this path too.
-- Kill Redis mid-stream and assert the console says so rather than showing zeroes.
-- Assert a document's body is escaped in the detail view, with a crawled page containing a
-  `<script>` tag.
-- Reindex with an expired raw blob is refused with a reason.
-
-## 10. Open Questions
-
-- [ ] Should bulk reindex be exposed here, or stay a CLI operation? It is the natural follow-up to
-      a parser fix and it is also the easiest way to saturate the index queue by accident.
-- [ ] How much history does the document list need? A crawler at target volume outgrows any list a
-      person can page through, and the useful view is probably "recent, plus search", not "all".
-
-## 11. Related
+## Related
 
 [[UI - Admin Console]] · [[Crawler Orchestrator]] · [[Web Fetcher]] · [[Admin and Source Submission]] ·
-[[Politeness and Robots]] · [[Indexer Worker]] · [[Observability]]
+[[Politeness and Robots]] · [[Indexer Worker]] · [[Task Queue]] · [[Observability]] · [[Problems]]

@@ -3,7 +3,7 @@ tags:
   - reference
 type: reference
 status: living
-updated: 2026-08-06
+updated: 2026-08-27
 ---
 
 # Glossary
@@ -42,6 +42,33 @@ updated: 2026-08-06
 | **Query expansion** | Adding variant forms of query terms to improve recall. |
 | **Freshness decay** | `exp(−age_days / τ)`, the time component of ranking. τ varies by inferred query intent. |
 | **Trust tier** | A/B/C accountability rating of a source, contributing a ranking boost ([[Data Sources Registry]] §3). |
+| **Authority** | A curated per-domain prior for how well-known a site is (`data/sources/authority.tsv`, `xustive-search::authority`), compiled in so a missing file cannot flatten the signal. Algeria-first: home-floor for `.dz`. A link-graph PageRank exists in the CLI but authority, not PageRank, is the serving-time signal ([[Ranking and Relevance]]). |
+| **Vertical** | A saved filter over the one `documents` index, selected with `?v=`: `all` (default), `news` (dated web documents), `images` and `videos` (`media.type` facet). Not a separate index ([[UI - Search Verticals]]). |
+| **Federation** | Asking a self-hosted SearXNG for live results at query time, merged under a strict budget, when the local corpus is thin ([[Federation Gateway]], [[ADR-0017 - Query-Time Federation with External Metasearch]]). Off by default (`[federation] enabled`). |
+| **Federator** | `xustive-federator`, the one process on both the `core` and `ingest` networks — the single allowlisted egress hop the API is permitted to call. It talks to SearXNG; the API never does. |
+| **SearXNG** | The open-source metasearch aggregator we self-host on the `ingest` network. Categories `web`, `images`, `videos`. |
+| **Eager index** | Writing a thin document (title + snippet) from a federated hit into the index at once so it is a real result in seconds; the crawl overwrites it later. Off by default because it puts un-crawled text into the index. |
+| **Weak coverage** | Query-driven discovery: k-anonymous, windowed counters of search terms the corpus could not answer, used to find sources worth adding. Off unless `[discovery] weak_coverage_enabled`; the reconciliation with [[ADR-0008 - No Query Logging]] is structural, not policy. |
+| **Interaction signal** | An anonymous, k-anonymous, windowed click count on a (query-hash, document) pair kept in a *separate* Redis (`signals_url`) and folded into ranking as CTR ([[Interaction Signals]], [[ADR-0015 - Anonymous Interaction Signals for Ranking]]). Off by default. |
+| **Hot click** | A (query, document) pair whose clicks pass `hot_click_floor` (defaults to *k*), which makes the document a re-crawl freshness candidate. |
+
+## Knowledge and Answers
+
+> Vocabulary from [[ADR-0019 - The Knowledge Layer]] and [[Milestone 8 - The Answer Layer]].
+
+| Term | Meaning |
+|:---|:---|
+| **Entity** | A thing the product knows about — a person, place, film, team — stored as a typed record (`xustive-knowledge::Entity`) with labels per language, a kind, claims, and a Wikidata id. |
+| **`knowledge` index** | The third Meilisearch index (after `documents` and `comments`), holding entities. Written by `xustive-toold`'s Wikidata harvest, read by `GET /api/v1/knowledge`. |
+| **Resolver** | `xustive-knowledge::resolve`: the pure, index-free judgement of *which* entity a query means, if any. Built to say nothing rather than guess — a confident panel about the wrong thing is worse than no panel. |
+| **Harvest** | `xustive-toold`'s scheduled fetch of entities from the Wikidata API into the `knowledge` index. Runs on the ingest network; the serving plane only reads. |
+| **Live entity** | An entity not in the store, looked up on Wikidata by the **web tier** (`/api/knowledge-live`, the one place with sanctioned egress per [[ADR-0014 - Knowledge Panel from Wikipedia via the Web Tier]]) and rendered by the API's `/knowledge/render` so both paths share one parser and template set. |
+| **List answer** | The cast of a film, the books of an author: members from one Wikidata SPARQL query via `/api/knowledge-list`, each card linking to authorities by identifier, none of which is scraped. No ratings. |
+| **Instant answer / tool card** | A computed answer above results: calculator (fend), units, dates, prayer times, fuel, exam dates, wilaya facts, utilities, translate, transliterate ([[Instant Answers]]) plus the data-backed currency and weather cards ([[Tool Data Plane]]). |
+| **Tool data plane** | `xustive-toold` on the ingest network fetching rates (open.er-api) and weather (Open-Meteo) into Redis on a schedule; the API reads the cache and never fetches. If toold dies, cards age out; search is unaffected. |
+| **Wilaya coarsening** | Turning a connecting IP into *at most* a wilaya via a local DB-IP database (`maxminddb`), on the stack, never stored, never a cache key — so "weather" with no place can be answered ([[ADR-0020 - Approximate Location from a Local Database]]). |
+| **Thumb proxy** | `/api/thumb?u=&s=`: the web tier fetches a result's image so the reader's address and referrer never reach the crawled host. `s` is an HMAC over `u`; unsigned requests are refused before any fetch. Wikimedia and Open Library hosts are allowed unsigned because they are public by construction ([[ADR-0021 - Proxied Thumbnails with Signed URLs]]). |
+| **Sidecar** | A small Python HTTP service holding a model the Rust build should not carry: `stt-sidecar` (faster-whisper), `ocr-sidecar` (Unlimited-OCR, GPU), `clip-embed`, `text-embed` (bge-m3). Each is opt-in, on the `core` network, health-checked, and its absence degrades one feature only. |
 
 ## Ingestion
 
@@ -60,6 +87,9 @@ updated: 2026-08-06
 | **Backpressure** | Slowing producers when consumers fall behind — signalled by queue depth ([[Error Handling and Resilience]] §4). |
 | **Poison message** | A payload that reliably crashes a stage. Goes to the DLQ and becomes a test fixture. |
 | **Idempotent** | Safe to run more than once with the same effect. Required of every ingestion stage because delivery is at-least-once. |
+| **Bounded frontier** | The frontier has a hard URL cap (`frontier_max_urls`), a per-host page cap, and an outlink cap per page, so a crawl cannot grow without limit ([[PROB-001 - Bounded Frontier and Queue]]). |
+| **Discovery channel** | A way new sources arrive: seeds, sitemaps, outlinks, Common Crawl, Brave (optional API), SERP collection ([[ADR-0013 - Direct SERP Collection for Discovery]]) and weak coverage. Each is visible on `/admin/discovery`. |
+| **Raw store** | A copy of fetched HTML kept in Redis for `raw_ttl_days` so a parser fix can re-parse without re-fetching (`xustive-ingest::raw_store`). Off by default. |
 
 ## Models and ML
 
@@ -73,7 +103,10 @@ updated: 2026-08-06
 | **WER / CER** | Word / character error rate — accuracy metrics for [[Speech to Text]] and OCR. |
 | **Prompt injection** | Hostile instructions embedded in crawled content attempting to steer the model. Defended in [[Summarizer]] §4.5. |
 | **Faithfulness** | Whether a summary's claims are actually supported by the passages. Our gate is ≥ 95 %. |
-| **DziriBERT** | A BERT model trained on Algerian dialect text; used optionally for expansion and sentiment. |
+| **DziriBERT** | A BERT model trained on Algerian dialect text. Planned as an optional expansion/sentiment tier in 2026-02; **not built** — expansion is lexicon-driven (`xustive-lang`) and sentiment is a lexicon scorer. |
+| **bge-m3** | The multilingual text-embedding model (1024-d, Apache-2.0) behind semantic search: `text-embed` sidecar → Qdrant `text_bge` collection. Off by default (`[vector] text_enabled`). |
+| **Partial model** | The lighter Whisper (`base`) the STT sidecar runs every half-second for a live reading while the person is still speaking; the `small` model gives the final text. |
+| **Device** | `[ml] device`: `auto` / `cpu` / `cuda`. The reference machine is a 4 GB Quadro T1000, and every model path must also run CPU-only; the device is switchable from `/admin/compute`. |
 
 ## Collection
 
@@ -105,7 +138,8 @@ updated: 2026-08-06
 | **k-anonymity** | A record is indistinguishable among at least *k* others. Our threshold for any aggregate query statistic is k ≥ 20. |
 | **SSRF** | Server-side request forgery — tricking our crawler into fetching internal addresses. Defended by the `SafeUrl` type ([[Security and Privacy]] §4). |
 | **`SafeUrl`** | A newtype no URL can bypass on its way to the HTTP client; validates scheme, resolved IP range, port, and every redirect hop. |
-| **Egress segmentation** | Only `xustive-crawler` can reach the internet. This is what makes "queries never leave" enforceable rather than promised. |
+| **Egress segmentation** | The `core` Docker network is `internal: true`; only the `ingest` network (crawler processes, `toold`, `searxng`, `federator`) can reach the internet, and the web tier's three sanctioned fetchers (`/api/knowledge*`, `/api/wiki-image`, `/api/thumb`). This is what makes "queries never leave" enforceable rather than promised. `scripts/test-egress.sh` checks it. |
+| **Admin key** | `[api] admin_key`: the bearer secret every `/api/v1/admin/*` call carries. Empty in dev. |
 | **Takedown** | Permanent removal of content plus a URL blocklist entry, so re-crawling cannot resurrect it. |
 | **Decompression bomb** | A small file that expands enormously when decoded. Guarded by pixel/sample budgets on every upload. |
 
@@ -120,6 +154,9 @@ updated: 2026-08-06
 | **SLO** | Service level objective — a target with an error budget ([[Performance Budgets]] §8). |
 | **Alias flip** | Atomically repointing `documents` from `documents_v1` to `documents_v2`; how we reindex without downtime. |
 | **Consumer group** | A Redis Streams construct letting multiple workers share a stream with per-message acknowledgement. |
+| **Signals Redis** | The second Redis (`[queue] signals_url`, port 6391 in dev) holding only interaction and weak-coverage counters, so a queue dump never contains a click and vice versa. |
+| **Loadgen** | `xustive-loadgen`, the open-loop Rust load generator (`make load`) that measures the serving plane against [[Performance Budgets]]. |
+| **Toold** | `xustive-toold`, the scheduled fetcher of external data (rates, weather, entity harvest). See *Tool data plane*. |
 
 ## Project
 

@@ -1,8 +1,9 @@
 # STT sidecar
 
 Speech-to-text for voice search ([[Milestone 3 - Multimodal Input]], M3-T02). The browser records a
-short clip, this turns it into text, and the text lands in the search box **editable and never
-auto-submitted**. It wraps Whisper `small` on [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+clip, this turns it into text — a live reading every few hundred milliseconds while the person
+speaks (`?partial=1`), a careful pass on stop — and the search box shows the words as they arrive
+and searches with them on stop (ADR-0024). It wraps Whisper `small` on [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 (CTranslate2) behind a tiny HTTP contract, matching the OCR and CLIP sidecars.
 
 **CPU-capable.** Whisper `small` at int8 transcribes a short clip in a second or two on CPU, so voice

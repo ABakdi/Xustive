@@ -3,189 +3,181 @@ tags:
   - component
   - platform
 component-id: C20
-binary: redis
-status: specified
-updated: 2026-08-06
+binary: redis (crates/xustive-queue)
+status: built
+updated: 2026-08-27
 ---
 
 # Task Queue
 
-> **ID** C20 · **Service** `redis` · **Upstream** every ingestion component · **Downstream** every ingestion component
+> **ID** C20 · **Service** `redis` (compose `redis`, port 6390) · **Client**
+> `crates/xustive-queue` · **Upstream** [[Crawler Orchestrator]] (`crawld`), [[Federation Gateway]]
+> (eager documents) · **Downstream** [[Indexer Worker]]
 
 ## 1. Purpose
 
-The transport and the coordination substrate for the ingestion plane. It decouples every stage so
-each can fail, restart, and scale independently, and it is the single place where load is visible as
-a number ([[Error Handling and Resilience]] §4).
+The transport between crawling and indexing, and the single place where load is visible as a
+number. It decouples the two so each can fail, restart and scale on its own, and it is what the
+crawler reads to know when to stop producing ([[Error Handling and Resilience]]).
 
-Redis also serves as the shared state store for the frontier, dedup keys, circuit breakers, and
-cursors — one dependency instead of four.
+The same Redis also holds the frontier, dedup sets, the raw-body store, the embed cache, crawl
+stats, the shared circuit breakers and the proxy state — one persistent dependency instead of
+several. Behavioural signals live on a **second, ephemeral** Redis ([[Interaction Signals]]).
 
-## 2. Responsibilities
+## 2. What exists today
 
-**In scope**: durable-enough at-least-once message delivery; consumer groups; dead-letter streams;
-claim/redelivery of stalled messages; shared crawl state; queue-depth signalling.
+One stream. The original design's five-stage pipeline (`q:fetch` → `q:parse` → `q:enrich` →
+`q:index` → `q:vector_retry`) collapsed into a single hop because fetching, parsing and enrichment
+run inside one `crawld` process and the only stage worth decoupling was the index write.
 
-**Out of scope**: being a database of record (that is [[Search Index]]); long-term storage; exactly-
-once semantics (impossible; idempotency handles it — [[Error Handling and Resilience]] §7).
+| Stream | Producer | Group | Payload |
+|:---|:---|:---|:---|
+| `q:index` (`[queue] index_stream`) | `crawld` (producer only, no group), federation eager index | `indexers` | `IndexJob { document, index }` |
+| `q:index:dead` | the indexer | `indexers` | `DeadLetter { original_id, payload, attempts, reason, failed_at }` |
+
+Other key spaces on this Redis (owners in their own notes): `frontier:*` (frontier, `seen:`
+generations, host budgets, bandwidth), `frontier:seen_hashes` / `frontier:sim:*`
+([[Deduplication Service]]), `frontier:raw:*` (raw bodies, [[Web Fetcher]]),
+`frontier:vecphash:*` ([[Vector Index]]), the `worker:*` shared breaker, crawl stats and the
+operator pause ([[Crawler Console]]), proxy pool state ([[Proxy Manager]]).
 
 ## 3. Interface
 
-### Streams
+```rust
+// crates/xustive-queue/src/lib.rs
+Queue::connect(url, stream, group)        // XGROUP CREATE … MKSTREAM, tolerates BUSYGROUP
+Queue::connect_producer(url, stream)      // no group — see §4.2
+queue.produce(&job) / produce_many(&jobs) // XADD MAXLEN ~ max_len, one "payload" JSON field
+queue.consume(consumer, count, block)     // XREADGROUP … ">"
+queue.reclaim(consumer, count)            // XAUTOCLAIM idle > RECLAIM_AFTER (5 min)
+queue.ack(id) / ack_all(ids)
+queue.depth() / pending() / depth_of(group) / trim()
+// dlq.rs
+queue.dead_letter().{peek_dead, peek_dead_with_ids, replay_dead(limit), replay_dead_one(id), drop_dead(id), dead_count}
+pub const MAX_ATTEMPTS: u64 = 3;
+```
 
-| Stream | Producer | Consumer group | Payload |
-|:---|:---|:---|:---|
-| `q:fetch` | [[Crawler Orchestrator]] | `fetchers` | URL / social cursor |
-| `q:parse` | [[Web Fetcher]], connectors | `parsers` | raw ref + fetch metadata |
-| `q:enrich` | [[Content Parser]] (via [[Deduplication Service]]) | `enrichers` | pre-enrichment Document |
-| `q:index` | [[Enrichment Pipeline]] | `indexers` | Document + Comments |
-| `q:vector_retry` | [[Indexer Worker]] | `indexers` | embeddings awaiting Qdrant |
-| `q:dlq:{stage}` | any | manual/CLI | failed message + error |
-
-Envelope shape in [[Data Model]] §6.
-
-### Other key spaces
-
-| Pattern | Type | Owner | TTL |
-|:---|:---|:---|:---|
-| `frontier:{host}`, `frontier:hosts` | zset | [[Crawler Orchestrator]] | — |
-| `seen:{host}` | Bloom | [[Crawler Orchestrator]] | 180 d |
-| `crawl:{host}` | hash | [[Politeness and Robots]] | 7 d |
-| `robots:{host}` | string | [[Politeness and Robots]] | 24 h |
-| `breaker:{host}` / `breaker:platform:{p}` | hash | [[Proxy Manager]] | cooldown |
-| `dedup:*`, `simhash:*`, `phash:*` | set/hash/Bloom | [[Deduplication Service]] | 180 d |
-| `cursor:{source_id}` | string | connectors | — |
-| `raw:{trace_id}` | string (zstd) | [[Web Fetcher]] | 7 d |
-| `proxy:{id}` | hash | [[Proxy Manager]] | — |
+One `payload` field holding JSON rather than a field per property: the schema then lives in Rust
+where `serde` defaults let it evolve, instead of in Redis where a rename is a migration.
 
 ## 4. Internal Design
 
 ### 4.1 Why Streams, not Lists
 
-`XADD`/`XREADGROUP` gives consumer groups, per-message acknowledgement, and a pending-entries list —
-so a worker that dies mid-message does not lose it. `LPUSH`/`BRPOP` loses in-flight work on crash.
-See [[ADR-0006 - Redis Streams for the Ingestion Pipeline]].
+`LPUSH`/`BRPOP` loses work: a worker that pops a job and dies has taken it out of Redis with
+nothing recorded anywhere. Streams keep a delivered-but-unacknowledged entry in the group's
+pending list, so a dead worker's jobs are visible, reclaimable and countable. For a crawler that
+spends someone else's bandwidth to re-fetch, silent loss is the failure that matters most.
+[[ADR-0006 - Redis Streams for the Ingestion Pipeline]].
 
-### 4.2 Consumer pattern
+**At least once**, stated plainly. Consumers must be idempotent, and the indexer is (writes keyed
+by id). Claiming exactly-once would let a consumer be written as though replay could not happen.
 
-```rust
-loop {
-    let msgs = XREADGROUP GROUP {group} {consumer} COUNT {n} BLOCK 5000 STREAMS {stream} ">";
-    for m in msgs { match process(m) {
-        Ok(_)                  => XACK stream group m.id,
-        Err(e) if e.retryable() => { /* leave unacked → redelivered */ }
-        Err(e)                 => { XADD dlq(...); XACK stream group m.id }
-    }}
-    // periodically reclaim stalled work from dead consumers
-    XAUTOCLAIM stream group {consumer} 300000 0 COUNT 100;
-}
-```
+### 4.2 The producer has no group
 
-`XAUTOCLAIM` idle time is **5 minutes**, chosen to exceed the slowest legitimate stage (a headless
-render, ~90 s) with margin. Set it too low and healthy slow work gets duplicated.
+`crawld` connects with `connect_producer`. A producer's own group never consumes, so its lag is
+every message ever written — and when the crawler once measured *that* for backpressure it froze
+itself the moment the count passed the threshold while the indexer was keeping up perfectly.
+Backpressure now asks `depth_of(INDEXER_GROUP)` (`XINFO GROUPS` lag of the group that actually
+drains the stream) without joining it.
 
-### 4.3 Trimming
+### 4.3 Reclaim
 
-Acked entries are not removed automatically. A maintenance task runs `XTRIM MINID` against the
-lowest pending id every 60 s, keeping streams bounded. Without this, Redis memory grows forever —
-this is the single most common Streams operational mistake.
+`XAUTOCLAIM` rather than `XPENDING` + `XCLAIM`: one round trip, and it cannot race another
+reclaimer into a double claim. `RECLAIM_AFTER = 300 s` — long enough that a slow batch is not
+stolen mid-flight, short enough that a crashed worker's jobs do not sit idle for an hour. A job
+delivered more than `MAX_ATTEMPTS = 3` times is dead-lettered instead of retried.
 
-### 4.4 Persistence
+### 4.4 Trimming
 
-AOF `appendfsync everysec` + RDB snapshot hourly. Redis loss costs at most 1 s of queue state and
-some re-crawl work; it never costs indexed data ([[Deployment Topology]] §7).
+Acked entries are **not** removed by `XACK`; without trimming a stream that processed ten million
+pages holds ten million entries and Redis grows until `noeviction` refuses writes, which looks like
+the crawler breaking for no reason. Every `XADD` trims approximately (`MAXLEN ~`, whole macro-nodes)
+and the worker calls `trim()` after every cycle — on a timer as well as on write, because a queue
+that stops receiving work stops trimming, and that is exactly the one nobody is watching.
 
-`maxmemory-policy noeviction` — **critical**. Under `allkeys-lru`, Redis would silently evict queue
-entries and frontier state under memory pressure, losing work invisibly. With `noeviction`, writes
-fail loudly and backpressure engages.
+The cap is `[queue] index_stream_max_len = 20 000` entries (code default `MAX_LEN = 100 000`).
+The cap that matters is **bytes**: each entry is a full document, and the old 100k cap allowed
+~900 MB of stream on a 1 GB Redis — PROB-001's actual OOM.
 
-### 4.5 Backpressure signalling
+### 4.5 Backpressure
 
-`XLEN` per stream is exported as `xustive_queue_depth{stream}`; the age of the oldest pending entry
-is `xustive_queue_lag_seconds`. [[Crawler Orchestrator]] reads these and throttles per the thresholds
-in [[Error Handling and Resilience]] §4.
+Each `crawld` worker probes every 2 s (`PROBE_EVERY`; per-claim probing cost two round trips per
+fetch across 64 workers, PROB-002) and pauses itself when the indexer lag reaches
+`BACKPRESSURE_AT = 5 000`, when the operator has paused the crawl, or when Redis `used_memory`
+passes `MEMORY_HIGH_WATER = 0.85` of `maxmemory` — the universal backstop that makes the OOM wall
+structurally unreachable by the crawler's own writes. All fail open with a warning: a crawler that
+stops on a Redis blip is worse than one that briefly runs ahead.
+
+### 4.6 Dead letters
+
+Written **before** the original is acked — acking first and then failing to write leaves no
+record. The entry keeps the payload as it was, so replay does not reconstruct it. Replay is always
+deliberate: `xustive-cli dlq replay`, or the admin Queue page's replay-all / replay-one / drop-one
+(`POST /api/v1/admin/queue/replay`, `…/queue/dead/replay`, `…/queue/dead/drop`). A queue that
+retries its own poison on a timer will do it at 3 am after someone fixed the bug and went to bed.
+
+### 4.7 Connections
+
+One auto-reconnecting `ConnectionManager` per `Queue`, cloned across workers. The earlier
+connection-per-call pattern spun up hundreds of short-lived connections a second under sixteen
+workers and produced the "Multiplexed connection driver unexpectedly terminated" flood.
+
+### 4.8 Persistence and memory (`deploy/docker-compose.yml`)
+
+`--appendonly yes`, `--maxmemory 1gb`, `--maxmemory-policy noeviction`. `noeviction` is not
+optional: under `allkeys-lru` Redis would silently drop queue entries and frontier state. The
+signals Redis (`redis-signals`, 6391) runs `--appendonly no --maxmemory 192mb volatile-lru` on
+purpose ([[ADR-0018 - Anonymous Search History]]).
 
 ## 5. Configuration
 
-| Key | Default | Notes |
+| Key | Dev default | Meaning |
 |:---|:---|:---|
-| `maxmemory` | 6 GB | leave headroom on an 8 GB allocation |
-| `maxmemory-policy` | `noeviction` | non-negotiable |
-| `appendonly` | `yes`, `everysec` | |
-| `stream_max_len` | 500 000 (approx trim) | safety net above the trim task |
-| `claim_idle_ms` | 300 000 | |
-| `consumer_batch` | 32 | |
-| `block_ms` | 5 000 | |
-| `dlq_retention_days` | 30 | |
-| `raw_ttl_days` | 7 | |
+| `[queue] url` | `redis://127.0.0.1:6390` | persistent queue Redis |
+| `[queue] signals_url` | `redis://127.0.0.1:6391` | ephemeral signals Redis; empty falls back to `url` |
+| `[queue] index_stream` | `q:index` | |
+| `[queue] index_stream_max_len` | 20 000 | `XADD MAXLEN ~` |
+| `RECLAIM_AFTER`, `MAX_ATTEMPTS`, `BACKPRESSURE_AT`, `MEMORY_HIGH_WATER`, `PROBE_EVERY` | 300 s, 3, 5 000, 0.85, 2 s | constants in code |
 
-## 6. Data
+## 6. Failure Modes
 
-See §3. Estimated steady-state memory at 10M documents: streams ~500 MB, dedup ~1.2 GB, frontier
-~800 MB, raw blobs ~2–4 GB (the dominant and most variable term — see [[Web Fetcher]] §12).
-
-## 7. Failure Modes
-
-| Failure | Detection | Response |
-|:---|:---|:---|
-| Redis down | connection error | ingestion halts entirely; **search is unaffected** ([[System Architecture]] §1) |
-| Memory limit hit | `OOM command not allowed` | writes fail → producers backpressure → alert |
-| Stream growth unbounded | `XLEN` metric | trim task; investigate a stuck consumer group |
-| Consumer group lag | `XPENDING` | scale consumers; check for a poison message |
-| Poison message loops | attempt counter in envelope | DLQ after `max_attempts` |
-| Stalled consumer (hung, not dead) | `XAUTOCLAIM` idle | reclaimed after 5 min |
-| AOF corruption | startup failure | `redis-check-aof --fix`; worst case, re-seed the frontier |
-| Split-brain (two orchestrator leaders) | leader lock TTL | lock is single-instance; documented limitation of a single Redis |
-
-## 8. Performance
-
-| Metric | Budget |
+| Failure | Response |
 |:---|:---|
-| `XADD` throughput | ≥ 50 000/s |
-| `XREADGROUP` batch of 32 | ≤ 2 ms |
-| End-to-end queue latency (enqueue → claimed) | ≤ 500 ms p95 at green pressure |
-| Memory | ≤ 6 GB steady |
+| Redis down | ingestion halts; **search is unaffected** — the API touches this Redis only for the eager federation write and the admin pages, both fail-open |
+| `maxmemory` reached | writes fail loudly; the crawler already paused at 85 % |
+| Stream growth | trimmed on write and per worker cycle; the cap is the backstop |
+| Consumer dies mid-job | reclaimed after 5 min; idempotent upsert |
+| Poison job | dead-lettered after 3 deliveries, or immediately on validation / permanent rejection |
+| Phantom producer group | prevented — producers create none |
 
-## 9. Observability
+## 7. Observability
 
-`xustive_queue_depth{stream}`, `xustive_queue_lag_seconds{stream}`,
-`xustive_queue_pending{stream,group}`, `xustive_dlq_total{stage}`, `xustive_claim_total`, plus
-`redis_exporter` metrics (memory, ops/s, AOF size, evicted keys — which must stay **0**).
+`xustive-cli dlq stats` (depth, pending, dead letters) and the admin Queue page (backlog, dead
+letters with reason and attempts, Redis used/max bytes and percent, frontier waiting/deferred,
+capacity). No Prometheus exporter for Redis is deployed yet.
 
-`redis_evicted_keys_total > 0` is an immediate alert: it means `noeviction` was misconfigured and
-work is being lost silently.
+## 8. Security
 
-## 10. Security
+Internal network only, never a published port beyond the dev host mapping; no user query touches
+this Redis. `requirepass`/ACLs and command renaming from the original design are **not** set up
+(2026-08-27) — the compose network is the boundary.
 
-Internal network only, never a published port ([[Security and Privacy]] T5). `requirepass` set;
-dangerous commands (`FLUSHALL`, `FLUSHDB`, `CONFIG`, `KEYS`, `DEBUG`) renamed or disabled via ACL.
-Separate ACL users per binary with the minimum key-pattern and command set each needs.
+## 9. Testing
 
-**No user queries ever touch Redis.** The serving plane's only Redis use is rate-limit counters keyed
-on a salted IP hash with a 60 s TTL, and those live in a separate logical database
-([[Security and Privacy]] P5).
+`crates/xustive-queue/tests/streams.rs` (produce/consume/ack/reclaim/DLQ against a real Redis,
+skipped when unreachable), `tests/indexer.rs`, `tests/breaker_redis.rs`.
 
-## 11. Testing
+## 10. Open Questions
 
-- Integration with a real Redis container: produce 10k messages, consume with 4 workers, assert
-  exactly-once *effect* (idempotent) and zero loss.
-- Crash: kill a consumer mid-message; assert `XAUTOCLAIM` redelivers within the idle window.
-- Poison: a message that always fails; assert it reaches the DLQ after `max_attempts` and does not
-  block the stream.
-- Memory: fill to `maxmemory`; assert writes fail loudly and no key is evicted.
-- Trim: run for 1M messages; assert stream length stays bounded.
-- Replay: `dlq replay` restores messages into the stage input and they process normally.
-
-## 12. Open Questions
-
-- [ ] Move `raw:{trace_id}` blobs out of Redis to object storage/disk? At high crawl rates they
-      dominate memory ([[Web Fetcher]] §12).
-- [ ] Is a single Redis instance acceptable, or do we need Sentinel before beta? (Redis is the
-      ingestion SPOF; search survives its loss, so the answer depends on tolerable crawl downtime.)
-- [ ] Should DLQ replay be automated with a safety valve, or stay a deliberate manual action?
+- [ ] Raw bodies (`frontier:raw:*`) belong in object storage, not here; today they are off by
+      default for exactly that reason ([[Web Fetcher]]).
+- [ ] A single Redis is the ingestion SPOF; search survives its loss, so Sentinel waits on how
+      much crawl downtime is tolerable.
+- [ ] ACL users per binary.
 
 ## Related
 
-[[Error Handling and Resilience]] · [[Crawler Orchestrator]] · [[Indexer Worker]] ·
-[[Deduplication Service]] · [[Observability]] · [[Deployment Topology]] ·
-[[ADR-0006 - Redis Streams for the Ingestion Pipeline]]
+[[ADR-0006 - Redis Streams for the Ingestion Pipeline]] · [[Indexer Worker]] ·
+[[Crawler Orchestrator]] · [[Crawler Console]] · [[Deduplication Service]] ·
+[[Interaction Signals]] · [[Error Handling and Resilience]] · [[Deployment Topology]]

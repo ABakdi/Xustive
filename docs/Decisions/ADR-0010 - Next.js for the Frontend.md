@@ -2,7 +2,7 @@
 tags:
   - decision
   - ui
-status: accepted
+status: implemented
 date: 2026-08-07
 supersedes: "server-rendered HTML from xustive-api"
 ---

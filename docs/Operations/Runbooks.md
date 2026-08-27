@@ -4,7 +4,7 @@ tags:
   - ops
 type: operations
 status: living
-updated: 2026-08-21
+updated: 2026-08-27
 ---
 
 # Runbooks
@@ -15,6 +15,12 @@ updated: 2026-08-21
 
 Each section is: what fired, what it means, how to confirm it is real, and the concrete steps to
 resolve — in the order to try them. Commands assume the `make` targets and `xustive-cli`.
+
+> **This file is the alert side only.** Everything an operator does *between* alerts — what runs
+> and how to tell it is up, restarting each process, the admin console pages, the crawler's
+> pause/bounds/sources, `XUSTIVE_THUMB_SECRET`, the circuit breakers, backup / restore / reset,
+> and the logging rules — is in [[Operating Xustive]] (2026-08-27) and is not repeated here. When a
+> step below says "restart the API" or "restore from backup", that note has the exact commands.
 
 > **Scope note.** [[Observability]] §6 also specifies alerts for the crawler's proxy/session/signer
 > machinery (`ProxyPoolDegraded`, `SignerFailure`, `EgressMismatch`, …). Those features are not
@@ -32,14 +38,18 @@ resolve — in the order to try them. Commands assume the `make` targets and `xu
 **Confirm:** `curl -fsS http://<api-host>:8080/readyz` — a connection refused or a hang confirms it.
 
 **Resolve, in order:**
-1. Is the process alive? (`systemctl status xustive-api` / `docker ps` / the orchestrator's view.)
-   If it exited, check its last logs for a panic or a failed startup dependency, then restart it.
+1. Is the process alive? (`ss -ltnp | grep :8080` on the dev box — the API is a host process, not
+   a container; `systemctl status` / the orchestrator's view elsewhere.) If it exited, check its
+   last logs for a panic or a failed startup dependency, then restart it
+   ([[Operating Xustive]] §2).
 2. If it is alive but not answering, check whether it is wedged on a dependency: `curl
    http://<meili-host>:7700/health`. A search engine will not become ready if Meilisearch is down.
 3. If Meilisearch is the cause, jump to that engine's health (CPU, disk, memory) — the API recovers
    on its own once its dependency does.
 4. Restart the API as the blunt fix once the dependency is healthy; graceful shutdown drains in
    ≤ 25 s (M4-T02.7), so a rolling restart does not drop in-flight searches.
+5. A `readyz` that is 503 while `healthz` is 200 is the breaker to Meilisearch open, not a dead
+   process — it re-closes on the next successful probe ([[Operating Xustive]] §6).
 
 ---
 
@@ -63,6 +73,13 @@ on the dashboard, and check whether `xustive_search_duration_seconds{stage=…}`
    re-rank input (authority map reload). Check the last deploy.
 4. If nothing changed and load is high, this is capacity — shed is already automatic (the API sheds
    with 503 under overload); scale the API and/or Meilisearch.
+5. If the engine is also indexing a crawl backlog, expect `xustive_degraded_total{stage="retrieval"}`
+   to be rising: a retrieval that trips `search.timeout_ms` is retried narrow (no facets, no
+   highlighting, one page) rather than failed ([[ADR-0027 - Narrow the Search Under Load Instead of Failing]],
+   BUG-041). Results stay up with worse ranking and no filter chips; pausing the
+   crawler from `/admin/live` gives the engine back to search ([[Operating Xustive]] §4). The dev
+   deadlines after that bug: `timeout_search_ms` 2 500, `search.timeout_ms` 1 200
+   ([[Performance Budgets]] §2a).
 
 ---
 
@@ -99,8 +116,10 @@ ticket, not a page.
 API logs record the withholding reason (uncited / wrong-language / timeout).
 
 **Resolve, in order:**
-1. If the reason is **timeouts**: `xustive-ml` is starved. It shares the machine with search on the
-   reference hardware; check CPU/GPU contention. Scale or move it to its own node.
+1. If the reason is **timeouts**: the summariser (the `xustive-ml` crate, in-process in the API)
+   is starved. It shares the machine — and on the dev box the 4 GB GPU — with everything else;
+   check CPU/GPU contention (`/admin/device` shows which device it is on). Scale or move it to its
+   own node.
 2. If the reason is **validator rejections** (uncited, wrong language): the model is producing weak
    output — usually the 3B CPU model under load. This is a known quality ceiling; the fix is the 7B
    model on a GPU, not an incident response.
@@ -254,9 +273,8 @@ cannot catch this: a flushed cache publishes *no series*, so absence must be ale
 **Confirm:** `redis-cli KEYS 'toold:*'` (or the equivalent) — nothing there confirms it.
 
 **Resolve, in order:**
-1. If Redis was flushed (e.g. after an OOM recovery — see [[qwen-3b-noncommercial-licence]]'s
-   sibling finding on Redis memory), the fetcher just needs to run: `make toold`, or wait for its
-   next timer pass.
+1. If Redis was flushed (e.g. after an OOM recovery — the crawler pauses itself at 85 % of
+   `maxmemory` for exactly this reason, [[Operating Xustive]] §4 and [[PROB-001 - Bounded Frontier and Queue]]), the fetcher just needs to run: `make toold`, or wait for its next timer pass.
 2. If `xustive-toold` has never run in this deployment, start it.
 3. Confirm coverage recovers via **ToolDataCoverageDropped**'s gauge.
 
@@ -283,8 +301,10 @@ see this (the wilayas that do refresh keep it healthy), so coverage is watched s
 
 ## Common operations
 
-The routine actions an operator performs, with the exact commands (M4-T09.3). Where a one-shot
-command does not exist yet, that is stated rather than papered over.
+The actions an alert above tells you to take, with the exact commands (M4-T09.3). Where a one-shot
+command does not exist yet, that is stated rather than papered over. Restarts, the admin console,
+crawler pause and bounds, backup / restore / reset and the thumbnail secret are in
+[[Operating Xustive]] §2–§7 and are not repeated.
 
 ### Scale indexer workers
 
@@ -339,7 +359,7 @@ cargo run -p xustive-cli -- crawld --reset
 
 > ❌ **Not built: targeted single-URL / single-source recrawl.** There is no CLI command today to
 > force *one* URL or source to be re-fetched ahead of schedule — the recrawl scheduler
-> ([[Adaptive Recrawl over Static Crawling]]) decides cadence. Forcing one is a follow-up; the
+> ([[ADR-0011 - Adaptive Recrawl over Static Crawling]]) decides cadence. Forcing one is a follow-up; the
 > primitives (`revisit::Visits::forget`) exist in the ingest crate but are not exposed on the CLI.
 
 ### Execute a takedown (remove already-indexed content)
@@ -389,8 +409,9 @@ so the source is not re-indexed on the next crawl.
 
 **Communication.** Note what fired, when, the user-facing impact (or "none — results unaffected"),
 and the action taken. The privacy posture holds during an incident too: **never** paste query text
-into an incident channel — the nightly log scan (`make scan-logs`) exists precisely so query text
-never leaves the box ([[ADR-0008 - No Query Logging]]).
+into an incident channel — the nightly log scan (`make scan-logs LOG=<file>`, operator-run; it is
+not in CI) exists precisely so query text never leaves the box ([[ADR-0008 - No Query Logging]],
+[[Operating Xustive]] §8). Reproduce with `make search Q='…'` instead.
 
 > ❌ **Not built: a formal escalation/on-call policy** (who is paged, hand-off, comms templates) —
 > that is an organisational decision for when there is a team to escalate *to*, not code
@@ -400,5 +421,5 @@ never leaves the box ([[ADR-0008 - No Query Logging]]).
 
 ## Related
 
-[[Observability]] · [[Error Handling and Resilience]] · [[Performance Budgets]] ·
-[[Milestone 4 - Quality and Operations]] · [[Security and Privacy]]
+[[Operating Xustive]] · [[Observability]] · [[Error Handling and Resilience]] ·
+[[Performance Budgets]] · [[Milestone 4 - Quality and Operations]] · [[Security and Privacy]]

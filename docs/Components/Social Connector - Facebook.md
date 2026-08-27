@@ -5,16 +5,38 @@ tags:
   - social
   - collection
 component-id: C13
-binary: xustive-crawler
-status: specified
-updated: 2026-08-06
+binary: none (would be xustive-cli crawld)
+status: not built
+updated: 2026-08-27
 ---
 
 # Social Connector - Facebook
 
-> **ID** C13 · **Binary** `xustive-crawler` · **Upstream** [[Crawler Orchestrator]] · **Downstream** [[Content Parser]]
+> **ID** C13 · **Binary** none yet (would live in `xustive-cli crawld`) ·
+> **Upstream** [[Crawler Orchestrator]] · **Downstream** [[Content Parser]]
 > **Collection stance:** direct, per [[ADR-0009 - Direct Collection for Social Platforms]]. Graph API
 > is used opportunistically where a source has authorised it, because it is cheaper and more stable.
+
+## 0. Status (2026-08-27)
+
+**Not built.** No connector code exists for Facebook — nothing in `crates/`, `services/`, `web/`
+or `config/` fetches, paginates or maps Facebook content, and there is no `xustive-crawler` binary;
+the crawler is `xustive-cli crawld` ([[Crawler Orchestrator]]). What *does* exist is the ground a
+connector would stand on, so the design below is kept as the plan, not as a description:
+
+- `xustive_core::model::SourceType::{Web, Facebook, Instagram, Tiktok}` with `is_platform()`
+  (`platform` vs `open_web` crawl profile), parsed from `"facebook" | "fb"`, etc., and usable in a
+  search `source_type` filter ([[Data Model]]).
+- `Engagement { likes, comments, shares, views, captured_at }` on `Document`.
+- `xustive_ingest::session::Platform::{Instagram, Facebook, Tiktok}`, the identity pool, pinning
+  invariant and budgets ([[Session Manager]]); the proxy ladder with `Datacenter`/`Residential`/
+  `Mobile` pools ([[Proxy Manager]]); fingerprint coherence ([[Fingerprint Engine]]). All are
+  "engine built, fuel deferred" — decision logic with tests, no real accounts or proxies.
+- The queue has one stream, `q:index` ([[Task Queue]]); `q:fetch` / `q:parse` below are the
+  intended shape, not streams that exist.
+
+The only social content reachable today comes sideways: query-time federation may return a
+Facebook URL from an external metasearch engine ([[ADR-0017 - Query-Time Federation with External Metasearch]]), and it is indexed as an ordinary web result, not through this connector.
 
 ## 1. Purpose
 
@@ -36,6 +58,8 @@ detection response.
 (→ [[Content Parser]]).
 
 ## 3. Interface
+
+_Intended shape (2026-08-27): none of these streams or message kinds exist yet; see §0._
 
 Consumes `q:fetch` with `kind = "facebook"`:
 `{ source_id, object_id, object_type: "page"|"group", cursor?, since?, path_hint? }`
@@ -141,6 +165,8 @@ Comments become `Comment` records with one level of threading retained.
   deletion is a duty owed to the person who deleted the post, not to the platform.
 
 ## 5. Configuration
+
+_Intended keys (2026-08-27): no `[facebook]` section exists in `config/*.toml`._
 
 | Key | Default |
 |:---|:---|

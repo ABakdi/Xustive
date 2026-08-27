@@ -5,17 +5,33 @@ tags:
   - ingestion
   - collection
 component-id: C21
-binary: xustive-crawler
-status: specified
-updated: 2026-08-06
+binary: xustive-cli crawld (library only)
+status: decision logic built; egress not wired
+updated: 2026-08-27
 ---
 
 # Proxy Manager
 
-> **ID** C21 · **Binary** `xustive-crawler` · **Upstream** [[Web Fetcher]], [[Session Manager]], social connectors · **Downstream** external network
+> **ID** C21 · **Module** `crates/xustive-ingest/src/proxy/` (`pool.rs`, `health.rs`,
+> `placement.rs`, `attribution.rs`, `ladder.rs`, `breaker.rs`, `bandwidth.rs`) · **Upstream**
+> [[Web Fetcher]], [[Session Manager]], social connectors · **Downstream** external network
 
 > Rebuilt under [[ADR-0009 - Direct Collection for Social Platforms]]. The previous
 > `halt_and_flag`-only design is superseded; this note is the design in force.
+
+## 0. What exists today (2026-08-27)
+
+"Build the engine, defer the fuel." The **decision logic** in §4 is implemented and tested as a
+library: `Pool` / `Proxy` with `acquire`, `acquire_pinned`, `pin`, `report`; `Health` scoring and
+states; `PlacementLedger` (subnet and ASN caps); `attribute()`; `on_blocked()`; Redis-backed
+`Breakers`; `BandwidthMeter`. The parts that need real infrastructure are **not built**: no
+provider credentials, no lease is ever taken by the [[Web Fetcher]] (every crawl fetch goes out
+`direct` from the host), no health-check probe loop, no egress-IP assertion, no metrics. The one
+outbound path that takes a proxy URL is the SERP client — `discovery.serp_proxy`, a single
+`http://`/`socks5://` string with inline credentials, not a pool
+([[ADR-0013 - Direct SERP Collection for Discovery]]). The `#[async_trait] ProxyPool` in §3 is the
+intended shape; the built API is synchronous and in-memory, with `dice: f64` passed in so
+selection is testable.
 
 ## 1. Purpose
 
@@ -65,7 +81,10 @@ silently corrupt every health score in the pool.
 | `residential` | **per GB** | +150–400 ms | Instagram, Facebook |
 | `mobile` | **per GB**, highest | +300–800 ms | Facebook where residential is insufficient; highest-trust IPs |
 
-Policy is per source class, set in [[Data Sources Registry]]:
+`PoolKind::is_platform()` is true for `datacenter`, `residential` and `mobile`; those pools
+`halts_when_empty()` — `direct` cannot run out. Policy is `PoolPolicy { kind, geo, sticky }`,
+meant to be set per source class in [[Data Sources Registry]] (the registry does not carry the
+field yet):
 
 ```toml
 web         = { kind = "direct" }
@@ -120,9 +139,15 @@ health = 0.40·success_rate + 0.20·(1 − normalised_latency)
 | `quarantined` | < 0.4 or 3 consecutive failures | excluded for `quarantine_s`, then probed |
 | `dead` | 5 consecutive quarantines | removed; alert |
 
-Active checks every 60 s against a neutral endpoint, plus an **egress-IP assertion**: the observed
-public address must equal the expected proxy address. A proxy silently falling back to direct egress
-would expose the crawler host and defeat the whole arrangement.
+Built as `Health::observe(outcome, latency_ms)` / `score()` / `state()`: latency is normalised
+between 200 ms and 5 s, a fresh proxy starts *healthy* with optimistic rates (it has to earn
+quarantine, not earn its way in), `is_pinnable()` is healthy-only, and `begin_probe()` returns a
+quarantined proxy for one trial after its cooldown. `report` is mandatory; a lease dropped without
+one is counted as a `Timeout`.
+
+Active checks every 60 s against a neutral endpoint, plus an **egress-IP assertion** — the
+observed public address must equal the expected proxy address, because a proxy silently falling
+back to direct egress would expose the crawler host — are **not built** (2026-08-27).
 
 ### 4.5 Failure attribution
 
@@ -137,9 +162,16 @@ produces the classic spiral where one dead host quarantines an entire pool.
 | Challenge rate rising across many identities on one ASN | **ASN reputation** | drain that ASN, redistribute |
 | Challenge rate rising platform-wide | **defence rollout** | halt the platform, page |
 
+Built as `attribute(events, now_ms, window_ms) -> Option<Blame>` over `FailureEvent`s. The rules
+are applied in the order **host, then ASN, then proxy, then identity**: host and ASN are shared
+causes and must win over the proxy rule or one outage quarantines the pool; the single-identity
+rule is last because it is the most specific and should not swallow an ASN-wide trend. The
+platform-wide spike is a `BlockSignal` for the ladder, not a `Blame`.
+
 ### 4.6 Response to blocking — the graded ladder
 
-Replaces the old `halt_and_flag`. `on_blocked` is now per pool kind:
+Replaces the old `halt_and_flag`. `on_blocked(pool, signal) -> Action` (`ladder.rs`) is per pool
+kind, and a guard test pins the open-web column:
 
 | Signal | Open web (`direct`) | Platform pools |
 |:---|:---|:---|
@@ -156,11 +188,18 @@ small Algerian news site that asks us not to crawl a path is still obeyed.
 
 ### 4.7 Circuit breakers
 
-Shared state in Redis (`breaker:{host}`, `breaker:platform:{p}`, `breaker:asn:{n}`) so all crawler
-replicas agree. Cooldown 60 s doubling to a 30-minute ceiling; platform breakers start at 15 min
-because platform-level blocks are slower to clear.
+Shared state in Redis (`breaker:{host}`, `breaker:platform:{p}`, `breaker:asn:{n}`, each a hash
+of `until_ms` and trip `level`) so all crawler replicas agree — built as `Breakers` with `trip`,
+`is_open`, `reset` and a pure `cooldown_for(base, level)`. Cooldown 60 s doubling to a 30-minute
+ceiling; platform breakers start at 15 min because platform-level blocks are slower to clear.
+Distinct from `xustive_core::circuit`, the in-process breaker the API uses for its own
+dependencies ([[Error Handling and Resilience]]).
 
 ## 5. Configuration
+
+Nothing in `config/*.toml` yet; the values below are the design targets, and the ones marked ★
+are constants in the module today (`placement::MAX_IDENTITIES_PER_SUBNET`, `MIN_DISTINCT_ASNS`,
+`bandwidth::ALERT_AT`, `breaker::{HOST_BASE, PLATFORM_BASE, CEILING}`).
 
 | Key | Default |
 |:---|:---|
@@ -170,18 +209,20 @@ because platform-level blocks are slower to clear.
 | `quarantine_s` | 300 |
 | `sticky_ttl_s` | lifetime (pinned) |
 | `reassign_cooldown_days` | 7 |
-| `max_identities_per_subnet` | 3 |
-| `min_distinct_asns` | 4 |
+| `max_identities_per_subnet` ★ | 3 |
+| `min_distinct_asns` ★ | 4 |
 | `max_concurrent_per_proxy` | 4 |
-| `attribution_window_s` | 60 |
-| `bandwidth_budget_gb_month` | set per deployment — **alerts at 80 %** |
-| `credentials_path` | secrets file |
+| `attribution_window_s` | 60 (a parameter of `attribute()`) |
+| `bandwidth_budget_gb_month` | set per deployment — **alerts at 80 %** ★ |
+| `credentials_path` | secrets file — not built |
 
 ## 6. Data
 
-Redis: `proxy:{id}` (health, counters, ASN, geo), `breaker:*`, `pin:{identity}` → proxy,
-`bandwidth:{pool}:{month}`. Credentials in the mounted secrets file, readable only by
-`xustive-crawler`.
+Built: `breaker:*` (above) and `{ns}:bandwidth:{month}` — one hash per month with
+`pool:{pool}:bytes`, `src:{source}:bytes`, `src:{source}:docs`, so cost per 1 000 documents is a
+read (`cost_per_1k_docs`). Pool membership, health and pins are **in-memory** on `Pool` today;
+the designed `proxy:{id}` and `pin:{identity}` Redis records are not built (2026-08-27).
+Credentials would live in the mounted secrets file, readable only by the crawler process.
 
 ## 7. Failure Modes
 
@@ -236,6 +277,11 @@ Dashboard **Collection Health** (shared with [[Session Manager]]). Alerts: `Prox
   auditable, explicit consent for their exit nodes; record the choice in [[Decision Log]].
 
 ## 11. Testing
+
+Built: unit tests in each `proxy/*.rs` (health transitions, selection weights, attribution order,
+the ladder's open-web guard, placement caps, `cooldown_for`), plus `tests/proxy_breaker_redis.rs`
+and `tests/bandwidth_redis.rs`. The egress, fallback-guard and cost-accounting items below need
+real egress and are still to do.
 
 - Unit: health EWMA transitions, selection weighting, attribution rules
   (3-proxies-1-host vs 1-proxy-3-hosts vs identity-specific).

@@ -3,216 +3,221 @@ tags:
   - component
   - ingestion
 component-id: C11
-binary: xustive-crawler
-status: specified
-updated: 2026-08-06
+binary: xustive-cli crawld
+status: built
+updated: 2026-08-27
 ---
 
 # Crawler Orchestrator
 
-> **ID** C11 · **Binary** `xustive-crawler` · **Upstream** [[Data Sources Registry]], [[Admin and Source Submission]] · **Downstream** [[Web Fetcher]], social connectors via [[Task Queue]]
+> **ID** C11 · **Binary** `xustive-cli crawld` (`crates/xustive-cli/src/crawld.rs`) · **Library**
+> `crates/xustive-ingest` (`orchestrator.rs`, `frontier.rs`, `revisit.rs`, `sitemap_poll.rs`) ·
+> **Upstream** [[Data Sources Registry]], [[Admin and Source Submission]] · **Downstream**
+> [[Web Fetcher]] in-process, [[Indexer Worker]] via `q:index` ([[Task Queue]])
 
 ## 0. Concurrency
 
-Workers run concurrently — sixteen by default — and **this costs no politeness at all.**
+Workers run concurrently — **sixty-four by default** (`DEFAULT_WORKERS`) — and **this costs no
+politeness at all.**
 
 Crawl-delay is a property of a host. The frontier hands each worker a *different* host and pushes
-that host's due-time forward atomically, so sixteen workers means sixteen hosts in flight while
-each individual site sees exactly the one-request-at-a-time pacing it saw before.
+that host's due-time forward atomically, so sixty-four workers means sixty-four hosts in flight
+while each individual site sees exactly the one-request-at-a-time pacing it saw before.
 
 The bottleneck was never CPU. A fetch is a few hundred milliseconds of waiting on somebody else's
 server and a few milliseconds of parsing, so a sequential loop spends almost all its time idle and
 one slow host stalls the whole crawl. Measured against the live seed list: **133 s sequential,
-13 s with sixteen workers, for the same twenty documents.**
+13 s with sixteen workers, for the same twenty documents.** Sixteen was then the ceiling once
+discovery had spread the frontier over hundreds of hosts — sixteen hosts against a 1.5 s delay is
+~9 fetches/s no matter how much is queued — so the default rose to sixty-four (PROB-002). An idle
+worker is a parked async task; overshooting the due-host count costs almost nothing.
 
 There is nothing here a GPU could accelerate. The work is network I/O and a little HTML parsing;
 GPUs matter elsewhere in this system — embeddings and the summariser — and not at all here.
 
-The useful ceiling is the number of **distinct hosts that are due**, not the number of cores. Past
-that, extra workers find nothing to claim and idle, which is why the default tracks the seed count
-rather than the CPU count. More corpus comes from more hosts, not from asking any one host faster.
-
-
 ## 1. Purpose
 
 Decide **what to fetch next, and when**. It owns the frontier: the prioritised set of pending URLs
-and social cursors. Everything about crawl politeness, budget, and freshness policy is decided here,
-so that fetchers can be dumb, parallel, and stateless.
+in Redis. Everything about crawl politeness, budget, and freshness policy is decided here, so that
+the loop itself can be dull: claim a URL, fetch it, parse it, hand the document on, queue the links
+it points to, repeat. A crawler runs for months unsupervised; every clever scheduling decision is
+one somebody reconstructs at two in the morning from a document count that stopped rising.
 
 ## 2. Responsibilities
 
-**In scope**: seeding from the source registry; sitemap discovery; link frontier management;
-per-host scheduling and budgets; revisit policy; priority assignment; backpressure response;
-social-connector cursor scheduling.
+**In scope**: seeding from the seed TSV and the registry's approved, active sources; link
+frontier management; per-host scheduling, budgets and trap rules; revisit policy; sitemap-driven
+freshness; hot-document recrawl; query-driven discovery; backpressure and memory backstops.
 
-**Out of scope**: actually fetching (→ [[Web Fetcher]]); robots parsing (→ [[Politeness and Robots]],
-which it consults); parsing (→ [[Content Parser]]).
+**Out of scope**: the HTTP itself (→ [[Web Fetcher]]); robots parsing (→ [[Politeness and Robots]],
+which it consults); parsing (→ [[Content Parser]]); indexing (→ [[Indexer Worker]]). Social
+cursors: **not built** (2026-08-27) — the connectors do not exist.
 
 ## 3. Interface
 
-Not an RPC service — a loop. Inputs and outputs are Redis structures ([[Task Queue]]):
+Not an RPC service — a loop, `Orchestrator::step(now_ms) -> Outcome`, run by every worker task.
+`Outcome` is `Document(Parsed)`, `Idle` (back off `IDLE_SLEEP` = 500 ms) or `Finished` (the
+`--max` budget is spent). The CLI `crawl` command writes documents to Meilisearch directly; `crawld`
+puts them on `q:index`, so an index outage costs a backlog rather than a stopped crawl and a set of
+pages fetched, politely, and thrown away.
 
-| Structure | Type | Purpose |
+Frontier structures in Redis (namespace `frontier`; the discovery tools use their own namespace so
+they cannot wipe each other's state):
+
+| Key | Type | Purpose |
 |:---|:---|:---|
-| `frontier:{host}` | sorted set (score = due-at) | per-host pending URLs |
-| `frontier:hosts` | sorted set (score = next-due) | which host to service next |
-| `seen:{host}` | Bloom filter | URLs already enqueued (bounded memory) |
-| `crawl:{host}` | hash | crawl-delay, last-fetch, breaker state, error counts |
-| `cursor:{source_id}` | string | social pagination cursor |
-| `q:fetch` | stream | dispatched work |
+| `frontier:hosts` | sorted set (score = due unix ms) | which host may be touched next |
+| `frontier:q:{host}` | sorted set (score = priority, low first) | per-host pending URLs |
+| `frontier:seen:{gen}` | set of 128-bit URL hashes | URL dedup, generational, expires after two windows |
+| `frontier:inflight` | hash url → claim expiry | so a dead worker's work returns |
+| `frontier:due` | sorted set (score = revisit due) | pages we hold and have booked a return to |
+| `frontier:count`, `frontier:hostpages:{host}`, `frontier:meta` | counters | global ceiling, per-host lifetime budget |
 
-Admin surface: `POST /admin/recrawl {source_id | url}` injects into the frontier
-([[Admin and Source Submission]]).
+Admin surface: `POST /api/v1/admin/crawler/enqueue` and `/pause` ([[Crawler Console]]).
 
 ## 4. Internal Design
 
-### 4.1 Main loop
+### 4.1 The loop and the claim
 
 ```
-loop {
-  if queue_pressure() >= Red { sleep(5s); continue }        // [[Error Handling and Resilience]] §4
-  let hosts = zrangebyscore("frontier:hosts", -inf, now, limit = 64);
-  for host in hosts {
-     if !politeness.may_fetch(host) { reschedule(host); continue }
-     if breaker.is_open(host)       { reschedule(host, breaker.cooldown()); continue }
-     let batch = pop_due(host, host_batch_size);
-     for url in batch { xadd("q:fetch", envelope(url, priority)) }
-     schedule_next(host, now + crawl_delay(host));
-  }
-}
+every 30 s   reclaim expired claims; promote pages that came due (≤ 500 per sweep)
+every 2 s    guard probe: indexer backlog, operator pause flag, Redis memory
+claim(now, host_delay)   ZRANGEBYSCORE hosts ≤ now → pop the best URL of that host,
+                         push the host's due-time forward, record the claim
+fetch → parse → Document; complete(url); add_batch(best K outlinks)
 ```
 
-One orchestrator instance is leader-elected via a Redis lock; the others idle as hot standbys. The
-frontier must have exactly one scheduler or per-host rate limits become meaningless.
+There is no leader election. Politeness is shared state in Redis and claiming is atomic, so any
+number of workers — in one process or several — can run the same loop. Claims carry a 120 s TTL
+(`CLAIM_TTL`, comfortably above the fetch timeout) and are reclaimed rather than released: a worker
+that dies cannot release anything. At-least-once, so fetching must be idempotent — a page fetched
+twice costs a request; losing it costs a document forever.
 
 ### 4.2 Priority
 
-`priority = 0` (highest) … `9`. Computed as:
+Lower sorts first; `priority_for(depth, trust, looks_like_article)`:
 
 | Factor | Effect |
 |:---|:---|
-| Source `trust_tier` A / B / C | −2 / 0 / +1 |
-| Source `frequency` realtime/hourly/daily/weekly | −2 / −1 / 0 / +1 |
-| Depth from seed | +depth |
-| Previously indexed and unchanged on last N visits | +2 |
-| Manually requested recrawl | force 0 |
-| URL matches a "news-shaped" pattern (`/article/`, dated path) | −1 |
+| Depth from seed | `+1000 × depth` — depth dominates; shallow-first keeps the crawl broad |
+| Source trust 0–100 | `−5 × trust` |
+| Article-shaped path | `−250`, breaks ties against listing pages |
 
-### 4.3 Revisit policy (adaptive)
+Revisits use `priority_for_revisit`: the same base, minus a banded credit for how often the page
+has been measured to change (400 at ≤ 2 h intervals, 200 at ≤ 1 day, 50 at ≤ 1 week) and one
+point per hour overdue, capped at 300. Both caps keep the two signals as adjustments to an
+ordering rather than an ordering of their own.
 
-Each URL carries a `revisit_interval`, initialised from the source's `frequency`, then adapted:
+### 4.3 Revisit policy — [[ADR-0011 - Adaptive Recrawl over Static Crawling]]
 
-- Content changed since last visit (`content_hash` differs) → `interval = max(min_interval, interval / 2)`
-- Unchanged → `interval = min(max_interval, interval × 1.5)`
-- `304 Not Modified` (we send `If-None-Match`/`If-Modified-Since`) → unchanged, and it cost us almost
-  nothing
-- 404/410 → remove from frontier, mark the document `gone` after 2 confirmations
+`revisit.rs`. Each page held has a `Visit` (content hash, interval, validators). "Changed" means
+the BLAKE3 hash of the *extracted* body differed, so an APS or Echorouk page that differs
+byte-for-byte on every fetch while the article never moves is *unchanged*.
 
-Bounds: `min_interval` 30 min, `max_interval` 30 days. This converges on spending crawl budget where
-content actually changes, which matters far more than raw throughput.
+- Changed → `interval = max(floor, interval / 2)`
+- Unchanged, or `304 Not Modified` from a conditional request → `interval += floor` (additive; the
+  first version multiplied by 1.5 and the freshness evaluation measured it as *worse* than a fixed
+  interval — AIMD converges on the largest interval that still catches the change)
+- Four consecutive changes at the floor → `Volatile`: left alone, per Cho & Garcia-Molina, because a
+  page that changes faster than we can visit can never be kept fresh
+- 404/410 → `gone`; the frontier forgets the page
 
-### 4.4 Discovery
+Bounds are tiered by trust (`Bounds::for_trust`): ≥ 80 → 1 h to 3 days; 50–79 → 2 h to 14 days;
+below → 6 h to 30 days. Without tiering a large quiet corpus drags every interval to the ceiling
+and the sources that matter go stale with the rest.
+
+### 4.4 Discovery and freshness
 
 | Path | Mechanism |
 |:---|:---|
-| Sitemaps | `robots.txt` `Sitemap:` + `/sitemap.xml`; parse index sitemaps recursively (cap 50k URLs/source) |
-| Feeds | RSS/Atom when present — cheapest freshness signal available |
-| Link extraction | [[Content Parser]] returns outlinks; orchestrator filters them |
-| Social | cursor-based pagination per connector, not link following |
+| Links | [[Content Parser]] returns outlinks; the **best-scoring K** (`max_outlinks_per_page`, 64) enter the frontier, not the first K |
+| Sitemaps | `{scheme}://{host}/sitemap.xml` per seed host, polled every **6 h** (`sitemap_poll.rs`): a page the sitemap says changed is deferred as due now; one it says unchanged takes a free "unchanged" observation — one fetch stands in for hundreds of revisits |
+| Hot recrawl | Every 30 min, up to 200 frequently-clicked pages are deferred into the frontier as `source_id: "hot"`; only when `interaction.enabled` ([[Interaction Signals]], M6) |
+| Query-driven | Every 5 min, weak-coverage terms are resolved to URLs ([[ADR-0013 - Direct SERP Collection for Discovery]]) |
+| Common Crawl | `xustive-cli commoncrawl` bootstraps from a CDX index; Brave/SERP via `xustive-cli discover` |
+| Social | **not built** (2026-08-27) |
 
-Outlink filters: same registered domain **or** a `.dz` TLD **or** an allowlisted Algerian-diaspora
-domain; `depth ≤ depth_limit`; not in `seen`; passes `SafeUrl` ([[Security and Privacy]] §4); not
-matching the global exclude patterns (`/login`, `/cart`, `?sessionid=`, calendar traps).
+Outlink filters: same host unless `--discover` is set (the difference between crawling twenty
+sources and crawling the web, made explicitly); `depth ≤ 3`; not in `seen`; passes `SafeUrl`;
+survives the trap detectors. `canonical()` normalises conservatively — only what provably does not
+change the response is removed, because `?page=2` is not tracking.
 
-**Crawler traps** are handled by: a per-host URL cap, a max path depth (8), a max query-param count
-(6), and a repeated-path-segment detector (`/a/b/a/b/a/b`).
+**Crawler traps** (`detect_trap`): more than 12 path segments, more than 8 query parameters, or
+one segment repeated more than 3 times (`/a/b/a/b/a/b`). Every rejection is counted under its
+name (`seen`, `off_site`, `not_permitted`, `trap`, `full`, `too_deep`, `host_budget`,
+`frontier_backend_error`) so "the crawler is collecting nothing" resolves to *which* rule.
 
-### 4.5 Budgets
+### 4.5 Budgets — the frontier is a working set, not an archive (PROB-001)
 
-| Budget | Default | Scope |
+| Bound | Default | Enforced where |
 |:---|:---|:---|
-| `max_docs_per_run` | from source policy | per source per run |
-| `max_urls_per_host_total` | 200 000 | lifetime, prevents one site consuming the index |
-| `global_fetch_rate` | 100/min/worker | [[Performance Budgets]] |
-| `per_host_concurrency` | 1 | never parallel-hammer one host |
+| `crawl.frontier_max_urls` | 200 000 | at the ceiling the **worst-priority tail is evicted** to admit the new discovery |
+| `MAX_PER_HOST` | 10 000 queued at once | new discoveries for that host dropped |
+| `crawl.max_pages_per_host` | 20 000 lifetime (0 = unlimited) | counted at `complete()`, checked at `add()`, expires over ~2 seen rotations |
+| `crawl.max_outlinks_per_page` | 64 | branching factor |
+| `crawl.seen_rotate_days` | 45 | seen sets are generational, so "seen" is bounded by two windows |
+| `BACKPRESSURE_AT` | 5 000 on `q:index` | pause claims 10 s at a time until the indexer catches up |
+| `MEMORY_HIGH_WATER` | 0.85 of Redis `maxmemory` | the universal backstop — stop producing before every write fails |
+
+The last two and the operator pause are the queue side of the same story; [[Task Queue]] covers
+them from the consumer's end.
+
+The predecessor of `FrontierLimits` was a `MAX_TOTAL` constant that was declared, documented and
+never read, which is how the frontier grew into a hard Redis memory wall. Every bound above is
+read. `Rejected::Backend` is kept distinct from every quota answer because at the wall the old code
+read each failure as "already seen" and the crawl died silently.
 
 ## 5. Configuration
 
-| Key | Default |
-|:---|:---|
-| `host_batch_size` | 20 |
-| `scheduler_tick_ms` | 250 |
-| `min_revisit_s` | 1800 |
-| `max_revisit_s` | 2592000 |
-| `depth_limit` | 3 (source-overridable) |
-| `max_path_depth` | 8 |
-| `sitemap_url_cap` | 50000 |
-| `seen_bloom_fp_rate` | 0.001 |
-| `leader_lock_ttl_s` | 30 |
+`[crawl]` in `config/*.toml` (see §4.5) plus `raw_ttl_days`, `ignore_politeness` (testing only,
+refused in production by the config guard), `seeds_path`, `registry_path`. CLI: `--workers`,
+`--max`, `--discover`, `--reset`, `--registry`. The rest are constants in `crawld.rs` and
+`orchestrator.rs`, named above; none has needed a knob yet.
 
-## 6. Data
-
-Reads `Source` records ([[Data Model]] §5). Owns the frontier structures in §3. Writes only to Redis
-and `q:fetch`.
-
-## 7. Failure Modes
+## 6. Failure Modes
 
 | Failure | Detection | Response |
 |:---|:---|:---|
-| Redis unavailable | command error | stop dispatching; retry with backoff; **never** crawl without the frontier |
-| Leader lock lost | TTL expiry | step down immediately, stop dispatching |
-| Frontier empty | size check | idle; re-seed from registry on the next cycle |
-| Frontier unbounded growth | size metric | enforce `max_urls_per_host_total`, drop lowest priority |
-| Queue pressure red/black | depth gauge | halve then stop dispatch ([[Error Handling and Resilience]] §4) |
-| Host consistently failing | breaker | exponential cooldown; alert after 24 h |
-| Crawler trap detected | pattern rules | blocklist the pattern for that host, `WARN` |
-| Sitemap enormous / recursive | cap + depth guard | truncate, `WARN` |
+| Redis unavailable | command error | `crawld` refuses to start; a running worker's adds fail as `Backend` and are counted, never mistaken for "seen" |
+| Worker dies mid-fetch | claim TTL | reclaimed within 120 s by the next sweep |
+| Index backlog deep | `q:index` length | claims pause 10 s at a time; frontier untouched |
+| Redis past high water | `memory_usage()` | crawl pauses until it drains; logged |
+| Operator pause | Redis flag | claims stop within ~2 s; in-flight finishes |
+| Frontier at ceiling | `count` | worst tail evicted, counted |
+| Trap | rules | rejected, counted under `trap` |
+| Sitemap unreachable or huge | poll | empty outcome, capped at 5 000 entries; freshness must never stop the crawl |
+| `SIGTERM` / Ctrl-C | signal | drain: in-flight fetch finishes, its document is queued, frontier left intact |
 
-## 8. Performance
+## 7. Observability
 
-| Metric | Budget |
-|:---|:---|
-| Scheduling decisions | ≥ 5 000 URLs/s (Redis-bound) |
-| Dispatch latency (due → enqueued) | ≤ 1 s p95 |
-| Memory | ≤ 512 MB (Bloom filters dominate) |
-| Frontier size supported | ≥ 50M URLs |
+`Snapshot` counters in Redis feed the [[Crawler Console]] and Prometheus; a heartbeat logs progress
+every 60 s because an unattended process that logs nothing is indistinguishable from a stopped
+one. Skips are keyed by rule name. Per-source and per-channel yield counters back the sources
+health and channels pages.
 
-## 9. Observability
+## 8. Security
 
-`xustive_frontier_size{host_bucket}`, `xustive_frontier_hosts_due`,
-`xustive_dispatch_total{source_type,priority}`, `xustive_revisit_interval_seconds` (histogram),
-`xustive_trap_detected_total`, `xustive_crawl_budget_exhausted_total{source_id}`,
-`xustive_leader` (gauge 0/1). Dashboard: **Ingestion** and **Crawl Politeness**
-([[Observability]] §5).
+Every URL entering the frontier passes `SafeUrl` — including outlinks and sitemap entries, which
+are attacker-controlled if a crawled site is hostile ([[Security and Privacy]]). The orchestrator
+never executes content; it only schedules. Admin enqueues are seeds, not exceptions.
 
-## 10. Security
+## 9. Testing
 
-Every URL entering the frontier passes `SafeUrl` — including outlinks and sitemap entries, which are
-attacker-controlled if a crawled site is hostile ([[Security and Privacy]] T3). Source registry
-changes require admin auth. The orchestrator never executes content; it only schedules.
+`crates/xustive-ingest/tests`: `frontier_redis.rs` (claims, bounds, eviction, rotation),
+`freshness_eval.rs` (the policy comparison that chose AIMD), `fixture_site.rs` (a local site with
+links, traps and 404s), `robots_conformance.rs`, `ssrf.rs`, `crawl_stats_redis.rs`; unit tests for
+priority, trap detection and canonicalisation in `frontier.rs`.
 
-## 11. Testing
+## 10. Open Questions
 
-- Unit: priority computation table; revisit adaptation (changed/unchanged/304 sequences); trap
-  detectors; outlink filters.
-- Integration: a fake site (local HTTP server) with sitemap, feed, links, traps, and 404s; assert the
-  frontier converges and never exceeds budgets.
-- Politeness: assert never more than one in-flight request per host, and that `crawl-delay` is
-  honoured within ±10 %.
-- Chaos: kill the leader mid-cycle; assert a standby takes over within `leader_lock_ttl_s` and no URL
-  is dispatched twice within its delay window.
-
-## 12. Open Questions
-
-- [ ] Do we need per-source crawl *time windows* (e.g. avoid a news site's peak hours)?
-- [ ] How aggressively should we crawl `.dz` domains we did not seed — open web discovery, or
-      registry-only? (Registry-only for v1; open discovery is a v2 decision with legal implications —
-      [[Legal and Compliance]].)
-- [ ] Should the frontier persist across a full Redis loss, or is re-seeding acceptable?
+- [ ] Per-source crawl *time windows* (avoid a news site's peak hours)?
+- [ ] Open-web discovery of `.dz` hosts we did not seed is behind `--discover`; the legal framing is
+      [[Legal and Compliance]].
+- [ ] Robots-declared `Sitemap:` URLs for the poller (only `/sitemap.xml` is polled today).
 
 ## Related
 
-[[ADR-0013 - Direct SERP Collection for Discovery]] ·
-[[ADR-0011 - Adaptive Recrawl over Static Crawling]] · [[ADR-0012 - Discovery-Only Aggregation]] ·
-[[Politeness and Robots]] · [[Web Fetcher]] · [[Task Queue]] · [[Data Sources Registry]] ·
-[[Error Handling and Resilience]] · [[Proxy Manager]]
+[[ADR-0011 - Adaptive Recrawl over Static Crawling]] · [[ADR-0013 - Direct SERP Collection for Discovery]] ·
+[[ADR-0012 - Discovery-Only Aggregation]] · [[Politeness and Robots]] · [[Web Fetcher]] ·
+[[Task Queue]] · [[Data Sources Registry]] · [[Crawler Console]] · [[Error Handling and Resilience]] ·
+[[Proxy Manager]] · [[Problems]]

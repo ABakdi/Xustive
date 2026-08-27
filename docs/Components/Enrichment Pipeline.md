@@ -3,198 +3,187 @@ tags:
   - component
   - ingestion
 component-id: C17
-binary: xustive-worker
-status: specified
-updated: 2026-08-06
+binary: xustive-cli (crawld / crawl)
+status: built
+updated: 2026-08-27
 ---
 
 # Enrichment Pipeline
 
-> **ID** C17 · **Binary** `xustive-worker` · **Upstream** `q:enrich` · **Downstream** `q:index` → [[Indexer Worker]]
+> **ID** C17 · **Runs in** the parse path of `crawld` (`crates/xustive-ingest/src/enrichment.rs`,
+> then the orchestrator's media hooks) · **Upstream** [[Content Parser]] · **Downstream**
+> [[Deduplication Service]] → `q:index` → [[Indexer Worker]]
 
 ## 1. Purpose
 
-Add everything the raw document lacks but search needs: sentiment, image understanding, quality and
-spam scoring, geo hints, and topic labels. It is the last stage where a document can be improved, and
-the one with the widest cost variance — a text-only post costs 5 ms, a post with four images costs
-two seconds.
+Add everything the raw document lacks but search needs: a wilaya, topic labels, a spam score, a
+quality score, and — when switched on — the text inside its images and their embeddings. It is
+the last stage where a document can be improved, and the one with the widest cost variance: the
+four text steps cost microseconds, a page with three images costs seconds of fetch and OCR.
 
-## 2. Responsibilities
+## 2. What exists today
 
-**In scope**: orchestrating enrichment steps; sentiment via [[Sentiment Engine]]; media fetch and
-analysis via [[Image Pipeline]]; quality and spam scoring; geo/wilaya hinting; topic classification;
-comment enrichment; deciding what is optional under load.
+There is no `q:enrich` stream and no enrichment worker. Enrichment runs **inline in the parser**
+(`Parser::parse` calls `Pipeline::standard().run(doc, Full)`), and the media passes run right after
+parse in `Orchestrator::step`. A separate stage bought nothing while the crawl is one process; the
+queue exists only between crawl and index ([[Task Queue]]).
 
-**Out of scope**: the models themselves; indexing (→ [[Indexer Worker]]); dedup (→ [[Deduplication Service]],
-which runs before this).
+| Step | Where | Required | Built? |
+|:---|:---|:---|:---|
+| Gazetteer (wilaya hint) | `gazetteer.rs` | no | yes |
+| Topic labels | `topics.rs` | no | yes |
+| Spam score | `spam.rs` | yes | yes |
+| Quality score | `parse.rs::quality_score` | yes | yes |
+| Image OCR + body backfill | `media_ocr.rs` | opt-in `[media] image_ocr_enabled` | yes |
+| Image CLIP embed + pHash | `media_embed.rs` | opt-in `[vector] enabled` | yes |
+| Text embedding | `text_embed.rs` | opt-in `[vector] text_enabled` | yes |
+| Sentiment | `xustive-lang::Scorer` | — | only in the one-shot `xustive-cli crawl`; **not in `crawld`** (2026-08-27) |
+| Language re-confirm on the full body | — | — | not built; the parser's detection is what is stored |
+| Comment sentiment, author frequency | — | — | not built (no comments are ingested) |
+| Partial-under-load + repass | `Pipeline::run(_, Partial)` | — | **executor built, never invoked** (2026-08-27) |
 
 ## 3. Interface
 
-Consumes `q:enrich` → `{ document, comments }`. Produces `q:index` → `{ document, comments }` with
-enrichment fields populated.
-
 ```rust
-#[async_trait]
+// crates/xustive-ingest/src/enrichment.rs
 pub trait EnrichmentStep: Send + Sync {
     fn name(&self) -> &'static str;
-    fn required(&self) -> bool;          // false ⇒ may be skipped under load
-    async fn apply(&self, doc: &mut Document, ctx: &Ctx) -> Result<(), StepError>;
+    fn required(&self) -> bool;     // false ⇒ skipped at EnrichmentLevel::Partial
+    fn apply(&self, doc: &mut Document);
+}
+pub struct Pipeline { steps: Vec<Box<dyn EnrichmentStep>> }
+impl Pipeline {
+    pub fn standard() -> Self;      // gazetteer, topics, spam, quality — in that order
+    pub fn run(&self, doc: &mut Document, level: EnrichmentLevel) -> Ran; // stamps doc.enrichment_level
 }
 ```
 
-Steps are a `Vec<Box<dyn EnrichmentStep>>` executed in order. Adding an enrichment means adding one
-implementation and one config line — nothing else changes.
+Every step has the same shape even though they touch different fields; the one step that needed
+extra context (quality reads the extraction method) gets it back off `doc.access_path`, which the
+parser set first. That uniformity is what makes "run only the required ones" a one-line decision.
+`enrichment_level` is a filterable attribute in the index, so a future repass can find `partial`
+documents with a filter.
 
 ## 4. Internal Design
 
-### 4.1 Step order and cost
+### 4.1 Text steps
 
-| # | Step | Required | Typical cost | Notes |
-|:--|:---|:---|:---|:---|
-| 1 | Language confirm | yes | 10 ms | re-run [[Language Detector]] on the full body (the parser only saw 2 KB) |
-| 2 | Sentiment (document) | yes | 5 ms / 40 ms | [[Sentiment Engine]], lexicon or transformer |
-| 3 | Sentiment (comments) | no | 5 ms × N | capped at `max_comments_scored` |
-| 4 | Quality score | yes | 2 ms | §4.2 |
-| 5 | Spam score | yes | 3 ms | §4.3 |
-| 6 | Geo hint | no | 3 ms | gazetteer of 58 wilayas + communes |
-| 7 | Topic labels | no | 4 ms | keyword rules → `topics[]` |
-| 8 | Media fetch | no | 300 ms × M | size-capped, via [[Proxy Manager]] |
-| 9 | OCR + CLIP + pHash | no | 400 ms × M | [[Image Pipeline]] |
-| 10 | Body backfill from OCR | no | 1 ms | when `body` is empty and OCR is usable |
+Required steps run last so an optional step's output could feed a required one without reordering.
 
-Under queue pressure (`yellow` or worse, [[Error Handling and Resilience]] §4) the optional steps are
-skipped and the document is indexed without them, with `enrichment_level = "partial"` recorded. A
-partially enriched document is re-queued at low priority for a later full pass.
+- **Gazetteer.** Fold the text, count whole-token mentions of the 58 wilaya names (mirrored from
+  `xustive-tools`' table, so the two cannot drift), hint the most-mentioned one into
+  `geo.wilaya` / `geo.wilaya_name`. A lookup, not a model: it never invents a place.
+- **Topics.** Keyword classifier over a small label set (politics, economy, sport, …). A document
+  can carry several labels or none — a wrong label is worse than no label.
+- **Spam** (`spam_score`, 0–1). The stronger of two signals: distinct spam phrases from
+  `data/spam/phrases.txt` (Arabic/French/English, betting, loans, pharma, crypto, adult, SEO
+  filler — counted once each, so one phrase repeated is one signal) and keyword stuffing (share of
+  the body taken by its most common content word, saturating at 18 %). Search suppresses at
+  **≥ 0.8**; the document stays in the index. Phone density, link density, emoji ratio and author
+  frequency from the original design are not implemented.
+- **Quality** (`quality_score`, 0–1), additive and clamped: body length up to 3 000 chars (0.25);
+  date precision second/day/month (0.20/0.18/0.10); extraction method JSON-LD/OpenGraph/density/
+  fallback (0.20/0.12/0.10/0.02); a title over 15 chars (0.10); an author (0.08); any media (0.05);
+  a detected language (0.12). Feeds the ranker's quality weight ([[Ranking and Relevance]]).
 
-**Rule: a document is never blocked from the index by an optional enrichment.** Search availability
-of content beats completeness of its metadata.
+### 4.2 Media passes (opt-in)
 
-### 4.2 Quality score (0…1)
+Both use one `ImageFetcher` (own client, `XustiveBot/1.0 (… media OCR)` UA, 15 s timeout,
+`SafeUrl` — private addresses refused, `image/*` only, capped by declared and actual bytes) and both
+obey `[media] max_images_per_doc` and `max_image_bytes`. Details in [[Image Pipeline]].
 
-A weighted blend, all cheap signals:
+1. **OCR** (`media_ocr::enrich`): images without `ocr_text`, up to the cap; tesseract on the
+   blocking pool; usable text lands in `media[].ocr_text` / `ocr_lang`. When the page's own body
+   is under 20 words the OCR text **backfills** it (`body_source = Ocr` if it was empty, appended
+   otherwise) — the image *was* the content, which is the Facebook-screenshot case this exists for.
+2. **Embed** (`media_embed::embed_and_store`): fetch, dHash into `media[].phash` if not already
+   stamped, reuse a cached vector for a known hash or call the CLIP sidecar, upsert to Qdrant.
+3. **Text embed** (`text_embed::embed_and_store`): `title\nbody` truncated to 4 000 chars, one
+   vector per document keyed on the document id, after the id is final (a federated URL takes the
+   id of its eager placeholder so it overwrites it).
 
-| Signal | Weight | Direction |
-|:---|:---|:---|
-| `body_len` (log-scaled, saturating at 3 000 chars) | 0.25 | longer is better, up to a point |
-| Boilerplate ratio from [[Content Parser]] | 0.15 | lower is better |
-| Has a real title (not a truncated body) | 0.10 | |
-| Date precision (`second` > `day` > `unknown`) | 0.15 | |
-| Source `trust_tier` | 0.20 | |
-| Punctuation/structure sanity (not ALL CAPS, not emoji-only) | 0.10 | |
-| Has media | 0.05 | |
+**Rule: a document is never blocked from the index by an optional enrichment.** Every media
+failure is swallowed — fetch, decode, OCR, sidecar, Qdrant — and the document is queued for text
+regardless.
 
-### 4.3 Spam score (0…1)
+### 4.3 Under load
 
-| Signal | Notes |
-|:---|:---|
-| Phone-number density | classifieds spam pattern |
-| Repeated-token ratio | keyword stuffing |
-| Link density in body | link farms |
-| Excessive emoji/hashtag ratio | `#dz #algerie #follow #like #f4f` |
-| Known spam phrase list (`data/spam/phrases.tsv`) | Arabic, French, English |
-| Author posting frequency | > 50 posts/day from one handle |
-| Duplicate cluster size | the same text posted to 40 groups |
+The executor can run required-only and stamp `Partial`, and `Full` explicitly clears the marker so
+a repass finishes the job. Nothing calls it: the parser has already paid for the DOM, and the four
+text steps are too cheap to be worth skipping. Load is handled upstream instead — the crawler
+pauses when the indexer backlog passes 5 000 or Redis passes 85 % of `maxmemory` ([[Task Queue]]).
+The repass job for partial documents was never needed and is **not built**. The only repass that
+exists is `xustive-cli media-repass`, which re-parses stored raw bodies for media references
+([[Media Extraction]] §5.5) — it does not re-run OCR or embeds.
 
-`spam_score > 0.8` → the document is indexed but hard-filtered from default results; it remains
-findable by exact-phrase search. We prefer suppression over deletion because the classifier is
-imperfect and false positives are invisible when content is deleted.
+### 4.4 Concurrency
 
-### 4.4 Media handling
-
-- Fetch at most `max_media_per_doc` (4) images, each ≤ 5 MB, 10 s timeout, through
-  [[Proxy Manager]], with `SafeUrl` validation.
-- Skip fetching entirely when the `phash` is already known ([[Deduplication Service]] §4.4) — reuse
-  the existing `embedding_id`.
-- Instagram media is prioritised because its CDN URLs expire
-  ([[Social Connector - Instagram]] §7).
-- A failed image never fails the document.
-
-### 4.5 Concurrency
-
-Per-worker: a bounded `JoinSet` with `media_concurrency` (4). Documents are processed concurrently up
-to `doc_concurrency` (8). Media work is the only part that blocks on network, so it is the only part
-that needs its own limit.
+None of its own. Each `crawld` worker runs its parse and its media passes sequentially inside its
+own step; parallelism is the worker count ([[Crawler Orchestrator]]). OCR goes to
+`spawn_blocking` so it never holds an async worker.
 
 ## 5. Configuration
 
-| Key | Default |
-|:---|:---|
-| `doc_concurrency` | 8 |
-| `media_concurrency` | 4 |
-| `max_media_per_doc` | 4 |
-| `max_media_bytes` | 5 MiB |
-| `media_timeout_ms` | 10000 |
-| `max_comments_scored` | 100 |
-| `spam_suppress_threshold` | 0.8 |
-| `skip_optional_on_pressure` | `yellow` |
-| `repass_partial_after_h` | 6 |
-| `sentiment_mode` | `lexicon` \| `transformer` \| `hybrid` |
+| Key (`config/*.toml`) | Dev default | Meaning |
+|:---|:---|:---|
+| `[media] image_ocr_enabled` | `false` | index-side OCR pass |
+| `[media] tessdata_dir`, `ocr_langs` | `data/tessdata`, `ara+fra+eng` | tesseract data |
+| `[media] max_images_per_doc` | 3 | cap for OCR and embed passes |
+| `[media] max_image_bytes` | 5 MiB | per image, declared and read |
+| `[vector] enabled` | `false` | image embed pass |
+| `[vector] text_enabled` | `false` | text embed pass |
+| `[vector] embed_cache_ttl_days` | 30 | pHash → vector reuse; 0 disables |
+
+Spam threshold (0.8), stuffing saturation (0.18), the thin-body word count (20) and the text-embed
+character cap (4 000) are constants in code.
 
 ## 6. Data
 
-Reads and mutates the `Document` in flight; reads gazetteer/spam/topic data files. Writes the
-enriched document to `q:index` and embeddings to [[Vector Index]] (via [[Indexer Worker]]).
+Mutates the `Document` in flight: `geo`, `topics`, `spam_score`, `quality_score`,
+`enrichment_level`, `media[].ocr_text/ocr_lang/phash`, `body`/`body_source`. Writes points to
+[[Vector Index]] directly from the crawler — the indexer never sees vectors. Reads
+`data/spam/phrases.txt` and the wilaya/topic tables compiled in.
 
 ## 7. Failure Modes
 
-| Failure | Detection | Response |
-|:---|:---|:---|
-| Required step fails | `StepError` | retry once; then DLQ |
-| Optional step fails | `StepError` | log, skip, mark `enrichment_level = "partial"`, continue |
-| Media fetch timeout | 10 s cap | skip that image |
-| Media URL expired (403) | status | one re-fetch of the parent post (Instagram), else skip |
-| [[Image Pipeline]] unavailable | connection error | skip steps 8–10 entirely; re-pass later |
-| Sentiment model OOM | allocator | fall back to lexicon mode |
-| Step wedges (no timeout) | per-step 30 s watchdog | abort step, mark partial |
-| Queue pressure | depth gauge | skip optional steps |
-
-## 8. Performance
-
-| Case | Budget |
+| Failure | Response |
 |:---|:---|
-| Text-only document | ≤ 30 ms p95 |
-| Document with 1 image | ≤ 700 ms p95 |
-| Document with 4 images | ≤ 2 s p95 |
-| Throughput | ≥ 100 docs/s/worker (text), ≥ 10 docs/s (media-heavy) |
-| Memory | ≤ 2 GB/worker |
+| Image fetch fails / not an image / too large / private host | that image skipped; document intact |
+| Tesseract init or read error | image skipped; the error is not logged with image content |
+| CLIP or text-embed sidecar down, Qdrant down | vector skipped with a `debug`/`warn`; document indexed for text |
+| Embed cache Redis down | cache absent; every image embedded |
+| `[media]` on but no traineddata | every OCR fails quietly — check the sidecar/tessdata before blaming the corpus |
 
-## 9. Observability
+## 8. Observability
 
-`xustive_stage_duration_seconds{stage="enrich"}`, `xustive_enrich_step_duration_seconds{step}`,
-`xustive_enrich_step_skipped_total{step,reason}`, `xustive_enrich_partial_total`,
-`xustive_media_fetched_total{outcome}`, `xustive_quality_score` (histogram),
-`xustive_spam_score` (histogram), `xustive_spam_suppressed_total`.
+Per-step `Ran { applied, skipped }` exists for logging; there are no `xustive_enrich_*` Prometheus
+metrics yet. `[[Crawler Console]]` counts `images` and `videos` seen per page, which is the
+cheapest signal that media extraction upstream is alive.
 
-Watch the quality/spam histograms for drift: a sudden shift usually means a parser regression
-upstream, not a change in the web.
+## 9. Security
 
-## 10. Security
+Media URLs are attacker-controlled (they come from crawled content), so every fetch goes through
+`SafeUrl` and the pixel budget in [[Image Pipeline]] ([[Security and Privacy]]). Enrichment never
+executes content. The spam phrase list is a git-reviewed data file.
 
-Media URLs are attacker-controlled (they come from crawled content), so every fetch passes `SafeUrl`
-and the size/pixel caps in [[Image Pipeline]] §4.1 ([[Security and Privacy]] T3, T7). Enrichment never
-executes content. Spam and topic data files are git-reviewed.
+## 10. Testing
 
-## 11. Testing
+`enrichment.rs` unit-tests full vs partial runs and that a `Full` repass clears the marker;
+`spam.rs`, `gazetteer.rs`, `topics.rs` and `quality_score` have their own tables;
+`tests/ssrf.rs` covers the fetcher; `tests/embed_cache_redis.rs` the cache. No labelled
+spam/ham evaluation set exists yet.
 
-- Unit: each step in isolation with fixture documents; quality/spam scoring tables.
-- Step-skipping: simulate queue pressure; assert optional steps are skipped and `partial` is marked.
-- Failure isolation: make each optional step fail; assert the document still reaches `q:index`.
-- Media: a document with 4 images including one 404, one oversized, one expired URL → the document
-  indexes with the successful images only.
-- Repass: a partial document is re-queued and completes on the second pass without duplicating.
-- Spam: a labelled set of 300 spam/ham Algerian posts; target precision ≥ 0.9 at the 0.8 threshold
-  (false positives suppress legitimate content, so precision matters more than recall).
+## 11. Open Questions
 
-## 12. Open Questions
-
-- [ ] Should quality/spam be a learned model rather than hand-weighted rules? Rules are explainable
-      and tunable without labelled data; a model needs a labelling effort we have not scoped.
-- [ ] Is `topics[]` worth having before we have a UI that uses it?
-- [ ] Should comment sentiment aggregate into a document-level "discussion sentiment" distinct from
-      the post's own sentiment? (Probably yes — a positive post with 200 angry comments is a
-      meaningfully different result.)
+- [ ] Sentiment in `crawld`: `Scorer` is wired only into the one-shot `crawl` command. Add it as a
+      step, or drop the field until [[Sentiment Engine]] has a use in the UI?
+- [ ] Should quality/spam be learned rather than hand-weighted? Rules are explainable and tunable
+      without labelled data.
+- [ ] Is `Partial` worth keeping if nothing triggers it? It is cheap insurance for a future
+      expensive step (a transformer sentiment pass would be one).
 
 ## Related
 
-[[Sentiment Engine]] · [[Image Pipeline]] · [[Deduplication Service]] · [[Indexer Worker]] ·
-[[Data Model]] · [[Ranking and Relevance]] · [[Error Handling and Resilience]]
+[[Content Parser]] · [[Image Pipeline]] · [[Deduplication Service]] · [[Indexer Worker]] ·
+[[Vector Index]] · [[Media Extraction]] · [[Data Model]] · [[Ranking and Relevance]] ·
+[[Error Handling and Resilience]]

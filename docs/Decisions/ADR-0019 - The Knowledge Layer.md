@@ -1,14 +1,14 @@
 ---
 tags: [adr]
 adr-id: "0019"
-status: accepted
+status: implemented
 date: 2026-08-26
 ---
 # ADR-0019 - The Knowledge Layer
 
 ## Status
 
-Accepted. Constrains [[Knowledge Layer]], [[Instant Answers]], [[Tool Data Plane]],
+Implemented (M8), with follow-ups in ADR-0022 and ADR-0023. Constrains [[Knowledge Store|Knowledge Layer]], [[Instant Answers]], [[Tool Data Plane]],
 [[Query Pipeline]] and [[UI - Results Page]]. **Extends
 [[ADR-0014 - Knowledge Panel from Wikipedia via the Web Tier]]** rather than superseding it: 0014's
 web-tier fetch remains, demoted to the fallback path for entities the store does not hold.
@@ -125,3 +125,8 @@ Specifically:
   kinds only.
 - A national or regional authority publishes a licensed dataset worth harvesting alongside
   Wikidata.
+
+## Where it stands (2026-08-27)
+
+- Store and resolver: `crates/xustive-knowledge` (entity model, Meilisearch index, resolver, kinds, render templates, Wikidata claims). Harvester: `crates/xustive-toold/src/knowledge.rs` (seeds, cadence, `observed_at`/`fetched_at`, licence per field). Serving: `GET /api/v1/knowledge` in `crates/xustive-api/src/knowledge.rs`, cache keyed by entity id, rate-limited.
+- **Follow-ups:** the demand queue — a resolution miss is recorded k-anonymously (`knowledge.rs` demand namespace) and promoted to a seed by the harvester (`toold/src/knowledge.rs`); the live fallback that replaced 0014's web-tier path ([[ADR-0023 - Live Wikidata Fallback Judged by the Local Resolver]], `web/app/api/knowledge-live/route.ts`, `/api/v1/knowledge/resolve-live` and `/render`); the precision floor and silence rule ([[ADR-0022 - Entity Resolution Prefers Silence to a Wrong Panel]]); and list answers — cast, books, films, albums as cards (`web/app/api/knowledge-list/route.ts`, `web/components/search/ListPanel.tsx`, M8-T11).

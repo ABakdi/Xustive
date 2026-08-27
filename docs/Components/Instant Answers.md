@@ -5,20 +5,24 @@ tags:
   - ui
 component-id: C28
 binary: xustive-api
-status: specified
-updated: 2026-08-07
+status: built
+updated: 2026-08-27
 ---
 
 # Instant Answers
 
-> **ID** C28 · **Binary** `xustive-api` + Next frontend · **Upstream** [[Query Pipeline]] ·
-> **Downstream** [[Tool Data Plane]]
+> **ID** C28 · **Crate** `xustive-tools` (matchers) + `xustive-api` (cache-backed cards) + Next
+> frontend (`web/components/tools`) · **Upstream** [[Query Pipeline]] · **Downstream**
+> [[Tool Data Plane]] (weather and rates cache), [[Summarizer]] (translation model)
 
 ## 1. Purpose
 
 Answer the query directly when the query *is* the question. `45 * 1.19` wants a number, not ten
 pages about multiplication. `مواقيت الصلاة بجاية` wants today's times. `20 euros en dinar` wants a
-rate — and in Algeria, wants **two** rates.
+rate — and in Algeria, wants **two** rates. (The second one is still missing; §7 says why.)
+
+The entity panel — "who is X", "what is Y" — is a different mechanism with its own note:
+[[Knowledge Store]]. This note is about tools that compute or look up.
 
 ## 2. The rule that governs everything here
 
@@ -33,266 +37,290 @@ Every design choice below follows from this:
 - Any value with a time dimension shows **when it was measured**, always, not only when stale.
 - A tool never guesses at ambiguity. `1500` is not a currency conversion.
 
-## 3. Interface
+## 3. Where it lives today
 
-Instant answers arrive **with** the search response, not after it. They are computed in
-microseconds to low milliseconds and blocking on them costs nothing:
+| Piece | Path |
+|:---|:---|
+| `Tool` trait, `Answer`, `registry()`, `best_in()`, `fold_digits()` | `crates/xustive-tools/src/lib.rs` |
+| Pure tools | `calculator.rs`, `deep.rs` (fend), `units.rs`, `datetime.rs`, `prayer.rs`, `fuel.rs`, `exam.rs`, `wilaya.rs` + `wilaya_data.rs`, `utilities.rs`, `translator.rs`, `transliterate.rs` |
+| Pure *detectors* whose answer needs the cache | `weather.rs`, `currency.rs` |
+| Cache-backed answers | `crates/xustive-api/src/weather.rs`, `currency.rs`, `geoip.rs` |
+| Dispatch on the search path | `crates/xustive-api/src/search.rs` (`instant` field) |
+| Tool inventory for the settings page | `crates/xustive-api/src/tools.rs` → `GET /api/v1/tools` |
+| Translation stream | `crates/xustive-api/src/translate.rs` → `POST /api/v1/translate`, `GET /api/v1/languages` |
+| Cards | `web/components/tools/ToolCard.tsx`, `WeatherDetail.tsx`, `TranslateCard.tsx`, `DismissTool.tsx`, `CopyButton.tsx`; opt-out cookie in `web/lib/tools.ts` |
+
+## 4. Interface
+
+Instant answers arrive **with** the search response, not after it. Pure matchers answer in
+microseconds and blocking on them costs nothing:
 
 ```jsonc
-GET /api/v1/search?q=45*1.19
+GET /api/v1/search?q=45*1.19&ui=ar
 {
   "query": { … },
   "instant": {
     "tool": "calculator",
-    "confidence": 0.99,
-    "data": { "expression": "45 × 1.19", "result": "53.55" },
-    "as_of": null,              // null = timeless; a value means "measured at"
-    "sources": []
+    "confidence": 0.98,
+    "interpretation": "45 × 1.19",   // how the query was read — a misread must be visible
+    "value": "53.55",
+    "detail": { … },                  // optional, structured, for interactive cards
+    "as_of": null                     // absent = timeless; a unix time means "measured at"
   },
   "results": [ … ]
 }
 ```
 
+`Answer` has exactly these fields; there is no `sources` array — provenance travels in `detail`
+(`source`, `licence`) for the cache-backed tools. `ui` is the interface language, distinct from
+`lang` which filters results: it picks the unit names and labels an Arabic reader sees
+(`2 قنطار → كيلوغرام`, not `2 qintar → kilogram`).
+
+The matchers run on the **raw** query, before normalisation, because normalisation folds the very
+characters an expression is made of.
+
 A tool needing live data ([[Tool Data Plane]]) is served **only from cache** on this path. If the
-cache is cold, `instant` is `null` and the client may request it separately — search never waits
-on the network for a side feature.
+cache is cold or stale, `instant` is `null`. There is no separate "ask again" endpoint — search
+never waits on the network for a side feature, and nothing else asks either.
 
-## 4. Routing: which tool, if any
+## 5. Routing: which tool, if any
 
-### 4.1 Matching
+### 5.1 Matching
 
-Each tool declares a matcher: `fn match(normalised: &str, lang: Lang) -> Option<Match>` returning
-a confidence in `0..=1`. Matchers are **pure, total and fast** — no I/O, no panics, ≤ 100 µs.
+Each tool implements `Tool::answer(&self, query) -> Option<Answer>` (and `answer_in(query, lang)`
+where the output has language-dependent labels). Matchers are **pure, total and fast** — no I/O,
+no panics. A panic is caught with `catch_unwind` and that tool is skipped; a unit converter
+tripping over a malformed number must not 500 a search.
 
-Three matcher kinds, in descending trust:
+Confidence is a number in `0..=1`, and **must reflect how much of the query the tool explains**.
+Structural matches (the whole string parsed as an expression) sit near 0.98; an explicit verb with
+a guessed operand split (translate) at 0.85; shape-only inferences lower. Below
+`MIN_CONFIDENCE = 0.5` nothing renders — an unwanted card pushing results down is worse than no
+card.
 
-| Kind | Example | Confidence |
-|:---|:---|:---|
-| **Structural** — the string parses as the tool's grammar | `45*1.19` parses as an expression | 0.95–1.0 |
-| **Keyed** — an explicit trigger word plus an operand | `translate hello to arabic`, `طقس وهران` | 0.8–0.95 |
-| **Inferred** — shape suggests intent without a trigger | `20 eur dzd` | 0.5–0.75 |
+### 5.2 Arbitration
 
-### 4.2 Arbitration
-
-Matchers run in parallel; the highest confidence wins, ties broken by a fixed precedence order.
-Below **0.5, nothing renders** — an unwanted tool card pushing results down is worse than no card.
-
-The order exists because overlaps are real and the wrong resolution is embarrassing:
+Every matcher runs; the highest confidence wins; ties fall to registry order:
 
 ```
-calculator > unit-convert > currency > prayer-times > weather > time-date
-  > translate > define > transliterate > reference > utility
+calculator > unit-converter > date > prayer-times > fuel > exam > wilaya
+  > utility > translate > transliterate
 ```
 
-`5 km en miles` matches both calculator (a number) and unit conversion. Unit conversion wins on
-confidence because it consumed the whole string; the calculator only matched a fragment. **A
-matcher's confidence must reflect how much of the query it explains**, which is what stops the
-calculator from hijacking every query containing a digit.
+`5 km en miles` matches both calculator (a number) and the converter. The converter wins because
+it consumed the whole string; the calculator matched a fragment.
 
-### 4.3 Explicit invocation
+**Weather and currency are not in the registry.** Their detectors are pure (`weather::detect`,
+`currency::detect`) but their *answers* need the Redis tool cache, and a matcher that did I/O
+would put a Redis round trip on every search that is not about weather. So `search.rs` runs the
+pure registry first and consults the cache-backed pair **only when nothing pure matched** —
+currency before weather, since `20 eur dzd` names no weather word and the two cannot both match.
 
-`!calc`, `!tr`, `!weather` force a tool and skip arbitration — for the case where inference gets
-it wrong and the user knows what they want. Discoverable from the tool card's overflow menu, not
-required.
+### 5.3 Explicit invocation
 
-## 5. The tools
+`!calc`, `!convert`, `!date`, `!salat`, `!fuel`, `!exam`, `!wilaya`, `!util`, `!tr`, `!translit`
+force a registry tool and skip arbitration. `GET /api/v1/tools` lists every id and keyword
+(registry plus `weather` and `currency`) so the settings page never carries its own copy of the
+list.
 
-### 5.1 Tier 1 — ship first
+### 5.4 Opting out
 
-These are chosen because they are needed often, served badly today, and we can be authoritative
-about them.
+A reader can switch a tool off from its card (`DismissTool`). The disabled list lives in a
+cookie, `xustive-tools-off`, not `localStorage`, so the server render already knows not to show
+it and the card never flashes in and out — a card that appears and disappears is layout shift,
+which [[Performance Budgets]] forbids.
 
-| Tool | Triggers | Notes |
-|:---|:---|:---|
-| **Calculator** | `45*1.19`, `15% of 2000`, `sqrt(64)` | Arbitrary precision on decimals. See §6. |
-| **Unit converter** | `5 km en miles`, `30°C to F`, `2 قنطار كيلو` | Length, mass, temperature, area, volume, speed, time, data. Includes **qintar** and **sa'a**, which no international converter carries. |
-| **Currency** | `20 eur dzd`, `سعر الأورو`, `100 dollar` | **Shows official and parallel-market rates side by side.** See §7 — this is the single most Algeria-specific thing the product does. |
-| **Translator** | `translate X to ar`, `ترجم X`, `!tr` | Any language pair, local model, no text leaves the machine. See §8. |
-| **Weather** | `طقس وهران`, `météo Alger`, `weather Batna` | Now plus 5 days, per wilaya. Icons, not photographs. |
-| **Prayer times** | `مواقيت الصلاة`, `heure priere Setif` | Five daily times by wilaya, computed locally. See §9. |
-| **Time & date** | `what time is it`, `days until ramadan`, `12 août en hijri` | World clock, date arithmetic, **Hijri ↔ Gregorian**. |
+## 6. The tools
 
-### 5.2 Tier 2 — Algeria reference
+### 6.1 Built
 
-| Tool | Triggers | Data |
-|:---|:---|:---|
-| **Wilaya reference** | `code postal bejaia`, `ولاية 06` | 58 wilayas: code, postal range, dial code, seat, coordinates. Static, ships in the binary. |
-| **Fuel prices** | `prix essence`, `سعر البنزين` | Regulated and near-static; changes are news. |
-| **Dictionary** | `définition X`, `معنى X`, `شنو معنى` | ar / ary / fr / en. **Darija definitions are the differentiator** and the hardest part ← *B7* |
-| **Transliterator** | `ch7al fi larabiya`, `!translit` | Arabizi ↔ Arabic, exposed as a visible tool. The engine already does this internally ([[Query Expander]]); surfacing it is nearly free. |
-| **Sports** | `résultats CAN`, `نتائج البطولة` | Ligue 1, CAN, national team fixtures. |
-| **Exam results** | `نتائج البكالوريا` | Seasonal, enormous traffic, and the query where being unavailable is most conspicuous. Links to official portals; **never mirrors personal results**. |
+| Tool | id / keyword | Triggers | Notes |
+|:---|:---|:---|:---|
+| Calculator | `calculator` / `calc` | `45*1.19`, `15% of 2000`, `2000 + 19%`, `sqrt(64)`, `٤٥ × ٥` | Exact decimal (`rust_decimal`) first; `fend-core` fallback for unit-aware expressions (§7). |
+| Unit converter | `unit-converter` / `convert` | `5 km en miles`, `30°C to F`, `2 قنطار كيلو` | Length, mass, temperature, area, volume, speed, data. **Qintar (100 kg) and sa'a (400 m²)** which no international converter carries. Names rendered per `ui`. |
+| Currency | `currency` / `currency` | `20 eur dzd`, `100 dollar en dinar`, `20 eur + 5 usd in dzd` | Cache-backed. **Official rate only** — see §8. Twenty currencies. |
+| Weather | `weather` / `weather` | `طقس وهران`, `météo Alger`, `weather` | Cache-backed. Now, 48 h hourly, 7 days, per wilaya. `طقس` alone means "here": wilaya guessed from a **local GeoIP database**, coarsened to a wilaya, never stored ([[ADR-0020 - Approximate Location from a Local Database]]). The card always says which place it assumed. |
+| Prayer times | `prayer-times` / `salat` | `مواقيت الصلاة`, `heure priere Setif` | Computed locally; §10. |
+| Date | `date` / `date` | `12 août 2026 hijri`, `days between 1/1/2026 and 1/7/2026` | Gregorian → Hijri (tabular civil calendar, and the card says so) and day arithmetic. Maghrebi month names (`أوت`, not `أغسطس`). No world clock. |
+| Wilaya reference | `wilaya` / `wilaya` | `code postal bejaia`, `ولاية 06` | 58 wilayas: code, postal, dial, seat coordinates. Compiled in; also the coordinate source for prayer and weather. |
+| Fuel prices | `fuel` / `fuel` | `prix essence`, `سعر البنزين` | Administered values; see below. |
+| Exam results | `exam` / `exam` | `نتائج البكالوريا`, `resultat bem`, `cinquième` | **Links to the official ONEC portals only.** Never fetches, stores or shows a result. |
+| Translator | `translate` / `tr` | `translate X to arabic`, `traduire`, `ترجم` | Explicit verb required; answer streams from `/translate`. §9. |
+| Transliterator | `transliterate` / `translit` | `arabizi`, `franco`, `en arabe`, `بالحروف العربية` | Arabizi ↔ Arabic via `xustive_lang::translit` — the engine's own mapping, surfaced. Offered, never applied to the query: Arabizi is ambiguous. |
+| Utilities | `utility` / `util` | `base64 …`, `url encode`, `tva 19% 1000`, `sha256 …`, `roman 2026`, `bmi`, `tip`, `loan` | Base64, URL codec, Algerian TVA (19 % / 9 %), percentage change, Roman numerals, SHA-256, JSON formatter, tip split, loan repayment, BMI (number only), hex→rgb, case conversion, word/character count. All pure. |
 
-### 5.3 Tier 3 — cheap utilities
-
-No network, no data plane, a few dozen lines each. They cost almost nothing and each one is a
-query that would otherwise leave for another site.
-
-**Built.** `Base64 encode/decode` · `URL encode/decode` · `VAT calculator` (Algerian TVA
-19 % / 9 %) · `percentage change` · `Roman numerals` · `colour converter` (hex→rgb) ·
-`case conversion` · `word & character count` · `hash` (SHA-256) · `JSON formatter` ·
-`tip split` · `loan repayment` · `BMI`
-
-Every one is pure, offline and deterministic. No clock, no network, nothing to go stale.
-
-### Administered values
+### 6.2 Administered values
 
 Fuel prices are set by an authority, not measured. That makes them a different kind of value from
 a temperature or an exchange rate, and the difference is visible on the card: an administered price
 carries **no `as_of`**, because nothing was observed at any particular moment. It carries an
-**effective date** and the name of the body that set it.
+**effective date** (`2026-01-01`) and the body that set it (`ARH`).
 
-The distinction matters because the failure mode is inverted. A stale temperature is detectable —
-its age climbs and the serving plane withholds it. A stale administered price looks exactly like a
-correct one, forever, because there is no measurement to age. The ARH changed fuel prices at
-midnight on 1 January 2026 with no announcement from itself or Naftal; a table compiled before that
-would have kept answering confidently.
+The failure mode is inverted. A stale temperature is detectable — its age climbs and the serving
+plane withholds it. A stale administered price looks exactly like a correct one, forever. The ARH
+changed fuel prices at midnight on 1 January 2026 with no announcement from itself or Naftal; a
+table compiled before that would have kept answering confidently.
 
-Where no feed exists, the defence is therefore a **review date that fails the build** rather than a
-staleness limit that withholds the card. A broken build is cheap. A search engine quoting a price
-that changed eight months ago is not.
+Where no feed exists, the defence is a **review date that fails the build**: `fuel::REVIEW_BY`
+is `2027-03-01` and a test fails once it passes. A broken build is cheap. A search engine quoting
+a price that changed eight months ago is not.
 
-**Deferred**, and why — these are wanted, not rejected:
+### 6.3 Not built (as of 2026-08-27)
 
-| Deferred | What it needs |
+| Wanted | What it needs |
 |:---|:---|
-| QR code | An encoder and an SVG renderer. More than a few dozen lines, so it is its own task. |
-| Timer & stopwatch | Not a matcher at all — it is a client component with no server side. |
-| `what is my IP` | The only tool here needing request context. The `Tool` trait is a pure function of the query, and widening it for one tool is the wrong trade. |
-| hsl / oklch conversion | Straightforward; hex→rgb covers the common case and the rest can follow. |
+| Parallel-market exchange rate | An honest source. None found; §8. |
+| Dictionary / Darija definitions | A Darija lexicon — the B7 human work. |
+| Sports fixtures and results | A feed and a licence review. |
+| Time-of-day / world clock | Trivial, just not written. |
+| Time units in the converter | The converter has no `Time` dimension yet. |
+| QR code | An encoder and an SVG renderer — its own task. |
+| Timer & stopwatch | A client component with no server side. |
+| `what is my IP` | The only tool needing request context; the `Tool` trait is a pure function of the query. |
+| hsl / oklch | hex→rgb covers the common case. |
+| Prayer method / Asr rule selectable on the card | The engine supports Umm al-Qura, MWL, Egyptian and Shafi'i/Hanafi Asr; the card exposes only the default. |
 
 **Deliberately excluded**, with reasons:
 
 | Not building | Why |
 |:---|:---|
 | Password generator | Generating a secret in a *search box* trains exactly the wrong instinct, and the box is the field most likely to end up in a history. |
-| Random numbers, dice, coin flips | They make the answer unreproducible. A card showing a different number on every reload reads as a bug; one showing the same number is not random. Neither is worth having. |
-| MD5 and SHA-1 | Someone reaching a search box for a hash is as likely to be hashing something that matters as verifying a download. Offering a broken function under a neutral label invites the first case. SHA-256 only. |
-| A BMI *category* | The number is arithmetic. A band attached to it ("normal", "obese") reads as a judgement, which is the medical-calculator line below. |
+| Random numbers, dice, coin flips | Unreproducible. A card showing a different number on every reload reads as a bug; one showing the same number is not random. |
+| MD5 and SHA-1 | Someone reaching a search box for a hash is as likely to be hashing something that matters as verifying a download. SHA-256 only. |
+| A BMI *category* | The number is arithmetic. A band attached to it reads as a judgement, which is the medical-calculator line below. |
 | Stock tickers | We cannot be authoritative and being late is worse than being absent. |
 | Medical / dosage calculators | Wrong output causes physical harm. Not a search-box feature. |
-| Live flight tracking | Needs a paid feed we cannot verify; a wrong gate number is worse than none. |
+| Live flight tracking | Needs a paid feed we cannot verify. |
 
-## 6. Calculator
+## 7. Calculator
 
-- **Decimal arithmetic**, not binary floats. `0.1 + 0.2` renders `0.3`. A calculator that shows
-  `0.30000000000000004` is a calculator nobody trusts again.
-- Grammar: `+ - × ÷ ^ % ( )`, `sqrt`, `abs`, `min`, `max`, `log`, trigonometry in degrees by
-  default with radians available.
+- **Decimal arithmetic**, not binary floats. `0.1 + 0.2` renders `0.3`.
+- The hand-written `rust_decimal` parser runs first and keeps its exact results: `+ - * / ^ ( )`,
+  `sqrt`, `abs` and friends, thousands grouping in the output.
 - Percentages read as people write them: `15% of 2000` → 300; `2000 + 19%` → 2380.
-- **Arabic-Indic digits accepted** (`٤٥` = 45) and echoed in the script they were typed in.
-- **No variables, no state, no user-defined functions.** An expression evaluator in a query string
-  is an attack surface; keeping it a pure calculator keeps it one.
+- **Arabic-Indic digits accepted** (`٤٥` = 45) — `fold_digits` also folds `٫`, `٬`, `×`, `÷`, `٪`.
+- A bare number is not a calculation (`2026` wants the year), and a lone leading minus is a
+  search operator (`-covid`), so an operator is required.
+- **`fend-core` fallback** (`deep.rs`, M8-T07) for what the decimal parser cannot take:
+  `5 km + 3 miles`, `20 eur + 5 usd in dzd` (rates injected from the cache by `currency.rs`).
+  Bounded on purpose — `MAX_LEN = 200` characters, a 120 ms interrupt, arithmetic only —
+  because an expression evaluator facing the open internet needs a leash.
+- **No variables, no state, no user-defined functions.**
 - Division by zero, overflow and malformed input render **nothing**.
 
-## 7. Currency — the parallel market
+## 8. Currency — official only, and why
 
 Algeria has two exchange rates: the official Bank of Algeria rate, and the parallel-market rate
 ("square" / السوق الموازية) which is what people actually transact at and is frequently 40–60 %
-different.
+different. A converter showing only the official rate is wrong in the way that matters.
 
-**A converter showing only the official rate is wrong in the way that matters.** Someone asking
-what 100 € is worth is almost never asking about the official rate.
+**The card nevertheless shows only the official rate.** M1B-T06.7 settled the rule: if no honest
+source exists, the parallel rate ships disabled rather than invented. No publisher we can verify
+quotes the square rate, so `detail.rate_kind = "official"` and `parallel_available = false`, and
+the card says in words that the other rate is missing for want of a source. A confident wrong
+number is the failure §2 exists to prevent.
 
-So the card shows **both, side by side, equally weighted**, each with its own `as_of` and source.
-Neither is labelled "the" rate.
+What is there: twenty currencies from one keyless daily publisher (`open.er-api.com`, stored
+against USD, the card divides), `as_of` = the publisher's own timestamp, source and licence in
+`detail`, `unit_rate` so a reader can sanity-check the arithmetic, six decimals when the answer is
+below one (`1 DZD in EUR` is 0.0075, and `0.01` is not an answer). Older than **48 hours** the
+rate is withheld ([[Tool Data Plane]]).
 
-Constraints:
-
-- The parallel rate has no authoritative publisher. It is aggregated from observed reporting,
-  and the card says so in plain language — the provenance line is not fine print.
-- If either rate is older than **6 hours**, it is labelled with its age in words, not hidden.
-- Older than **48 hours**: that rate is withheld entirely rather than shown stale.
-- Rates are never presented as advice, and no tool ever suggests where to transact.
-
-## 8. Translator
+## 9. Translator
 
 Runs on the **local Qwen model already loaded for [[Summarizer]]** — same engine, same device
-setting, same slot pool ([[Deployment Topology]]).
+setting, same slot pool. Nothing typed into the translation box leaves the machine, and the text
+is never logged at any level; it is a POST body precisely so it never reaches a URL or an access
+log.
 
-This is the whole point: **no text typed into a translation box leaves the machine.** Every hosted
-translator is a service that receives everything you translate, and people translate medical
-letters, legal documents and messages from family.
+- `POST /api/v1/translate` streams tokens over SSE (unlike summaries, there is nothing to validate
+  after the fact). 60 s budget, 512 output tokens, closing the connection cancels generation and
+  frees the slot. No response-timeout layer on this route, because it streams.
+- Languages (`GET /api/v1/languages`): ar, ary, fr, en, es, de, it, tr. Source may be omitted for
+  auto-detection.
+- The prompt restates the instruction **in the target language**: a fully English prompt asking
+  for Arabic left the model with no Arabic in context and it drifted mid-sentence
+  (`صباحك Okم يا друг`). A target-language sentence primes the right token space.
+- Output is labelled as machine translation and names the model. **Into Arabic is still weak**
+  on the 3B Q4 model — the card states this rather than hiding the feature; into fr/en/es is
+  good. Darija as a target is offered and marked approximate.
+- The matcher demands an explicit verb (`translate`, `traduire`, `ترجم`, `معنى`): every query is
+  text in some language, so "looks translatable" describes all of them.
 
-- Any language pair the model handles; ar / ary / fr / en / es / tr are the tested set.
-- **Darija is a first-class target**, unlike every mainstream translator, and it is the hardest to
-  evaluate ← *B7*
-- Long text is refused with a length hint rather than silently truncated.
-- Latency is what it is — tens of seconds on CPU (see [[Summarizer]] §8). The card streams and can
-  be cancelled; the search results are already on the page.
-- Detected source language is shown and can be overridden.
+## 10. Prayer times
 
-## 9. Prayer times
+Computed locally from the wilaya's seat coordinates and the date — no network, no cache, nothing
+that can go stale. Default **Umm al-Qura**, Asr per the Shafi'i/Maliki shadow rule (Maliki is
+dominant in Algeria). MWL, Egyptian and Hanafi Asr exist in `prayer.rs` but are not yet
+selectable on the card.
 
-Computed locally from coordinates and date — no network, no per-request lookup. The algorithm
-choice is user-visible because it genuinely differs:
+The method is **displayed on the card**, in the interpretation line. Fajr and Isha depend on a
+twilight angle that authorities set differently, often by fifteen minutes; a card that does not
+say which reckoning it used makes an ordinary disagreement with the local mosque look like a
+defect. Where they disagree, the mosque is right.
 
-- Default **Umm al-Qura** offsets; **Muslim World League** and **Egyptian General Authority**
-  selectable, since Algerian mosques do not all follow one.
-- Asr per Shafi'i or Hanafi.
-- Wilaya coordinates from the static reference table; never geolocation without consent.
-- The calculation method is **displayed on the card**, not buried in settings. Times differing by
-  a few minutes from a local mosque is normal and expected; a card that does not say which method
-  it used makes that look like an error.
+## 11. Rendering
 
-## 10. Rendering
-
-Tool cards sit **above the results and below the search box**, carrying the qalam rule from
-[[UI - Design Language]] §6 — the mark that means the engine is asserting rather than listing.
+Tool cards sit **above the results and below the search box**, carrying the assert rule from
+[[UI - Design Language]] — the mark that means the engine is asserting rather than listing.
 
 - One card maximum. Never a stack.
-- **Reserves no height until it has content.** A card that appears late and pushes results down is
-  worse than no card ([[Performance Budgets]] CLS ≤ 0.05).
-- Every card carries: the answer at `--text-2xl`, the interpretation of the query in small text
-  (`45 × 1.19` — so a misread is visible), source and `as_of` where applicable, and a copy button.
-- Interactive cards (converter, translator) update **without a new search**.
-- Fully keyboard-operable and labelled ([[UI - Accessibility]]).
+- **Reserves no height until it has content** ([[Performance Budgets]] CLS ≤ 0.05).
+- Every card carries: the answer, the interpretation in small text (so a misread is visible),
+  source and `as_of` where applicable, a copy button and a dismiss control.
+- The weather body (`WeatherDetail`) renders the hourly strip and the week; the WMO code is mapped
+  to icon and label client-side so wording stays with the translations.
+- The translate card is interactive: languages can be corrected and the stream re-run without a
+  new search.
 
-## 11. Privacy
+## 12. Privacy
 
 - Matchers run **in-process**. A query is never sent anywhere to find out whether a tool applies.
 - Tools never make per-query outbound requests. Live data comes from a cache the
-  [[Tool Data Plane]] fills on a schedule, so a weather query reveals nothing to anyone outside.
+  [[Tool Data Plane]] fills on a schedule.
 - Translation runs locally. Nothing is logged, including the text.
-- Location is **wilaya-level and explicit** — chosen from a list or parsed from the query. No IP
-  geolocation, no browser geolocation prompt on page load.
-- Tool usage is counted by *tool name only* — never with the operand ([[Security and Privacy]]).
+- Location is **wilaya-level**: named in the query, or guessed from the connecting address by a
+  memory-mapped local database, coarsened immediately, never written down and never a cache key.
+  `X-Forwarded-For` is not consulted; behind a proxy this degrades to "no location". No browser
+  geolocation prompt, ever.
+- Tool usage is counted by *tool name only*: `xustive_instant_answers_total{tool}`.
 
-## 12. Failure
+## 13. Failure
 
 | Failure | Response |
 |:---|:---|
-| Matcher panics | Caught; that tool is skipped. A tool cannot take down search. |
-| Data stale beyond limit | Value withheld; card renders without it or not at all |
-| Model busy (translate) | Card shows a retry affordance; results unaffected |
+| Matcher panics | Caught; that tool is skipped |
+| Cache cold, stale, or Redis down | Weather / currency card absent; search unaffected |
+| Model busy or not loaded (translate) | `model_unavailable`; the card offers a retry |
 | Ambiguous match | Below 0.5 confidence, nothing renders |
-| Tool disabled by config | As if it did not exist |
+| Tool dismissed by the reader | Cookie; as if it did not exist |
 
 Every one is invisible beyond a missing card.
 
-## 13. Testing
+## 14. Testing
 
-- **Golden expressions**: several hundred `(input, expected)` pairs for the calculator, including
-  the float traps. Any mismatch fails the build.
-- **Matcher precision**: a corpus of ordinary queries that must match **no** tool. Regression here
-  means the product started interrupting normal searches, which is the failure mode users notice
-  most.
-- Unit conversions checked against reference values including the Algerian units.
-- Prayer times cross-checked against published tables for 5 wilayas across a year.
-- Stale-data behaviour tested with a frozen clock.
+- Golden expressions for the calculator, including the float traps.
+- **Matcher precision**: `an_ordinary_query_matches_no_tool` — a corpus of ordinary queries
+  that must match nothing. Regression here means the product started interrupting normal
+  searches, which is the failure users notice fastest.
+- Conversions checked against reference values including the Algerian units.
+- Prayer times checked against published tables; the Hijri calendar round-trips every day of a
+  year.
+- `fuel::tests::the_table_is_due_for_review` fails the build after `REVIEW_BY`.
+- `tools::inventory` is asserted to list every registered tool.
 
-## 14. Open questions
+## 15. Open questions
 
 - [ ] Where does the parallel rate come from, and can it be sourced without depending on a party
-      that could manipulate it? This gates the currency tool's credibility.
-- [ ] Should the calculator accept a leading `=` like a spreadsheet? Cheap, discoverable, and
-      possibly confusing.
+      that could manipulate it? Still the gate on the currency card's usefulness.
+- [ ] Expose the prayer method and Asr rule on the card.
+- [ ] Should the calculator accept a leading `=` like a spreadsheet?
 - [ ] Does the translator card need a "report a bad translation" affordance, given no logging?
-- [ ] Do exam-result queries during results week need special capacity handling? That is one day
-      of extreme, predictable traffic.
+- [ ] Exam-results week is one day of extreme, predictable traffic — capacity handling?
 
 ## Related
 
-[[Tool Data Plane]] · [[UI - Tool Cards]] · [[UI - Design Language]] · [[Query Pipeline]] ·
-[[Summarizer]] · [[Query Expander]] · [[Security and Privacy]] · [[Performance Budgets]] ·
-[[API Contract]]
+[[Tool Data Plane]] · [[Knowledge Store]] · [[UI - Tool Cards]] · [[UI - Design Language]] ·
+[[Query Pipeline]] · [[Summarizer]] · [[Query Expander]] · [[Security and Privacy]] ·
+[[Performance Budgets]] · [[API Contract]] ·
+[[ADR-0020 - Approximate Location from a Local Database]]

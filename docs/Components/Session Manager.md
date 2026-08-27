@@ -4,14 +4,31 @@ tags:
   - ingestion
   - collection
 component-id: C25
-binary: xustive-crawler
-status: specified
-updated: 2026-08-06
+binary: xustive-cli crawld (library only)
+status: decision logic built; login, warm-up and connectors not built
+updated: 2026-08-27
 ---
 
 # Session Manager
 
-> **ID** C25 · **Binary** `xustive-crawler` · **Upstream** social connectors · **Downstream** [[Proxy Manager]], [[Fingerprint Engine]]
+> **ID** C25 · **Module** `crates/xustive-ingest/src/session/` (`pool.rs`, `lifecycle.rs`,
+> `budget.rs`, `budget_store.rs`, `detection.rs`, `crypto.rs`) · **Upstream** social connectors ·
+> **Downstream** [[Proxy Manager]], [[Fingerprint Engine]]
+
+## 0. What exists today (2026-08-27)
+
+The same "build the engine, defer the fuel" split as the [[Proxy Manager]]. **Built and tested**:
+`Identity` / `SessionPool::acquire(platform, capability)` returning a `SessionLease` that has *no
+setter* for proxy or fingerprint (the pinning invariant, enforced by absence); `Lifecycle` tiers
+and the doubling quarantine cooldown; `BudgetLimits` and `BudgetSpend` pacing with jitter and a
+per-identity active window; the fail-closed Redis `BudgetStore`; `detection::classify` including
+canary-based soft-ban detection; `CookieCrypto` (XChaCha20-Poly1305, zeroising). **Not built**:
+account acquisition, real login flows, warm-up browsing, the canary fetch loop, identity
+persistence in Redis (the pool is in-memory), metrics — and the social connectors that would call
+any of it ([[Social Connector - Instagram]], [[Social Connector - Facebook]],
+[[Social Connector - TikTok]]). `Platform` is `Instagram | Facebook | Tiktok`. The `#[async_trait]
+SessionPool` in §3 is the intended shape; the built one is synchronous, and `report` is the
+caller's `record_spend` plus `classify`.
 
 ## 1. Purpose
 
@@ -150,7 +167,16 @@ Per-identity, not per-IP — platforms rate-limit the account far more tightly t
 
 Starting values are deliberately conservative. They are tuned **downward on the first sign of
 challenge pressure and upward only slowly**, because the feedback signal (a ban) arrives long after
-the behaviour that caused it.
+the behaviour that caused it. Only the Instagram column is coded (`BudgetLimits::instagram()`,
+also the default — the tightest platform is the safe default); the active window is 10 h long,
+platform-wide, with the *start hour* per identity (`active_start_hour`) so the pool is not
+uniformly busy. `scaled(ratio)` applies the tier's budget ratio.
+
+Budget counters live in Redis (`BudgetStore`) as per-period keys — `{ns}:budget:{id}:h:{hour}` and
+`…:d:{day}` with a TTL just past the period, so a new hour is a new key that starts at zero. A
+durable sentinel `{ns}:budget:alive` is set at start-up; if it is ever missing the data was
+flushed and **every spend is denied** until an operator re-initialises. Recovery is a decision,
+not an accident (§7).
 
 Requests are shaped, not just spaced: a diurnal curve per identity, aligned to `Africa/Algiers`, so
 an identity is not uniformly active at 04:00.
@@ -190,13 +216,21 @@ is surfaced to an operator queue — it is not automated.
 
 ### 4.8 Storage and crypto
 
-Cookies and credentials are encrypted at rest with a key from the secrets file (XChaCha20-Poly1305,
-per-identity nonce). Redis holds only ciphertext. Plaintext exists in process memory for the duration
+Cookies and credentials are encrypted at rest with a 32-byte key from the secrets file
+(XChaCha20-Poly1305, a fresh random 24-byte nonce per seal, prepended so a blob is self-contained
+`nonce ‖ ct`; wrong key, corruption and tampering are deliberately one indistinguishable error).
+`CookieCrypto::open` returns a `Zeroizing` buffer. Redis would hold only ciphertext; no identity
+is persisted yet. Plaintext exists in process memory for the duration
 of a lease and is zeroised on drop. Credentials never appear in logs, metrics, traces, or DLQ
 payloads — the telemetry lint covers `credentials`, `cookie`, `password`, and `totp` in addition to
 query fields ([[Observability]] §1).
 
 ## 5. Configuration
+
+Nothing in `config/*.toml`; the built types take these as constructor arguments
+(`SessionPool::new(limits, warming_ratio)`, `Lifecycle::fresh(burn_after)`,
+`quarantine_cooldown(initial, max, n)`, `classify(.., empty_threshold)`). The table is the
+design target.
 
 | Key | Default |
 |:---|:---|
@@ -214,9 +248,10 @@ query fields ([[Observability]] §1).
 
 ## 6. Data
 
-Redis: `identity:{id}` (encrypted), `identity:pool:{platform}` (sorted set by health),
-`identity:budget:{id}` (expiring counters), `canary:{platform}:{object}` (last-known-good). Secrets
-file holds credentials and TOTP seeds. Nothing identity-related touches the index.
+Built: `{ns}:budget:{id}:h:{hour}`, `…:d:{day}` and the `{ns}:budget:alive` sentinel (§4.5).
+Designed, not built (2026-08-27): `identity:{id}` (encrypted), `identity:pool:{platform}` (sorted
+set by health), `canary:{platform}:{object}` (last-known-good); the secrets file with credentials
+and TOTP seeds. Nothing identity-related touches the index.
 
 ## 7. Failure Modes
 
@@ -272,6 +307,12 @@ Alerts: `PoolExhausted` (page), `ChallengeSpike` (page), `CanaryDown` (page),
   ([[ADR-0009 - Direct Collection for Social Platforms]] §"What Does Not Change").
 
 ## 11. Testing
+
+Built: unit tests in each `session/*.rs` (tier transitions, budget scaling and jitter, the
+doubling cooldown, burn after the third quarantine, `classify` at and below the empty threshold
+with the canary both ways, the pinning invariant, crypto round-trip and tamper rejection) and
+`tests/budget_store_redis.rs` (fail-closed on a wiped sentinel). The cloaking fixture server,
+log-scan and pool-exhaustion items need connectors that do not exist yet.
 
 - Unit: tier transitions, budget accounting with jitter, quarantine backoff, burn rules.
 - **Pinning invariant test**: assert no code path can return a lease whose proxy or fingerprint

@@ -3,8 +3,9 @@ tags:
   - planning
   - milestone
 milestone: 1
-status: not-started
-updated: 2026-08-06
+status: done
+updated: 2026-08-27
+closed: 2026-08-16
 ---
 
 # Milestone 1 - Text Search MVP
@@ -14,6 +15,16 @@ updated: 2026-08-06
 > **Exit gate:** nDCG@10 ≥ 0.60 on the golden set; `/search` p95 ≤ 200 ms; summary faithfulness
 > ≥ 95 %.
 > Parent: [[TODO]] · Previous: [[Milestone 0 - Foundations]] · Next: [[Milestone 3 - Multimodal Input]], [[Milestone 2 - Ingestion at Scale]]
+
+> **Closed — recorded by the 2026-08-27 audit.** The header said `not-started` while the last
+> M1 commit landed on 2026-08-16 (`7f3501b`, offline/degraded states) and every later milestone
+> built on it. Against the exit gate: **relevance met** — nDCG@10 0.6239 on the 200-query golden
+> set (measured in M6, 2026-08-25); **summary faithfulness met** — 95.8 % CPU / 95.5 % GPU over 30
+> cases; **language detection and sentiment** hold on the small self-written sets (T03.6, T07.5)
+> and are not a native-speaker claim; **latency at 100 rps, suggest p95 under load, CLS and LCP
+> are unverified** — `xustive-loadgen` exists (M4-T03.1) but no M1-scale run is recorded.
+> Carried, not closed: the native-speaker items (T03.7, T07.4/.5, T14.7, T15.5 judging — all
+> blocker B7), the visual-regression snapshots (T14.6), and the DziriBERT option (T04.9).
 
 ---
 
@@ -39,7 +50,10 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [x] M1-T01.4 `POST /admin/log-level` with 15-minute auto-revert
 - [x] M1-T01.5 Log-scan job against the query corpus (`scripts/scan-logs.sh`), verified against
       the real server at debug level replaying every probe query — clean. Not yet *scheduled*
-      nightly; that arrives with the deployment work
+      nightly; that arrives with the deployment work. *Settled 2026-08-25 (BUG-038):* the scan
+      now runs automatically inside `scripts/test-egress.sh` against the live containers' logs
+      — on every egress test, not nightly. It caught a stale federator image logging `?q=` on its
+      first run
 
 ## M1-T02 — [[API Gateway]] middleware stack
 
@@ -91,7 +105,10 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
       gives every stage the full budget, so four stages each "within budget" take four times it
 - [~] M1-T05.3 Multi-search request builder — primary and **expanded** legs are wired and
       measured; the comments leg is not built. Expansion runs only when the primary returns
-      fewer than five hits, since a query that already retrieved well gains only weaker matches
+      fewer than five hits, since a query that already retrieved well gains only weaker matches.
+      *Settled 2026-08-25 (M7-T01.3):* the expansion leg also fires when the primary's top
+      results are weak, and an all-stop-word query is rescued as a phrase search (M7-T01.5).
+      The comments leg stays unbuilt — nothing indexes comments yet
 - [~] M1-T05.4 Merge and dedupe by id across legs, primary order preserved — a document found
       by both matched the query *as typed*, which is stronger evidence than matching a
       transliteration of it. Comment grouping and parent fetch are not built
@@ -115,7 +132,10 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
       question it answers is why a result sits where it does, which is only meaningful about the
       order a user sees. Age carries a not-trusted marker when the date was inferred, because a
       bare `0 days` on a guessed date reads as "published today"
-- [ ] M1-T06.7 Weight tuning against the golden set — blocked on M1-T15.5
+- [x] M1-T06.7 Weight tuning against the golden set — blocked on M1-T15.5. *Settled 2026-08-25:*
+      done in M7, not here — `make eval-ab` (M7-T01.4) A/B-tested the index settings on the
+      200-query set and `xustive-cli calibrate` (M7-T07.2) sweeps the side-weights against an
+      external ordering. Both confirmed the shipped weights; nothing changed, which is a result
 
 ## M1-T07 — [[Sentiment Engine]] (lexicon mode)
 
@@ -227,8 +247,11 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
       in fewer than sixteen submissions and the other fifteen land
 - [x] M1-T11.4 Pre-submit validation: missing id, not an object, empty, oversized. Caught here
       because a batch the engine rejects takes the good documents with it
-- [ ] M1-T11.5 Deletion path (vectors → comments → document → blocklist) — needs the vector
-      index, which is M3
+- [~] M1-T11.5 Deletion path (vectors → comments → document → blocklist) — needs the vector
+      index, which is M3. *Settled 2026-08-21 (M4-T09.3):* `xustive-cli takedown --domain`
+      removes a domain's documents, image vectors and raw bodies in one command, and the admin
+      Maintenance page drives it. Comments are not indexed, so that step has nothing to delete.
+      Still open: single-URL takedown and a persisted blocklist tier the crawler loads
 - [x] M1-T11.6 Crash safety: a worker that consumes without acknowledging leaves its job pending
       and recoverable; redelivery overwrites rather than duplicating because writes are keyed by id
 
@@ -261,7 +284,11 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
 - [x] M1-T13.1 [[UI - Design Language]] tokens, light and dark — delivered by M1B-T02.1
 - [~] M1-T13.2 [[UI - Component Library]]: SearchBox, **SuggestionList**, SummaryBlock, ResultCard
       are built. Remaining:
-      FilterChip, Pagination, Sheet, Toast, Skeleton, EmptyState
+      FilterChip, Pagination, Sheet, Toast, Skeleton, EmptyState.
+      *Audit 2026-08-27:* `Filters.tsx`, `Pagination.tsx`, the loading skeletons (Summary,
+      EntityPanel) and the per-vertical empty state (M9-T03.4) exist as page components in
+      `web/components/search/`; `web/components/ui/` holds Button, Select, Toggle, Icon. Sheet
+      and Toast are not built and nothing needs them yet
 - [x] M1-T13.3 [[UI - Home Page]] — delivered by M1B-T03.1
 - [x] M1-T13.4 [[UI - Results Page]] with the two-request render sequence — delivered by
       M1B-T03.2 and M1B-T03.5
@@ -274,18 +301,23 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
       downloads. **The budgets had to be raised from 40/90 KB to 185/195** — React and Next are
       ~152 KB gzipped before any of our code, which ADR-0010 failed to state. Lighthouse CI on a
       throttled profile is not set up
-- [ ] M1-T13.9 **CLS ≤ 0.05** verified across the streaming sequence
+- [ ] M1-T13.9 **CLS ≤ 0.05** verified across the streaming sequence — *unverified as of
+      2026-08-27: no Lighthouse or layout-shift measurement is recorded; M8-T08.2 reserved the
+      entity panel's space by design, but nothing measures the page*
 
 ## M1-T14 — [[UI - RTL and Localization]]
 
 - [~] M1-T14.1 Logical-property CSS throughout — the suggestion panel uses `inset-inline` and
       `inset-block-start`, so it aligns to the input's start edge in Arabic and French with no
       direction-specific rule. The lint rejecting physical properties is not built
-- [~] M1-T14.2 `dir="auto"` on every content slot including suggestions and the summary;
-      `<bdi>` around URLs and numbers in RTL is not done
-- [~] M1-T14.3 Strings for ar / fr / en covering the filter and suggestion chrome, keyed off
+- [x] M1-T14.2 `dir="auto"` on every content slot including suggestions and the summary;
+      `<bdi>` around URLs and numbers in RTL is not done. *Settled by M1B-T08.6:* `<bdi>` is
+      applied and `scripts/lint-bidi.sh` enforces it (in `make ui-gates`)
+- [x] M1-T14.3 Strings for ar / fr / en covering the filter and suggestion chrome, keyed off
       `documentElement.lang`, with Darija falling back to Arabic rather than English. Not yet
-      extracted to files, and `Intl.PluralRules` is not used
+      extracted to files, and `Intl.PluralRules` is not used. *Settled by M1B-T08.1/.2/.4:*
+      catalogues in `web/lib/i18n/messages.ts` (a missing key is a compile error), `Intl.PluralRules`
+      in use, Darija with its own catalogue
 - [x] M1-T14.4 Algerian month names in both directions: parsed by `xustive-ingest::date` and
       rendered by `xustive-tools::datetime`
 - [x] M1-T14.5 Directional icon mirroring, logo exclusion. The convention: directional icons carry
@@ -293,7 +325,8 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
       and the magnifying glass is not directional. There are no directional icons today -- pagination
       uses words -- so `scripts/rtl-icons.sh` (in `make ui-gates`) fails the build if one is ever
       added without the class, which is verified to catch a bare `ChevronRight`
-- [ ] M1-T14.6 Visual regression snapshots: 4 languages × 2 directions × 2 themes
+- [ ] M1-T14.6 Visual regression snapshots: 4 languages × 2 directions × 2 themes — *not built
+      (audit 2026-08-27: no Playwright/snapshot tooling in `web/` or `scripts/`)*
 - [ ] M1-T14.7 Native-speaker review of `ar` and `ary` strings ← *B7*
 
 ## M1-T15 — Evaluation harness
@@ -312,7 +345,11 @@ ranking against a stable corpus is possible, tuning it against a corpus that cha
       graded 2 or better, and the corpus cannot answer more. Mix is 43 % ar / 27 % ary / 21 % fr /
       4 % en / 5 % mixed; English is short because only a handful of English documents are
       indexed. **Machine-judged**, marked as such per query, and reports print what share of the
-      score rests on generated labels. Native-speaker judging still owed ← *B7*
+      score rests on generated labels. Native-speaker judging still owed ← *B7*.
+      *Update 2026-08-25 (`da43034`):* the golden builder was scaled and regenerated against
+      the ~79k-document crawled corpus — **200 queries** now, still machine-judged. The
+      M7 close notes that cross-corpus comparisons measure the crawl, not the ranker, so the
+      harness's drift rule refuses to gate across regenerations
 
 ---
 

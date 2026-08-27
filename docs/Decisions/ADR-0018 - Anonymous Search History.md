@@ -2,19 +2,19 @@
 tags:
   - adr
 adr-id: "0018"
-status: accepted
+status: partly implemented
 date: 2026-08-25
 ---
 # ADR-0018 - Anonymous Search History
 
 ## Status
 
-Accepted. **Amends [[ADR-0008 - No Query Logging]]** — specifically its "Query text never written
+Accepted; **implemented with one deployment gap** (signals land in the durable queue Redis outside dev). **Amends [[ADR-0008 - No Query Logging]]** — specifically its "Query text never written
 to durable storage" row — and **extends [[ADR-0015 - Anonymous Interaction Signals for Ranking]]**,
 which had already amended 0008's "No click tracking" and "Aggregate counters … default off" rows.
 Constrains [[Security and Privacy]], [[Observability]], [[Interaction Signals]], and the
 `/admin/interaction` console. Built on the k-anonymity escape hatch [[ADR-0008 - No Query Logging]]
-itself named and [[weak_coverage]] first walked through.
+itself named and [[Interaction Signals|weak_coverage]] first walked through.
 
 ## Context
 
@@ -50,7 +50,7 @@ decouple *storage* (always identifier-free) from *surfacing* (`k` is a multi-use
 |---|---|
 | **No identifier is ever in the key or the value** — no IP, UA, session, cookie, account, device fingerprint, or per-event timestamp that could order events into a session | The history writes read none and store none; the same structural assertion M6/0015 apply to interaction keys covers these keys. This is *the* anonymity guarantee — it does not depend on `k`. |
 | **What is stored**: per normalised term — a search count, a coarse category, the **result count**; per `(term-hash, doc)` — a click count | All under the `interaction:` Redis namespace, all windowed with a sliding TTL, so a term not repeated within the window decays to nothing |
-| **Storage is always identifier-free; surfacing has a `k`-floor** | The `surfaceable(count, k)` predicate from [[weak_coverage]] gates the dashboard *and* the ranker on multi-user deployments. `k` never changes what is stored — only what is shown. |
+| **Storage is always identifier-free; surfacing has a `k`-floor** | The `surfaceable(count, k)` predicate from [[Interaction Signals|weak_coverage]] gates the dashboard *and* the ranker on multi-user deployments. `k` never changes what is stored — only what is shown. |
 | **Single-operator (`k = 1`) sees full history; this is "no anonymity, single operator", not "anonymised"** | The dev/single-box config lowers `k` to 1, as it already does for weak-coverage and interaction. On your own machine your own history in your own Redis is yours to read. |
 | **Multi-user deployments threshold and blunt** — `k ≥ 20`, sliding window, **no session grouping, no fine-grained per-event timestamps** | Config validation keeps `k ≥ 20` unless `environment = dev` (as M6 enforces); no field exists to chain events or timestamp them precisely — chaining and precise times are what re-identify anonymous logs (AOL 2006) |
 | **The query text still never reaches a log, metric label, or span** | The [[Observability|telemetry lint]] is unchanged and still runs; this history is a Redis ranking/console input, never observability, and `token` remains a forbidden field name |
@@ -120,5 +120,11 @@ search itself wrote.
 
 [[ADR-0008 - No Query Logging]] · [[ADR-0015 - Anonymous Interaction Signals for Ranking]] ·
 [[ADR-0001 - Two-Plane Architecture]] · [[Security and Privacy]] · [[Observability]] ·
-[[Interaction Signals]] · [[weak_coverage]] · [[Decision Log]] ·
+[[Interaction Signals]] · [[Interaction Signals|weak_coverage]] · [[Decision Log]] ·
 [[Milestone 7 - Federated Retrieval and External Tools]]
+
+## Where it stands (2026-08-27)
+
+- `/admin/interaction` exists (`crates/xustive-api/src/lib.rs`, `admin.rs`). `redis-signals` is defined in `deploy/docker-compose.yml` with no volume, and `scripts/backup.sh` deliberately excludes it.
+- **Gap:** `QueueConfig::signals_url()` falls back to `queue.url` when unset (`crates/xustive-core/src/config.rs`), and only `config/dev.toml` sets `signals_url`; `config/prod.toml`, `staging.toml` and `ci.toml` do not, and nothing in compose references `redis-signals`. Outside dev, every signal namespace — including the default-on weak-coverage plaintext terms — is written to the persistent, backed-up queue Redis. Fix: set `queue.signals_url` in the non-dev configs and point it at the ephemeral instance.
+- The privacy page (`web/app/[lang]/privacy/page.tsx`) does not mention that the connection address is read for approximate location ([[ADR-0020 - Approximate Location from a Local Database]]).

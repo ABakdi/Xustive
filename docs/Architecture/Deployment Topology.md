@@ -3,13 +3,17 @@ tags:
   - architecture
   - ops
 type: architecture
-status: specified
-updated: 2026-08-06
+status: implemented
+updated: 2026-08-27
 ---
 
 # Deployment Topology
 
-> How the [[Component Map]] binaries become running containers on Algerian infrastructure.
+> How the [[Component Map]] processes become running containers on Algerian infrastructure.
+
+> **Audited against `deploy/` on 2026-08-27.** The compose files are the source of truth:
+> `deploy/docker-compose.yml` (base, production posture) and `deploy/docker-compose.dev.yml`
+> (localhost port publishing). Where the 2026-08-06 plan differs from them it is marked below.
 
 ---
 
@@ -17,33 +21,54 @@ updated: 2026-08-06
 
 | Env | Purpose | Scale | Data |
 |:---|:---|:---|:---|
-| `dev` | laptop, `docker compose up` | 1 of everything | 10k sample docs |
-| `staging` | pre-prod, same topology as prod | ½ prod | weekly index snapshot |
-| `prod` | public | see §3 | live |
+| `dev` | laptop, `make dev` | 1 of everything; Rust processes and the web tier run **on the host**, infrastructure in Compose | 10k sample docs (`make corpus seed`) or a real crawl |
+| `staging` | pre-prod, same topology as prod | `api.max_concurrent = 256` | weekly index snapshot |
+| `prod` | public | `api.max_concurrent = 512`, `timeout_search_ms = 1500`, JSON logs | live |
 
 Staging and prod must differ only in replica counts and secrets. No config flag may be
-`if env == "prod"` — differences live in `config/{env}.toml`.
+`if env == "prod"` — differences live in `config/{env}.toml`. Today `prod.toml` and
+`staging.toml` differ from `dev.toml` in exactly: `environment`, `api.max_concurrent`,
+`api.timeout_search_ms`, `api.cors_origins` (empty — same origin), `search.meili_url`
+(`http://meilisearch:7700`), `search.timeout_ms` (800), and `telemetry` (`info`, JSON). Every
+other section is left at the defaults in `xustive-core::config`.
 
 ---
 
 ## 2. Container Inventory
 
-| Service | Image | Replicas (prod) | CPU | RAM | Volume |
-|:---|:---|:---|:---|:---|:---|
-| `caddy` | `caddy:2-alpine` | 1 | 0.5 | 256 MB | certs |
-| `xustive-api` | built | 3 | 2 | 1 GB | — |
-| `xustive-ml` | built | 2 | 6 | 12 GB | `models:/models:ro` |
-| `xustive-crawler` | built | 4 | 1 | 1 GB | — |
-| `xustive-worker` | built | 4 | 2 | 3 GB | — |
-| `meilisearch` | `getmeili/meilisearch:v1.x` | 1 (+1 replica) | 8 | 32 GB | `meili_data` |
-| `qdrant` | `qdrant/qdrant:latest` | 1 | 4 | 8 GB | `qdrant_data` |
-| `redis` | `redis:7-alpine` | 1 | 2 | 8 GB | `redis_data` (AOF) |
-| `prometheus` | `prom/prometheus` | 1 | 1 | 2 GB | `prom_data` |
-| `grafana` | `grafana/grafana` | 1 | 0.5 | 512 MB | `grafana_data` |
+What `deploy/docker-compose.yml` declares. Limits are `mem_limit`/`cpus` (the Compose-v2
+spellings that work without Swarm — `deploy.resources` is silently ignored by `docker compose up`)
+and are the **development slice** for a 12-core host; production figures are in
+[[Performance Budgets]] §7.
+
+| Service | Image | Profile | Networks | CPU | RAM | Volume |
+|:---|:---|:---|:---|:---|:---|:---|
+| `meilisearch` | `getmeili/meilisearch:v1.13` | always | `core` | 6 | 5 GB (`MEILI_MAX_INDEXING_MEMORY=3Gb`, 6 threads) | `meili_data` |
+| `qdrant` | `qdrant/qdrant:v1.12.4` | always | `core` | 2 | 2 GB | `qdrant_data` |
+| `redis` | `redis:7-alpine` | always | `core` | 1 | 1.5 GB (`maxmemory 1gb noeviction`, AOF `everysec`) | `redis_data` |
+| `redis-signals` | `redis:7-alpine` | always | `core` | 0.5 | 256 MB (`volatile-lru`, no AOF, no RDB) | **none, by design** |
+| `toold` | built, `deploy/Dockerfile.toold` | always | `ingest` + `core` | 0.5 | 256 MB | — |
+| `ocr-sidecar` | built, `services/ocr-sidecar` | `ocr` | `core` | 4 | 10 GB + **1 GPU** | `ocr_models:ro` |
+| `clip-embed` | built, `services/clip-embed` | `vector` | `core` | 2 | 2 GB | `clip_models:ro` |
+| `stt-sidecar` | built, `services/stt-sidecar` | `voice` | `core` | 2 | 2 GB | `stt_models:ro` |
+| `text-embed` | built, `services/text-embed` | `semantic` | `core` | 2 | 4 GB | `text_models:ro` |
+| `searxng` | `searxng/searxng:latest` | `federation` | `ingest` | 1 | 512 MB; `logging: driver: none` | — |
+| `federator` | built, `deploy/Dockerfile.federator` | `federation` | `core` + `ingest` | 0.5 | 256 MB | — |
+| `prometheus` | `prom/prometheus:v3.1.0` | always | `core` + `obs` | 1 | 1 GB, 15 d retention | `prom_data` |
+| `grafana` | `grafana/grafana:11.4.0` | always | `obs` | 0.5 | 512 MB | `grafana_data` |
+
+**Not in Compose (2026-08-27):** `xustive-api`, the Next.js web tier, `xustive-cli crawld` and
+`xustive-cli worker`. In development they run on the host (`scripts/dev.sh` starts api → web →
+worker → toold `--once` → crawld, in that order) and reach the containers through the
+localhost ports the dev override publishes. There is no `Dockerfile` for the API or the web tier
+yet and no `caddy` service — TLS termination and the production packaging of the host-run
+processes are still to be written; see §10. `searxng:latest` is the one deliberate exception
+to the pin-every-image rule (it publishes only rolling date tags, and it is off by default).
 
 **Baseline host for 10M documents:** 32 vCPU / 128 GB RAM / 2 TB NVMe. Meilisearch is the RAM-hungry
-service; [[Summarizer]] is the CPU-hungry one. A single GPU (8 GB+) collapses `xustive-ml` to one
-replica and cuts summary latency ~4× — optional, not required.
+service; [[Summarizer]] is the CPU-hungry one. The reference GPU is a Quadro T1000 (4 GB); the
+summariser uses it through the API's `cuda` feature when `nvcc` is found, and the STT sidecar
+when CTranslate2 sees it. Only the OCR sidecar *requires* a GPU (≥ 8 GB).
 
 ---
 
@@ -51,140 +76,215 @@ replica and cuts summary latency ~4× — optional, not required.
 
 ```
         internet
-           │ 443
-      ┌────▼────┐
-      │  caddy  │   TLS 1.3, HTTP/2, HSTS, CSP header
-      └────┬────┘
-   net: edge (external)
            │
-      ┌────▼────────┐
-      │ xustive-api │
-      └────┬────────┘
-   net: core (internal only)
-     ├── meilisearch      ← NEVER exposed publicly
-     ├── qdrant           ← NEVER exposed publicly
-     ├── redis            ← NEVER exposed publicly
-     └── xustive-ml
-   net: ingest (internal only, egress allowed)
-     ├── xustive-crawler  ← the ONLY services with outbound internet
-     └── xustive-worker
+   net: ingest (the ONLY network with a route out)
+     ├── toold          ← weather, rates, Wikidata harvest; no user input
+     ├── searxng        ← [profile federation] third-party engines see our IP, never a reader's
+     └── federator ─────┐   [profile federation] dual-homed
+                        │
+   net: core (internal: true — NO egress)
+     ├── meilisearch    ← NEVER exposed publicly
+     ├── qdrant         ← NEVER exposed publicly
+     ├── redis          ← NEVER exposed publicly
+     ├── redis-signals  ← ephemeral
+     ├── toold          ← dual-homed: joins core to reach Redis and Meilisearch
+     ├── ocr-sidecar · clip-embed · stt-sidecar · text-embed   (HF_HUB_OFFLINE=1)
+     └── prometheus
+   host (dev) / edge (prod, to be packaged)
+     ├── xustive-api    ← reaches core only; no internet route
+     ├── web (Next.js)  ← has egress: Wikipedia/Wikidata lookups, thumbnail proxy
+     ├── crawld · worker ← egress, on the host today
    net: obs (internal only)
-     ├── prometheus  └── grafana (behind VPN/basic auth)
+     ├── prometheus  └── grafana (admin/admin default — change it; anonymous off)
+   net: devhost (dev override only)
+     └── bridge with IP masquerade DISABLED: published-port ingress works, egress does not
 ```
 
-**Egress rule:** only `xustive-crawler` may reach the public internet. `xustive-api` and
-`xustive-ml` have **no** egress route — this is what makes "no data leaves the country" enforceable
-rather than aspirational. See [[Security and Privacy]].
+**Egress rule:** the serving plane has no route to the internet. `core` is `internal: true`, and
+`make egress-test` (`scripts/test-egress.sh`) starts a throwaway container on that network and
+proves HTTP and DNS both fail. The dev `devhost` bridge exists only so host-run processes can
+reach the containers, and `enable_ip_masquerade: "false"` keeps it from becoming an egress path
+(BUG-009). Three things cross the boundary, each by design: `toold` (scheduled, no user input),
+`federator` (query text, [[ADR-0017 - Query-Time Federation with External Metasearch]]) and the
+web tier ([[ADR-0014 - Knowledge Panel from Wikipedia via the Web Tier]]). See
+[[Security and Privacy]].
+
+**Dev ports** (all bound to `127.0.0.1`, overridable in `.env`): Meilisearch 7700, Qdrant 6333,
+Redis **6390** (not 6379 — another local stack owning 6379 is common), redis-signals 6391, OCR
+8091, CLIP 8092, STT 8093, text-embed 8094, federator 8095, Prometheus 9090, Grafana 3001. The
+API listens on 8080 and the web tier on 3000; the web tier proxies `/api/v1/*` so the browser
+talks to one origin.
 
 ---
 
-## 4. `docker-compose.yml` skeleton
+## 4. `docker-compose.yml` — the shape
+
+The real file is `deploy/docker-compose.yml`; this is its skeleton, kept here so the note reads
+without the repo open.
 
 ```yaml
+name: xustive
 services:
   meilisearch:
     image: getmeili/meilisearch:v1.13
+    mem_limit: 5g
+    cpus: 6.0
     environment:
-      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
-      MEILI_ENV: production
-      MEILI_MAX_INDEXING_MEMORY: 16Gb
-      MEILI_EXPERIMENTAL_DUMPLESS_UPGRADE: "true"
+      MEILI_ENV: development            # prod: production
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_MAX_INDEXING_MEMORY: 3Gb
+      MEILI_MAX_INDEXING_THREADS: 6
+      MEILI_EXPERIMENTAL_ENABLE_METRICS: "true"
     volumes: [meili_data:/meili_data]
     networks: [core]
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:7700/health"]
-      interval: 10s
-    deploy: { resources: { limits: { memory: 32G } } }
+    healthcheck: { test: ["CMD-SHELL", "curl -fsS http://localhost:7700/health || exit 1"] }
 
-  xustive-api:
-    build: { context: ., dockerfile: crates/api/Dockerfile }
+  redis-signals:                        # ADR-0018: no persistence on purpose
+    image: redis:7-alpine
+    command: redis-server --save "" --appendonly no --maxmemory 192mb --maxmemory-policy volatile-lru
+    networks: [core]
+
+  toold:
+    build: { context: .., dockerfile: deploy/Dockerfile.toold }
+    environment: { REDIS_URL: redis://redis:6379 }
+    networks: [ingest, core]
+
+  stt-sidecar:                          # likewise ocr-sidecar (ocr), clip-embed (vector), text-embed (semantic)
+    build: { context: ../services/stt-sidecar }
+    profiles: ["voice"]
+    environment: { STT_MODEL: small, HF_HOME: /models/hf, HF_HUB_OFFLINE: "1" }
+    volumes: [stt_models:/models/hf:ro]
+    networks: [core]
+
+  searxng:
+    image: searxng/searxng:latest
+    profiles: ["federation"]
+    volumes: [../services/searxng/settings.yml:/etc/searxng/settings.yml:ro]
+    networks: [ingest]
+    logging: { driver: "none" }         # its stdout is query text
+
+  federator:
+    build: { context: .., dockerfile: deploy/Dockerfile.federator }
+    profiles: ["federation"]
     environment:
-      XUSTIVE_CONFIG: /config/prod.toml
-      MEILI_URL: http://meilisearch:7700
-      REDIS_URL: redis://redis:6379
-    networks: [edge, core]
-    depends_on:
-      meilisearch: { condition: service_healthy }
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/readyz"]
-    deploy: { replicas: 3 }
-  # … xustive-ml, xustive-crawler, xustive-worker, redis, qdrant, caddy, prometheus, grafana
+      FEDERATOR_BIND: 0.0.0.0:8095
+      SEARXNG_URL: http://xustive-searxng:8080
+      EXTERNAL_LLM_URL: ${XUSTIVE_EXTERNAL_LLM_URL:-}      # opt-in external summariser
+      EXTERNAL_LLM_KEY_FILE: ${XUSTIVE_EXTERNAL_LLM_KEY_FILE:-}
+    networks: [core, ingest]
+  # … qdrant, redis, prometheus, grafana
 
-volumes: { meili_data:, qdrant_data:, redis_data:, models:, prom_data:, grafana_data: }
+volumes: { meili_data:, qdrant_data:, redis_data:, prom_data:, grafana_data:,
+           text_models:, ocr_models:, clip_models:, stt_models: }
 networks:
-  edge:   {}
   core:   { internal: true }
-  ingest: {}
   obs:    { internal: true }
+  ingest: {}
 ```
+
+Superseded (2026-08-06 → 2026-08-27): the planned `xustive-api` service with `crates/api/Dockerfile`,
+`MEILI_URL`/`REDIS_URL` env, `edge` network and `deploy: { replicas: 3 }` was never written; the
+API is configured through `config/{env}.toml` plus a short list of `XUSTIVE_*` overrides, and runs
+on the host.
 
 ---
 
 ## 5. Build
 
-- Multi-stage Rust builds: `cargo-chef` layer for dependency caching → `rust:1.8x` builder →
-  `debian:bookworm-slim` runtime. Target image ≤ 150 MB per binary.
-- `xustive-ml` needs `libtorch` / `llama.cpp` shared objects → its runtime layer is larger (~1.2 GB).
-- Models are **not** baked into images. They are fetched once by a `model-init` job into the `models`
-  volume and checksum-verified. Rationale: image size, and licence terms differ per model.
+- Rust images that exist: `deploy/Dockerfile.toold` and `deploy/Dockerfile.federator`. Both are
+  two-stage — `rust:1-slim` builder → `debian:bookworm-slim` runtime with `ca-certificates`,
+  running as an unprivileged `xustive` user. Each is a **separate image on purpose**: the two
+  processes that cross the egress boundary must not share an image with the serving plane, so the
+  separation is a build-time fact. No `cargo-chef` layer yet.
+- `xustive-api` links llama.cpp (feature `summariser`, default on; `--no-default-features` or
+  `make dev --fast` skips it; `--features cuda` for the GPU). The first build compiles llama.cpp
+  from source and takes several minutes.
+- Sidecars are Python (FastAPI/uvicorn) images built from `services/*`. Models are **not** baked
+  in: each mounts a read-only volume in HuggingFace cache layout and runs with
+  `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1`, so a sidecar on `core` can never download.
+- Models are fetched by `scripts/fetch-models.sh` (summariser GGUFs), `scripts/fetch-geoip.sh`
+  (DB-IP city-lite `.mmdb`) and per-sidecar READMEs, into `data/models/` on the host or the
+  named volumes. Licence terms differ per model, which is the other reason they are not in images.
 
-| Model | File | Size | Used by |
+| Model | Where | Size | Used by |
 |:---|:---|:---|:---|
-| Whisper small (multilingual, quantised) | `ggml-small-q5_1.bin` | ~500 MB | [[Speech to Text]] |
-| Summarisation LLM (Qwen2.5-3B / Phi-3-mini, Q4_K_M) | `*.gguf` | ~2.2 GB | [[Summarizer]] |
-| CLIP ViT-B/32 | `clip-vit-b32.ot` | ~350 MB | [[Image Pipeline]] |
-| DziriBERT | `dziribert/` | ~500 MB | [[Query Expander]], [[Sentiment Engine]] |
-| Tesseract traineddata `ara`, `fra`, `eng` | `tessdata/` | ~90 MB | [[Image Pipeline]] |
+| Qwen2.5-3B-Instruct Q4_K_M (default; **non-commercial** research licence) or Qwen2.5-1.5B-Instruct Q4_K_M (Apache-2.0) | `data/models/*.gguf` via `fetch-models.sh` | ~2.0 GB / ~1.1 GB | [[Summarizer]] |
+| faster-whisper `small` (final) + `base` (partials), CTranslate2 | `data/models/faster-whisper-*` / `stt_models` | ~500 MB | [[Speech to Text]] |
+| `openai/clip-vit-base-patch32` | `clip_models` | ~600 MB | [[Image Pipeline]], [[Vector Index]] |
+| `BAAI/bge-m3` (1024-d) | `text_models` | ~2.3 GB | semantic candidates, [[Vector Index]] |
+| `baidu/Unlimited-OCR` (3B VLM) | `ocr_models` | GPU ≥ 8 GB | [[Image Pipeline]] via `ocr-sidecar` |
+| Tesseract `ara`, `fra`, `eng` | `data/tessdata` (`media.tessdata_dir`) | ~90 MB | [[Image Pipeline]] in-process |
+| DB-IP city lite | `data/geoip/dbip-city-lite.mmdb` | ~130 MB | approximate location, [[ADR-0020 - Approximate Location from a Local Database]] |
+
+Superseded: the 2026-08-06 table listed `ggml-small-q5_1.bin` (whisper.cpp), `clip-vit-b32.ot`
+(tch) and DziriBERT. Whisper runs in the Python sidecar on faster-whisper, CLIP in the
+`clip-embed` sidecar, and DziriBERT was never adopted — the [[Query Expander]] and
+[[Sentiment Engine]] are lexicon- and morphology-driven.
 
 ---
 
 ## 6. Startup Order and Readiness
 
 ```
-redis, meilisearch, qdrant  →  model-init  →  xustive-ml  →  xustive-api  →  caddy
-                                            →  xustive-worker  →  xustive-crawler
+redis, redis-signals, meilisearch, qdrant  →  toold (needs redis healthy)
+                                            →  [profiles] sidecars, searxng → federator
+host:  xustive-api (waits for /healthz)  →  web  →  worker  →  toold --once  →  crawld
 ```
 
-`readyz` semantics per service:
+`readyz` semantics per process:
 
-| Service | Ready when |
+| Process | Ready when |
 |:---|:---|
-| `xustive-api` | Meilisearch `/health` ok **and** Redis PING ok |
-| `xustive-ml` | all model files loaded into memory |
-| `xustive-worker` | Redis consumer group joined |
-| `xustive-crawler` | Redis ok **and** [[Proxy Manager]] has ≥ 1 healthy proxy |
+| `xustive-api` | Meilisearch `/health` ok (`GET /readyz` → 200; 503 "search backend unavailable/unreachable" otherwise). Redis is **not** part of readiness: search must serve while the queue is down. |
+| sidecars | `GET /health` → 200 once the model is loaded, 503 before (start periods 60–120 s in Compose) |
+| `federator` | `GET /healthz` |
+| `worker` | Redis consumer group `indexers` joined |
+| `crawld` | Redis reachable; frontier seeded from `data/sources/registry.jsonl` and `seeds` |
 
 Crawlers start **last** on purpose — never begin fetching before there is somewhere to put the data.
+`crawld` also pauses itself when `q:index` is deep, so a slow indexer never turns into a Redis
+full of unindexed documents.
 
 ---
 
 ## 7. Backup and Restore
 
+`make backup [DEST=dir]` runs `scripts/backup.sh`; `make restore-drill` exercises
+`scripts/restore.sh`.
+
 | Asset | Method | Frequency | RPO | RTO |
 |:---|:---|:---|:---|:---|
-| Meilisearch | native snapshot → off-host | 6 h | 6 h | 30 min |
-| Qdrant | collection snapshot | daily | 24 h | 20 min |
-| Redis | AOF `everysec` + RDB copy | 1 h | 1 h | 5 min |
-| Source registry | JSON export to git | on change | 0 | 1 min |
-| Grafana dashboards | provisioned from git | on change | 0 | 1 min |
+| Meilisearch | native snapshot (`POST /snapshots`, wait for the task, `docker cp` out) | 6 h | 6 h | 30 min |
+| Qdrant | collection snapshot (`image_clip`; set `QDRANT_COLLECTIONS` to add `text_bge`) | daily | 24 h | 20 min |
+| Redis | AOF `everysec` + RDB copy from the container | 1 h | 1 h | 5 min |
+| `redis-signals` | **never backed up** — ephemeral by [[ADR-0018 - Anonymous Search History]] | — | — | — |
+| Source registry | `data/sources/registry.jsonl` copied; also in git | on change | 0 | 1 min |
+| Grafana dashboards | provisioned from `deploy/grafana/provisioning` in git | on change | 0 | 1 min |
 
 Redis loss is **acceptable** — it costs re-crawl work, not data. Meilisearch loss is expensive but
-recoverable by full re-crawl (days). Restore drills are a checklist item in
+recoverable by full re-crawl (days). The `knowledge` index is rebuilt by `toold`'s harvest from
+`data/knowledge/seeds.tsv`. Restore drills are in [[Runbooks]] and were a checklist item in
 [[Milestone 4 - Quality and Operations]].
 
 ---
 
 ## 8. Deployment Procedure
 
-1. CI builds and tags images `:{git-sha}`.
-2. Deploy to `staging`; run smoke suite + relevance eval ([[Testing Strategy]]).
-3. Roll `xustive-api` one replica at a time (`readyz` gate between each).
-4. Roll `xustive-worker`/`xustive-crawler` (they drain by finishing the in-flight message, then exit).
-5. Meilisearch upgrades: snapshot → stop → upgrade → start → verify doc count → resume ingestion.
-6. Rollback = redeploy previous tag; index schema changes roll back via alias flip ([[Data Model]]).
+The intended procedure; steps 1 and 3 assume packaging that does not exist yet (§10).
 
-**Graceful shutdown:** on `SIGTERM`, workers stop claiming new messages, finish the current one,
-`XACK`, then exit. Grace period 30 s; anything in-flight is redelivered by the consumer group anyway.
+1. CI builds and tags images `:{git-sha}`.
+2. Deploy to `staging`; run `make smoke` + relevance eval `make eval` ([[Testing Strategy]]).
+3. Roll `xustive-api` one replica at a time (`readyz` gate between each).
+4. Roll `worker`/`crawld` — both drain: on `SIGTERM` or Ctrl-C the in-flight fetch finishes, its
+   document is queued, and the loop exits; the worker finishes its batch and acks.
+5. Meilisearch upgrades: snapshot → stop → upgrade → start → verify doc count → resume ingestion.
+6. Rollback = redeploy previous tag; index settings changes go through `xustive-cli reindex`
+   ([[Data Model]]).
+
+**Graceful shutdown:** workers stop claiming new messages, finish the current one, `XACK`, then
+exit. Anything in flight is reclaimed by the consumer group after `RECLAIM_AFTER` (300 s) anyway,
+and a job that fails three times goes to `q:index:dead`.
 
 ---
 
@@ -193,6 +293,14 @@ recoverable by full re-crawl (days). Restore drills are a checklist item in
 - [ ] Kubernetes at what scale? Compose is sufficient to ~20M docs on one big host.
 - [ ] Where do off-host backups physically live, given the data-sovereignty requirement?
 - [ ] Do we need a second availability zone before beta, or is a documented RTO acceptable?
+
+## 10. Not Built Yet (2026-08-27)
+
+- Images and Compose services for `xustive-api`, the Next.js web tier, `crawld` and `worker`;
+  they run on the host. The `edge` network and the `caddy` TLS terminator from the original plan
+  are therefore also unbuilt.
+- `model-init` as a Compose job; model provisioning is scripts plus READMEs.
+- `cargo-chef` dependency caching in the Rust Dockerfiles.
 
 ## Related
 

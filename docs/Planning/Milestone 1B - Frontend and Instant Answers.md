@@ -2,8 +2,9 @@
 tags:
   - planning
   - milestone
-status: planned
-updated: 2026-08-07
+status: done
+updated: 2026-08-27
+closed: 2026-08-16
 ---
 
 # Milestone 1B — Frontend and Instant Answers
@@ -11,6 +12,18 @@ updated: 2026-08-07
 > Sits between [[Milestone 1 - Text Search MVP]] and [[Milestone 3 - Multimodal Input]]. Numbered
 > 1B rather than appended to M1 because M1's remaining work — the task queue, the indexer worker —
 > is backend and can proceed in parallel with none of this.
+
+> **Closed — recorded by the 2026-08-27 audit.** The header said `planned`; the last 1B commit
+> is `7616086` (2026-08-15, contrast audit) and the offline/degraded states landed 2026-08-16.
+> Against the exit gate: the Rust renderer is deleted (T03.7); `no-js-check.sh`, the bundle
+> budget and the contrast audit run in `make ui-gates`; the matcher precision corpus exists
+> (T04.6, ten queries); the calculator golden set passes (re-asserted under `fend-core` in
+> M8-T07.5); `test-egress.sh` is green with `toold` in the topology. The tools this note listed
+> as *not built* — currency, the weather forecast, the translator — were finished later:
+> currency and weather in [[Milestone 8 - The Answer Layer]] (M8-T05/T06), the translator
+> registered on 2026-08-20 (`3afd301`). Still open: the typed OpenAPI client (T01.3), the
+> native-speaker items (T02.7, T07.3, T08.4 — B7), visual regression (T08.5), sports (T07.5),
+> and the remaining utilities (T07.7).
 
 ## Why this milestone exists
 
@@ -33,7 +46,10 @@ are the reason to exist; the search is the foundation under them.
       pnpm** — enabling corepack needs root on this machine and the package manager is not worth
       a privileged install
 - [x] M1B-T01.2 `[lang]` routing for ar / ary / fr / en; direction and theme resolved server-side
-- [ ] M1B-T01.3 Typed API client generated from an OpenAPI description of [[API Contract]]
+- [ ] M1B-T01.3 Typed API client generated from an OpenAPI description of [[API Contract]] —
+      *audit 2026-08-27: `web/lib/api.ts` is typed but hand-written; there is no OpenAPI
+      description and nothing is generated. BUG-028 (a TS field the API never sends) is the
+      cost of that*
 - [x] M1B-T01.4 Theme: light / dark / system, cookie-resolved, resolved before the first byte
 - [x] M1B-T01.5 Bundle budgets enforced by `scripts/bundle-budget.sh`, measured as a browser
       fetches them. Exceeding fails. It caught the framework cost immediately
@@ -90,7 +106,10 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
       the filter row vanishing silently
 - [x] M1B-T03.7 **Deleted `web.rs` and the legacy assets.** The API is JSON and operations only.
       `/admin` stays on it with its CSS and JS embedded in the binary — an operator tool has to
-      work when the frontend is the thing that is down
+      work when the frontend is the thing that is down. *Settled differently on 2026-08-19
+      (`f561482`, `1d097db`):* the admin console and `/bot` moved into the Next.js app under an
+      `(operator)` route group and the API became JSON-only under `/api/v1/admin`. The
+      "works when the frontend is down" argument lost to having one renderer
 
 ## M1B-T04 — Tool framework
 
@@ -122,7 +141,10 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
       is the kind of list people append to and an entry added with only its English name degrades
       silently. The Arabic check tests for Arabic *script*: an English word in the `ar` slot passes
       a non-empty check while still answering the wrong language
-- [ ] M1B-T05.3 Currency — official **and** parallel, side by side, each with `as_of`
+- [x] M1B-T05.3 Currency — official **and** parallel, side by side, each with `as_of`.
+      *Settled 2026-08-26 (M8-T06):* `currency.rs` + a `rates` dataset in `xustive-toold`;
+      the **official** rate only, dated from the publisher, withheld when stale. The parallel
+      rate ships disabled for want of a nameable source (T06.7)
 - [~] M1B-T05.4 Translator on the existing local Qwen; streaming, cancellable, nothing leaves —
       **built but not enabled.** The engine now streams token by token and a dropped connection
       stops the model worker on its next token (verified: the slot is freed and counted). The
@@ -133,10 +155,15 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
       prompt delimiter were each ruled out by measurement; the summariser produces fluent Arabic
       through the same engine, because its context is full of Arabic passages and a translation
       prompt cannot supply that. **Blocked on a better model for this task**, not on more code
-      the machine
-- [~] M1B-T05.5 Weather — current conditions and five days for all 58 wilayas, served from
+      the machine. *Update 2026-08-20 (`3afd301`, `3378905`):* the tool is now **registered** —
+      a bare `translate` / `traduire` / `ترجم` verb opens its editable card — and stray CJK/kana
+      characters are stripped from quantised-model output. The Arabic-target quality caveat
+      stands (`xustive-tools/src/lib.rs` says so at the registration site)
+- [x] M1B-T05.5 Weather — current conditions and five days for all 58 wilayas, served from
       cache. **Custom line icons are not drawn**; the card carries the WMO code and the client
-      maps it
+      maps it. *Settled 2026-08-26 (M8-T05):* the forecast is drawn (today, day strip, week
+      toggle, SVG graphs), the fetcher covers 48 h hourly and seven days, `طقس` with no place
+      resolves through a local database, and the per-WMO-code line icons exist (M8-T05.7)
 - [x] M1B-T05.6 Prayer times — computed from coordinates and date, no network, nothing that can
       go stale. Three methods and both Asr rules; the method is on the card because Algerian
       mosques do not all follow one authority and an unnamed reckoning makes an ordinary
@@ -145,7 +172,9 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
       stale. Uses the **tabular** calendar; Algeria announces Eid by sighting and can differ by a
       day, which the card discloses rather than hides. World clock is not built
 
-> **Where this milestone stands.** The framework, calculator, converter and date tools are built
+> **Where this milestone stands** *(written 2026-08-08; superseded — see the audit note at the
+> top: currency, weather and translation have since shipped, prayer times were already ticked
+> below)*. The framework, calculator, converter and date tools are built
 > and localised. Currency, weather, prayer times and translation are **not**, and each is blocked
 > on something real rather than on effort: currency and weather need [[Tool Data Plane]] plus the
 > unresolved parallel-rate sourcing question (§6 below), and translation needs the summariser's
@@ -172,8 +201,10 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
       than during the incident
 - [x] M1B-T06.6 Egress test re-run with `toold` in the topology: the serving plane still cannot
       reach the internet
-- [ ] M1B-T06.7 **Resolve parallel-rate sourcing.** If no honest source exists, the parallel rate
-      ships disabled rather than invented
+- [x] M1B-T06.7 **Resolve parallel-rate sourcing.** If no honest source exists, the parallel rate
+      ships disabled rather than invented. *Resolved 2026-08-26 (M8-T06.4):* none exists — the
+      square-market rate is quoted by no publisher we can verify — so it ships **disabled**, and
+      the card says so. Reopens only if a nameable source appears
 
 ## M1B-T07 — Tier 2 and 3 tools
 
@@ -217,7 +248,8 @@ Ported, then the Rust renderer **deleted**. Two renderers is the problem being s
       A test asserts it is not an alias, by counting overrides rather than pinning strings — pinning
       would break whenever a reviewer improves one, which is the edit most worth encouraging.
       ← *machine-generated, spelling wants a native speaker*; B7
-- [ ] M1B-T08.5 Visual regression: 4 languages × 2 directions × 2 themes
+- [ ] M1B-T08.5 Visual regression: 4 languages × 2 directions × 2 themes — *not built (audit
+      2026-08-27; same gap as M1-T14.6)*
 - [x] M1B-T08.6 `<bdi>` on numbers, expressions and URLs inside RTL text — verified in a browser
       against the Arabic locale, and enforced by `scripts/lint-bidi.sh`. Brackets were the real
       hazard: they are neutral on both sides, so an unisolated `(104 ms)` renders with the pair

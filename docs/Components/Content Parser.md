@@ -3,208 +3,239 @@ tags:
   - component
   - ingestion
 component-id: C16
-binary: xustive-worker
-status: specified
-updated: 2026-08-06
+binary: xustive crawld (in-process), xustive crawl, xustive parse-check
+status: built
+updated: 2026-08-27
 ---
 
 # Content Parser
 
-> **ID** C16 · **Binary** `xustive-worker` · **Upstream** `q:parse` · **Downstream** [[Deduplication Service]] → `q:enrich`
+> **ID** C16 · **Crate** `xustive-ingest` (`parse.rs`, `date.rs`, `rules.rs`) · **Runs in** the
+> crawl daemon's orchestrator, in-process · **Upstream** [[Web Fetcher]] · **Downstream**
+> [[Enrichment Pipeline]] (called from inside `parse`) → [[Deduplication Service]] →
+> [[Indexer Worker]]
 
 ## 1. Purpose
 
-Convert heterogeneous raw input — HTML, JSON API payloads, XML feeds — into the single canonical
-`Document` shape ([[Data Model]]). Everything downstream depends on this normalisation; a parser bug
-is indistinguishable from missing content.
+Turn a fetched HTML page into the single canonical `Document` shape ([[Data Model]]). Everything
+downstream depends on this normalisation; a parser bug is indistinguishable from missing content.
+
+The original design had the parser as its own queue stage (`q:parse` → `q:enrich`). It never
+became one: the parser is a struct the [[Crawler Orchestrator]] calls directly after a fetch, and
+the only queue in the path is the index stream that feeds the [[Indexer Worker]]. One process
+already holds the bytes; a hop through Redis would buy replayability at the price of a second copy
+of every page.
 
 ## 2. Responsibilities
 
-**In scope**: content extraction from HTML; metadata extraction (title, dates, author, canonical
-URL); social payload mapping; text normalisation; outlink extraction; excerpt generation; language
-detection; media URL extraction; boilerplate removal.
+**In scope**: content extraction from HTML; metadata (title, date, author, canonical URL);
+outlink extraction; excerpt; language detection; image and video pointers; cheap entity list;
+content and SimHash hashes; running the enrichment pipeline; refusing pages that are `noindex`,
+content-less, or hostile.
 
-**Out of scope**: fetching (→ [[Web Fetcher]]); enrichment (→ [[Enrichment Pipeline]]); deduplication
-decisions (→ [[Deduplication Service]], though the parser computes the hashes).
+**Out of scope**: fetching (→ [[Web Fetcher]]); enrichment rules themselves
+(→ [[Enrichment Pipeline]]); deduplication decisions (→ [[Deduplication Service]], though the
+parser computes the hashes); social payloads (→ the connector notes; **not built** as of
+2026-08-27, see §4.7).
 
 ## 3. Interface
 
-Consumes `q:parse`. Produces a `Document` (pre-enrichment) onto `q:enrich`, plus `Comment[]`.
-Also returns `outlinks: Vec<Url>` to [[Crawler Orchestrator]].
-
 ```rust
-pub trait Parser: Send + Sync {
-    fn parse(&self, raw: &RawFetch) -> Result<ParseOutput, ParseError>;
+// crates/xustive-ingest/src/parse.rs
+pub struct Parser { /* Detector, ParseConfig, rules::Rules */ }
+impl Parser {
+    pub fn new(config: ParseConfig) -> Self;
+    pub fn with_rules(self, rules: rules::Rules) -> Self;
+    pub fn parse(&self, html: &str, url: &str, source_id: &str, source_type: SourceType)
+        -> Result<Parsed, ParseError>;
 }
-pub struct ParseOutput { pub document: Document, pub comments: Vec<Comment>,
-                         pub outlinks: Vec<Url>, pub flags: ParseFlags }
+pub struct Parsed { pub document: Document, pub outlinks: Vec<String>, pub method: Method }
+pub enum Method { JsonLd, OpenGraph, Density, Fallback }      // as_str(): "json-ld" …
+pub enum ParseError {
+    TooLittleContent { chars, min, outlinks: Vec<String> },  // links survive the refusal
+    NoIndex,
+    TooComplex { what, found, limit },
+}
 ```
 
-`ParseFlags` carries `needs_render`, `boilerplate_ratio`, `charset_guessed`, `extraction_method`.
+Two things about that shape are deliberate. `TooLittleContent` **carries the outlinks**: a
+category page or paginator is mostly links and little prose, so it fails the content check almost
+by definition — and dropping its links means the crawler refuses to follow exactly the pages that
+exist to be followed. And the winning `Method` is written to `document.access_path`, so a site
+redesign shows up as a shift in the method distribution rather than as silently worse results.
+
+There is no `ParseFlags`, no `needs_render`, no `Comment[]` output.
 
 ## 4. Internal Design
 
-### 4.1 HTML extraction cascade
+### 4.1 Complexity guard, before the DOM
 
-Tried in order; first success wins, and the method is recorded in `extraction_method` for debugging.
+`check_complexity` is one pass over the bytes, run before `scraper` builds a tree: `MAX_HTML_BYTES`
+8 MiB, `MAX_TAGS` 100 000, `MAX_DEPTH` 512. Measured: 50 000 nested `<div>`s took 47 s to parse
+and 20 000 unclosed tags 18 s. A page that shape is broken or hostile; either way one page must not
+stall the crawler. Checked *before* the parse because the parse is the cost being guarded.
 
-| # | Method | When |
+### 4.2 Extraction cascade (`extract_body`)
+
+| # | Method | Wins when |
 |:---|:---|:---|
-| 1 | **JSON-LD** (`schema.org/NewsArticle`, `Article`, `BlogPosting`) | present and parseable — best dates and authors by far |
-| 2 | **OpenGraph / Twitter cards** | `og:title`, `og:description`, `og:image`, `article:published_time` |
-| 3 | **Readability-style extraction** | density-based main-content detection over the DOM |
-| 4 | **Per-domain selector rules** | `data/parsers/{domain}.toml` — hand-written CSS selectors for high-value Algerian sites |
-| 5 | **Fallback** | `<title>` + all `<p>` text |
+| 1 | **JSON-LD** `articleBody` | present and ≥ `min_body_chars` — best dates and authors by far |
+| 2 | **Density** (`densest_block`) | the block with the most text and the fewest links; link density > 0.5 rejects a block; hidden elements skipped |
+| 3 | **OpenGraph** `og:description` | long enough to stand as a body |
+| 4 | **Fallback** | every `<p>` |
 
-Per-domain rules matter more here than on the general web: many Algerian news sites use custom
-templates that Readability handles poorly. The rules file is data, not code, so adding a site is a
-PR anyone can review:
+Density comes *before* Open Graph because it beats per-site selectors on the long tail nobody has
+written rules for, and an `og:description` is a summary, not the article. Title has its own
+cascade: JSON-LD `headline` → `og:title` → `twitter:title` → `<h1>` → `<title>`, else the first 80
+chars of the body.
+
+Text is taken through `visible_text`, which walks the tree and skips `script`/`style`/hidden
+nodes — `scraper`'s `.text()` returns *every* descendant text node, and a page whose body is 80 %
+inline JavaScript is not about anything. Meta values go through `strip_tags`: publishers paste
+article HTML into `og:description`, and a literal `<p>` in an excerpt reaches the results page.
+
+### 4.3 Per-domain rules (`rules.rs`, `data/parsers/domains.toml`)
 
 ```toml
-# data/parsers/elkhabar.com.toml
-title    = "h1.article-title"
-body     = "div.article-content"
-date     = { selector = "time.published", attr = "datetime", format = "iso8601" }
-author   = ".author-name"
-exclude  = [".related-posts", ".ads", ".comments-widget"]
+[[domain]]
+host = "aps.dz"
+date = "span.text-xs"
+note = "date is a bare span with a Tailwind utility class; no JSON-LD, no <time>"
 ```
 
-### 4.2 Boilerplate removal
+Rules are tried **before** generic extraction, never after: a publisher shipping correct metadata
+does not need one, and one that is not is telling us its markup is unreliable. Twelve hosts today.
+Subdomains match their parent (`www.aps.dz` → `aps.dz`); a duplicate host refuses the whole file
+rather than letting file order decide; a missing file is not an error, a malformed one is logged
+loudly and ignored entirely.
 
-Strip `nav`, `header`, `footer`, `aside`, `script`, `style`, `noscript`, `form`, elements matching
-`exclude` rules, and elements whose link-density > 0.5. Compute `boilerplate_ratio =
-1 − (kept_text / total_text)`; if `> 0.9`, flag the extraction as suspect and set `quality_score`
-low rather than dropping — a low-quality document is still better than a hole in the index.
+Only the `date` selector is consulted by `parse` today; `title` and `body` are parsed from the
+file but not yet applied. Rules are loaded by `xustive crawl` and `xustive parse-check`; the
+daemon's orchestrator builds `Parser::new(ParseConfig::default())` **without** rules as of
+2026-08-27 — see §12.
 
-### 4.3 Date extraction (the hard part)
+`parse-check <url> [--date SEL]` fetches a real page and shows what each field came from, so a
+rule is verified against the page before it is written, never after.
 
-Ordered attempts:
+### 4.4 Date extraction (`date.rs`) — the hard part
 
-1. JSON-LD `datePublished`
-2. `<meta property="article:published_time">`
-3. `<time datetime=…>`
-4. Per-domain rule
-5. URL pattern (`/2026/08/04/`)
-6. Text patterns, **including Arabic and French formats**: `4 أوت 2026`, `04/08/2026`,
-   `4 août 2026`, relative forms (`قبل ساعتين`, `il y a 2 heures`)
+Sources, in order: rule selector → JSON-LD `datePublished` → `article:published_time` →
+`publish-date` → `itemprop=datePublished` → `<time datetime>` → `<time>` text → common containers
+(`.date, .post-date, .article-date, .published, .entry-date, [class*=date]`) → a **prose scan**
+of the first 400 chars of the body (4-token windows; a bare number is not a date).
 
-Rules:
-- Ambiguous `DD/MM` vs `MM/DD` resolves to **DD/MM** (Algerian convention) unless the day > 12 proves
-  otherwise.
-- Timezone assumed `Africa/Algiers` (UTC+1, no DST) when absent.
-- Future dates > 24 h ahead are rejected as parse errors.
-- Dates before 1995 are rejected.
-- On total failure: `published_at = crawled_at`, `published_at_precision = "unknown"` — and ranking
-  discounts it ([[Ranking and Relevance]] §3). **Never silently pretend a crawl date is a publish
-  date.**
+The scan exists because 362 of 502 crawled documents had no date while the page plainly showed
+`05 أوت 2026` — the extractor was only looking at markup those publishers do not emit.
 
-### 4.4 Text normalisation
+`date::parse(text, now)` tries ISO 8601 → numeric → month names → relative, and knows:
 
-The shared `xustive-text` function, identical to the one [[Query Pipeline]] applies to queries:
-NFKC → strip tatweel → strip harakat → fold Arabic-Indic digits → collapse whitespace → normalise
-alef/ya/ta-marbuta variants into the secondary form. **Query-time and index-time must call the same
-function**; a test asserts byte-identical output for a shared fixture set.
+- **Maghrebi month names** (`أوت`, `جويلية`, `جانفي`, `فيفري`, `ماي`, `جوان`) alongside the
+  Levantine forms, plus French and English.
+- **DD/MM**, never MM/DD; `04/08/2026` is 4 August.
+- Relative forms: `قبل ساعتين`, `منذ يومين`, `il y a 3 jours`, `2 hours ago`.
+- `Africa/Algiers` is UTC+1 all year when no offset is given.
+- Rejects years outside 1995–2100 and anything more than a day in the future.
+- Precision is recorded: `Second`, `Day`, `Month`, or `Unknown`.
+
+On total failure `published_at = crawled_at` with `Unknown` precision, and ranking discounts it
+([[Ranking and Relevance]]). **Never silently pretend a crawl date is a publish date.**
 
 ### 4.5 Derived fields
 
 | Field | Method |
 |:---|:---|
-| `excerpt` | first 320 chars of `body` at a sentence boundary; from `og:description` if it is better |
-| `content_hash` | BLAKE3 of normalised `body` |
-| `simhash` | 64-bit SimHash over 3-token shingles ([[Deduplication Service]]) |
-| `language` | [[Language Detector]] over `title + first 2 KB of body` |
-| `entities` | capitalised-sequence + gazetteer match (wilayas, institutions) — cheap, no model |
-| `canonical_url` | `<link rel="canonical">` if same-registrable-domain, else the fetched URL |
-| `media[]` | `og:image`, `<img>` with `width ≥ 200`, JSON-LD `image` — capped at 4 |
-| `body_len`, `robots_indexable` (`<meta name="robots">`) | direct |
+| `excerpt` | `og:description` or `description` if > 40 chars, else first `excerpt_chars` of body at a sentence boundary |
+| `content_hash` | BLAKE3 of the body, `b3:` prefix (`xustive_core::hash`) |
+| `simhash` | 64-bit SimHash, hex ([[Deduplication Service]]) |
+| `language`, `language_confidence`, `script` | [[Language Detector]] over `title + first 2 000 chars` |
+| `author.name` | JSON-LD author → `meta author` → `article:author` → `.author, .byline, [rel=author]` |
+| `canonical_url` | `<link rel=canonical>` if present, else the fetched URL (no same-domain check) |
+| `media[]` | `og:image` + `<img>` (image); `og:video`, `<video>`, embedded players as watch-page pointers (video, M9) — each capped at `max_media`, never bytes |
+| `entities` | capitalised tokens from title + first 4 000 chars, 3–40 chars, up to 20. A gazetteer, not a model: cheap, explainable, enough for the `entities` field typo tolerance is disabled on |
+| `body_len`, `access_path` (= method), `fetch_method = "static"`, `body_source = Native` | direct |
 
-### 4.6 Social payload mapping
+The body is stored **as extracted**, not normalised: `xustive-text::normalize` runs on queries
+and inside the detector, and Meilisearch's tokeniser handles the index side ([[Search Index]] §4.4).
 
-Dispatch on `kind` to the mapping tables in [[Social Connector - Facebook]] §4.3,
-[[Social Connector - Instagram]] §4.2, [[Social Connector - TikTok]] §4.2. The social path skips
-HTML extraction entirely but shares §4.4 and §4.5.
+### 4.6 Enrichment, inside `parse`
+
+The last thing `parse` does is `enrichment::Pipeline::standard().run(&mut doc, Full)`: wilaya
+gazetteer, topics, spam, quality — see [[Enrichment Pipeline]]. The parser always runs the full
+pipeline because it has already paid for the DOM; the *pressure* decision (`Partial`) belongs to
+the daemon. `quality_score` reads the method: JSON-LD 0.20, OpenGraph 0.12, Density 0.10,
+Fallback 0.02, plus length, known date, title, author, media, detected language.
+
+### 4.7 Not built (2026-08-27)
+
+Social payload mapping (JSON from the connectors), XML/feed input, a `needs_render` SPA path,
+charset re-decoding, and a `boilerplate_ratio` measure. PDFs *are* handled, by the orchestrator
+wrapping the extracted text in a minimal escaped HTML article so this one parser serves both.
 
 ## 5. Configuration
 
-| Key | Default |
+`ParseConfig` in code; nothing in `config/*.toml`.
+
+| Field | Default |
 |:---|:---|
 | `excerpt_chars` | 320 |
-| `max_body_bytes` | 200 KiB |
-| `max_media_per_doc` | 4 |
-| `max_outlinks` | 200 |
-| `min_body_chars` | 120 (below → drop as content-less) |
-| `link_density_threshold` | 0.5 |
-| `boilerplate_suspect_ratio` | 0.9 |
-| `default_timezone` | `Africa/Algiers` |
-| `rules_dir` | `data/parsers/` (hot-reload) |
+| `max_body_bytes` | 200 KiB (truncated on a char boundary) |
+| `max_media` | 4 (images and videos each) |
+| `min_body_chars` | 120 (below → `TooLittleContent`) |
+| `max_outlinks` | 200 (the frontier then keeps the best 64, `crawl.max_outlinks_per_page`) |
 
 ## 6. Data
 
-Reads `raw:{trace_id}` blobs and rules files. Writes `Document` + `Comment[]` to `q:enrich`. Pure
-apart from the raw read — the same input always produces the same output, which is what makes replay
-safe ([[Error Handling and Resilience]] §7).
+Pure: the same input always produces the same output, except `crawled_at`/`indexed_at` (now).
+Reads the rules file at startup. Writes nothing itself; the orchestrator publishes the `Document`.
 
 ## 7. Failure Modes
 
-| Failure | Detection | Response |
-|:---|:---|:---|
-| Malformed HTML | parser tolerance | `html5ever` recovers; never fatal |
-| Empty extraction | `body_len < min_body_chars` | drop with `Permanent` class; count metric |
-| SPA shell only | text < 512 B + framework markers | set `needs_render`, requeue for headless once |
-| Date unparseable | all methods fail | `precision = "unknown"` |
-| Charset mojibake | replacement-char ratio > 5 % | re-decode with the alternative charset; else drop |
-| Rules file selector no longer matches | extraction falls to method 5 | metric `parser_rule_miss_total{domain}` → alert |
-| Panic on adversarial DOM | `catch_unwind` at the task boundary | DLQ + fixture ([[Error Handling and Resilience]] §5) |
-| Document exceeds size cap | length check | truncate `body`, flag `truncated` |
-
-`parser_rule_miss_total` is the important one: sites redesign, selectors silently stop matching, and
-extraction quality degrades without any error. A rising miss rate for a domain is a maintenance
-ticket.
+| Failure | Response |
+|:---|:---|
+| Malformed HTML | `scraper`/`html5ever` recover; never fatal (tests: unclosed tags, broken encodings) |
+| Too little content | `Err(TooLittleContent { outlinks })` — not indexed, still crawled through |
+| `<meta name=robots>` noindex | `Err(NoIndex)`; the orchestrator still follows its links |
+| Hostile markup (size, tags, depth) | `Err(TooComplex)` before the DOM is built |
+| Date unparseable | `Unknown` precision, never a guess |
+| Empty title | first 80 chars of the body |
+| Rules file missing / malformed | generic extraction only, logged (`info` / `error`) |
 
 ## 8. Performance
 
-| Metric | Budget |
-|:---|:---|
-| HTML parse + extract (100 KB) | ≤ 25 ms p95 |
-| Social JSON map | ≤ 3 ms p95 |
-| SimHash + BLAKE3 | ≤ 5 ms |
-| Throughput | ≥ 200 docs/s/worker |
-| Memory | ≤ 300 MB |
+Adversarial fixtures (`tests/adversarial.rs`) assert a parse budget on nested divs, node bombs,
+unclosed tags, entity bombs, huge attributes and text nodes, pathological whitespace. No p95
+budget for ordinary pages is enforced by a test.
 
 ## 9. Observability
 
-`xustive_parse_duration_seconds{kind}`, `xustive_parse_method_total{method}`,
-`xustive_parse_dropped_total{reason}`, `xustive_parse_rule_miss_total{domain}`,
-`xustive_date_precision_total{precision}`, `xustive_boilerplate_ratio` (histogram),
-`xustive_needs_render_total`.
+No parser-level metrics. `access_path` on every document is the extraction-method signal; the
+admin document list shows `body_len` so an article and a navigation page can be told apart.
+The `parser_rule_miss_total{domain}` alert from the original design is **not built**.
 
 ## 10. Security
 
-Input is hostile HTML. `html5ever` is memory-safe and does not execute scripts. Guards: bounded DOM
-depth (200), bounded node count (200k), bounded output size, no XXE (external entities disabled in
-the XML/feed path), no network fetches during parse (no resolving `<img>` or `<link>`). Extracted
-strings are stored raw and escaped at render time ([[Security and Privacy]] T8).
+Input is hostile HTML. `html5ever` is memory-safe and executes nothing. The complexity guard
+bounds size, tag count and depth; there are no network fetches during parse; extracted strings
+are stored raw and escaped at render time ([[Security and Privacy]]). PDF text is escaped before
+it is wrapped as HTML.
 
 ## 11. Testing
 
-- Corpus: 200 saved pages from real Algerian sites (news, forums, gov, blogs) with hand-labelled
-  expected title/date/body. Target ≥ 90 % exact title, ≥ 85 % correct date, ≥ 0.9 body F1.
-- Date suite: ~80 date strings across Arabic, French, English, relative, and ambiguous formats.
-- Normalisation symmetry: `parse_normalize(x) == query_normalize(x)` for a shared fixture set — this
-  test failing means search silently breaks.
-- Adversarial: 10 MB of nested divs, billion-laughs XML, unclosed tags, mixed encodings, `<img>`
-  bombs — all bounded, none panic.
-- Per-domain rules: each rules file ships with a fixture page and an assertion, so a site redesign
-  fails CI rather than silently degrading production.
+- `tests/extraction_accuracy.rs`: gates of ≥ 90 % exact title, ≥ 85 % correct date, body F1.
+- `tests/domain_rules.rs` with saved fixture pages: a rule without a fixture is a guess that rots.
+- `date.rs` unit suite: Maghrebi months, DD/MM, relative forms, future rejection, tolerance.
+- `tests/adversarial.rs`: bounded and panic-free on hostile input.
+- Query/index normalisation symmetry lives in `xustive-text/tests/symmetry.rs`.
 
 ## 12. Open Questions
 
-- [ ] Who maintains per-domain rules as sites change? This is ongoing work, not a one-off.
-- [ ] Should we run a real NER model for `entities` instead of the gazetteer? Better recall, costs
-      ~40 ms/doc.
-- [ ] Extract structured data (prices, job titles, phone numbers) for future vertical search?
+- [ ] Wire `Rules::load` into the daemon's orchestrator; today only `crawl` and `parse-check`
+      see `domains.toml`, so the aps.dz date fix does not apply in production crawling.
+- [ ] Apply the rules' `title`/`body` selectors, or drop the fields.
+- [ ] A real NER model for `entities` instead of capitalised tokens? Better recall, ~40 ms/doc.
+- [ ] Structured data (prices, phone numbers) for future vertical search?
 
 ## Related
 
-[[Data Model]] · [[Web Fetcher]] · [[Deduplication Service]] · [[Enrichment Pipeline]] ·
-[[Language Detector]] · [[Query Pipeline]] · [[Ranking and Relevance]]
+[[Data Model]] · [[Web Fetcher]] · [[Crawler Orchestrator]] · [[Enrichment Pipeline]] ·
+[[Deduplication Service]] · [[Language Detector]] · [[Query Pipeline]] · [[Ranking and Relevance]]

@@ -3,8 +3,8 @@ tags:
   - architecture
   - ops
 type: architecture
-status: specified
-updated: 2026-08-06
+status: implemented
+updated: 2026-08-27
 ---
 
 # Observability
@@ -12,6 +12,9 @@ updated: 2026-08-06
 > Metrics, logs, traces, dashboards, and alerts. Constrained hard by [[Security and Privacy]]:
 > **no query text, no user identifiers, ever** — not in a log line, not in a metric label, not in a
 > span attribute.
+>
+> Audited against the code on 2026-08-27. Metric and alert names below are the ones that exist;
+> the 2026-08-06 design lists are kept where they describe things not yet built, marked as such.
 
 ---
 
@@ -19,61 +22,90 @@ updated: 2026-08-06
 
 | Forbidden | Allowed instead |
 |:---|:---|
-| the raw query string | `query_len_bucket`, `query_lang`, `token_count` |
-| client IP | truncated salted hash, in-memory only, for rate limiting |
+| the raw query string | `query_len_bucket` (`telemetry::query_len_bucket`), `lang` |
+| client IP | truncated salted hash, in-memory only, for rate limiting; a wilaya, never a coordinate, for weather ([[ADR-0020 - Approximate Location from a Local Database]]) |
 | `user_id`, cookie, session | nothing — there are none |
-| result URLs clicked | nothing — there is no click tracking |
-| collection credentials, cookies, TOTP seeds | `identity_id` only ([[Session Manager]] §4.8) |
+| result URLs clicked | k-anonymous per-document counters only ([[Interaction Signals]]) |
+| collection credentials, cookies, TOTP seeds | `identity_id` only ([[Session Manager]] §4.8 — design; not built) |
 
-A CI lint (`scripts/lint-telemetry.sh`) greps for `query`, `q =`, `transcript`, `ocr_text`,
-`password`, `cookie`, `credentials`, and `totp` inside `tracing::` macro arguments and fails the
-build. See [[Testing Strategy]].
+Two checks, at either end of the pipe:
+
+- `scripts/lint-telemetry.sh` (CI, `make lint`) fails the build if a `tracing::` call site names
+  a forbidden field: `q`, `query`, `raw_query`, `normalized_query`, `transcript`, `ocr_text`,
+  `user_query`, `search_term`, `password`, `passwd`, `cookie(s)`, `credentials`, `totp`, `secret`,
+  `api_key`, `token`. Deliberately dumb and slightly over-eager: a false positive costs one rename.
+- `scripts/scan-logs.sh` (`make scan-logs`, nightly against the day's logs) checks the other end —
+  whether anything query-shaped actually reached a log line. The lint cannot see a query that
+  arrives inside a struct someone made `Debug`; the scan cannot see a leak on a path that never
+  ran.
 
 Note the two distinct reasons: query fields are forbidden because of the promise to users
 ([[ADR-0008 - No Query Logging]]); credential fields because identity secrets are the highest-value
-target in the system. Both land in the same lint.
+target in the system. Both land in the same lint. See [[Testing Strategy]].
+
+Metric labels are `&'static str` keys by construction (`xustive_api::metrics`), which makes "log
+the query as a label" a compile error rather than a code-review catch. The registry is a small
+hand-rolled one (counters, gauges, histograms rendered in the text exposition format), not the
+`prometheus` crate.
 
 ---
 
 ## 2. Metrics (Prometheus)
 
 Naming: `xustive_<subsystem>_<metric>_<unit>`. Labels are **bounded** — never a URL, never a query.
+Scraped from `GET /metrics` on the API (`deploy/prometheus/prometheus.yml`: jobs `xustive-api` and
+`meilisearch`).
 
-### Serving
+### Serving (exist)
 
 | Metric | Type | Labels | Purpose |
 |:---|:---|:---|:---|
-| `xustive_http_requests_total` | counter | `route`, `method`, `status` | traffic + error rate |
+| `xustive_http_requests_total` | counter | `route`, `status` | traffic + error rate |
 | `xustive_http_duration_seconds` | histogram | `route` | latency SLO |
-| `xustive_search_duration_seconds` | histogram | `stage` (`detect`,`expand`,`retrieve`,`rerank`) | where time goes |
-| `xustive_search_results_total` | histogram | `lang` | zero-result detection |
+| `xustive_search_duration_seconds` | histogram | `stage` (`detect`, `retrieve`, `rerank`) | where time goes |
+| `xustive_search_results_total` | histogram | `lang` | result-count distribution |
 | `xustive_search_zero_results_total` | counter | `lang` | relevance health |
+| `xustive_lang_detected_total` | counter | `lang` | query-language mix |
+| `xustive_query_expansion_total` | counter | `lang` | how often the expansion leg ran |
+| `xustive_semantic_fused_total` | counter | `kind` | dense-recall fusion (M7-T02) |
+| `xustive_degraded_total` | counter | `stage` | deadline ladder skips ([[Error Handling and Resilience]] §6) |
+| `xustive_instant_answers_total` | counter | `tool` | which [[Instant Answers]] fire |
+| `xustive_suggest_total` | counter | `empty` | autocomplete hit rate |
+| `xustive_rate_limited_total` | counter | `route` | abuse |
 | `xustive_summary_duration_seconds` | histogram | — | [[Summarizer]] |
-| `xustive_summary_dropped_total` | counter | `reason` | load shedding |
-| `xustive_ratelimit_rejected_total` | counter | `route` | abuse |
-| `xustive_stt_duration_seconds` | histogram | — | [[Speech to Text]] |
-| `xustive_image_duration_seconds` | histogram | `mode` | [[Image Pipeline]] |
+| `xustive_summary_withheld_total` | counter | `reason` | validator rejections and timeouts |
+| `xustive_summary_external_total` | counter | `outcome` | external summariser attempts |
+| `xustive_translate_total` | counter | `outcome` | translation tool |
+| `xustive_federation_duration_seconds` | histogram | — | [[Federation Gateway]] round trip |
+| `xustive_federation_searches_total` | counter | `outcome` | federated strip hits / empty |
+| `xustive_federation_urls_fed_total` | counter | — | URLs handed to the crawler from federation |
+| `xustive_federation_blend_cards_total` | counter | `source` (`local`, `web`) | blend composition |
+| `xustive_data_age_seconds` | gauge | `dataset` (`weather`, `knowledge`) | [[Tool Data Plane]] freshness |
+| `xustive_data_entries` | gauge | `dataset` | coverage (58 wilayas for weather) |
+| `xustive_build_info` | gauge | version labels | which build is serving |
 
-### Ingestion
+### Ingestion (exist)
 
 | Metric | Type | Labels | Purpose |
 |:---|:---|:---|:---|
-| `xustive_fetch_total` | counter | `source_type`, `outcome` | crawl health |
-| `xustive_fetch_duration_seconds` | histogram | `source_type`, `method` | |
-| `xustive_queue_depth` | gauge | `stream` | **the** backpressure signal |
-| `xustive_queue_lag_seconds` | gauge | `stream` | oldest unacked message age |
-| `xustive_stage_duration_seconds` | histogram | `stage` | pipeline throughput |
-| `xustive_docs_indexed_total` | counter | `source_type` | growth |
-| `xustive_dedup_rejected_total` | counter | `kind` (`exact`,`near`,`phash`) | [[Deduplication Service]] |
-| `xustive_dlq_total` | counter | `stage`, `error_class` | poison messages |
-| `xustive_proxy_healthy` | gauge | `pool` | [[Proxy Manager]] |
-| `xustive_proxy_banned_total` | counter | `pool`, `platform` | detection pressure |
-| `xustive_robots_blocked_total` | counter | `reason` | [[Politeness and Robots]] |
+| `xustive_queue_depth` | gauge | — | consumer-group lag on `q:index` — **the** backpressure signal |
+| `xustive_queue_pending` | gauge | — | delivered, unacknowledged |
+| `xustive_queue_dead_letters` | gauge | — | `q:index:dead` length |
+| `xustive_crawl_fetched_total` | counter | — | crawl throughput |
+| `xustive_crawl_revisited_total` | counter | — | adaptive re-crawl ([[ADR-0011 - Adaptive Recrawl over Static Crawling]]) |
 
-### Collection
+Not yet emitted (design, 2026-08-06): `xustive_fetch_total{source_type,outcome}`,
+`xustive_fetch_duration_seconds`, `xustive_queue_lag_seconds`, `xustive_stage_duration_seconds`,
+`xustive_docs_indexed_total`, `xustive_dedup_rejected_total{kind}`, `xustive_proxy_healthy`,
+`xustive_proxy_banned_total`, `xustive_robots_blocked_total`, and the STT / image-pipeline
+histograms. Crawl health is read today from the [[Crawler Console]] (`/api/v1/admin/crawler/*`),
+which reports per-channel and per-host counters from Redis rather than through Prometheus.
 
-Added by [[ADR-0009 - Direct Collection for Social Platforms]]. These are **tier-1 operational
-signals** — detection damage compounds silently, so they page rather than ticket.
+### Collection (design only)
+
+Added by [[ADR-0009 - Direct Collection for Social Platforms]]; none of it is built. These are
+**tier-1 operational signals** — detection damage compounds silently, so they page rather than
+ticket.
 
 | Metric | Type | Labels | Purpose |
 |:---|:---|:---|:---|
@@ -94,109 +126,127 @@ signals** — detection damage compounds silently, so they page rather than tick
 
 ### Resource
 
-`xustive_model_load_seconds`, `xustive_model_memory_bytes`, plus standard process/Go/Rust collectors
-and `node_exporter` for the host.
+Meilisearch's own `/metrics` is scraped. `xustive_model_load_seconds`,
+`xustive_model_memory_bytes` and `node_exporter` are design; not wired.
 
 ---
 
 ## 3. Logs
 
-Structured JSON via `tracing` + `tracing-subscriber`. One line per event, never multi-line.
+`tracing` + `tracing-subscriber`. `telemetry.log_json = true` (prod, staging) gives one flattened
+JSON line per event, never multi-line; dev uses the compact human format. The filter comes from
+`telemetry.log_filter` (e.g. `info,xustive_api=debug,xustive_search=debug`), with llama.cpp's
+chatter quietened unless asked for.
 
 ```json
-{"ts":"2026-08-06T10:12:03.481Z","level":"WARN","target":"xustive_crawler::fetch",
- "request_id":null,"trace_id":"01J8ZK…","source_id":"elkhabar-dz","host":"elkhabar.com",
- "event":"fetch_retry","attempt":2,"status":503,"proxy_pool":"dz-res","msg":"upstream 503, backing off"}
+{"ts":"2026-08-06T10:12:03.481Z","level":"WARN","target":"xustive_ingest::fetch",
+ "request_id":null,"source_id":"elkhabar-dz","host":"elkhabar.com",
+ "event":"fetch_retry","attempt":2,"status":503,"msg":"upstream 503, backing off"}
 ```
 
 | Level | Use |
 |:---|:---|
 | `ERROR` | needs a human; always paired with an alert or a DLQ entry |
-| `WARN` | self-healing (retry, proxy rotation, circuit open) |
+| `WARN` | self-healing (retry, circuit open, job dead-lettered) |
 | `INFO` | lifecycle: startup, config loaded, batch indexed, source run completed |
 | `DEBUG` | per-message detail; off in prod, enable per-target at runtime |
 | `TRACE` | developer-only |
 
-Runtime level control: `RUST_LOG` + an admin endpoint `POST /admin/log-level {target, level}` with a
-15-minute auto-revert so nobody leaves prod on `DEBUG`.
+Runtime level control: `POST /api/v1/admin/log-level {"filter": "<EnvFilter>"}` (with
+`X-Admin-Key` when `api.admin_key` is set) raises or lowers the filter for at most
+`OVERRIDE_TTL` = 15 minutes, after which a background ticker reverts to the configured baseline so
+nobody leaves prod on `DEBUG`. Sending `{"filter": null}` reverts immediately. The
+[[Crawler Console]] shows the active filter and the time left.
+
+Every request carries an `x-request-id` (ULID, set by the API; a client-supplied one is stripped
+so nobody can inject an identifier that outlives the request).
 
 Retention: 15 days hot. Log volume budget ≤ 2 GB/day at 1M queries/day — if a component exceeds it,
-that is a bug, not a capacity request.
+that is a bug, not a capacity request. (Targets; no retention is configured in `deploy/`.)
 
 ---
 
 ## 4. Tracing
 
-Spans are `tracing` spans; export is OTLP-compatible but **local-only** (no SaaS collector — see
-[[Security and Privacy]]). Sampling: 100 % of errors, 1 % of successful searches, 100 % of ingestion
-chains for one source per hour.
+Spans are `tracing` spans. The design (2026-08-06) called for OTLP export, **local-only** (no SaaS
+collector — see [[Security and Privacy]]) with 100 % of errors, 1 % of successful searches and one
+ingestion chain per source per hour sampled. No exporter is wired as of 2026-08-27 — there is no
+OpenTelemetry dependency — so spans exist only as structured log context.
 
 ```
 span: http.request {request_id, route, status}
  └ span: search {lang, expanded_terms_count, results_count}
     ├ span: detect_language {confidence}
     ├ span: expand_query {variants}
-    ├ span: meili.multi_search {index_count, hits, took_ms}
+    ├ span: meili.search {hits, took_ms}
     └ span: rerank {candidates, capped_by_domain}
- └ span: summarize {tokens_out, model, ttft_ms}   ← separate root, linked by request_id
+ └ span: summarize {tokens_out, model, ttft_ms}   ← separate request, linked by request_id
 ```
 
-Ingestion chains are correlated by `trace_id` on the [[Task Queue]] envelope, so
-`fetch → parse → dedup → enrich → index` for one document is a single searchable trace.
+The design's per-document ingestion `trace_id` on the [[Task Queue]] envelope is not implemented;
+the crawl daemon's per-URL outcome is recorded in the admin event log instead
+(`/api/v1/admin/crawler/events`).
 
 ---
 
-## 5. Dashboards (Grafana, provisioned from git)
+## 5. Dashboards (Grafana)
+
+Grafana is in `deploy/docker-compose.yml` (on the `obs` network, `internal: true`, with Prometheus
+as its datasource), but `deploy/grafana/provisioning/` is empty: **no dashboards are provisioned
+from git yet** (2026-08-27). The intended set:
 
 | Dashboard | Panels |
 |:---|:---|
-| **Search Health** | QPS, p50/p95/p99 latency by route, error rate, zero-result rate by language, summary TTFT and drop rate |
+| **Search Health** | QPS, p50/p95/p99 latency by route, error rate, zero-result rate by language, summary duration and withheld rate |
 | **Index Health** | doc count by `source_type`, indexing rate, index size on disk, Meilisearch task queue, freshness (median `crawled_at` age) |
-| **Ingestion** | queue depth + lag per stream, fetch success rate by platform, DLQ rate, dedup ratio, docs/min per worker |
-| **Crawl Politeness** | requests/min per host, robots blocks, 429/403 rate by platform, proxy pool health |
-| **Collection Health** | identity pool by tier, challenge/ban rate, canary status, median identity lifespan, signer version age, access-path mix, bandwidth and cost per 1 000 docs |
-| **Models** | inference latency + memory for STT / CLIP / LLM / sentiment, queue wait for `xustive-ml` |
+| **Ingestion** | queue depth + pending, DLQ length, fetched / revisited rate |
+| **Crawl Politeness** | requests/min per host, robots blocks, 429/403 rate by host |
+| **Answer Data** | `data_age_seconds` and `data_entries` per dataset |
+| **Models** | inference latency + memory for STT / CLIP / LLM, queue wait for `xustive-ml` |
 | **Host** | CPU, RAM, disk, IO, network, container restarts |
+
+Until then the [[Crawler Console]] (`/admin/*`) is the operator's live view.
 
 ---
 
 ## 6. Alerts
 
+`deploy/prometheus/alerts.yml`. Severity is a label (`warning` = ticket, `critical` = page).
+
 | Alert | Condition | Severity | Runbook |
 |:---|:---|:---|:---|
-| `SearchDown` | `readyz` failing 2 min | **page** | restart api; check meili health |
-| `SearchLatencyHigh` | p95 `/search` > 400 ms for 10 min | page | check meili CPU, index size |
-| `ZeroResultsSpike` | zero-result rate > 25 % for 15 min | page | likely a bad index/settings deploy |
-| `IndexStale` | median `crawled_at` age > 24 h | ticket | ingestion stalled |
-| `QueueBacklog` | `queue_depth{stream="q:enrich"}` > 50k for 30 min | ticket | scale workers |
-| `QueueLagHigh` | `queue_lag_seconds` > 3600 | ticket | stuck consumer |
-| `DLQGrowth` | `rate(dlq_total[15m]) > 10/min` | ticket | poison payload class |
-| `ProxyPoolDegraded` | `proxy_healthy` < 20 % of pool | ticket | [[Proxy Manager]] |
-| `PlatformBlocking` | 403/429 rate > 40 % for one platform, 30 min | ticket | back off; check path ladder |
-| `PoolExhausted` | all identities quarantined for a platform | **page** | halt platform; [[Session Manager]] §7 |
-| `ChallengeSpike` | challenge rate > 30 % in 15 min | **page** | halt platform — likely a defence rollout |
-| `CanaryDown` | canary returns empty for > 30 min | **page** | distinguishes cloaking from a code break |
-| `SignerFailure` | `signer_failure_rate` > 0.30 for 5 min | **page** | [[Signature Service]] re-extraction |
-| `EgressMismatch` | `proxy_egress_mismatch_total` > 0 | **page** | proxy leaking real IP |
-| `WebRTCLeak` | `fp_webrtc_leak_total` > 0 | **page** | quarantine profile |
-| `IdentityLifespanDrop` | median lifespan falls > 30 % week-over-week | ticket | **leading indicator that pacing is too aggressive** |
-| `BandwidthBudget80` | residential spend > 80 % of monthly budget | ticket | check for a misrouted source |
-| `SummaryDropHigh` | drop rate > 20 % for 15 min | ticket | scale `xustive-ml` |
-| `DiskPressure` | volume > 85 % | page | expand or prune raw blobs |
-| `TelemetryLeak` | log line matches query-shaped field | **page** | privacy incident, see [[Security and Privacy]] |
-| `ToolDataAgeing` | `xustive_data_age_seconds` > 90 min for 10 min | ticket | [[Tool Data Plane]] — fetcher stalled, cards still shown |
-| `ToolDataStale` | `xustive_data_age_seconds` > 3 h for 5 min | **page** | past the staleness limit; cards now withheld |
-| `ToolDataMissing` | `absent(xustive_data_age_seconds)` for 15 min | **page** | cache flushed or fetcher never completed a pass |
-| `ToolDataCoverageDropped` | `xustive_data_entries{dataset="weather"}` < 55 for 30 min | ticket | partial fetch failure the age gauge cannot see |
+| `SearchDown` | `up{job="xustive-api"} == 0` for 2 min | **critical** | restart api; check meili health |
+| `SearchLatencyHigh` | p95 `/search` > 400 ms for 10 min | **critical** | check meili CPU, index size |
+| `ZeroResultsSpike` | zero-result share > 25 % over 15 min | **critical** | likely a bad index/settings deploy |
+| `SummaryDropHigh` | `summary_withheld_total` > 20 % of generations over 15 min | warning | scale `xustive-ml` / check validator |
+| `QueueBacklog` | `xustive_queue_depth` > 50k for 30 min | warning | scale indexer workers |
+| `DLQGrowth` | `increase(xustive_queue_dead_letters[15m]) > 10` | warning | poison payload class |
+| `ToolDataAgeing` | `data_age_seconds{dataset="weather"}` > 90 min for 10 min | warning | [[Tool Data Plane]] — fetcher stalled, cards still shown |
+| `ToolDataStale` | same > 3 h for 5 min | **critical** | past the staleness limit; cards now withheld |
+| `ToolDataMissing` | `absent(data_age_seconds{dataset="weather"})` for 15 min | **critical** | cache flushed or fetcher never completed a pass |
+| `ToolDataCoverageDropped` | `data_entries{dataset="weather"}` < 55 for 30 min | warning | partial fetch failure the age gauge cannot see |
+| `KnowledgeAgeing` | `data_age_seconds{dataset="knowledge"}` > 10 days for 1 h | warning | harvester behind its 7-day cadence ([[ADR-0019 - The Knowledge Layer]]) |
+| `KnowledgeStale` | same > 21 days for 1 h | **critical** | panels render unchecked facts; nothing is withheld |
+| `KnowledgeMissing` | `absent(...{dataset="knowledge"})` for 30 min | warning | index dropped or harvester never ran |
 
-Every alert must link to a runbook section. An alert without a runbook gets deleted, not ignored.
+Design-only alerts (not in `alerts.yml`, their metrics do not exist yet): `IndexStale`,
+`QueueLagHigh`, `ProxyPoolDegraded`, `PlatformBlocking`, `PoolExhausted`, `ChallengeSpike`,
+`CanaryDown`, `SignerFailure`, `EgressMismatch`, `WebRTCLeak`, `IdentityLifespanDrop`,
+`BandwidthBudget80`, `DiskPressure`, `TelemetryLeak` (covered procedurally by
+`scripts/scan-logs.sh`).
+
+Every alert must link to a runbook section ([[Runbooks]]). An alert without a runbook gets
+deleted, not ignored.
 
 ### 6.1 Alert rules are unit-tested
 
 A rule file that parses is not a rule file that fires. `deploy/prometheus/alerts_test.yml` replays
 synthetic series through the real rules and asserts which alerts appear, so a threshold typo, a
-`for:` that never elapses, or a label that fails to propagate is caught by `make check-alerts`
-rather than during the incident the alert was written for.
+`for:` that never elapses, or a label that fails to propagate is caught by
+`scripts/check-alerts.sh` (`promtool test rules`, run from the Prometheus image if `promtool` is
+not installed) rather than during the incident the alert was written for. The API's `dataage`
+tests additionally assert that the weather thresholds in `alerts.yml` match the staleness limits
+the serving plane enforces, so the two cannot drift apart.
 
 The tool-data rules exercise five scenarios: healthy, a stalled fetcher, data past the staleness
 limit, a flushed cache, and a partial fetch failure. The last two are the reason there is more than
@@ -215,18 +265,19 @@ exactly when it matters, and a partial failure keeps the age healthy while cover
 | Index freshness < 6 h for tier-A sources | 95 % of days | |
 
 Numbers derive from [[Performance Budgets]]; if the two disagree, Performance Budgets wins and this
-note gets corrected.
+note gets corrected. The hard request ceiling is `api.timeout_search_ms` (1 500 ms in prod).
 
 ---
 
 ## 8. Open Questions
 
 - [ ] Do we adopt Loki for log search, or is `docker logs` + grep enough at this scale?
-- [ ] Is 1 % trace sampling enough to debug rare Darija ranking complaints?
-- [ ] Can we measure relevance in prod at all without logging queries? (proposal: aggregate
-      zero-result rate by language only — no query text, k-anonymous counters)
+- [ ] Wire an OTLP exporter (local collector only) or keep spans as log context?
+- [x] Can we measure relevance in prod at all without logging queries? — Yes, as built: zero-result
+      rate by language (metrics), k-anonymous interaction counters ([[Interaction Signals]]), and
+      the offline golden set ([[Ranking and Relevance]] §6).
 
 ## Related
 
 [[Deployment Topology]] · [[Error Handling and Resilience]] · [[Security and Privacy]] ·
-[[Performance Budgets]] · [[Task Queue]]
+[[Performance Budgets]] · [[Task Queue]] · [[Runbooks]] · [[Crawler Console]]

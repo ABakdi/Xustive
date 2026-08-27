@@ -3,8 +3,8 @@ tags:
   - planning
   - milestone
 milestone: 5
-status: not-started
-updated: 2026-08-06
+status: not-started (only /privacy and /bot exist; everything else is people, legal and process)
+updated: 2026-08-27
 ---
 
 # Milestone 5 - Beta Launch
@@ -16,6 +16,12 @@ updated: 2026-08-06
 > Parent: [[TODO]] · Previous: [[Milestone 4 - Quality and Operations]]
 
 ---
+
+> **Audit 2026-08-27.** Two static pages exist ahead of the milestone: `/[lang]/privacy` (with
+> the federation egress disclosed, `c061c91`) and `/bot` (`1a52d64`, moved into the Next.js app in
+> `1d097db`). The model-licence audit (T01.8) was done in M3-T01.3 and found the default
+> summariser non-commercial — a finding, not a clearance. No `/about`, `/terms`, `/submit`, no
+> `POST /sources`, no beta or takedown process. Nothing else ticked here is verifiable in code.
 
 ## Why This Milestone Exists
 
@@ -39,7 +45,7 @@ Every item from [[Legal and Compliance]] §8:
 - [ ] M5-T01.5 Privacy policy published — **and verified line-by-line against actual behaviour**
 - [ ] M5-T01.6 Terms of use published
 - [ ] M5-T01.7 Platform API approvals in place, or the corresponding connectors confirmed disabled
-- [ ] M5-T01.8 Model and dependency licences audited for commercial use
+- [~] M5-T01.8 Model and dependency licences audited for commercial use — *models audited in M3-T01.3 (`b2f280d`): the default summariser (Qwen2.5-3B, `qwen-research`) is **non-commercial** and must be swapped for an Apache-2.0 size before launch; `cargo deny check licenses` gates crate dependencies (M8-T10.6)*
 - [ ] M5-T01.9 Data-processing record maintained
 - [ ] M5-T01.10 Intermediary-liability position understood and documented
 
@@ -76,8 +82,8 @@ Every item from [[Legal and Compliance]] §8:
 ## M5-T04 — Static pages
 
 - [ ] M5-T04.1 `/about` — what Xustive is, what it indexes, what it does not
-- [ ] M5-T04.2 `/privacy` — how the no-logging claim is **structurally** enforced, not just promised
-- [ ] M5-T04.3 `/bot` — user-agent, crawl behaviour, contact, how to block or rate-limit us
+- [x] M5-T04.2 `/privacy` — how the no-logging claim is **structurally** enforced, not just promised — *`web/app/[lang]/privacy` exists and discloses the federation egress (`c061c91`); whether its wording matches every shipped behaviour is the T01.5 line-by-line check, still owed*
+- [x] M5-T04.3 `/bot` — user-agent, crawl behaviour, contact, how to block or rate-limit us — *served since `1a52d64`, now under the `(operator)` route group (`2d21d3a`)*
 - [ ] M5-T04.4 `/terms`
 - [ ] M5-T04.5 A takedown/contact route that a non-technical person can find and use
 - [ ] M5-T04.6 All pages in four languages, RTL-correct, and within the client budget

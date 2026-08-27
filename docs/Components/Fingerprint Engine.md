@@ -4,14 +4,28 @@ tags:
   - ingestion
   - collection
 component-id: C26
-binary: xustive-crawler
-status: specified
-updated: 2026-08-06
+binary: xustive-cli crawld (library only)
+status: schema, catalogue and coherence checker built; impersonation not built
+updated: 2026-08-27
 ---
 
 # Fingerprint Engine
 
-> **ID** C26 · **Binary** `xustive-crawler` · **Upstream** [[Session Manager]], [[Web Fetcher]] · **Downstream** HTTP client, headless browser
+> **ID** C26 · **Module** `crates/xustive-ingest/src/fingerprint/` (`mod.rs` schema and
+> `Catalogue`, `coherence.rs` checker) · **Catalogue** `data/fingerprints/*.toml` · **Upstream**
+> [[Session Manager]], [[Web Fetcher]] · **Downstream** HTTP client, headless browser
+
+## 0. What exists today (2026-08-27)
+
+The **schema and the coherence checker**: `Profile` (parsed from TOML), `Catalogue::load_dir`,
+`check(&Profile) -> Vec<Incoherence>`, version ageing (`is_retired`, `can_migrate_to`), and a
+catalogue test that runs `check` over every shipped profile. Four profiles ship:
+`chrome-131-win11-dz`, `chrome-131-android-dz`, `firefox-133-win11-dz`, `safari-18-ios-dz`, each
+marked "generated as a coherent unit, verify against a real capture before trusting in
+production". **Not built**: the impersonating HTTP client (§4.1 TLS and HTTP/2 layers — no
+`rquest` or equivalent in the workspace), headless CDP patching (§4.6), the distribution file and
+assignment (§4.4), echo-service self-validation (§4.7). The `Fingerprints` trait in §3 is the
+intended shape; nothing takes a `client()` today.
 
 ## 1. Purpose
 
@@ -82,40 +96,51 @@ A profile is generated as a **unit**; individual fields are never mixed. Enforce
   `ANGLE (NVIDIA GeForce RTX 3060 …)`), drawn from a real-hardware table.
 - WebRTC is disabled or forced through the proxy — a leaked local IP defeats everything above it.
 
-A CI test asserts every profile in the catalogue satisfies all of these. Incoherence is the bug class
-that matters here, so it is checked mechanically rather than by review.
+`tests/fingerprint_catalogue.rs` asserts every profile in the catalogue satisfies all of these.
+Incoherence is the bug class that matters here, so it is checked mechanically rather than by
+review. The checker's verdicts are `Incoherence::{Version, Os, ClientHints, Language, Timezone,
+Webgl}`; `WebRtc` has no `Direct` variant at all, so a leaking profile cannot be expressed.
 
 ### 4.3 Catalogue
 
-`data/fingerprints/*.toml`, one file per profile, versioned in git:
+`data/fingerprints/*.toml`, one file per profile, versioned in git. The built schema is **flat**
+— the TLS and HTTP/2 sections of the earlier draft wait on the client library that would consume
+them:
 
 ```toml
-id      = "chrome-131-win11-dz"
-browser = "Chrome"; version = "131.0.6778.86"; os = "Windows11"
-[tls]      ja3_template = "chrome-131"; grease = true; alpn = ["h2", "http/1.1"]
-[http2]    settings_order = ["HEADER_TABLE_SIZE","ENABLE_PUSH","MAX_CONCURRENT_STREAMS",
-                             "INITIAL_WINDOW_SIZE","MAX_HEADER_LIST_SIZE"]
-           initial_window_update = 15663105
-           pseudo_header_order  = [":method",":authority",":scheme",":path"]
-[headers]  order = ["sec-ch-ua","sec-ch-ua-mobile","sec-ch-ua-platform","upgrade-insecure-requests",
-                    "user-agent","accept","sec-fetch-site","sec-fetch-mode","sec-fetch-user",
-                    "sec-fetch-dest","accept-encoding","accept-language"]
-           accept_language = "fr-FR,fr;q=0.9,ar;q=0.8,en-US;q=0.7,en;q=0.6"
-[js]       hardware_concurrency = 8; device_memory = 8
-           screen = { width = 1920, height = 1080, avail_height = 1040, color_depth = 24 }
-           webgl_vendor = "Google Inc. (NVIDIA)"
-           timezone = "Africa/Algiers"
+id = "chrome-131-win11-dz"
+browser = "Chrome"            # Chrome | Firefox | Safari
+version = "131.0.6778.86"
+os = "Windows11"              # Windows11 | MacOS | Android | IOS
+geo = "DZ"                    # language and timezone must agree with it
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) … Chrome/131.0.0.0 Safari/537.36"
+sec_ch_ua = "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\""
+sec_ch_ua_platform = "Windows"
+header_order = ["sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform", …, "accept-language"]
+accept_language = "fr-FR,fr;q=0.9,ar;q=0.8,en-US;q=0.7,en;q=0.6"
+navigator_platform = "Win32"
+navigator_languages = ["fr-FR", "fr", "ar", "en-US", "en"]
+timezone = "Africa/Algiers"
+webgl_vendor = "Google Inc. (NVIDIA)"
+webgl_renderer = "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 … D3D11)"
+webrtc = "disabled"           # disabled | through_proxy — there is no direct
+introduced_at = 0             # unix seconds; 0 = unset
+retire_after = 0
 ```
 
+A file that fails to parse is a hard error at load: a malformed fingerprint is one that would be
+assigned and then flagged, worse than absent.
+
 Target catalogue: **12–20 profiles** — Chrome/Firefox on Windows and macOS, Chrome on Android,
-Safari on iOS. Enough diversity that identities are not clones; few enough that each is maintained
-and validated.
+Safari on iOS. Four exist. Enough diversity that identities are not clones; few enough that each
+is maintained and validated.
 
-### 4.4 Distribution realism
+### 4.4 Distribution realism — not built (2026-08-27)
 
-Profiles are assigned to match the real Algerian browser mix, not uniformly. A pool where 20 % of
-identities run Firefox-on-macOS does not resemble the local population. Weights live in
-`data/fingerprints/distribution.toml` and are reviewed against public market-share data.
+Profiles should be assigned to match the real Algerian browser mix, not uniformly. A pool where
+20 % of identities run Firefox-on-macOS does not resemble the local population. Weights would live
+in `data/fingerprints/distribution.toml`, reviewed against public market-share data; no such file
+exists and nothing assigns profiles yet.
 
 ### 4.5 Version ageing
 
@@ -123,24 +148,30 @@ Real browsers auto-update; a fleet pinned to Chrome 131 for a year becomes anoma
 `introduced_at` and `retire_after`. When a profile retires, its identities are migrated to the
 successor version of the **same browser and OS** — this is the one sanctioned exception to §4.2
 pinning, because it mirrors what a real browser does. Bumping Chrome 131→133 on a Windows identity is
-normal; switching that identity to Safari is not.
+normal; switching that identity to Safari is not. Built: `Profile::is_retired(now)` and
+`can_migrate_to(successor)` (same browser and OS, newer version); nothing runs the migration yet.
 
-### 4.6 Headless patching
+### 4.6 Headless patching — not built (2026-08-27)
 
-For the [[Web Fetcher]] headless path: real Chrome (not Chromium-headless-shell), `--headless=new`,
+For the [[Web Fetcher]] headless path, itself not built: real Chrome (not
+Chromium-headless-shell), `--headless=new`,
 persistent profile directory per identity, and a CDP init script that patches the `js_surface` values
 before page scripts run. `navigator.webdriver` removal, plugin/mimeType stubs, permissions query
 shim, and canvas/AudioContext noise seeded **deterministically per identity** — a canvas hash that
 changes every request is itself a signal.
 
-### 4.7 Self-validation
+### 4.7 Self-validation — not built (2026-08-27)
 
-`make fp-verify` drives each profile through public fingerprint echo endpoints in staging and asserts
+`make fp-verify` would drive each profile through public fingerprint echo endpoints in staging
+and assert
 the observed JA3/JA4, HTTP/2 fingerprint, and header order match the profile's declared values. Run
 nightly and on every catalogue change. This catches library upgrades silently altering our
 handshake — which happens, and is otherwise invisible until ban rates climb.
 
 ## 5. Configuration
+
+Nothing in `config/*.toml`; `Catalogue::load_dir` takes the directory as an argument and the
+catalogue test points it at `data/fingerprints/`. The rest of the table is the design target.
 
 | Key | Default |
 |:---|:---|
@@ -199,6 +230,10 @@ keeps its sandbox: own container, no access to the `core` network, read-only fil
 capabilities, seccomp ([[Web Fetcher]] §10). Fingerprint patching does not relax any of that.
 
 ## 11. Testing
+
+Built: the coherence suite (`tests/fingerprint_catalogue.rs` plus unit tests in `coherence.rs`
+for each invariant, e.g. a Chromium profile missing `sec-ch-ua` is incoherent) and the ageing
+rules. Everything from echo verification down needs the client library or a browser.
 
 - **Coherence suite**: every profile checked against all §4.2 invariants.
 - **Echo verification**: JA3/JA4, HTTP/2 fingerprint, header order match declarations (staging).

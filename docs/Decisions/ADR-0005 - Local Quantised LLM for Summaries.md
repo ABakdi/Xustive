@@ -2,7 +2,7 @@
 tags:
   - adr
 adr-id: "0005"
-status: accepted
+status: implemented
 date: 2026-08-06
 ---
 
@@ -10,7 +10,7 @@ date: 2026-08-06
 
 ## Status
 
-Accepted. Constrains [[Summarizer]], [[Deployment Topology]], [[Performance Budgets]].
+Implemented, with a licence caveat on the default model. Constrains [[Summarizer]], [[Deployment Topology]], [[Performance Budgets]].
 
 ## Context
 
@@ -88,3 +88,9 @@ Supporting choices:
 
 [[Summarizer]] · [[Security and Privacy]] · [[Performance Budgets]] · [[Deployment Topology]] ·
 [[Testing Strategy]] · [[Legal and Compliance]] · [[Decision Log]]
+
+## Where it stands (2026-08-27)
+
+- Inference is `llama-cpp-2` behind the `llama` cargo feature (`crates/xustive-ml/Cargo.toml`), linked into `xustive-api` rather than a separate `xustive-ml` replica. `slots` default 2, `max_tokens` 120, low temperature, the prompt asks for 2–3 sentences ≤ 400 characters with a citation per sentence and `INSUFFICIENT` otherwise (`crates/xustive-ml/src/engine.rs`, `prompt.rs`).
+- **Licence caveat.** The registry default is `qwen2.5-3b-instruct-q4`, which is the non-commercial *Qwen-Research* licence (`crates/xustive-ml/src/registry.rs`, `commercial_use: false`; the engine warns when it loads). The Apache-2.0 sizes (1.5B, 7B) are registered; a commercial launch must pin one (`summariser_model` in `config/*.toml`).
+- Device is switchable at runtime from the admin page (`crates/xustive-api/src/admin.rs`, `device = "auto"` in `config/dev.toml`); CPU-only remains supported. The "GPU upgrades to 7B by config" path exists (`config/dev.toml` comment documents the download + `summariser_model` switch).

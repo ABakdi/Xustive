@@ -4,192 +4,194 @@ tags:
   - serving
   - ml
 component-id: C10
-binary: xustive-ml
-status: specified
-updated: 2026-08-06
+binary: xustive-api · xustive-cli crawld (crates/xustive-media)
+status: built (index side opt-in)
+updated: 2026-08-27
 ---
 
 # Image Pipeline
 
-> **ID** C10 · **Binary** `xustive-ml` · **Upstream** [[API Gateway]] (`POST /search/image`), [[Enrichment Pipeline]] · **Downstream** [[Vector Index]]
+> **ID** C10 · **Runs in** `xustive-api` (`POST /api/v1/ocr`, `POST /api/v1/search/image`) and
+> the `crawld` parse path (`media_ocr.rs`, `media_embed.rs`) · **Library** `crates/xustive-media`
+> · **Upstream** [[API Gateway]], [[Enrichment Pipeline]] · **Downstream** [[Vector Index]],
+> [[Search Index]]
 
 ## 1. Purpose
 
-Two jobs sharing one set of models:
+Two jobs sharing one set of tools:
 
-1. **Query side** — a user uploads or photographs an image; we extract its text (OCR) or find visually
-   similar indexed images.
-2. **Index side** — every crawled image gets OCR'd and embedded so it is findable at all.
+1. **Query side** — a person uploads or photographs an image; we read its text (OCR) or find
+   visually similar indexed images.
+2. **Index side** — a crawled page's images get OCR'd, hashed and embedded so they are findable at
+   all.
 
-The Algerian use case that drives this: screenshots. Announcements, job postings, official notices,
-and price lists circulate as images in Facebook groups, not as text. Without OCR, that entire body of
-content is invisible to a text search engine.
+The Algerian use case that drives this: screenshots. Announcements, job postings, official notices
+and price lists circulate as images in Facebook groups, not as text. Without OCR that entire body
+of content is invisible to a text search engine.
 
-## 2. Responsibilities
+Finding and listing the images themselves (the Images tab, thumbnails) is [[Media Extraction]] and
+[[Thumbnail Proxy]]; this note is about reading and embedding pixels.
 
-**In scope**: decode + EXIF strip + resize; OCR (Arabic/French/English); CLIP embedding; perceptual
-hash; NSFW flagging; similarity search against [[Vector Index]]; mode selection (`auto`).
+## 2. What exists today
 
-**Out of scope**: face recognition (**explicitly never** — see §10); object detection; video frame
-extraction beyond a single thumbnail.
+| Piece | Path | Built? |
+|:---|:---|:---|
+| Decode, auto-orient, preprocess, tesseract, score | `crates/xustive-media/src/ocr.rs` | yes |
+| OCR backends: `Tesseract`, `Sidecar` (Unlimited-OCR), `Fallback` | `crates/xustive-media/src/backend.rs` | yes |
+| dHash | `crates/xustive-media/src/phash.rs` | yes |
+| `POST /api/v1/ocr` | `crates/xustive-api/src/ocr.rs` | yes |
+| `POST /api/v1/search/image` | `crates/xustive-api/src/image_search.rs` | yes (off unless `[vector] enabled`) |
+| Index-side OCR + body backfill | `xustive-ingest/src/media_ocr.rs` | yes (opt-in) |
+| Index-side CLIP embed + pHash cache | `xustive-ingest/src/media_embed.rs`, `embed_cache.rs` | yes (opt-in) |
+| Unlimited-OCR sidecar | `services/ocr-sidecar` | yes, GPU-only, opt-in |
+| `auto` mode (OCR-or-similar in one call) | — | **not built** (2026-08-27) — the client picks the endpoint |
+| pHash exact-hit shortcut before ANN | — | **not built** (2026-08-27) |
+| NSFW classifier | — | **not built** (2026-08-27); `is_nsfw` is never set, the filter is a placeholder |
+| EXIF/GPS handling | orientation read, nothing else read; bytes never written | yes by construction |
 
 ## 3. Interface
 
-```rust
-pub trait ImageProcessor: Send + Sync {
-    async fn analyze(&self, bytes: &[u8], mode: Mode) -> Result<Analysis, ImageError>;
-    async fn embed(&self, bytes: &[u8]) -> Result<[f32; 512], ImageError>;   // index side
-    async fn ocr(&self, bytes: &[u8], lang_hint: Option<Lang>) -> Result<Ocr, ImageError>;
-}
-pub enum Mode { Auto, Ocr, Similar }
-pub struct Analysis { pub mode_used: Mode, pub ocr: Option<Ocr>, pub similar: Vec<SimilarHit>, pub phash: u64 }
+```
+POST /api/v1/ocr            body: raw image bytes (Content-Type: image/*)
+  200 { "text", "usable", "confidence" (0–100), "backend": "tesseract" | "unlimited" }
+  400 empty_image | image_too_large | undecodable_image
+  503 ocr_unavailable
+
+POST /api/v1/search/image   body: raw image bytes
+  200 { "results": [ResultCard…], "matched_images": n }
+  400 empty_image | image_too_large
+  503 image_search_unavailable      (feature off, sidecar or Qdrant down, undecodable)
 ```
 
-Public contract in [[API Contract]] §6.
+A raw body, not multipart: exactly one image is sent, and a form wrapper would only add a parser
+and a failure mode; it also keeps the image out of any URL, referrer or access log. Both routes
+carry their own body limit (`[media] max_image_bytes`, 5 MiB) so the global 8 KB default does not
+apply, and both sit under the `MEDIA` rate-limit class. OCR text is **never** auto-submitted to
+search — the person sees and edits it first ([[UI - Image Search]]).
+
+```rust
+// crates/xustive-media
+pub trait OcrBackend { fn name(&self) -> &'static str; async fn recognise(&self, bytes: Vec<u8>) -> Result<Ocr, OcrError>; }
+pub struct Ocr { pub text: String, pub confidence: f32, pub usable: bool }
+pub fn ocr::recognise(bytes, tessdata, langs, max_pixels) -> Result<Ocr, OcrError>  // blocking
+pub fn phash::dhash(bytes, max_pixels) -> Option<String>;  phash::hamming(a, b) -> Option<u32>
+```
 
 ## 4. Internal Design
 
-### 4.1 Common preprocessing
+### 4.1 Decode and preprocess (`ocr.rs`)
 
-1. Magic-byte type check (`jpeg`, `png`, `webp`); reject others with 415.
-2. Decode with the `image` crate under a pixel budget (≤ 40 MP) and a 5 s timeout inside
-   `spawn_blocking` — the standard decompression-bomb guard ([[Security and Privacy]] §6).
-3. **Strip EXIF immediately** after decode. GPS coordinates in a user upload are never read, and
-   never leave the decode function.
-4. Auto-orient from the EXIF orientation flag *before* stripping.
-5. Produce two derivatives: `ocr_input` (upscaled to ≥ 1000 px on the short edge, grayscale,
-   adaptive threshold) and `clip_input` (224 × 224 centre crop, normalised).
+Dimensions are read from the header first, so a decompression bomb is refused before it is ever
+expanded (`MAX_PIXELS = 40 M`). Decode with the `image` crate, apply the EXIF orientation flag,
+upscale so the short edge is ≥ 1000 px, grayscale. Everything stays in memory — Leptonica reads
+the encoded bytes via `set_image_from_mem` and there is no path that opens a file, which is how the
+zero-disk-write rule ([[Security and Privacy]] P4) holds by construction. `recognise` is blocking
+and CPU-bound; every caller runs it on `spawn_blocking`.
 
 ### 4.2 OCR
 
-`tesseract-rs` with `ara+fra+eng` traineddata, `--psm 6` (uniform block) with a `--psm 11` (sparse
-text) retry when the first pass yields < 8 characters.
+`leptess` (tesseract) with `ara+fra+eng`. Two passes at most: the first reads the grayscale image
+(tesseract binarises internally, right for clean anti-aliased screenshot text). When that is
+unusable or below `GOOD_ENOUGH_CONFIDENCE = 75`, a second pass reads an **Otsu-binarised**
+version — the threshold comes from the image's own histogram, so it adapts per source — and the
+better result wins, so the retry can only help. `usable = chars ≥ 8 && mean confidence ≥ 55`.
+There is no `--psm` retry and no per-character token dropping; the confidence gate does that job.
 
-Post-processing:
-- Drop tokens with per-character confidence < 60.
-- Apply `xustive-text` normalisation (same function as [[Content Parser]] and [[Query Pipeline]]).
-- Compute a **usability score**: `usable = chars ≥ 8 && mean_confidence ≥ 0.55`.
+Arabic OCR is the weak point — screenshots do well, photographed signage poorly. Acceptable,
+because the dominant use case *is* screenshots.
 
-Arabic OCR quality is the weak point — screenshots (rendered fonts, high contrast) do well;
-photographed signage does poorly. This is acceptable: the dominant use case *is* screenshots.
+### 4.3 Two engines ([[ADR-0016 - Two OCR Engines with an Optional Unlimited-OCR Sidecar]])
 
-### 4.3 CLIP embedding
+`Tesseract` runs in-process on the CPU and needs only the traineddata, so it is always available
+and fits the reference hardware (a 4 GB GPU, or none). `Sidecar` is an HTTP client for
+`services/ocr-sidecar` — `baidu/Unlimited-OCR`, a 3 B vision-language model that parses layout and
+tables far better but needs a real GPU (`OCR_MODEL`, `OCR_PROMPT="<image>document parsing."`,
+`OCR_MAX_BYTES` 8 MiB; `POST /ocr`). It reports an assumed confidence of 90 because the model does
+not score itself. `Fallback` prefers the sidecar and drops to tesseract when it errors, so turning
+the sidecar on never turns a feature off. `[media] ocr_backend = "unlimited"` selects it for the
+**user-facing** routes only; crawl-time enrichment always uses tesseract — it must fit CPU-only.
 
-`rust-bert` CLIP ViT-B/32 image tower → 512 floats → L2-normalise. Deterministic given the same
-input, which matters for the index/query symmetry that makes similarity search work at all.
+### 4.4 CLIP embedding and similarity
 
-### 4.4 Perceptual hash
+`SidecarEmbedder` → `services/clip-embed` (CLIP ViT-B/32, 512-d, CPU-capable) → L2-normalised →
+Qdrant. The search collapses hits by `document_id`, keeps the best score, resolves cards from the
+lexical index and re-orders by similarity. Limits, `ef`, threshold and the pHash reuse cache are
+in [[Vector Index]].
 
-64-bit dHash. Used twice: as an exact/near-duplicate shortcut before ANN search (a re-upload of an
-already-indexed image is answered from a Redis `phash → document_id` map in ~1 ms), and by
-[[Deduplication Service]] at index time.
+### 4.5 Perceptual hash
 
-### 4.5 `auto` mode decision
+64-bit dHash: grayscale, resize to 9×8, one bit per adjacent-pixel brightness comparison —
+gradients rather than absolute brightness, which is what survives an exposure or contrast shift.
+Stamped into `media[].phash` by whichever index-side pass fetched the bytes first, and used as the
+key of the CLIP reuse cache. The Redis `phash → document_id` shortcut before ANN is not built.
 
-```
-phash exact hit?          → return that document as similar[0], plus ANN for the rest
-OCR usable?               → mode_used = "ocr"; return ocr.text (client searches it)
-otherwise                 → mode_used = "similar"; embed + ANN search [[Vector Index]]
-```
+### 4.6 Index side
 
-### 4.6 Similarity search
+Runs in `Orchestrator::step` after parse ([[Enrichment Pipeline]] §4.2): one `ImageFetcher`
+(own client, `XustiveBot/1.0 (…; media OCR)`, 15 s, `SafeUrl`, `image/*` only, size-capped on the
+declared length and again on the bytes), at most `max_images_per_doc` per pass. OCR fills
+`media[].ocr_text` / `ocr_lang` and backfills a body under 20 words. **A bad image never fails a
+document.** There is no separate media fetch step and no [[Proxy Manager]] in this path.
 
-Query [[Vector Index]] with `limit 40`, `score_threshold 0.75`, `is_nsfw = false`. Collapse hits by
-`document_id` keeping the best score. Return top 20 with a join back to [[Search Index]] for title,
-URL, and date.
+## 5. Configuration (`[media]`)
 
-### 4.7 Index-side path
-
-Called by [[Enrichment Pipeline]] per media item: fetch (through [[Proxy Manager]], size-capped) →
-preprocess → OCR → embed → phash → NSFW score. Results are written into `Document.media[]` and the
-embedding is queued for [[Vector Index]] upsert. Images that fail to fetch or decode leave the
-document intact with `media[].ocr_text = null` — **a bad image never fails a document**.
-
-## 5. Configuration
-
-| Key | Default |
-|:---|:---|
-| `max_bytes` | 8 MiB |
-| `max_pixels` | 40 MP |
-| `max_dimension` | 4096 |
-| `decode_timeout_ms` | 5000 |
-| `ocr_langs` | `ara+fra+eng` |
-| `ocr_min_chars` | 8 |
-| `ocr_min_confidence` | 0.55 |
-| `clip_model_path` | `/models/clip-vit-b32.ot` |
-| `ann_limit` | 40 |
-| `ann_score_threshold` | 0.75 |
-| `nsfw_threshold` | 0.85 |
-| `index_side_max_images_per_doc` | 4 |
-
-## 6. Data
-
-Query side: stores nothing ([[Security and Privacy]] P4). Index side: writes `media[].ocr_text`,
-`ocr_lang`, `phash`, `embedding_id` into the `Document` ([[Data Model]]), and a point into
-[[Vector Index]].
-
-## 7. Failure Modes
-
-| Failure | Detection | Response |
+| Key | Dev default | Meaning |
 |:---|:---|:---|
-| Unsupported/corrupt file | magic bytes / decode error | 415 or 422 `image_unreadable` |
-| Decompression bomb | pixel budget | 422, `WARN` metric |
-| Decode timeout or panic | task boundary | 422; process survives |
-| OCR yields nothing | usability score | fall through to similarity mode |
-| Tesseract data missing | startup | **Fatal** |
-| CLIP model missing | startup | **Fatal** |
-| Qdrant down | call error | OCR still works; similarity returns 503 |
-| Index-side image fetch fails | HTTP error | skip that media item, keep the document |
-| NSFW model unavailable | flag | `is_nsfw = null`; filter conservatively (exclude from image results) |
+| `image_ocr_enabled` | `false` | index-side OCR |
+| `tessdata_dir` | `data/tessdata` | needs `ara`, `fra`, `eng` traineddata |
+| `ocr_langs` | `ara+fra+eng` | |
+| `max_images_per_doc` | 3 | OCR and embed passes each |
+| `max_image_bytes` | 5 MiB | uploads and index-side fetches |
+| `ocr_backend` | `tesseract` | `unlimited` = sidecar with fallback, user routes only |
+| `[media.sidecar] endpoint`, `timeout_ms` | `http://127.0.0.1:8091/ocr`, 30 000 | |
 
-## 8. Performance
+Constants: `MAX_PIXELS` 40 M, `MIN_OCR_DIM` 1000, `MIN_CONFIDENCE` 55, `MIN_USABLE_CHARS` 8,
+`GOOD_ENOUGH_CONFIDENCE` 75, `THIN_WORDS` 20.
 
-| Path | Budget |
+## 6. Failure Modes
+
+| Failure | Response |
 |:---|:---|
-| Whole `/search/image` | ≤ 500 ms p95 ([[Performance Budgets]]) |
-| Decode + preprocess | ≤ 80 ms |
-| OCR (1000 px) | ≤ 250 ms |
-| CLIP embed | ≤ 60 ms |
-| ANN search | ≤ 40 ms |
-| phash shortcut hit | ≤ 5 ms |
-| Index-side per image | ≤ 400 ms (throughput, not latency, bound) |
+| Unknown format / corrupt | `OcrError::Format` / `Decode` → 400 `undecodable_image` |
+| Over the pixel budget | `TooLarge` → 400 `image_too_large`, refused before expansion |
+| Tesseract init (missing traineddata) or sidecar 500 | `Engine` → 503 `ocr_unavailable`; cause logged, never the image |
+| Sidecar down with `ocr_backend = unlimited` | `Fallback` → tesseract, `backend` says which |
+| Sidecar or Qdrant down for similarity | 503 `image_search_unavailable`; text search untouched |
+| Index-side fetch/decode/OCR/embed error | that image skipped |
 
-## 9. Observability
+## 7. Security
 
-`xustive_image_duration_seconds{stage,mode}`, `xustive_ocr_chars`, `xustive_ocr_confidence`,
-`xustive_image_rejected_total{reason}`, `xustive_phash_hit_total`,
-`xustive_image_mode_total{mode_used}`. `ocr_text` from a *user upload* is query content and must
-never be logged; `ocr_text` from a *crawled* image is corpus content and may appear in debug logs.
+Untrusted binary input: header-first pixel budget, size caps at the route and again in the
+handler, in-memory only. EXIF is consulted for orientation and nothing else; GPS is never read and
+no coordinate can leave `decode`. The uploaded image and its text are the payload and are never
+logged. **No face recognition, no person clustering, ever** — a reverse image search that
+identifies people is a surveillance tool, and CLIP is used whole-image only. Index-side fetches
+go through `SafeUrl` ([[Security and Privacy]]). The sidecar is an internal-network call, not
+egress ([[Deployment Topology]]).
 
-## 10. Security
+## 8. Observability
 
-- Untrusted binary input — see the guards in §4.1 and [[Security and Privacy]] §6.
-- **EXIF/GPS is stripped and never read.** No location is derived from user uploads.
-- **No face recognition, no person clustering, no reverse-search-by-face.** This is a deliberate,
-  permanent scope exclusion: a reverse image search that identifies people is a surveillance tool,
-  and it is not what this product is. CLIP embeddings are whole-image and are not used for identity
-  matching.
-- NSFW filtering is default-on for image results.
-- Index-side fetches go through `SafeUrl` validation ([[Security and Privacy]] §4).
+None specific yet. The `backend` field in the OCR reply lets an operator confirm the sidecar is
+actually in the path; `matched_images` in the image-search reply shows the pre-collapse count.
 
-## 11. Testing
+## 9. Testing
 
-- Fixtures: 200 images — Arabic screenshots, French documents, photos, memes, low-quality phone
-  shots, adversarial (bomb, truncated, wrong extension, 1×1 px, CMYK JPEG).
-- OCR accuracy: character error rate ≤ 15 % on the screenshot subset (the case we actually promise).
-- Round-trip: index an image, re-upload it, assert rank 1 with score > 0.95.
-- Transform robustness: crop 10 %, resize 50 %, JPEG q40, watermark → still top 3.
-- EXIF: upload an image with GPS; assert no coordinate value appears in any output, log, or store.
-- Security: every adversarial fixture returns a 4xx within the timeout with no panic.
+`crates/xustive-media/tests/ocr_fixture.rs` with fixtures under `tests/fixtures`; dHash and Otsu
+unit tests; `xustive-ingest/tests/ssrf.rs` for the fetcher; `state.rs` tests that the backend
+defaults to tesseract. The 200-image fixture set, CER target and transform-robustness suite from
+the original plan are not built.
 
-## 12. Open Questions
+## 10. Open Questions
 
-- [ ] Add a text→image CLIP path ("find images of…") using the text tower we already ship?
-- [ ] Video: one embedding per TikTok cover image, or keyframes? Cover-only for v1.
-- [ ] Which NSFW model, given licence constraints? (`open_nsfw` variants — check licence terms)
-- [ ] Should index-side OCR text be a separate searchable attribute weighted below `body`?
+- [ ] An NSFW model with an acceptable licence; until then the `is_nsfw` filter filters nothing.
+- [ ] Text→image CLIP search.
+- [ ] Should index-side `ocr_text` be a searchable attribute weighted below `body`, rather than
+      only backfilling thin bodies? ([[Search Index]] settings)
+- [ ] Video: cover image only, if ever — video is metadata-only today ([[Media Extraction]]).
 
 ## Related
 
-[[Vector Index]] · [[Enrichment Pipeline]] · [[UI - Image Search]] · [[API Contract]] ·
-[[Security and Privacy]] · [[Deduplication Service]]
+[[Vector Index]] · [[Enrichment Pipeline]] · [[Media Extraction]] · [[Thumbnail Proxy]] ·
+[[Deduplication Service]] · [[UI - Image Search]] · [[API Contract]] · [[Security and Privacy]] ·
+[[ADR-0016 - Two OCR Engines with an Optional Unlimited-OCR Sidecar]] ·
+[[Milestone 3 - Multimodal Input]]

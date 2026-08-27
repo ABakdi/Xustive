@@ -1,14 +1,14 @@
 ---
 tags: [adr]
 adr-id: "0020"
-status: accepted
+status: partly implemented
 date: 2026-08-26
 ---
 # ADR-0020 - Approximate Location from a Local Database
 
 ## Status
 
-Accepted. Constrains [[Instant Answers]], [[API Gateway]], [[Security and Privacy]] and
+Accepted; **implemented except rule 8 (attribution)**. Constrains [[Instant Answers]], [[API Gateway]], [[Security and Privacy]] and
 [[Tool Data Plane]]. Operates inside [[ADR-0008 - No Query Logging]] and does **not** amend it —
 the point of this ADR is that it does not need to.
 
@@ -109,3 +109,10 @@ The rules, each of which is testable:
 - A deployment topology puts a real proxy in front of the API, which would require an explicit,
   ADR-level decision about trusting a forwarded header — not a quiet configuration change.
 - A licensed database with materially better Algerian coverage becomes available.
+
+## Where it stands (2026-08-27)
+
+- `crates/xustive-api/src/geoip.rs` opens the bundled DB-IP file with `maxminddb::Reader::open_readfile` (loaded on the heap, not mmap — the "never leaves the process" property is the same), maps the coordinate to the nearest of the 58 wilaya seats, and is request-scoped — pinned by a source-reading test. The weather cache is keyed by wilaya; the card names the assumed place. `scripts/fetch-geoip.sh` refreshes the file.
+- **Unmet: rule 8.** No DB-IP CC BY 4.0 attribution anywhere under `web/` (no `db-ip`/`dbip` string in `web/app`, `web/components` or `web/public`). The licence obligation is open until the interface credits the database.
+- No staleness gauge for the `.mmdb` file — an operator cannot see from metrics that the database is months old.
+- The privacy page does not yet say that the connection address is read for this (see ADR-0018 Where it stands).

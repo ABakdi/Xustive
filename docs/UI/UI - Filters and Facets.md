@@ -2,14 +2,19 @@
 tags:
   - ui
 type: ui
-status: specified
-updated: 2026-08-06
+status: implemented
+updated: 2026-08-27
 ---
 
 # UI - Filters and Facets
 
-> Narrowing results by date, source, sentiment, and language.
+> Narrowing results by language, source and tone.
 > Data: [[API Contract]] §2 · Backend: [[Search Index]] faceting · Parent: [[UI Specification]]
+>
+> **Audited against the code 2026-08-27.** The shipped filter is `web/components/search/Filters.tsx`
+> — a row of link chips, server-rendered, no rail, no bottom sheet, no date or sort filter. The
+> 2026-08-06 spec is kept below where it is still the target and marked superseded where the
+> shipped design went a different way on purpose.
 
 ---
 
@@ -19,95 +24,85 @@ updated: 2026-08-06
    the search engine is broken.
 2. **Every filter shows its cost.** Chips carry result counts so the user knows what narrowing will
    do before doing it.
-3. **Zero-result filters are disabled, not offered.** A chip with count 0 is disabled with its count
-   visible — that is information, not a dead end.
+3. **Zero-result filters are disabled, not offered.** *Superseded in practice (2026-08-27): the chip
+   row drops values with a count of 0 rather than showing them disabled. See §7.*
 4. **Filters live in the URL.** Shareable, back-button-correct, no hidden state
    ([[UI Specification]] §7).
 5. **One tap to clear.** "Clear all" is always reachable when any filter is active.
+6. **Links, not script.** (Added with the implementation.) Every chip is an `<a>` to a URL, so
+   narrowing works with JavaScript disabled and every filtered view is a URL you can share. A filter
+   that needs script disappears on exactly the connection where narrowing matters most.
 
 ---
 
 ## 2. Filter Inventory
 
-| Filter | Type | Values | Param |
-|:---|:---|:---|:---|
-| Source | multi-select chips | web, Facebook, Instagram, TikTok | `source` |
-| Sentiment | multi-select chips | positive, neutral, negative | `sentiment` |
-| Date | single-select + custom range | any time, 24 h, week, month, year, custom | `from`, `to` |
-| Language | multi-select | Arabic, Darija, French, English | `lang` |
-| Sort | single-select | relevance, most recent | `sort` |
+What the row renders, from the `GROUPS` table in `Filters.tsx`:
 
-Multi-select semantics are **OR within a filter, AND across filters**: `source=web,facebook` +
-`sentiment=negative` means "(web OR facebook) AND negative". This is what users expect and it needs
-no explanation in the UI.
+| Filter | Facet field | Values (from the response) | Param | Group label |
+|:---|:---|:---|:---|:---|
+| Language | `language` | `ar`, `ary`, `fr`, `en`, `mixed` — labelled via `lang_*` keys | `lang` | `language` |
+| Source | `source_type` | whatever the index holds (e.g. `web`) — labelled via a same-named key, else the raw value | `source` | `source` |
+| Tone | `sentiment.label` | `positive`, `neutral`, `negative` | `sentiment` | `tone` |
+
+**Single-select within a group.** Each param holds one value; clicking a different value replaces
+it, clicking the active value clears it. The multi-select "OR within a filter" spec (2026-08-06) is
+superseded — the API accepts one value per param today. Across groups it is AND, as before:
+`lang=fr` + `sentiment=negative` means "French AND negative".
+
+**Not built:** the Date filter (`from`/`to`, presets, custom range) and Sort. §5 keeps the date spec
+as the target. Verticals (`v=news|images|videos|files`) are a separate control
+([[UI - Search Verticals]]), not a facet.
 
 ---
 
 ## 3. Layout
 
-### `lg` — sticky rail
+One horizontal chip row, `mb-5 flex flex-wrap gap-x-3 gap-y-2`, rendered above the summary (for a
+topic) and the result list, only when there is at least one result. Each group is
+`<div role="group" aria-label={label}>` with a muted `text-xs` label followed by its chips
+(`LinkButton` → `.chip`); the active chip is `variant="emphasis"` with `aria-current="true"`.
+"Clear all" (`clearFilters`) is a dashed `.chip-clear` link at the end of the row, present only
+when something is active.
 
 ```
-┌─ Filters ───────────┐
-│ Clear all           │   ← only when something is active
-│                     │
-│ SOURCE              │
-│ ☑ Web          900  │
-│ ☑ Facebook     700  │
-│ ☐ Instagram    150  │
-│ ☐ TikTok        84  │
-│                     │
-│ DATE                │
-│ ◉ Any time          │
-│ ○ Past 24 hours     │
-│ ○ Past week         │
-│ ○ Past month        │
-│ ○ Custom…           │
-│                     │
-│ SENTIMENT           │
-│ ☐ ▲ Positive   401  │
-│ ☐ ● Neutral   1100  │
-│ ☑ ▼ Negative   333  │
-│                     │
-│ LANGUAGE            │
-│ ☐ العربية       820 │
-│ ☐ Darija        410 │
-│ ☐ Français      520 │
-│ ☐ English        90 │
-└─────────────────────┘
+language  [العربية 820] [Français 520] [English 90]   source [web 1.2k]   tone [▲ 401] [● 1100] [▼ 333]   [clear filters]
 ```
 
-Plus a horizontal quick-chip row above the results for the two most-used filters (source, date), so
-the common case never requires looking at the rail.
+**Superseded (2026-08-27):** the sticky `lg` rail with checkboxes and radios, and the `sm`
+chip-row-plus-`<dialog>`-bottom-sheet, were not built. With three small groups and no date filter
+the single row covers every breakpoint, and it is the same markup at every size — nothing to keep
+in sync. The original argument for a live bottom sheet ("an Apply button hides the effect of a
+choice") still applies if a sheet is ever added.
 
-### `sm` — chip row + bottom sheet
-
-A horizontally scrollable chip row shows active filters first, then the quick options, then a
-`[⚙ All filters]` button opening a full-height `<dialog>` bottom sheet.
-
-The sheet applies changes **live** (each toggle re-fetches) with a "Done" button that just closes it.
-An Apply-button model means the user cannot see the effect of a choice while making it, which defeats
-the point of showing counts.
+The results column has a right-hand knowledge rail at `lg` ([[UI - Results Page]]); the filter row
+stays in the results column, not the rail.
 
 ---
 
 ## 4. Behaviour
 
-| Event | Behaviour |
+| Event | Behaviour (today) |
 |:---|:---|
-| Toggle a chip | update the URL (`replaceState`) → fetch → re-render results and counts |
-| Scroll position | preserved on filter change; **not** reset to top |
-| Focus | stays on the toggled chip after re-render |
-| Counts | update from the new response's `facets` |
-| Clear all | removes every filter param, keeps `q`, re-fetches |
-| Zero results after filtering | empty state naming the filters to remove ([[UI - States and Errors]] §3) |
-| Filter change while a search is in flight | abort the previous request; last write wins |
+| Click a chip | full navigation to `/{lang}/search?q=…&{other active params}&{param}={value}` — a new server render |
+| Click the active chip | same, with that param removed |
+| Other active filters | **preserved** on every chip link (a bug in an earlier version silently dropped the language when narrowing by tone) |
+| Page number | dropped — a new filter starts at page 1; `Pagination` in turn carries `lang`/`source`/`sentiment` on every page link |
+| Vertical (`v`) | **not carried** by chip links today — filtering from the Images tab returns to `all` |
+| Scroll position | browser default for a navigation (top); the "preserved" spec is superseded with the link design |
+| Focus | browser default after navigation |
+| Counts | from the new response's `facets` |
+| Clear all | `/{lang}/search?q=…` — removes every filter param, keeps `q` |
+| Zero results after filtering | the plain empty state; the chip row is **not** rendered on an empty page, so the filter that emptied it cannot be undone in place ([[UI - States and Errors]] §3) |
 
-Rapid toggling is debounced 150 ms so tapping three chips fires one request, not three.
+There is no debounce, no `replaceState`, no aborting of in-flight requests: each click is one
+request and one page.
 
 ---
 
 ## 5. Date Filter
+
+**Not built (2026-08-27).** Kept as the target design.
 
 Presets cover almost every real use. "Custom…" opens two date inputs (`<input type="date">` — native
 pickers are better than anything we would build, and they localise themselves).
@@ -129,13 +124,15 @@ including guessed dates in a date filter would make the filter a lie ([[Data Mod
 
 ## 6. Sentiment Filter
 
-Each option is icon + colour + text label, never colour alone ([[UI - Accessibility]] §4).
+Labelled **tone** in the interface (`tone` key: "Ton" / "الانطباع"). Chips are the translated label
+(`positive` / `neutral` / `negative` keys) plus the count — text, never colour alone
+([[UI - Accessibility]] §4). The result cards themselves show a glyph + word per result.
 
-An explanatory line sits under the group, because sentiment is the least self-explanatory filter:
+**Not built:** the explanatory line under the group —
 
 > Sentiment is estimated automatically and is often wrong for sarcasm and dialect.
 
-This is honest rather than defensive. [[Sentiment Engine]] §12 documents the sarcasm limitation
+— is still the right thing to say. [[Sentiment Engine]] §12 documents the sarcasm limitation
 explicitly, and the UI should not pretend otherwise. Low-confidence documents are labelled `neutral`
 by the backend, so a "neutral" filter includes "we're not sure" — worth keeping in mind when
 interpreting the counts.
@@ -144,27 +141,38 @@ interpreting the counts.
 
 ## 7. Facet Counts
 
-- Come from `facets` in the search response ([[API Contract]] §2).
+- Come from `facets` in the search response ([[API Contract]] §2), typed
+  `Record<string, Record<string, number>> | null` — nullable defensively, because an older backend
+  sent `null` when the facet stage was deadline-dropped and that crashed the Server Component
+  (BUG-001).
 - Counts reflect **the query plus all other active filters**, not the unfiltered corpus — so the
   numbers always answer "what happens if I add this filter".
-- Counts are estimates when `pagination.estimated` is true; over 1 000 they render as "1.2k".
-- When facets were dropped under load ([[Error Handling and Resilience]] §6), chips render **without**
-  counts and remain fully usable. No error is shown — a missing count is a degraded detail, not a
-  failure.
+- Values are sorted by count, descending, and formatted with `formatNumber(lang, n)` (locale
+  digits; no "1.2k" abbreviation is applied).
+- **Zero-count values are dropped**, not disabled. A group with fewer than two values is hidden
+  altogether — **unless** one of them is the active filter, in which case that single value *is*
+  the filter and hiding it would strand the reader with no way back.
+- If no group survives, the row is not rendered at all.
+- When facets were dropped under load (`facets_degraded`), the row is absent and a faint note
+  `filtersUnavailable` says filters are resting ([[UI - States and Errors]] §5). The spec's "chips
+  without counts" is superseded: with no facet values there is nothing to draw chips from.
 
 ---
 
 ## 8. Accessibility
 
-- Chips are `role="switch"` with `aria-checked`; their accessible name includes the count
-  ("Facebook, 700 results").
-- Filter groups are `<fieldset>` with a `<legend>`; the rail is `role="region"` with
-  `aria-label="Filters"`.
-- After a filter change, a polite live region announces the new count once ("About 333 results").
-- The bottom sheet is a focus-trapped modal `<dialog>`; `Esc` closes and focus returns to the button
-  that opened it.
-- Every filter is reachable and operable by keyboard in a logical order; the rail follows the results
-  in DOM order on `lg` but is reachable via a skip link.
+- Chips are links (`<a class="chip">`), not `role="switch"`: a link that navigates is what they
+  are, and a switch that reloads the page would lie. The active chip carries `aria-current="true"`
+  and the `.chip[aria-current]` style (accent wash + border + weight 550) — state by attribute
+  *and* fill, never colour alone.
+- The count is inside the link text (`label` + `<span class="numeric">count</span>`), so the
+  accessible name reads "Français 520".
+- Each group is `role="group"` with `aria-label` = the group label; the row itself has no landmark.
+  The spec's `<fieldset>`/`<legend>` and `role="region" aria-label="Filters"` were the rail design
+  and went with it.
+- No live-region announcement after a filter change — the page reloads and the result count line
+  is the first thing in the main column.
+- Everything is reachable and operable by keyboard in visual order: label, chips, clear.
 
 ---
 
@@ -175,10 +183,14 @@ interpreting the counts.
 - [ ] Is a "wilaya" geo filter worth building, given `geo.wilaya` is populated by a gazetteer with
       unknown coverage? ([[Enrichment Pipeline]] §4.1)
 - [ ] Should filters persist across searches within a session, or reset with each new query?
-      (Leaning: reset — persistent filters silently distort later searches.)
+      (Built: reset — the search box submits `q` only.)
 - [ ] Do we expose a "verified sources only" filter based on `trust_tier`?
+- [ ] Carry `v` on chip links so a filter applied inside the Images tab stays in it.
+- [ ] Render the chip row on an empty page so a filter can be removed in place.
+- [ ] The date filter — the one from the inventory most often asked for and still absent.
 
 ## Related
 
-[[UI - Results Page]] · [[UI - Component Library]] · [[API Contract]] · [[Search Index]] ·
-[[Sentiment Engine]] · [[Data Model]] · [[UI - Accessibility]]
+[[UI - Results Page]] · [[UI - Component Library]] · [[UI - Search Verticals]] · [[API Contract]] ·
+[[Search Index]] · [[Sentiment Engine]] · [[Data Model]] · [[UI - Accessibility]] ·
+[[UI - States and Errors]]

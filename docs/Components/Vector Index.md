@@ -4,171 +4,173 @@ tags:
   - serving
   - storage
 component-id: C07
-binary: qdrant
-status: in-progress
-updated: 2026-08-21
+binary: qdrant (crates/xustive-vector)
+status: built (off by default)
+updated: 2026-08-27
 ---
 
 # Vector Index
 
-> **ID** C07 · **Service** `qdrant` · **Upstream** [[Indexer Worker]], [[Image Pipeline]] · **Downstream** [[Image Pipeline]], [[Query Pipeline]]
-
-> **Implemented (2026-08-21):** the `xustive-vector` crate is a lean Qdrant REST client matching §4:
-> collection with int8 quantisation and payload indexes, cosine ANN search with `ef` tuning and
-> NSFW filtering, and `delete_by_document` for takedowns/orphans. The write path is the crawler's
-> `media_embed`; the read path is `POST /api/v1/search/image`. Embeddings come from the `clip-embed`
-> sidecar (CLIP ViT-B/32, CPU-capable). Verified live against dev Qdrant with synthetic vectors.
-> Off by default (`[vector] enabled`) until a CLIP model is provisioned. Orphan reconciliation (§7)
-> ships as `xustive-cli reconcile-vectors` — it walks the collection and deletes vectors whose
-> document is gone from the lexical index. The phash reuse map (§5) ships as the ingest
-> `embed_cache` — a re-posted image reuses its CLIP vector instead of re-embedding. Not yet wired:
-> the recall/latency measurement (§4 — those numbers stay a hypothesis until measured on our corpus).
+> **ID** C07 · **Service** `qdrant` · **Client** `crates/xustive-vector` · **Upstream** the crawler's
+> `media_embed` / `text_embed` passes ([[Enrichment Pipeline]]) · **Downstream**
+> `POST /api/v1/search/image` ([[Image Pipeline]]), semantic candidates in
+> [[Query Pipeline]] (`text_search.rs`)
 
 ## 1. Purpose
 
-Approximate nearest-neighbour search over CLIP image embeddings, powering reverse image search
-("find posts containing this image"). Kept separate from [[Search Index]] because vector search and
-lexical search have different memory profiles, different failure characteristics, and — critically —
-vector search being down must not affect text search.
+Approximate nearest-neighbour search, kept apart from [[Search Index]] because vector and lexical
+search have different memory profiles, different failure characteristics and — critically —
+vector search being down must never affect text search. Two collections now share the client:
 
-## 2. Responsibilities
+- `image_clip` — 512-d CLIP image embeddings, for "find posts containing this image".
+- `text_bge` — 1 024-d bge-m3 sentence embeddings, one per document, for the durable fix to "the
+  index has the page but the words don't match" (M7-T02).
 
-**In scope**: storing 512-d image embeddings with filterable payload; cosine ANN search;
-payload-filtered search (date range, source type, NSFW); snapshots.
+Both are **off by default** (`[vector] enabled`, `[vector] text_enabled`) until their sidecar and
+model are provisioned.
 
-**Out of scope**: generating embeddings (→ [[Image Pipeline]]); OCR; text embeddings (v2).
+## 2. Where it lives today
+
+| Piece | Path |
+|:---|:---|
+| REST client, collection setup, search, delete, scroll | `crates/xustive-vector/src/lib.rs` |
+| CLIP sidecar client (`Embedder`, `SidecarEmbedder`, `l2_normalise`) | `crates/xustive-vector/src/embed.rs` |
+| Text sidecar client (`TextEmbedder`, batch contract, breaker) | `crates/xustive-vector/src/text.rs` |
+| Write paths | `xustive-ingest/src/media_embed.rs`, `text_embed.rs`, `embed_cache.rs` |
+| Read paths | `xustive-api/src/image_search.rs`, `text_search.rs` |
+| Sidecars | `services/clip-embed` (CLIP ViT-B/32), `services/text-embed` (bge-m3) |
+| Orphan cleanup | `xustive-cli reconcile-vectors [--dry-run]` |
 
 ## 3. Interface
 
-| Op | API | Caller |
-|:---|:---|:---|
-| Upsert points | `PUT /collections/image_clip/points` | [[Indexer Worker]] |
-| Search | `POST /collections/image_clip/points/search` | [[Image Pipeline]] |
-| Delete by filter | `POST /collections/image_clip/points/delete` | takedown flow |
-| Snapshot | `POST /collections/image_clip/snapshots` | backup job |
-
-Search request:
-
-```jsonc
-{ "vector": [0.013, -0.221, …],        // 512 floats, L2-normalised
-  "limit": 40, "with_payload": true, "score_threshold": 0.75,
-  "filter": { "must": [ { "key": "is_nsfw", "match": { "value": false } } ],
-              "should": [], 
-              "must_not": [] } }
+```rust
+Store::new(url, api_key, collection, timeout)             // 512-d
+Store::with_dim(url, api_key, collection, dim, timeout)   // the text collection
+store.ensure_collection()        // PUT /collections/{c} + payload indexes; idempotent
+store.upsert(&[Point])           // PUT /collections/{c}/points?wait=true
+store.search(&vec, limit, ef, threshold, &SearchFilter)  // POST …/points/search, params.hnsw_ef
+store.delete_by_document(id)     // POST …/points/delete, filter document_id
+store.all_document_ids(batch) / count()                  // scroll, for reconciliation
+pub fn point_id(url_or_id: &str) -> u64                   // stable id: re-crawl overwrites
 ```
 
-## 4. Internal Design (configuration)
+`Point { id, vector, payload: Payload { document_id, media_url, source_type, published_at,
+is_nsfw, phash } }`. A text point uses the same payload with the image fields left empty.
 
-### Collection `image_clip`
+Why a hand-written REST client: `qdrant-client` pulls gRPC/`tonic` and a large tree; the
+operations here are a handful of JSON POSTs and the rest of the system already speaks `reqwest`.
+Every method returns a `Result`; the caller treats an error as "no similar images" / "no dense
+candidates", never as a failed request.
+
+## 4. Internal Design
+
+### 4.1 Collection settings (`ensure_collection`)
 
 ```jsonc
-{
-  "vectors": { "size": 512, "distance": "Cosine", "on_disk": true },
+{ "vectors": { "size": dim, "distance": "Cosine", "on_disk": true },
   "hnsw_config": { "m": 16, "ef_construct": 128, "full_scan_threshold": 10000, "on_disk": true },
   "optimizers_config": { "default_segment_number": 4, "indexing_threshold": 20000 },
-  "quantization_config": { "scalar": { "type": "int8", "quantile": 0.99, "always_ram": true } },
-  "payload_schema": {
-    "document_id": "keyword", "media_url": "keyword", "source_type": "keyword",
-    "published_at": "integer", "is_nsfw": "bool", "phash": "keyword"
-  }
-}
+  "quantization_config": { "scalar": { "type": "int8", "quantile": 0.99, "always_ram": true } } }
 ```
 
-Design choices:
-- **int8 scalar quantisation with `always_ram`** — 512 × int8 = 512 B/vector, so 5M vectors ≈ 2.5 GB
-  resident. Full float32 vectors stay `on_disk` and are used only for rescoring the top candidates.
-  Without quantisation, 5M × 512 × 4 B = 10 GB resident, which does not fit the budget in
-  [[Deployment Topology]].
-- **Cosine on L2-normalised vectors** — normalisation happens in [[Image Pipeline]] once, at write
-  time, so query-time cosine is a dot product.
-- **Payload indexes** on `source_type`, `published_at`, `is_nsfw` — unindexed payload filters force a
-  full scan and blow the latency budget.
-- `ef` at search time is tuned per request: 64 default, 128 when `limit > 40`.
+Payload indexes on `source_type` (keyword), `published_at` (integer), `is_nsfw` (bool),
+`document_id` (keyword), `phash` (keyword), created on every start (idempotent) so an older
+collection gains them. int8 with `always_ram` keeps 5M image vectors ≈ 2.5 GB resident; float32
+stays on disk for rescoring. The API calls `ensure_collection` at startup; the crawler only writes.
 
-### Recall vs latency
+### 4.2 Normalisation
 
-| `ef` | recall@10 (measured target) | p95 latency |
+`SidecarEmbedder` L2-normalises on the way out, so both write and query paths store unit vectors
+and cosine reduces to a dot product. Whether the sidecar already normalised is irrelevant —
+normalising a unit vector is a no-op. The text sidecar returns normalised vectors by contract.
+
+### 4.3 Search
+
+`search(vector, limit, ef, threshold, filter)` with `params.hnsw_ef` set per request from config
+(`ef_search = 64`), `score_threshold` from `score_threshold_milli` (750 = cosine 0.75), and
+`SearchFilter::safe()` (`is_nsfw = false`). Image hits are collapsed by `document_id` in the API,
+keeping each document's best score, then resolved from the lexical index with one `id IN [...]`
+query; the response also reports `matched_images` so the UI can say "12 similar images across 5
+pages" honestly. Text hits feed reciprocal-rank fusion with the lexical candidates
+([[Query Pipeline]]), `text_search_limit = 50`.
+
+The `ef` bump to 128 for `limit > 40` from the original design is not implemented; `ef` is one
+config value. The recall/latency table below is **unmeasured** on our corpus (2026-08-27).
+
+### 4.4 pHash reuse cache
+
+`embed_cache.rs`: `frontier:vecphash:{phash}` → little-endian f32 bytes, TTL
+`embed_cache_ttl_days` (30). The same image reposted at another URL costs a Redis read, not a
+model call; the reused vector is still upserted as its own point. Absence of the cache (Redis
+down, TTL 0) means every image is embedded — nothing breaks.
+
+### 4.5 Sidecars
+
+`services/clip-embed` (`CLIP_MODEL=openai/clip-vit-base-patch32`, `CLIP_MAX_BYTES` 8 MiB;
+`POST /embed` raw image bytes → `{vector}`; `GET /health`) — ~150M parameters, comfortably CPU-only,
+so image similarity is not GPU-gated. `services/text-embed` (`TEXT_EMBED_MODEL=BAAI/bge-m3`,
+`TEXT_EMBED_MAX_TEXTS` 128, `TEXT_EMBED_MAX_CHARS` 8192; `POST /embed {texts:[…]}` → vectors) —
+truncates rather than rejects, because the head of a page carries its topic. Both run on the
+internal `core` network; calling them is not internet egress. `text_dim` must match the sidecar's
+model (bge-m3 = 1024; multilingual-e5-small = 384) — change both together.
+
+## 5. Configuration (`[vector]`)
+
+| Key | Dev default | Meaning |
 |:---|:---|:---|
-| 32 | ~0.90 | ~12 ms |
-| 64 | ~0.95 | ~20 ms |
-| 128 | ~0.98 | ~40 ms |
-
-Default `ef = 64`. These numbers must be **measured** on our own corpus during
-[[Milestone 3 - Multimodal Input]], not assumed.
-
-## 5. Configuration
-
-| Key | Default | Notes |
-|:---|:---|:---|
+| `enabled` | `false` | image similarity (write + read) |
+| `qdrant_url`, `qdrant_key` | `http://127.0.0.1:6333`, `""` | sent as `api-key` when set |
 | `collection` | `image_clip` | |
-| `dim` | 512 | CLIP ViT-B/32 |
-| `search_limit` | 40 | before dedup by `document_id` |
-| `score_threshold` | 0.75 | below → "no similar images found" |
-| `ef_search` | 64 | |
-| `upsert_batch` | 256 | |
-| `phash_prefilter` | `true` | exact-duplicate shortcut before ANN |
+| `embedder_endpoint` | `http://127.0.0.1:8092/embed` | CLIP sidecar |
+| `timeout_ms` | 10 000 | per HTTP call, both sidecars and Qdrant |
+| `search_limit`, `ef_search`, `score_threshold_milli` | 40, 64, 750 | |
+| `embed_cache_ttl_days` | 30 | 0 disables the pHash cache |
+| `text_enabled` | `false` | semantic text search (write + read) |
+| `text_embedder_endpoint` | `http://127.0.0.1:8094/embed` | |
+| `text_collection`, `text_dim` | `text_bge`, 1024 | |
+| `text_search_limit` | 50 | dense candidates per query before fusion |
 
 ## 6. Data
 
-`MediaEmbedding` shape in [[Data Model]] §4. One point per media item, not per document — a post with
-4 images produces 4 points sharing a `document_id`. Results are collapsed by `document_id` in
-[[Image Pipeline]] before display.
-
-Sizing at 5M images: ~2.5 GB quantised RAM + ~11 GB on disk (float32 + payload + HNSW graph).
+Image: one point per media item keyed by `point_id(media_url)` — a post with four images is four
+points sharing a `document_id`. Text: one point per document keyed by `point_id(document.id)`; the
+federated eager-index id is reused so a full crawl overwrites the placeholder's vector.
 
 ## 7. Failure Modes
 
-| Failure | Detection | Response |
-|:---|:---|:---|
-| Qdrant down | health check | image *similarity* returns 503; OCR path still works; **text search unaffected** |
-| Collection missing | startup check | migration job recreates it; embeddings are re-derivable from stored media |
-| Dimension mismatch on upsert | API 400 | DLQ + alert — means a model version changed without a migration |
-| Recall degraded after bulk upsert | scheduled recall probe | trigger optimiser / raise `ef` |
-| Disk pressure | disk metric | prune points whose parent document was deleted |
-| Orphan points (document deleted) | nightly reconciliation job | delete by `document_id` filter |
-
-The orphan reconciliation job matters for takedowns: deleting a document from [[Search Index]] must
-also delete its vectors, or a removed image remains findable by similarity
-([[Security and Privacy]] §8).
-
-## 8. Performance
-
-| Operation | Budget |
+| Failure | Response |
 |:---|:---|
-| ANN search, 5M points, `ef=64` | ≤ 40 ms p95 |
-| Filtered search (indexed payload) | ≤ 60 ms p95 |
-| Upsert batch of 256 | ≤ 200 ms |
-| Whole `/search/image` request | ≤ 500 ms ([[Performance Budgets]]) |
+| Qdrant or a sidecar down at query time | `/search/image` → 503 `image_search_unavailable`; dense candidates empty, lexical search proceeds |
+| Qdrant or a sidecar down at index time | vector skipped, logged; document indexed for text; re-derivable on the next crawl |
+| Collection missing | created by the API at startup; `reconcile-vectors` reports "nothing to reconcile" on 404 |
+| Orphan points (document removed) | `takedown` deletes by `document_id` inline; `reconcile-vectors` walks the collection and deletes vectors whose document is gone from the lexical index |
+| Dimension mismatch | Qdrant 400 on upsert, logged and skipped — means `text_dim` and the sidecar model disagree |
 
-## 9. Observability
+## 8. Security
 
-Qdrant `/metrics` scraped: points count, segment count, search latency, RPS. Ours:
-`xustive_vector_search_duration_seconds`, `xustive_vector_zero_results_total`,
-`xustive_vector_orphans_deleted_total`.
+Internal network only. Query vectors from uploads are transient and never stored; the upload
+arrives as a raw POST body so it never reaches a URL or access log ([[Security and Privacy]]).
+NSFW filtering is on for every image search — though nothing currently *sets* `is_nsfw` at index
+time, so the filter is a placeholder until a classifier exists ([[Image Pipeline]]).
 
-## 10. Security
+## 9. Testing
 
-Internal network only, never a published port ([[Security and Privacy]] T5). API key required.
-Query vectors are derived from uploaded images and are never persisted — an uploaded image produces
-a transient vector that exists only for the duration of the request ([[Security and Privacy]] P4).
+`crates/xustive-vector/tests/qdrant_roundtrip.rs` (collection, upsert, search, delete against a
+live Qdrant; skipped without one), unit tests for `l2_normalise`, `point_id`, hit parsing;
+`xustive-ingest/tests/embed_cache_redis.rs`. Verified live on dev Qdrant with synthetic vectors on
+2026-08-21. Recall probes and the fixture-image round-trip remain to be built.
 
-## 11. Testing
+## 10. Open Questions
 
-- Integration: index 10k fixture images; assert a re-uploaded image returns itself as rank 1 with
-  score > 0.95.
-- Near-duplicate: crop/resize/recompress an image; assert it still ranks in the top 3.
-- Negative: an unrelated image must return nothing above `score_threshold`.
-- Reconciliation: delete a document, run the job, assert the vectors are gone.
-- Recall probe: a fixed 500-query probe set run nightly; alert if recall@10 drops > 3 %.
-
-## 12. Open Questions
-
-- [ ] Add a `text_clip` collection for cross-modal search ("find images of couscous" by text)?
-      CLIP supports it and the model is already loaded.
-- [ ] Is `score_threshold = 0.75` right for CLIP cosine on our corpus? Needs measurement.
-- [ ] Should video thumbnails from TikTok get one embedding per keyframe, or one per video?
+- [ ] Measure recall@10 vs `ef` on our own images; the 0.90/0.95/0.98 table is a hypothesis.
+- [ ] Is 0.75 the right CLIP threshold here? Needs data.
+- [ ] Text→image search using CLIP's text tower — the model is loaded, the endpoint is not.
+- [ ] Cross-language dedup on the text collection ([[Deduplication Service]] §9).
+- [ ] One embedding per video cover, or per keyframe? Video is metadata-only today
+      ([[Media Extraction]]).
 
 ## Related
 
-[[Image Pipeline]] · [[Indexer Worker]] · [[Data Model]] · [[Search Index]] ·
-[[Deployment Topology]] · [[UI - Image Search]]
+[[Image Pipeline]] · [[Enrichment Pipeline]] · [[Query Pipeline]] · [[Search Index]] ·
+[[Deduplication Service]] · [[Data Model]] · [[Deployment Topology]] · [[UI - Image Search]] ·
+[[Milestone 3 - Multimodal Input]] · [[Milestone 7 - Federated Retrieval and External Tools]]

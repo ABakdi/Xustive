@@ -2,7 +2,7 @@
 tags:
   - adr
 adr-id: "0011"
-status: accepted
+status: partly implemented
 date: 2026-08-13
 ---
 
@@ -10,7 +10,7 @@ date: 2026-08-13
 
 ## Status
 
-**Accepted.**
+**Accepted; implemented with two divergences** (interval growth and frontier priority).
 
 Constrains [[Crawler Orchestrator]], [[Web Fetcher]], [[Deduplication Service]],
 [[Content Parser]], [[Search Index]].
@@ -123,3 +123,10 @@ clever at all. Recorded here so it is not reintroduced as an optimisation.
 - [[ADR-0012 - Discovery-Only Aggregation]] — the other half of the corpus problem
 - [[Milestone 2 - Ingestion at Scale]] — M2-T15
 - [[Crawler Orchestrator]] · [[Web Fetcher]] · [[Deduplication Service]]
+
+## Where it stands (2026-08-27)
+
+- Change detection: `content_hash` is BLAKE3 over the extracted, normalised body (`crates/xustive-ingest/src/revisit.rs`), so boilerplate churn does not count as change. Decided.
+- **Diverged: interval growth is additive, not ×1.5.** `revisit.rs` halves on change and adds one floor-step when unchanged (AIMD); the module note explains that multiplicative growth oscillated. Floors and ceilings are per trust tier.
+- Volatile pages are detected (`is_volatile`, consecutive changes at the floor) and demoted. Conditional requests with `304` handling are the primitive (`revisit.rs`, `fetch.rs`). Sitemap `lastmod` is applied to the schedule (`crates/xustive-ingest/src/sitemap_poll.rs`).
+- **Diverged: frontier priority.** `crates/xustive-ingest/src/frontier.rs::priority_for` is `depth × 1000 − trust × 5 − article credit`, with `priority_for_revisit` adding interval/overdue — depth is no longer pinned, but the formula is not `trust × change_probability × age`.

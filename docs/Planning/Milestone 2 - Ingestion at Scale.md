@@ -3,8 +3,9 @@ tags:
   - planning
   - milestone
 milestone: 2
-status: in-progress
-updated: 2026-08-21
+status: done (web-ingestion track; social track deferred to a future milestone)
+updated: 2026-08-27
+closed: 2026-08-21
 ---
 
 # Milestone 2 - Ingestion at Scale
@@ -69,6 +70,20 @@ web-ingestion track carries born-digital documents as well as pages, behind a Fi
 exit-gate items are runtime (crawl to 1M) or externally blocked (social connectors, legal). It is
 reasonable to proceed to the next milestone and carry the social track ([[Session Manager]],
 [[Fingerprint Engine]], [[Signature Service]], the connectors, headless) as its own future milestone.
+
+> **Audit 2026-08-27.** The header now says what the verdict above said: closed 2026-08-21 for the
+> web track, social deferred. Corrections made in the checklist below: **M2-T03.2 and M2-T03.4
+> were ticked in `48b28f6` and un-ticked by a stale edit in `25b54fd`** (the same clobber
+> `e362a3d` repaired for T15) — restored. Items that later milestones and the problems register
+> finished are marked *Settled* with the commit: the frontier's per-host budget and global
+> ceiling (PROB-001), backpressure against indexer lag, the admin console rebuilt in Next.js with
+> pause/resume, registry lifecycle editor and per-item dead letters (PROB-003), the Images and
+> Videos verticals (M9). The **1M-document gate is not met** — the index was ~85k documents at the
+> M7 close and grows at the pace politeness and host diversity allow (PROB-002). Still open in the
+> web track: leader election (T03.1), the 50-worker politeness assertion (T04.9), incomplete
+> certificate chains (T04.10), per-step watchdogs and the partial-document repass (T06.8/.9), the
+> SERP channel's proxy/pacing/canary half (T16.10/.12/.14), Argon2id admin keys and an audit log
+> (T12.1/.5), and the curation owners (T11.7, B5).
 
 ---
 
@@ -196,20 +211,38 @@ No longer a blocker on the connectors ([[Legal and Compliance]]), but still real
       round trips, two workers routinely pick the same host between the read and the write and
       both fetch it. Asserted with 16 concurrent workers, zero duplicate claims. **Leader election
       still open**, though atomic claiming makes it an optimisation rather than a correctness need
-- [ ] M2-T03.2 Scheduling loop with per-host due-times
-- [~] M2-T03.3 Priority computation — depth dominates; trust and article-shape only break ties, or
-      one trusted source swallows the crawl. **Reopened**: `orchestrator.rs` pins `depth = 1`, so
-      every URL scores identically and `max_depth` never fires. Superseded by M2-T15.7
-- [ ] M2-T03.4 Adaptive revisit intervals (changed / unchanged / 304) → **specified in M2-T15**
-- [ ] M2-T03.5 Sitemap and feed discovery with caps — also the highest-yield freshness signal, see
-      M2-T15.6
-- [ ] M2-T03.6 Outlink filtering and `SafeUrl` validation
+- [x] M2-T03.2 Scheduling loop with per-host due-times, **plus per-URL due times**. Deferred URLs
+      wait in their own sorted set keyed by due time rather than carrying one on the queue entry:
+      the host queue is scored by priority, and priority is an ordering, not a time, so overloading
+      it would sort a page due next month ahead of one due now whenever its trust was higher.
+      Promotion is bounded per sweep — a corpus seeded in one run comes due in one run.
+      *(Ticked in `48b28f6`, clobbered by `25b54fd`, restored by the 2026-08-27 audit.)*
+- [x] M2-T03.3 Priority computation — depth dominates; trust and article-shape only break ties, or
+      one trusted source swallows the crawl. **Reopened** once: `orchestrator.rs` pinned `depth = 1`, so
+      every URL scored identically and `max_depth` never fired. Depth tracking through the frontier
+      landed in `bb3caac`; the change-rate and lateness terms are M2-T15.7
+- [x] M2-T03.4 Adaptive revisit intervals (changed / unchanged / 304) — specified in M2-T15 and
+      wired: every indexed page records its observation and books its next visit (`9c0fcb5`).
+      *(Same clobber as T03.2; restored 2026-08-27.)*
+- [~] M2-T03.5 Sitemap and feed discovery with caps — also the highest-yield freshness signal, see
+      M2-T15.6. *Settled 2026-08-16:* sitemap discovery and `lastmod` polling are done (T15.6,
+      6-hour task in the daemon); **RSS/Atom feed discovery is not built** (`sitemap.rs` only)
+- [x] M2-T03.6 Outlink filtering and `SafeUrl` validation — *audit 2026-08-27: every frontier
+      `add` passes `SafeUrl` (`frontier.rs`, `fetch.rs`), and PROB-001 added best-K outlinks per
+      page on top; the M7 crawl-feed reuses the same guards*
 - [x] M2-T03.7 Crawler-trap detectors (depth, params, repeating segments) — plus session ids, and
       repeats counted rather than checked adjacently: `/a/b/a/b` never repeats adjacently, which is
       what a naive check looks for. Tested in both directions, since a detector that refuses real
       pages yields a thin index with nothing to explain it
-- [ ] M2-T03.8 Budget enforcement per source and per host
-- [ ] M2-T03.9 Backpressure response to queue depth
+- [x] M2-T03.8 Budget enforcement per source and per host — *Settled 2026-08-25 (PROB-001,
+      `20475fd`):* a lifetime page budget per host (`FrontierOutcome::HostBudget`), a global
+      frontier ceiling that evicts the worst rather than refusing the newest, and the split
+      discovery/revisit budget of T15.8. Per-*source* budgets ride on the seed attribution the
+      frontier records
+- [x] M2-T03.9 Backpressure response to queue depth — *Settled 2026-08-15:* implemented in
+      `8819efe`, actually applied in `7e8ffe0`, and measured against the **indexer's** consumer-group
+      lag rather than the crawler's own (`e156273`); the guard probe was reduced to one per two
+      seconds in PROB-002
 - [ ] M2-T03.10 Leader failover test: kill the leader, assert no double dispatch
 
 ## M2-T14 — [[UI - Search Verticals]]
@@ -233,7 +266,10 @@ their content does** — five of the seven have nothing behind them today, and a
 - [x] M2-T14.4 An empty vertical names *which* vertical is empty and links back to All — the News
       tab with no dated results shows "No news for this search → See all results"
 - [ ] M2-T14.5 Social tab, arriving with the connectors
-- [ ] M2-T14.6 Images / Videos / Short videos, arriving with [[Milestone 3 - Multimodal Input]]
+- [~] M2-T14.6 Images / Videos / Short videos, arriving with [[Milestone 3 - Multimodal Input]] —
+      *Settled 2026-08-26:* Images and Videos arrived with [[Milestone 9 - Images and Videos]]
+      instead (M9-T03), behind the signed thumbnail proxy. Short videos wait on the social
+      connectors with the Social tab
 
 ## M2-T13 — [[Crawler Console]] and [[UI - Admin Console]]
 
@@ -246,50 +282,80 @@ Server-rendered in the Rust API, not Next.js: this is the tool for diagnosing a 
 a diagnostic that shares a failure domain with the thing it diagnoses is not a diagnostic. It is
 also the fastest option — no bundle to download, parse and hydrate.
 
+> *Settled the other way on 2026-08-19 (`1d097db`, `f561482`):* the console lives in the Next.js
+> app under `web/app/(operator)/admin/` and consumes the JSON API at `/api/v1/admin`. One renderer
+> won over the failure-domain argument. The checklist below was reconciled by the 2026-08-27 audit
+> against the pages that exist: overview, live, documents, sources, discovery, weak-coverage,
+> queue, maintenance, interaction, integrations, evaluation, config, compute, media, crawler.
+
 ### Shell and navigation
 
-- [ ] M2-T13.0 Sidebar shell with sections as real URLs, and a status bar carrying crawler state
+- [x] M2-T13.0 Sidebar shell with sections as real URLs, and a status bar carrying crawler state
       and throughput on **every** page — "is it still running" is asked while looking at something
-      else
+      else. *Settled:* `admin/layout.tsx` sidebar with every subsystem linked (`5915dd6`); the
+      per-page status bar is the Overview's chips rather than a bar on every page
 - [x] M2-T13.1 Overview: crawler state, documents, queue depth, usage counts. The document count
       comes from **index stats, not a search** — a search reports at most `maxTotalHits` (2000), so
       watching that number makes a healthy crawl look stalled the moment it passes the cap. That is
       exactly how "the crawler is not indexing" was diagnosed wrongly
-- [ ] M2-T13.1b Overview: crawler state, documents today, queue depth, dead letters, tool-data age.
-      Unknown values say so rather than showing zero, which is indistinguishable from healthy
+- [x] M2-T13.1b Overview: crawler state, documents today, queue depth, dead letters, tool-data age.
+      Unknown values say so rather than showing zero, which is indistinguishable from healthy.
+      *Settled 2026-08-25/26 (PROB-003 items 1 and 3):* every field the endpoints send now
+      renders, plus a capacity chip for both Redis instances
 
 ### Crawler
 
-- [ ] M2-T13.2 Start / stop / restart. **Stop drains** — in-flight fetches finish and index, and
-      the frontier survives
-- [ ] M2-T13.3 **Live**: one SSE stream at 1 Hz — counters, a documents-per-minute sparkline,
+- [~] M2-T13.2 Start / stop / restart. **Stop drains** — in-flight fetches finish and index, and
+      the frontier survives. *Partly settled (PROB-003 item 5, `7e8ff3a`-era `7e8e53a`):*
+      **pause/resume** exists (`POST /admin/crawler/pause`) and the frontier survives it; start/
+      stop/restart of the process itself stays with the operator's service manager
+- [x] M2-T13.3 **Live**: one SSE stream at 1 Hz — counters, a documents-per-minute sparkline,
       per-host activity, a rolling feed of the last ~50 URLs with outcome, and skip reasons broken
-      down. The feed is what shows it is collecting articles rather than tag pages; no aggregate can
+      down. The feed is what shows it is collecting articles rather than tag pages; no aggregate can.
+      *Settled:* `admin/live/page.tsx` over `EventSource` at 1 Hz (see the 2026-08-21 status
+      above); media counted apart from pages since `e0e8322`
 - [ ] M2-T13.3b Store a real `word_count` on the document. The Documents list currently shows
       excerpt length, which is capped and so says nothing about article versus nav page — the one
-      thing the column exists for. The Live feed has the true count because it sees the parsed body
-- [ ] M2-T13.4 **Documents**: paged, newest first, searchable over title/URL/body via Meilisearch
-      and filterable by host, source, language and date
+      thing the column exists for. The Live feed has the true count because it sees the parsed body.
+      *Audit 2026-08-27: still not stored — no `word_count` field on `Document`*
+- [x] M2-T13.4 **Documents**: paged, newest first, searchable over title/URL/body via Meilisearch
+      and filterable by host, source, language and date. *Settled:* pagination `d46815e`,
+      search and the provenance composition on `admin/documents/page.tsx`; the filter set is
+      narrower than listed (unverified which of host/source/language/date are exposed)
 - [ ] M2-T13.5 Document detail: extracted text, metadata, outlinks, raw fetch record. Rendered as
       **text, never HTML** — a crawled page is untrusted input and rendering it is stored XSS aimed
-      at the most privileged account
-- [ ] M2-T13.6 **Remove**, per document or selection, confirmed with a count. Removal suppresses the
-      URL so the next pass does not re-add it, or the button feels broken
-- [ ] M2-T13.7 **Queue**: depth per host, oldest entry, in flight. Enqueue a URL, optionally at the
-      front — ordering only, it still passes every check a discovered URL passes
+      at the most privileged account. *Audit 2026-08-27: no detail route under `admin/documents/`*
+- [~] M2-T13.6 **Remove**, per document or selection, confirmed with a count. Removal suppresses the
+      URL so the next pass does not re-add it, or the button feels broken. *Partly settled
+      (`2f56c04`, M4-T09.3):* removal by **domain** through the Maintenance page and
+      `xustive-cli takedown --domain` (preview → typed confirm → execute); per-document removal
+      and a persisted suppression tier the crawler loads are not built
+- [~] M2-T13.7 **Queue**: depth per host, oldest entry, in flight. Enqueue a URL, optionally at the
+      front — ordering only, it still passes every check a discovered URL passes. *Partly
+      settled:* the Index-queue page shows backlog and dead letters with replay and per-item
+      actions (`3389a96`, PROB-003); enqueue exists from the seed-list control (`8d9affd`) and
+      reports `added`/`already_known`; per-host depth and oldest entry are not shown
 - [ ] M2-T13.8 **Discovered**: off-seed hosts, ranked by inbound links. The answer to "what would it
-      find if I let it", and where a new source is promoted from
-- [ ] M2-T13.9 **Sources**: seed list with per-source counts, last crawl, error rate, trust tier
-- [ ] M2-T13.10 Force **refetch** (go back to the site) and **reindex** (re-run extraction on the
+      find if I let it", and where a new source is promoted from. *Not built; the Discovery page
+      is the per-channel yield funnel (T16.8), not this*
+- [x] M2-T13.9 **Sources**: seed list with per-source counts, last crawl, error rate, trust tier.
+      *Settled:* `admin/sources/page.tsx` grouped by category/region with the per-source quality
+      dashboard (T11.5) and the lifecycle editor (`98aeb88`)
+- [~] M2-T13.10 Force **refetch** (go back to the site) and **reindex** (re-run extraction on the
       stored blob). Distinct: a parser fix needs no network, and conflating them spends other
-      people's bandwidth on our bug
+      people's bandwidth on our bug. *Partly settled:* force-crawl control on the Overview
+      (`caee826`); reindex-from-blob exists only as `xustive media-repass` (M9-T04) and only when
+      `crawl.raw_ttl_days > 0`, which it is not in dev
 
 ### Index and system
 
-- [ ] M2-T13.11 Index search as an operator — same ranking, with score and raw document shown
+- [ ] M2-T13.11 Index search as an operator — same ranking, with score and raw document shown.
+      *`xustive-cli search --explain` does this on the command line (M1-T06.6); no console page*
 - [ ] M2-T13.12 Index health: counts by language and source, size, settings drift, last migration
-- [ ] M2-T13.13 System: existing compute and politeness controls moved into the shell, plus a log
-      tail with a level filter and no query text
+- [~] M2-T13.13 System: existing compute and politeness controls moved into the shell, plus a log
+      tail with a level filter and no query text. *Partly settled:* Compute page (`7366678`),
+      politeness bypass and log-level controls (`caee826`), read-only Configuration page
+      (`71f9a36`); **no log tail**
 
 ### Performance and safety
 
@@ -305,7 +371,9 @@ also the fastest option — no bundle to download, parse and hydrate.
       "cannot read state" rather than zeroes
 ## M2-T04 — [[Web Fetcher]]
 
-- [ ] M2-T04.1 `reqwest` client with timeouts, redirect revalidation, streamed body cap
+- [x] M2-T04.1 `reqwest` client with timeouts, redirect revalidation, streamed body cap — *audit
+      2026-08-27: all three are in `fetch.rs` (timeouts cut in `be6f6ad`; redirect-to-private
+      refused, proven by the T04.8 suite; the PDF path documents the 12 MB cap against the HTML one)*
 - [x] M2-T04.2 Conditional requests (`If-None-Match` / `If-Modified-Since`) and 304 short-circuit.
       A 304 is `Ok` with an empty body, not an error — it is the best possible answer. Validators
       are overwritten only when the server sends new ones: a 304 sends none, and clearing them on
@@ -632,13 +700,23 @@ assertion) need a real proxy provider and live egress to build against, not more
 
 ## M2-T12 — [[Admin and Source Submission]] (admin half)
 
-- [ ] M2-T12.1 Admin endpoints with Argon2id-verified scoped keys
-- [ ] M2-T12.2 Registry CRUD and recrawl triggers
-- [ ] M2-T12.3 **Takedown: vectors → comments → document → permanent blocklist**
-- [ ] M2-T12.4 Fail loudly on partial takedown — never report success
-- [ ] M2-T12.5 Immutable audit log
-- [ ] M2-T12.6 `xustive-cli` admin commands
-- [ ] M2-T12.7 End-to-end takedown test including a re-crawl attempt that must not resurrect
+- [ ] M2-T12.1 Admin endpoints with Argon2id-verified scoped keys — *audit 2026-08-27: admin
+      endpoints exist under `/api/v1/admin` behind a single `admin_key`; no Argon2id, no scoping
+      (no `argon` dependency anywhere in the workspace)*
+- [x] M2-T12.2 Registry CRUD and recrawl triggers — *Settled:* registry CLI (`367271b`: list,
+      approve, activate, disable), the console's lifecycle + policy editor (`98aeb88`, PROB-003),
+      and the force-crawl control (`caee826`)
+- [~] M2-T12.3 **Takedown: vectors → comments → document → permanent blocklist** — *Partly
+      settled 2026-08-21 (`cbe9ce4`):* `xustive-cli takedown --domain` removes documents, image
+      vectors and raw bodies (comments are not indexed); the **permanent blocklist tier the
+      crawler loads is not persisted**, so a re-crawl can resurrect a taken-down domain
+- [ ] M2-T12.4 Fail loudly on partial takedown — never report success — *unverified*
+- [ ] M2-T12.5 Immutable audit log — *not built; the Maintenance page's typed-confirm flow is the
+      only trace, and it is a log line*
+- [x] M2-T12.6 `xustive-cli` admin commands — *Settled:* `registry`, `takedown`, `dlq`, `reindex`,
+      `reconcile-vectors`, `media-repass`, `parse-check`
+- [ ] M2-T12.7 End-to-end takedown test including a re-crawl attempt that must not resurrect —
+      *blocked on the persisted blocklist tier (T12.3)*
 
 ---
 

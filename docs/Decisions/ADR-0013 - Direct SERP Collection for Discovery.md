@@ -2,7 +2,7 @@
 tags:
   - adr
 adr-id: "0013"
-status: accepted
+status: partly implemented
 supersedes: "0012"
 date: 2026-08-13
 ---
@@ -11,7 +11,7 @@ date: 2026-08-13
 
 ## Status
 
-**Accepted.** Supersedes [[ADR-0012 - Discovery-Only Aggregation]].
+**Accepted; partly implemented** — the channel exists and is off; it cannot run without residential egress. Supersedes [[ADR-0012 - Discovery-Only Aggregation]].
 
 Constrains [[Crawler Orchestrator]], [[Query Pipeline]], [[Proxy Manager]], [[Session Manager]],
 [[Fingerprint Engine]], [[Data Sources Registry]].
@@ -99,8 +99,7 @@ budgeted accordingly.
 **Good.** Discovery gets a targeted channel that answers questions bulk sources cannot. It costs
 little to add, because the collection layer is already being built for social.
 
-**Costs.** A permanent maintenance tail — the same one [[ADR-0009 - Direct Collection for Social
-Platforms]] names. SERP markup and defences change without notice, and this will break repeatedly.
+**Costs.** A permanent maintenance tail — the same one [[ADR-0009 - Direct Collection for Social Platforms]] names. SERP markup and defences change without notice, and this will break repeatedly.
 Budget it as ongoing work. Residential bandwidth is a real bill. And the channel is now a second
 consumer competing for the identity pool, which M2-T01a.12 already says must halt rather than
 degrade.
@@ -129,3 +128,9 @@ third-party call sits on the serving path. That was never the terms-of-service o
 - [[ADR-0009 - Direct Collection for Social Platforms]] — same shape, same maintenance tail
 - [[ADR-0008 - No Query Logging]] — still binding on what crosses the plane boundary
 - [[ADR-0011 - Adaptive Recrawl over Static Crawling]] · [[Milestone 2 - Ingestion at Scale]] M2-T16
+
+## Where it stands (2026-08-27)
+
+- `crates/xustive-ingest/src/serp/` (client, parser) with `serp_enabled = false`, `serp_engines`, `serp_max_queries_per_run` and `serp_proxy` in `crates/xustive-core/src/config.rs`; no `config/*.toml` turns it on. Weak-coverage terms cross the plane by Redis (`crates/xustive-ingest/src/weak_coverage.rs`), per rules 1 and 9.
+- Running it for real is blocked on the collection layer it reuses: a residential proxy provider, sessions and fingerprints are not provisioned (see the open decisions in [[Decision Log]]). The cheaper discovery inputs of superseded ADR-0012 are what actually feed the frontier today: Common Crawl bootstrap (`crates/xustive-cli/src/commoncrawl.rs`), sitemaps/feeds, and the Brave connector (`brave_enabled`, `crates/xustive-ingest/src/brave.rs`).
+- The `serp-eval` CLI command (`crates/xustive-cli/src/serp_eval.rs`) uses SERPs as a ranking yardstick, not as a discovery channel.

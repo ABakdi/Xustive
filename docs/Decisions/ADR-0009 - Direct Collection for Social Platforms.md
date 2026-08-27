@@ -2,7 +2,7 @@
 tags:
   - adr
 adr-id: "0009"
-status: accepted
+status: partly implemented
 supersedes: "0007"
 date: 2026-08-06
 ---
@@ -11,7 +11,7 @@ date: 2026-08-06
 
 ## Status
 
-**Accepted.** Supersedes [[ADR-0007 - API-First Social Access]].
+**Accepted; partly implemented** — the collection layer exists, the social connectors and the Signature Service do not. Supersedes [[ADR-0007 - API-First Social Access]].
 
 Constrains [[Social Connector - Facebook]], [[Social Connector - Instagram]],
 [[Social Connector - TikTok]], [[Proxy Manager]], [[Session Manager]], [[Fingerprint Engine]],
@@ -136,3 +136,8 @@ in the data did not.
 
 [[ADR-0007 - API-First Social Access]] (superseded) · [[Session Manager]] · [[Fingerprint Engine]] ·
 [[Signature Service]] · [[Proxy Manager]] · [[Legal and Compliance]] · [[Decision Log]]
+
+## Where it stands (2026-08-27)
+
+- Built: [[Session Manager]] (`crates/xustive-ingest/src/session/` — pool, budgets, lifecycle, challenge detection), [[Fingerprint Engine]] (`crates/xustive-ingest/src/fingerprint/`), the rebuilt [[Proxy Manager]] with the graded `on_blocked` ladder, breaker, bandwidth accounting and placement (`crates/xustive-ingest/src/proxy/`), and the SERP consumer of that layer (`crates/xustive-ingest/src/serp/`, [[ADR-0013 - Direct SERP Collection for Discovery]]).
+- Not built: no [[Signature Service]] crate or module (no JS runtime is wired; the open decision on `deno_core`/`rusty_v8`/`boa` is still open), and no Facebook/Instagram/TikTok connector — the only platform strings in `crates/` are the source-type enum in `crates/xustive-core/src/model.rs` and the filter in `crates/xustive-search/src/filter.rs`. The "what does not change" table stands.

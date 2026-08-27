@@ -4,186 +4,244 @@ tags:
   - serving
 component-id: C02
 binary: xustive-api
-status: specified
-updated: 2026-08-06
+status: built
+updated: 2026-08-27
 ---
 
 # Query Pipeline
 
-> **ID** C02 · **Binary** `xustive-api` · **Upstream** [[API Gateway]] · **Downstream** [[Language Detector]], [[Query Expander]], [[Search Index]], [[Summarizer]]
+> **ID** C02 · **Binary** `xustive-api` (`search.rs` handler, `deadline.rs`; ranking in
+> `xustive-search::rank`) · **Upstream** [[API Gateway]] · **Downstream** [[Instant Answers]],
+> [[Language Detector]], [[Query Expander]], [[Search Index]], [[Vector Index]],
+> [[Federation Gateway]], [[Interaction Signals]], [[Summarizer]]
 
 ## 1. Purpose
 
-Orchestrates one search request from a raw string to a ranked, faceted result set. It is the only
+Orchestrate one search request from a raw string to a ranked, faceted result set. It is the only
 component that knows the *order* of search operations, and the only place the composition of
-detection → expansion → retrieval → re-ranking lives.
+tools → detection → retrieval → expansion → fusion → re-ranking → federation lives.
 
 ## 2. Responsibilities
 
-**In scope**: query normalisation; operator parsing (`"…"`, `site:`); calling detection and
-expansion; building the Meilisearch multi-search request; merging document and comment hits;
-applying [[Ranking and Relevance]] stage 2; diversity capping; facet assembly; excerpt/highlight
-selection; preparing the summary candidate set; enforcing the degradation ladder.
+**In scope**: validation; operators (`"…"`, `site:`, `-term`); instant-answer matching;
+normalisation; detection; typed filters and verticals; the deadline ladder; primary retrieval
+with narrowing under load; the stop-word rescue; the conditional expanded leg; dense fusion;
+anonymous CTR lookup; stage-2 ranking; the live-web strip; facets; the summary handoff; related
+searches; interaction capture.
 
-**Out of scope**: HTTP (→ [[API Gateway]]), index settings (→ [[Search Index]]), summary generation
-(→ [[Summarizer]]), lexicon content (→ [[Query Expander]]).
+**Out of scope**: HTTP framing and rate limits (→ [[API Gateway]]); index settings
+(→ [[Search Index]]); summary generation (→ [[Summarizer]]); lexicon content
+(→ [[Query Expander]]).
 
 ## 3. Interface
 
-```rust
-#[async_trait]
-pub trait SearchService: Send + Sync {
-    async fn search(&self, req: SearchRequest) -> Result<SearchResponse, SearchError>;
-}
+`GET /api/v1/search` — one `async fn handler` in `crates/xustive-api/src/search.rs`, no trait.
 
-pub struct SearchRequest {
-    pub q: String, pub page: u32, pub hits_per_page: u32,
-    pub lang: LangHint, pub filters: Filters, pub sort: Sort,
-    pub expand: bool, pub include_comments: bool, pub deadline: Instant,
-}
-pub struct SearchResponse {
-    pub query_info: QueryInfo, pub results: Vec<ResultCard>,
-    pub facets: Facets, pub pagination: Pagination,
-    pub summary_candidates: Vec<DocumentId>, pub took_ms: u32,
-}
+```
+q, page, hits_per_page, lang (filters *and* overrides detection; "auto" = detect),
+source, sentiment, from, to, sort (relevance | recency), v (all | news | files | images | videos),
+ui (interface language: tool labels, summary language, the ui_language ranking signal)
 ```
 
-`deadline` is an absolute `Instant` set by the gateway, not a duration — every downstream call gets
-`deadline - now()` so the total budget cannot be exceeded by a slow first step.
+Response: `query_info { raw, normalized, language, language_confidence, expanded_terms,
+corrected }`, `results: [ResultCard]`, `facets`, `pagination { …, estimated }`, `instant`,
+`summary_token`, `is_question`, `related`, `interaction_token`, `took_ms`, degradation flags.
+`corrected` is always `None` — there is no spell corrector (2026-08-27).
+
+The budget is one absolute `Deadline` created at the top from `api.timeout_search_ms`; passing a
+duration down the chain would let every stage believe it had the whole thing.
 
 ## 4. Internal Design
 
-### 4.1 Normalisation (pure, ~1 ms)
+### 4.1 Before retrieval
 
-1. Unicode NFKC.
-2. Strip tatweel `U+0640`, strip Arabic diacritics (harakat `U+064B`–`U+0652`).
-3. Fold Arabic-Indic digits `٠-٩` and `۰-۹` → ASCII.
-4. Normalise alef variants (`أ إ آ` → `ا`), `ة` → `ه`, `ى` → `ي` in a *secondary* field only —
-   the primary query keeps the original form so exact matches still win.
-5. Collapse whitespace; trim; cap at 512 chars.
-6. Extract operators: quoted phrases, `site:host`, `-term` exclusions.
+1. **Question and instant answers** read the *raw* query: normalisation folds the `?` and the
+   characters an expression like `45*1.19` is made of. `is_question` decides where the summary
+   goes; `xustive_tools::best_in` (pure matchers), then currency, then weather
+   ([[Instant Answers]]) — cache-backed tools only when nothing pure matched, so a search that is
+   not about weather never pays a Redis round trip.
+2. **Operators** come off the raw query too — a `"phrase"` parsed after normalisation is no
+   longer a phrase. Three operators only, no boolean grammar. `site:` becomes the `domain`
+   filter, so the URL a user shares carries what they typed.
+3. **Normalise** the engine query with `xustive_text::normalize` — the same function the
+   detector, scorer and expander use ([[Content Parser]] §4.5 for the index side).
+4. **Detect** (`detect_normalized`); `?lang=` short-circuits with confidence 1.0.
+5. **Filters** are typed (`xustive_search::filter::Filters`): source types, sentiment labels,
+   languages, date range (a reversed range is swapped, and any range excludes guessed dates),
+   `exclude_spam` at `SPAM_THRESHOLD` 0.8. Verticals are saved filters over the one index: `news`
+   = web with a known date, `files` = PDFs, `images`/`videos` = pages carrying that media kind.
 
-The same normalisation function is used by [[Content Parser]] at index time. It lives in a shared
-`xustive-text` crate — **divergence between query-time and index-time normalisation is the single
-most common cause of "why does nothing match"**.
+### 4.2 The deadline ladder (`deadline.rs`)
 
-### 4.2 Orchestration
+Stages are given up in this order as the budget runs out, each dropped whole rather than rushed:
 
-```rust
-let norm   = normalize(&req.q);                                  // 1ms
-let lang   = detector.detect(&norm).timeout(20ms).unwrap_or(Und);  // degradation
-let expand = if req.expand { expander.expand(&norm, lang).timeout(30ms).unwrap_or_default() }
-             else { Expansion::none() };
-let hits   = index.multi_search(build_queries(&norm, &expand, &req)).timeout(800ms)?;
-let cards  = merge_and_rerank(hits, &req);                       // stage 2 ranking
-let facets = hits.facets_or_empty();
+| Stage | What is lost |
+|:---|:---|
+| `Summary` | already a separate request, nearly free to abandon |
+| `Expansion` | the second leg *and* the dense leg — costs Arabizi queries their results |
+| `Facets` | the filter chips |
+| `Rerank` | the engine's own order is returned |
+| `Retrieval` | never dropped — but see narrowing |
+
+Each drop increments `xustive_degraded_total{stage}`.
+
+### 4.3 Retrieval
+
+One `documents` query for a **candidate pool** (`candidate_pool` 200, deepened to reach the
+requested page, capped by `MAX_TOTAL_HITS` 2000): `_rankingScore` on, highlights on `excerpt`
+and `title`, facets `source_type`, `sentiment.label`, `language` if the ladder allows. Paging
+happens *after* re-ranking by skipping into the ranked pool — paging at the engine would freeze
+the engine's order into the result (BUG-002).
+
+**Narrow rather than fail (BUG-041).** On `SearchError::Timeout`, retry once with a page's worth
+of hits, no facets, no highlights. While Meilisearch is also indexing a crawl backlog the
+200-candidate query takes several hundred milliseconds; a bare page answers in ~30 ms even then.
+Worse ranking and no chips — but results, and the reader cannot tell an empty search from an
+outage. Flagged in the response.
+
+**Stop-word rescue (M7-T01.5).** A query made entirely of stop words (`the and`, `من في`) is
+stripped to nothing by the tokeniser. If the pool is empty and `is_all_stop_words` (the *same*
+list the index is configured with, ≤ 6 tokens), re-issue it quoted: Meilisearch keeps stop words
+inside a phrase.
+
+### 4.4 Expanded leg — conditional
+
+Runs when the primary leg found fewer than `EXPANSION_THRESHOLD` (5) hits, or its top
+`_rankingScore` is below `WEAK_TOP_SCORE` 0.6 (relevance order only — under `sort=recency` the
+first hit is merely the newest, and the leg fired on nearly every sorted search, BUG-013).
+Conditional because expansion costs a round trip and, for a query that already retrieved well,
+adds only weaker matches the re-ranker has to push back down.
+
+**One** query carrying up to 12 variant terms, not one per variant: Meilisearch treats extra
+terms as optional, and the re-ranker sorts out which mattered. Same filters, sort and highlights
+as the primary leg (BUG-022). Merge keeps the primary order first — a document found by both
+legs belongs where the primary put it. Failures are swallowed: this leg is an improvement on a
+result, never a precondition for it.
+
+### 4.5 Dense fusion (M7-T02)
+
+If a text-embedding engine is configured ([[Vector Index]]) and the ladder allows `Expansion`:
+embed the query, k-NN Qdrant, fetch the ids the lexical pool lacks (`id IN […]`, one query), and
+**reciprocal-rank-fuse** into the pool. Fail-open. Outcomes are counted three ways
+(`recall` / `reinforce` / `fetch_failed`) because labelling an empty id-fetch "reinforce" hid
+dense-recall outages behind the label that means "everything worked" (BUG-025).
+
+### 4.6 Re-rank (`xustive_search::rank::rerank`)
+
+Signals the engine does not have, applied as tie-breakers among documents that already match:
+
+```
+score = 0.55·relevance + 0.10·freshness + 0.06·trust + 0.09·authority + 0.05·quality
+      + 0.07·interaction + 0.10·ui_language − 0.15·spam
 ```
 
-Detection and expansion failures degrade silently; only retrieval failure fails the request
-([[Error Handling and Resilience]] §6).
+- `relevance = exp(−pos / 10)`: a 0.05 gap between neighbours, 0.48 across twenty positions —
+  small enough locally for freshness to matter, large enough globally that nothing climbs on
+  side signals alone. The additive side weights sum to 0.47, deliberately under that 0.48.
+- `freshness = exp(−age / τ)`, τ from the inferred **intent**: news 3 days, evergreen 90,
+  default 30 (marker words, or ≥ 40 % of candidates under a week old). A guessed date halves it.
+- `trust` from the source registry tier; `authority` from `authority.tsv` keyed on host with
+  the `.dz` home floor ([[Ranking and Relevance]]); `quality`/`spam` from the document.
+- `interaction`: anonymous smoothed CTR above the k-floor ([[Interaction Signals]]), read from
+  the signals store before ranking; absent is a neutral 0, never a penalty.
+- `ui_language`: 1 when the document is in the reader's nav-bar language (Darija and Arabic count
+  as each other), else 0 — a French reader still sees the best Arabic page, just after the
+  French pages that are as good.
 
-### 4.3 Multi-search
+Then near-duplicates collapse by SimHash Hamming ≤ 3 into the best-scoring copy (shown as
+"+N similar"), and domains are capped at 3 with the overflow deferred to the tail, not dropped.
+Weights load from `config/ranking.toml` at startup when present. Every card carries an `Explain`.
 
-One Meilisearch `POST /multi-search` with 2–3 federated queries:
+### 4.7 Federation strip (M7-T05, page 1, runtime switch)
 
-| Query | Index | Purpose |
-|:---|:---|:---|
-| `q_primary` | `documents` | literal user terms, full weight |
-| `q_expanded` | `documents` | expansion variants, scored ×0.7 |
-| `q_comments` | `comments` | only if `include_comments`, `limit 100` |
+The SearXNG fetch is **detached** at the top of the request with its own budget; on results it
+eager-indexes them and feeds the crawler. The response waits only up to the strip budget, less
+`SHAPE_RESERVE_MS`, and mixes in whatever arrived that is not already a local result, flagged
+`from_web`. Whatever missed the wait still becomes a normal result on the next search. Images and
+Videos federate in their own SearXNG category ([[Federation Gateway]], [[Media Extraction]]).
 
-Sending them as one request means one round trip and one Meilisearch scheduling slot.
+### 4.8 After ranking
 
-### 4.4 Merge and re-rank
-
-1. Union document hits by `id`, keeping the best position across primary/expanded legs.
-2. Group comment hits by `document_id`; fetch any parent documents not already in the set (single
-   `filter: id IN […]` call, only if it fits the remaining budget).
-3. Score with the [[Ranking and Relevance]] §3 formula.
-4. Collapse near-duplicates by `simhash` Hamming ≤ 3.
-5. Apply per-domain (3) and per-author (2) caps, then source-type spread.
-6. Truncate to `hits_per_page`; attach up to 2 `matched_comments` per card.
-
-### 4.5 Summary handoff
-
-The top **8** cards' ids become `summary_candidates`. The gateway mints a `summary_token` for them.
-The pipeline itself never blocks on [[Summarizer]].
+- **Summary handoff**: on page 1 with summaries on, the top `MAX_PASSAGES` (8) re-ranked hits
+  become passages registered under the normalised query; the response carries a `summary_token`
+  and the reader's `ui` language for the output ([[Summarizer]]). Never blocks.
+- **Related searches (M7-T03)**: `entities`/`topics` recurring across the top 20 ranked hits,
+  minus the query and its sub/superstrings — no graph, no extra round trip.
+- **Facets** are never `null`: skipped-by-deadline is distinguished from empty.
+- **Interaction capture** ([[Interaction Signals]]): a bounded category by vertical, a result
+  count bucket, and an `interaction_token` — best-effort, gated on the runtime switch.
+- Comments: `matched_comments` is always empty. The comment leg, per-author cap and
+  "did you mean" are **not built** (2026-08-27).
 
 ## 5. Configuration
 
-| Key | Default | Notes |
+| Key (`config/*.toml`) | Dev value | Notes |
 |:---|:---|:---|
-| `candidate_pool` | 200 | hits pulled from Meilisearch before re-rank |
-| `comment_pool` | 100 | |
-| `summary_candidates` | 8 | |
-| `per_domain_cap` | 3 | |
-| `per_author_cap` | 2 | |
-| `simhash_collapse_distance` | 3 | |
-| `expansion_weight` | 0.7 | |
-| `ranking_profile` | `default` | hot-reloadable, `config/ranking.toml` |
-| `timeout_*_ms` | see [[Error Handling and Resilience]] §6 | |
+| `api.timeout_search_ms` | 2500 | the whole deadline |
+| `search.candidate_pool` | 200 | hits pulled before re-rank |
+| `search.default_hits_per_page` / `max_hits_per_page` | 20 / 50 | |
+| `search.timeout_ms` | 1200 | per Meilisearch call; a timeout triggers narrowing |
+| `vector.text_search_limit` | 50 | dense candidates fetched from Qdrant for fusion |
+| `federation.fetch_budget_ms`, strip budget | see [[Federation Gateway]] | |
+| `config/ranking.toml` | optional | `Weights` incl. `per_domain_cap`, `simhash_collapse_distance` |
+
+`MAX_QUERY_CHARS` 512, `EXPANSION_THRESHOLD` 5, `MAX_EXPANDED_TERMS` 12, `WEAK_TOP_SCORE` 0.6
+are constants shared with the eval harness so it scores the same retrieval production runs
+(BUG-003).
 
 ## 6. Data
 
-Stateless per request. Reads `documents` and `comments` ([[Data Model]]). Writes nothing. Holds no
-cache — deliberately, since a query-keyed cache is a query log ([[Security and Privacy]] §9).
+Stateless per request apart from the pending-summary registry (keyed by normalised query, short
+TTL) and the CTR read. No query-keyed result cache — a query-keyed cache is a query log
+([[Security and Privacy]]).
 
 ## 7. Failure Modes
 
-| Failure | Detection | Response |
-|:---|:---|:---|
-| Detection timeout/error | 20 ms timeout | `lang = und`, retrieve across all languages |
-| Expansion timeout/error | 30 ms timeout | raw query only; metric `expansion_skipped_total` |
-| Meilisearch timeout | 800 ms | 504 `upstream_timeout` |
-| Meilisearch 5xx | status | 503 `search_unavailable` |
-| Comment leg slow | per-leg budget | serve document hits only |
-| Facets slow | 150 ms | omit `facets` |
-| Zero results after expansion | count == 0 | return empty + `did_you_mean` if the corrector has a candidate |
-| Deadline already passed at re-rank | `Instant` check | return unranked top-N rather than 504 |
+| Failure | Response |
+|:---|:---|
+| Empty / over-long query | 400 `MissingQuery` / `QueryTooLong` |
+| Unknown `source`, `sentiment`, `sort` | 400 `InvalidParam`; unknown `v` falls back to All |
+| Meilisearch timeout on the pool | narrowed retry; if that also fails, the error propagates |
+| Meilisearch 5xx / down | `ApiError::from(SearchError)` → 503-class response |
+| Expanded, dense, federation, CTR, summary, capture failing | silently skipped |
+| Budget gone before facets / re-rank | chips omitted / engine order, counted as degraded |
 
 ## 8. Performance
 
-| Stage | p95 budget |
-|:---|:---|
-| normalise | 1 ms |
-| detect | 3 ms |
-| expand | 8 ms |
-| multi-search | 50 ms |
-| merge + re-rank (200 candidates) | 15 ms |
-| **total (excl. summary)** | **≤ 200 ms** |
-
-Re-ranking 200 candidates must be allocation-light: score in place, sort by `f32` key, no
-intermediate `Vec<String>` clones.
+`xustive_search_duration_seconds{stage}` for `detect`, `retrieve` (incl. the expanded leg),
+`rerank`, and the total. No p95 is asserted by a test; the load generator ([[Load Generator]])
+is the yardstick.
 
 ## 9. Observability
 
-`xustive_search_duration_seconds{stage}`, `xustive_search_results_total{lang}`,
-`xustive_search_zero_results_total{lang}`, `xustive_expansion_skipped_total`,
-`xustive_rerank_collapsed_total`. Span `search` with `lang`, `expanded_terms_count`,
-`results_count`, `candidates` — **no query text**.
+`xustive_search_duration_seconds{stage}`, `xustive_search_results_total{bucket,lang}`,
+`xustive_search_zero_results_total{lang}`, `xustive_lang_detected_total{lang,script}`,
+`xustive_query_expansion_total{lang}`, `xustive_degraded_total{stage}`,
+`xustive_semantic_fused_total{kind}`, `xustive_instant_answers_total{tool}`, federation
+duration/searches/fed counters. Spans carry counts and labels — **no query text**.
 
 ## 10. Security
 
-Operators (`site:`) are parsed into typed filters, never string-interpolated into a Meilisearch
-filter expression — the filter builder takes enum variants and escapes values. Result strings pass
-through untouched; escaping is the client's job ([[UI - Results Page]], [[Security and Privacy]] T8).
+Operators become typed filters; free-text values (`site:`) are escaped by the builder, never
+string-interpolated. Ids in the dense fetch are quoted. Result strings pass through untouched
+except Meilisearch's `<em>` highlight markers, the only markup the client may render.
 
 ## 11. Testing
 
-- Unit: normalisation golden table (Arabic/Darija/Arabizi/French edge cases); operator parser;
-  re-rank ordering with synthetic scores; diversity caps; simhash collapse.
-- Property: normalisation is idempotent — `normalize(normalize(x)) == normalize(x)`.
-- Integration: against a seeded Meilisearch, assert known query → known top result.
-- Relevance: the nDCG@10 harness ([[Testing Strategy]], [[Ranking and Relevance]] §6).
-- Degradation: fault-inject each dependency and assert the request still succeeds (except retrieval).
+- Unit in `search.rs`: card shaping, `display_url`, federated mixing, media tiles.
+- `xustive-search`: operators, filter expressions, `rerank` (relevance stays dominant, unknown
+  dates, collapse, domain cap), `is_all_stop_words`, `top_result_is_weak`.
+- Offline: `xustive eval` (golden queries, nDCG) and `xustive ab`; `eval-serp` against Google.
 
 ## 12. Open Questions
 
-- [ ] "Did you mean" — needs a spell corrector; Meilisearch typo tolerance may make it redundant.
-- [ ] Should the comment leg be skipped when the primary leg already returns > 50 strong hits?
+- [ ] Comment leg: nothing indexes comments today, so the `comments` index is empty.
+- [ ] Should the expanded leg also fire when the dense leg found nothing new?
+- [ ] "Did you mean" — Meilisearch typo tolerance may make a corrector redundant.
 
 ## Related
 
-[[ADR-0012 - Discovery-Only Aggregation]] ·
-[[Ranking and Relevance]] · [[Search Index]] · [[Query Expander]] · [[Language Detector]] ·
-[[Summarizer]] · [[API Contract]] · [[Error Handling and Resilience]]
+[[ADR-0012 - Discovery-Only Aggregation]] · [[Ranking and Relevance]] · [[Search Index]] ·
+[[Query Expander]] · [[Language Detector]] · [[Instant Answers]] · [[Vector Index]] ·
+[[Federation Gateway]] · [[Interaction Signals]] · [[Summarizer]] · [[API Contract]] ·
+[[Error Handling and Resilience]]

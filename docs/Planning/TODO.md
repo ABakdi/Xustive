@@ -4,271 +4,203 @@ tags:
   - moc
 type: index
 status: living
-updated: 2026-08-06
+updated: 2026-08-27
 ---
 
 # TODO — Master Implementation Plan
 
-> The single place to see where the project is. Each milestone has its own note with tasks broken
-> into subtasks; this note holds the shape, the gates, and the cross-cutting work.
+> The single place to see where the project is. Each milestone has its own note with the actual
+> checkboxes; this note holds the shape, the honest state of each milestone, what is confirmed
+> open, and what comes next.
 > Parent: [[Home]]
 
 ---
 
 ## 1. How to Use This
 
-- **Milestone notes** hold the actual checkboxes. Tick them there; this note tracks completion at the
-  task level.
-- A milestone is **done** when every task is ticked **and** its exit gate passes. A gate is not
-  negotiable-by-vibes — it is a measurement.
-- Tasks are labelled with the component id they touch (`C12`) so commits, notes, and work items line
-  up ([[Component Map]]).
-- Anything blocked lands in §5 with a named owner. A blocker without an owner is a wish.
-
-Task id format: `M<milestone>-T<task>` → `M1-T04`. Subtasks are `M1-T04.3`.
+- **Milestone notes** hold the checkboxes. Tick them there. Each carries `status`, `updated` and
+  (once closed) `closed` in its frontmatter, plus a dated audit block; this note only summarises.
+- A milestone is **done** when every task is ticked or deliberately settled (`[~]` with the decision
+  recorded inline) **and** its exit gate passes or the shortfall is written down. A gate is a
+  measurement, not a feeling.
+- Task ids are `M<milestone>-T<task>.<subtask>` → `M8-T11.3`. Commits carry the id, so
+  `git log --oneline | grep M8-T11` finds the work.
+- Anything blocked lands in §4 with an owner. A blocker without an owner is a wish.
+- Every entry below was re-verified against code and git history on 2026-08-27; anything that
+  could not be confirmed says **unverified**.
 
 ---
 
-## 2. Milestones
+## 2. Where Each Milestone Stands
 
-| # | Milestone | Focus | Exit gate |
+| # | Milestone | Status | Scope, in one line |
 |:--|:---|:---|:---|
-| **M0** | [[Milestone 0 - Foundations]] | repo, infra, index, a search box that works | 10k docs searchable end-to-end |
-| **M1** | [[Milestone 1 - Text Search MVP]] | the full text search product | nDCG@10 ≥ 0.60 on the golden set; p95 ≤ 200 ms |
-| **M1B** | [[Milestone 1B - Frontend and Instant Answers]] | Next.js UI + instant-answer tools | Rust renderer deleted; no-JS path passes; zero false tool activations |
-| **M2** | [[Milestone 2 - Ingestion at Scale]] | real crawling + direct social collection | 1M documents; identity lifespan ≥ 60 d; cloaking detected |
-| **M3** | [[Milestone 3 - Multimodal Input]] | voice and image | WER/OCR targets met; image search ≤ 500 ms |
-| **M4** | [[Milestone 4 - Quality and Operations]] | make it survivable | load test passes at 10M docs; restore drill green |
-| **M5** | [[Milestone 5 - Beta Launch]] | legal, a11y, launch | legal checklist clear; a11y AA; public beta |
-| **M6** | [[Milestone 6 - Adaptive Ranking from Interaction Signals]] | learn from anonymous use | replayed clicks lift clicked docs; every privacy test green; default off |
-| **M7** | [[Milestone 7 - Federated Retrieval and External Tools]] | retrieval quality + live web federation | recall up with federation off; federation fail-open within budget; egress stays one allowlisted hop |
-| **M8** ✅ | [[Milestone 8 - The Answer Layer]] | answer the query, not just link to it | entity panel p95 ≤ 100 ms from local storage with zero serving-plane egress; weather answers an unnamed location without storing an IP; `20 eur to dzd` answers or declines |
-| **M9** ✅ | [[Milestone 9 - Images and Videos]] | the same query, seen: Images and Videos tabs | no-JS image grid with zero reader-address disclosure; videos linked never embedded; empty tabs name themselves |
+| M0 | [[Milestone 0 - Foundations]] | **closed** 2026-08-07 | repo, compose, index, `/search`, a search box |
+| M1 | [[Milestone 1 - Text Search MVP]] | **closed** 2026-08-16 | the text-search product: language, expansion, ranking, summariser, eval harness |
+| M1B | [[Milestone 1B - Frontend and Instant Answers]] | **closed** 2026-08-16 | Next.js UI, Rust renderer deleted, instant-answer tools and `xustive-toold` |
+| M2 | [[Milestone 2 - Ingestion at Scale]] | **closed** 2026-08-21 (web track); social track deferred | crawler, frontier, dedup, enrichment, registry, admin console; the 1M gate not met (~85k docs) |
+| M3 | [[Milestone 3 - Multimodal Input]] | **open** — building done, gates unmeasured | OCR (tesseract + optional sidecar), image similarity (CLIP + Qdrant, model not provisioned), **voice live** with partials and GPU (ADR-0024); WER/CER/recall corpora missing |
+| M4 | [[Milestone 4 - Quality and Operations]] | **open** — tooling built, gate not run | breakers, shutdown, loadgen, backup/restore, reindex drill, alerts + runbooks; no 10M run, no chaos, no pen test, no dashboards in git |
+| M5 | [[Milestone 5 - Beta Launch]] | **not started** | legal, accessibility AA, source submission, static pages (`/privacy`, `/bot` exist), takedown, beta programme |
+| M6 | [[Milestone 6 - Adaptive Ranking from Interaction Signals]] | **closed** 2026-08-25 | anonymous k-anonymous CTR loop, re-crawl pull (T06), eval replay uplift +0.0048 nDCG (T09); **off by default** |
+| M7 | [[Milestone 7 - Federated Retrieval and External Tools]] | **closed** 2026-08-25 | stemming, hybrid dense recall, related searches, SearXNG gateway, crawl-feed convergence, calibration, integrations console, identifier-free history; PROB-001/002/003 solved |
+| M8 | [[Milestone 8 - The Answer Layer]] | **closed** 2026-08-26 | knowledge store + resolver (ADR-0022/0023), entity panel, weather, currency (ADR-0025), fend calculator, demand-driven harvest, list answers (T11) with today's tie-break fix and See-also row |
+| M9 | [[Milestone 9 - Images and Videos]] | **closed** 2026-08-26 | Images/Videos tabs, signed thumbnail proxy (ADR-0021), metadata-only video, media repass, SearXNG media federation (T06) |
 
 ```
-M0 ──► M1 ──► M1B ──► M2 ──► M3 ──► M4 ──► M5 ──► M6 ──► M7 ──► M8 ──► M9
+M0 ──► M1 ──► M1B ──► M2 ──► M6 ──► M7 ──► M8 ──► M9        (closed, in this order)
+                       │
+                       ├──► M3 (open: gates)   M4 (open: gates)   M5 (not started)
+                       └──► M2 social track (deferred: needs proxies, sessions, fingerprints)
 ```
 
-**Ingestion runs before multimodal.** They are technically independent after M1 and were originally
-drawn side by side, but the order is not a free choice:
-
-- Everything downstream is starved without it. Ranking is tuned against a fixture corpus, the
-  summariser reads passages that barely exist, and the evaluation set describes 500 documents
-  rather than a country's web. Each of those has to be redone once real content lands, so doing
-  them first means doing them twice.
-- Multimodal makes that worse rather than better. Voice and image search add ways to *ask*; they
-  add nothing to *answer with*. An image search over a corpus this size returns the same emptiness
-  more expensively.
-- **M2 has a wall-clock critical path** the others do not: identity warm-up takes 10+ days per
-  account and cannot be parallelised away, so account acquisition and warm-up start during M1
-  ([[Session Manager]] §4.4). Time spent on multimodal first is time that path is not running.
-
-M3 is unchanged in content — it is deferred, not reduced.
+The original plan ran M3 → M4 → M5 after M2. What actually happened: the retrieval, answer and
+media milestones (M6–M9) were built first because they compound on the corpus, while M3 and M4
+were built far enough to work and then left with their *measurement* gates open. Nothing in M3 or
+M4 is a redesign away; each is a corpus, a run, or a schedule away.
 
 ---
 
-## 3. Progress
+## 3. Confirmed Open Items
 
-Tick as tasks complete in the milestone notes.
+Verified open on 2026-08-27. Grouped by what unblocks them.
 
-### M0 — Foundations
-- [x] M0-T01 Repository and workspace skeleton
-- [x] M0-T02 Docker Compose infrastructure
-- [x] M0-T03 `xustive-core` types from [[Data Model]]
-- [x] M0-T04 `xustive-text` normalisation + symmetry test
-- [x] M0-T05 Meilisearch index settings and migration job
-- [x] M0-T06 Minimal `xustive-api` with `/search`
-- [x] M0-T07 Sample corpus + `make seed`
-- [x] M0-T08 Minimal UI: search box and result list
-- [ ] M0-T09 CI pipeline skeleton
-- [ ] M0-T10 Fixture site for offline development
+### Bugs and code gaps
+- [ ] **BUG-042** (high) — behind the Next.js rewrite proxy every reader shares **one rate-limit
+  bucket**: `ratelimit.rs` keys on the peer address and ignores `X-Forwarded-For` (correctly), but
+  the peer is always the web tier. Needs a trusted-proxy hop count or a web-tier limiter
+  ([[2026-08-25 - Code Audit Findings]])
+- [ ] **`queue.signals_url` is only set in `config/dev.toml`**; outside dev the accessor falls back
+  to the queue Redis, so interaction signals (ephemeral by design, ADR-0015) would land in the
+  **persistent** queue Redis. Wire it in every non-dev profile before interaction is ever enabled
+- [ ] **No DB-IP CC BY attribution** on the weather card or privacy page, though ADR-0020 relies
+  on the DB-IP Lite database. A licence term, not a nicety
+- [ ] **No geoip staleness gauge** — the location database has no `xustive_data_age_seconds`
+  series, so a stale download is invisible (`scripts/fetch-geoip.sh` has no monitor)
+- [ ] **OCR sidecar writes a tempfile** (`services/ocr-sidecar/app.py`: `NamedTemporaryFile` +
+  `mkdtemp`) — against the zero-disk-write rule of ADR-0008/ADR-0016 that the STT sidecar and
+  the in-process OCR path honour. Opt-in, GPU-only, but still wrong
+- [ ] **`scripts/test-egress.sh` gaps** — the assertion covers the serving plane and the gateway;
+  the web tier's own outbound (wiki-image, thumb proxy, knowledge-live, Wikidata SPARQL from
+  M8-T11.3) is allowlisted by host in ADRs but not all of it is asserted by the script. Exact
+  coverage **unverified**; treat as owed
+- [ ] **No `LICENSE` file at the repo root**
+- [ ] M9-T02.5 — the thumbnail proxy's forged-signature / private-host / mid-chain-redirect tests
+  do not exist (the guards do)
+- [ ] M4-T02.4 — DLQ retention (stats/peek/replay exist)
 
-### M1 — Text Search MVP
-- [ ] M1-T01 `xustive-telemetry` with privacy guards
-- [ ] M1-T02 [[API Gateway]] middleware stack
-- [x] M1-T03 [[Language Detector]] + lexicons
-- [x] M1-T04 [[Query Expander]] + transliteration + lexicons
-- [ ] M1-T05 [[Query Pipeline]] orchestration and re-rank
-- [ ] M1-T06 [[Ranking and Relevance]] implementation and tuning
-- [ ] M1-T07 [[Sentiment Engine]] lexicon mode
-- [x] M1-T08 [[Summarizer]] with validation — grounded summaries from local Qwen2.5, runtime GPU/CPU switching. Streaming dropped deliberately; faithfulness evaluation still blocked on B7
-- [ ] M1-T09 [[Autocomplete Service]]
-- [ ] M1-T10 [[Content Parser]] HTML cascade
-- [ ] M1-T11 [[Indexer Worker]] batching
-- [ ] M1-T12 [[Task Queue]] abstraction
-- [ ] M1-T13 Full UI: [[UI - Results Page]], [[UI - Home Page]], [[UI - Filters and Facets]]
-- [ ] M1-T14 [[UI - RTL and Localization]] and four UI languages
-- [ ] M1-T15 Relevance evaluation harness + golden set v1
+### Corpus and data (the M3 gates)
+- [ ] Audio fixture corpus, 100 recordings × 4 languages, with reference transcripts → runs
+  `score-transcripts --metric wer` (M3-T02.10, T08.1) ← **B7**
+- [ ] Labelled screenshot set → CER (M3-T04.8, T08.2)
+- [ ] CLIP model provisioned into `clip-embed`, then recall/latency and transform robustness
+  (M3-T05.6/.9, T08.3)
+- [ ] Silence auto-stop and the 25 s announce on voice (M3-T03.5); retry keeps the blob (T03.8)
 
-### M1B — Frontend and Instant Answers
+### Runs and schedules (the M4 gate)
+- [ ] The 10M-document scale-up and every load test in M4-T03/T05; the Redis 1 GB `maxmemory`
+  finding (M4-T05.6) is the first thing that will bite
+- [ ] Chaos exercises (M4-T02.8), restore drill with measured RTO/RPO (M4-T04.6), Grafana
+  dashboards in git (M4-T01.5), nightly `scan-logs.sh` (M4-T08.4), security review (M4-T08)
+- [ ] Relevance re-run on the real corpus (M4-T05.7) — the eval harness's drift rule means every
+  cross-corpus nDCG comparison so far measures the crawl, not the ranker
 
-Breakdown in [[Milestone 1B - Frontend and Instant Answers]].
+### Discovery and coverage
+- [ ] **M2-T16 discovery channels** — the SERP channel (T16.10/.12/.14) is blocked on the proxy /
+  session / fingerprint stack it shares with the social track; query-driven discovery has no
+  source until then. Federation (M7-T06) and the Brave connector are the live channels today
+- [ ] **Wikimedia throttles the live path** (M8-T11 status): the answer is to harvest — a subject
+  in the store never takes the live path. Keep the demand queue draining
+- [ ] **Arabic bare surnames miss on the live path** (*أفلام سبيلبرغ*) because Wikidata's search
+  is prefix-on-label; store aliases resolve in any script — one more reason to harvest
+- [ ] **Goodreads ratings cannot be had legitimately** (no public API since 2020, scraping
+  forbidden) — books show cover, year and links, no rating. Settled, not fixable
+- [ ] The 1M-document gate of M2 (~85k at the M7 close; growth is bounded by politeness and host
+  diversity, PROB-002)
 
-- [ ] M1B-T01 Frontend foundation — Next.js, `[lang]` routing, typed client, budgets in CI
-- [ ] M1B-T02 Design language — oklch tokens, IBM Plex, shadcn primitives rewritten
-- [ ] M1B-T03 Port the existing UI, then **delete the Rust renderer**
-- [ ] M1B-T04 Tool framework — matching, arbitration, the shared card
-- [ ] M1B-T05 Tier 1 tools — calculator, units, currency, translate, weather, prayer, time
-- [ ] M1B-T06 `xustive-toold` — scheduled fetch into a cache the no-egress serving plane reads
-- [ ] M1B-T07 Tier 2 and 3 tools
-- [ ] M1B-T08 Localisation — catalogues, plurals, numerals, visual regression
+### Licensing and launch
+- [ ] **Summariser licence** — the default `qwen-research` (Qwen2.5-3B) is non-commercial; swap to
+  an Apache-2.0 size (1.5B / 7B, `config/dev.toml` already documents the 7B download) before any
+  commercial launch (M3-T01.3, M5-T01.8)
+- [ ] All of M5: legal entity (B8), privacy policy verified line-by-line against ADR-0008 *and*
+  its M7-T10.6 amendment, AA pass, `/about` `/terms` `/submit`, `POST /sources`, takedown owner,
+  beta feedback loop that works without query logs
 
-### M2 — Ingestion at Scale
-- [ ] M2-T01a [[Session Manager]] ← **start in M1**, warm-up is wall-clock
-- [ ] M2-T01b [[Fingerprint Engine]]
-- [ ] M2-T01c [[Signature Service]]
-- [ ] M2-T01d Legal entity, Law 18-07, provider due diligence *(reduced scope)*
-- [ ] M2-T02 [[Politeness and Robots]] — incl. the two crawl profiles
-- [ ] M2-T03 [[Crawler Orchestrator]] frontier and scheduling
-- [ ] M2-T04 [[Web Fetcher]] plain + impersonated + stealth headless
-- [ ] M2-T05 [[Deduplication Service]]
-- [ ] M2-T06 [[Enrichment Pipeline]] step framework
-- [ ] M2-T07 [[Proxy Manager]] residential/mobile pools *(now required)*
-- [ ] M2-T08 [[Social Connector - Facebook]] (gated on T01a/b/c)
-- [ ] M2-T09 [[Social Connector - Instagram]] (gated on T01a/b/c)
-- [ ] M2-T10 [[Social Connector - TikTok]] (gated on T01a/b/c)
-- [ ] M2-T11 [[Data Sources Registry]] seeding to ~500 sources
-- [ ] M2-T12 [[Admin and Source Submission]] admin surface + takedown path
-
-### M3 — Multimodal Input
-- [ ] M3-T01 `xustive-ml` service scaffold and model management
-- [ ] M3-T02 [[Speech to Text]] pipeline
-- [ ] M3-T03 [[UI - Voice Search]]
-- [ ] M3-T04 [[Image Pipeline]] OCR path
-- [ ] M3-T05 CLIP embedding + [[Vector Index]]
-- [ ] M3-T06 [[UI - Image Search]]
-- [ ] M3-T07 Index-side media enrichment
-- [ ] M3-T08 Quality suites: WER, CER, ANN recall
-
-### M4 — Quality and Operations
-- [ ] M4-T01 [[Observability]] metrics, dashboards, alerts
-- [ ] M4-T02 [[Error Handling and Resilience]] retries, breakers, DLQ tooling
-- [ ] M4-T03 Load testing to [[Performance Budgets]]
-- [ ] M4-T04 Backup and restore drills
-- [ ] M4-T05 Scale the index to 10M documents
-- [ ] M4-T06 [[Sentiment Engine]] evaluation and possible transformer mode
-- [ ] M4-T07 Spam and quality scoring tuning
-- [ ] M4-T08 Security review and penetration testing
-- [ ] M4-T09 Runbooks for every alert
-
-### M5 — Beta Launch
-- [ ] M5-T01 [[Legal and Compliance]] pre-launch checklist cleared
-- [ ] M5-T02 [[UI - Accessibility]] full AA pass
-- [ ] M5-T03 Public "Submit a Source" flow
-- [ ] M5-T04 Static pages: about, privacy, `/bot`, terms
-- [ ] M5-T05 Takedown process staffed and rehearsed
-- [ ] M5-T06 Native-speaker review of all UI strings
-- [ ] M5-T07 Beta programme and feedback loop
-- [ ] M5-T08 Launch runbook and rollback plan
-
-### M6 — Adaptive Ranking from Interaction Signals
-
-Breakdown in [[Milestone 6 - Adaptive Ranking from Interaction Signals]].
-
-- [x] M6-T01 [[Interaction Signals]] store + config + k<20 guard
-- [x] M6-T02 Impression / query capture (server-side, no new egress)
-- [x] M6-T03 Click capture — opaque token + `/interaction` beacon
-- [x] M6-T04 CTR ranking signal + weight rebalance + feedback-loop guard
-- [x] M6-T05 Query analytics — `top_queries` + category rollups
-- [ ] M6-T06 Re-crawl prioritisation (ingestion reads Redis)
-- [x] M6-T07 `/admin/interaction` console + endpoints
-- [~] M6-T08 Privacy hardening & proof — egress/telemetry/key-shape green; privacy copy pending
-- [ ] M6-T09 Eval — offline replay uplift + guardrail metric
-
-### M7 — Federated Retrieval and External Tools
-
-Breakdown in [[Milestone 7 - Federated Retrieval and External Tools]].
-
-- [ ] M7-T01 Lexical retrieval quality — stemming, richer synonyms, expansion-leg trigger
-- [ ] M7-T02 Semantic recall — text embeddings + Qdrant hybrid
-- [ ] M7-T03 Term ↔ document linking — keyphrase graph, related terms
-- [x] M7-T04 [[Federation Gateway]] — gateway binary, sidecar, config, egress test, breaker done
-- [~] M7-T05 Query-time federation — concurrent, budgeted, fail-open "from the web" strip done; blend-share metric (T05.4) remains
-- [~] M7-T06 Crawl-feed — federated URLs → frontier (channel Federation) done; convergence proof (T06.3) remains
-- [ ] M7-T07 Learn from external ranking — offline reranker calibration
-- [ ] M7-T08 External AI summariser (Parallel-AI MCP) — opt-in, offline-preferred, default off
-- [x] M7-T09 Operator control — the `/admin/integrations` console + runtime switch
-- [ ] M7-T10 Search-history visibility — result counts, per-query clicks, honest copy
+### Human review (**B7**, **B5**)
+- [ ] Native-speaker review of the mined synonym candidates (M7-T01.2) before they land in
+  `data/expansion/*.tsv`
+- [ ] Native Darija review of the `ary` locale (M5-T06.2) — the strings exist, nobody who speaks
+  Darija has read them
+- [ ] Curation owner for lexicons, registry and spam list — still unassigned
 
 ---
 
-## 4. Cross-Cutting Tracks
+## 4. Blockers and Decisions Needed
 
-Work that does not belong to one milestone and must not be deferred into a "polish" phase that never
-arrives.
+| # | Item | Blocks | State |
+|:--|:---|:---|:---|
+| B1 | Account acquisition + pool sizing for FB/IG; warm-up is 10+ days wall-clock | M2 social track | open, no owner |
+| B2 | Residential/mobile proxy provider — DZ coverage, exit-node consent | M2-T07, M2-T16 SERP channel, social | open, no owner |
+| B3 | Monthly bandwidth budget for residential pools | M2-T07 cost gate | open |
+| ~~B4~~ | Is a 3B model good enough for Arabic summaries? | — | closed: yes on quality; latency answered by the GPU path |
+| B5 | Who owns lexicon and registry curation? | quality of everything | open, no owner |
+| ~~B6~~ | Is a GPU in the budget? | — | closed: Quadro T1000 4 GB is the reference, CPU-only must work, device switchable from admin |
+| B7 | Native Darija speakers for strings, synonym review and the audio corpus | M3 gates, M5-T06, M7-T01.2 | open, no owner |
+| B8 | Legal entity + Law 18-07 position | M5-T01 | open |
+| B9 | Owner for the collection-maintenance tail | M2 social track, permanently | open, no owner |
 
-### Data curation (continuous from M1)
-- [ ] Darija marker lexicon → 1 500 terms ([[Language Detector]])
-- [ ] Expansion lexicon → entities, synonyms, question words ([[Query Expander]])
-- [ ] Sentiment lexicons ×4, Darija hand-built ~2 000 terms ([[Sentiment Engine]])
-- [ ] Per-domain parser rules for the top 50 sources ([[Content Parser]])
-- [ ] Wilaya/commune gazetteer
-- [ ] Spam phrase list
-- [ ] **Owner: unassigned — this needs a named person, not a rota**
-
-### Evaluation (continuous from M1)
-- [ ] Golden query set → 200 judged queries, 4 languages
-- [ ] Language detection labelled set → 1 000
-- [ ] Sentiment labelled set → 1 000
-- [ ] Summary faithfulness set → 100
-- [ ] Every reported quality complaint becomes a new golden row
-
-### Security (continuous from M0)
-- [ ] `SafeUrl` before any fetching code exists (M0, not later)
-- [ ] Telemetry lint in CI from the first `tracing` call — query **and** credential fields
-- [ ] Egress test in CI from the first container
-- [ ] Dependency audit (`cargo-deny`, `cargo-audit`) in CI
-
-### Collection maintenance (continuous from M2, **permanent**)
-- [ ] Signer re-extraction when platforms rotate ([[Signature Service]] §4.5)
-- [ ] Fingerprint profile version ageing and successor migration
-- [ ] Access-path repair as platform DOM/endpoints change
-- [ ] Identity pool refresh — replace burned accounts, keep pool ≥ `min_pool_size`
-- [ ] Canary fixture upkeep so cloaking detection stays trustworthy
-- [ ] **Owner: unassigned ← B9. Without one, collection decays to zero within ~2 months.**
-
-### Documentation
-- [ ] Keep component notes' `status` frontmatter current: `specified` → `implemented` → `verified`
-- [ ] Every resolved open question becomes an ADR or a note edit
-- [ ] Runbook per alert before that alert goes live
+B1, B2, B5, B7 and B9 are people and procurement, not engineering, and they are what slips.
 
 ---
 
-## 5. Blockers and Decisions Needed
+## 5. Candidate Next Work
 
-| # | Item | Blocks | Owner | Needed by |
-|:--|:---|:---|:---|:---|
-| B1 | **Account acquisition + pool sizing** for FB/IG; warm-up is 10+ days wall-clock | M2-T08/09 | — | **start in M1** |
-| B2 | **Residential/mobile proxy provider** — DZ coverage across ≥ 4 ASNs, exit-node consent | M2-T07, all platform collection | — | before M2-T07 |
-| B3 | Monthly bandwidth budget for residential pools | M2-T07 cost gate | — | M2 planning |
-| ~~B4~~ | Is a 3B model good enough for Arabic summaries? | — | **Yes on quality, no on speed.** Resolved during M1; became a latency question, see [[Summarizer]] §8 | closed |
-| B5 | Who owns lexicon and registry curation? | quality of everything | — | M1 |
-| B6 | Hardware: is a GPU in the budget? | **Now blocking summary latency**, not just M3 | Code is ready: build with `--features cuda` and the device layer does the rest. Needs the CUDA toolkit installed on the host | urgent |
-| B7 | Native Darija speakers for UI strings and evaluation | M1-T14, M5-T06 | — | M1 |
-| B8 | Legal entity (for takedowns/submissions) + Law 18-07 position | M5-T01 | — | before M5 |
-| B9 | Who owns the collection maintenance tail? Signer re-extraction, path repair, pool refresh | M2 onward, **permanently** | — | M2 |
+In rough order of value per day, given what §3 says.
 
-**B1, B2, B5, B7, and B9 are people/procurement problems, not engineering problems**, and they are
-the ones most likely to slip. B1 and B9 are new consequences of
-[[ADR-0009 - Direct Collection for Social Platforms]]: an unwarmed pool cannot be rushed, and a
-collection stack without a named maintainer degrades to zero within a couple of months of platform
-changes.
+1. **Close the code gaps in one pass** — BUG-042, `signals_url` outside dev, DB-IP attribution,
+   geoip gauge, OCR tempfile, thumb-proxy tests, `LICENSE`. Half a day; every one is a
+   correctness or licence matter, not a feature.
+2. **Harvest, not fetch** — drain the M8 demand queue on a schedule so the answer layer stops
+   depending on Wikimedia's mood; this also retires the Arabic-surname limitation for anything
+   people actually ask for.
+3. **M4's measurement gate** — run loadgen at the current corpus, profile the 1 GB Redis, do the
+   restore drill for real, provision the dashboards. The numbers will change decisions.
+4. **M3's corpora** — the smallest is the screenshot set (CER); the audio corpus needs B7.
+5. **Summariser licence swap** — a config change plus a quality check; do it before anyone says
+   the word "launch".
+6. **M5 groundwork that needs no lawyer** — `/about`, `/terms`, the accessibility pass, the
+   "report this result" feedback design (M5-T07.2).
+7. **Discovery** — once B2 exists, M2-T16's SERP channel and the social track together; until
+   then, widen federation and the Brave connector.
 
 ---
 
-## 6. Definition of Done (per task)
+## 6. Cross-Cutting Tracks
 
-A task is done when **all** of these are true:
+Continuous work that must not become a "polish" phase.
 
-- [ ] Code merged with tests at the levels [[Testing Strategy]] specifies for it
-- [ ] Its component note's §11 test plan is actually implemented
-- [ ] Metrics and log events from the note's §9 are emitted
-- [ ] It meets its [[Performance Budgets]] entry, measured
-- [ ] Failure modes from the note's §7 are handled and at least the top three are tested
+- **Data curation** (B5): Darija markers, expansion lexicon, sentiment lexicons, per-domain parser
+  rules, gazetteer, spam phrases — owner unassigned.
+- **Evaluation**: the golden set is at 200 judged queries (regenerated for M6); language-detection,
+  sentiment and summary-faithfulness sets are still owed; every quality complaint becomes a
+  golden row.
+- **Security**: `SafeUrl` on every fetch, telemetry lint, egress test and `cargo deny` are in CI;
+  keep them green and widen the egress script (§3).
+- **Documentation**: component `status` frontmatter, an ADR per resolved question (0027 today),
+  a runbook before an alert goes live (`lint-runbooks.sh` enforces this).
+
+---
+
+## 7. Definition of Done (per task)
+
+- [ ] Code merged with tests at the levels [[Testing Strategy]] specifies
+- [ ] The component note's §11 test plan is implemented; its §9 metrics and log events emitted
+- [ ] Its [[Performance Budgets]] entry is met, measured
+- [ ] The top three failure modes from the note's §7 are handled and tested
 - [ ] The note's `status` frontmatter is updated
-- [ ] Any decision made along the way is recorded in [[Decision Log]] or the note's §12
+- [ ] Any decision made along the way is an ADR or a note edit
 
 ## Related
 
 [[Home]] · [[Component Map]] · [[Testing Strategy]] · [[Performance Budgets]] · [[Decision Log]] ·
-[[Legal and Compliance]]
+[[Legal and Compliance]] · [[2026-08-25 - Code Audit Findings]]

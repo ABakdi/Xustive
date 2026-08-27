@@ -2,14 +2,64 @@
 tags:
   - ui
 type: ui
-status: specified
-updated: 2026-08-06
+status: built
+updated: 2026-08-27
 ---
 
 # UI - Voice Search
 
 > The microphone flow. Backend: [[Speech to Text]] · API: [[API Contract]] §5
-> Parent: [[UI Specification]]
+> Parent: [[UI Specification]] · Code: `web/components/search/VoiceButton.tsx`, the voice bits of
+> `web/components/search/SearchBox.tsx`, `transcribe()` in `web/lib/api.ts`, `.voice-*` in
+> `web/app/globals.css`
+
+---
+
+## 0. Current behaviour (2026-08-27)
+
+The sections below carry the original 2026-08-06 design and three dated revisions from
+2026-08-27. Read together they contradict each other in places (dialog vs inline, "never
+auto-submit" vs "stop means search"), so this is what the code does today — the revisions at the
+end are the history of how it got here.
+
+- **Inline, no dialog.** `VoiceButton` sits inside the search field (`SearchBox`) and reports its
+  state upward through `onState`; the field draws everything around it. There is no `<dialog>`,
+  no waveform overlay, no timer readout beyond a seconds counter.
+- **Rendered only where it can work.** The button returns `null` unless
+  `navigator.mediaDevices.getUserMedia` and `window.MediaRecorder` exist. Microphone permission is
+  asked on tap, never on load. `Permissions-Policy: microphone=(self)` is set in
+  `web/next.config.ts`.
+- **Recording.** The button gets `.voice-button.is-recording` (red, `voice-breathe` animation;
+  `animation: none` under `prefers-reduced-motion: reduce`) and shows a Square icon;
+  `aria-label`/`title` switch from `t.voiceSearch` to `t.voiceStop`, `aria-pressed` is true.
+  Beside it a four-bar `.voice-meter` (`aria-hidden`) lights bars from an `AnalyserNode` RMS on
+  every animation frame, and the elapsed seconds tick every 250 ms in an `aria-live="polite"`
+  span. The input placeholder becomes `t.voiceListening`.
+- **Live partials.** `MediaRecorder.start(200)` delivers 200 ms slices; whenever a slice lands, at
+  least `PARTIAL_EVERY_MS = 400` ms have passed and no request is in flight, the whole audio so
+  far is POSTed to `/api/v1/transcribe?lang=<ui>&partial=1`. The reading replaces the box text
+  (`onInterim`), drawn in `--fg-muted` to show it is provisional; suggestions close.
+- **Stop = search.** Tapping the button again (or the 30 s cap, `MAX_MS`) stops the recorder;
+  the phase becomes `finishing` (button disabled, meter text `t.voiceTranscribing`) and one final
+  non-partial pass runs. The final text is put in the box undimmed and **submitted** via
+  `router.push('/<lang>/search?q=…')`. If the final pass fails but a live reading exists, the
+  search runs with that reading instead.
+- **Cancel.** `Esc` while recording discards the audio: recorder stopped, tracks stopped, nothing
+  uploaded, nothing searched. There is no Cancel button.
+- **Errors are visible.** Under the field, `<p role="status">` in `--danger` red with `dir="auto"`:
+  `t.voicePermission` (getUserMedia threw — denied, no device, insecure context),
+  `t.voiceUnavailable` (503/404 from the transcriber — a 503/404 on a *partial* stops the
+  recording immediately), `t.voiceFailed` (anything else, or an empty recording).
+- **Release.** On stop, cancel or unmount every track is `stop()`ped, the `AudioContext` closed
+  and any in-flight request aborted, so the browser's own mic indicator clears.
+- **Codec.** First supported of `audio/webm;codecs=opus`, `audio/webm`, `audio/ogg;codecs=opus`,
+  `audio/mp4`, at 24 kbps; browser default otherwise.
+- **i18n keys used:** `voiceSearch`, `voiceStop`, `voiceListening`, `voiceTranscribing`,
+  `voiceUnavailable`, `voiceFailed`, `voicePermission`. `voiceCancel` and `voiceHint` exist in
+  `messages.ts` but nothing renders them today.
+
+Everything from §2 to §9 is the original specification; where it differs from the list above,
+the list wins.
 
 ---
 
@@ -24,7 +74,7 @@ Which also means: it has to be forgiving, because transcription of Darija will b
 
 ---
 
-## 2. Flow
+## 2. Flow (original, 2026-08-06 — superseded 2026-08-27, see §0)
 
 ```
 [🎤 tap]
@@ -40,42 +90,52 @@ Which also means: it has to be forgiving, because transcription of Darija will b
 decision absorbs most of the accuracy problem: the user reads it, fixes a word, and searches. Auto-
 submitting a wrong transcription wastes a round trip and feels broken.
 
+> Superseded 2026-08-27: the words are now shown live while speaking, so stop submits (§0 and the
+> third revision below). There is no silence auto-stop; only the button and the 30 s cap end a
+> recording.
+
 ---
 
 ## 3. States
 
-| State | UI |
-|:---|:---|
-| `idle` | mic icon in the search box |
-| `requesting-permission` | icon dimmed; browser's own prompt is showing |
-| `permission-denied` | inline message + how to re-enable, per browser; mic icon becomes muted and stays visible |
-| `recording` | overlay: live waveform, elapsed timer, "Speak now", large Stop button |
-| `processing` | "Transcribing…" with an indeterminate bar |
-| `done` | overlay closes, transcript in the box, cursor at the end, box focused |
-| `no-speech` | "We didn't hear anything — try again" + Retry |
-| `error` | "Voice search unavailable right now" + Retry; mic still usable |
-| `unsupported` | mic button not rendered at all |
+What ships is three phases in `VoiceButton` (`idle` → `recording` → `finishing` → `idle`) plus an
+error string; the field renders them. The original table, annotated:
 
-Support detection: `navigator.mediaDevices?.getUserMedia` and `MediaRecorder` with an Opus mime type.
-If either is missing, the button never appears — a button that fails on tap is worse than no button.
+| State | Original spec | Today |
+|:---|:---|:---|
+| `idle` | mic icon in the search box | same (`Mic` icon, `--fg-faint`) |
+| `requesting-permission` | icon dimmed; browser's own prompt | no distinct state — still `idle` until the stream arrives |
+| `permission-denied` | inline message + per-browser re-enable instructions | `t.voicePermission` under the field; no per-browser text |
+| `recording` | overlay: waveform, timer, "Speak now", Stop | inline: red breathing button, 4-bar meter, seconds, "Listening…" placeholder, live words in the box |
+| `processing` | "Transcribing…" + indeterminate bar | `finishing`: button disabled, meter span reads `t.voiceTranscribing` |
+| `done` | transcript in the box, focused, not submitted | final words in the box **and the search runs** |
+| `no-speech` | "We didn't hear anything" + Retry | an empty blob → `t.voiceFailed`; the server's own no-speech answer is not distinguished |
+| `error` | "unavailable" + Retry | `t.voiceUnavailable` (503/404) or `t.voiceFailed`; the mic stays usable |
+| `unsupported` | button not rendered | same |
+
+Support detection: `navigator.mediaDevices?.getUserMedia` and `'MediaRecorder' in window`. If
+either is missing, the button never appears — a button that fails on tap is worse than no button.
+(The original also required an Opus mime type; today Opus is preferred but any recorder mime is
+accepted, see §5.)
 
 ---
 
-## 4. Recording UI
+## 4. Recording UI (original — superseded 2026-08-27)
 
-| Property | Spec |
-|:---|:---|
-| Presentation | bottom sheet on `sm`, centred dialog on `lg` (`<dialog>`, focus-trapped) |
-| Waveform | 24 bars from `AnalyserNode` RMS, 60 fps, `--color-accent` |
-| Reduced motion | waveform replaced by a static level meter that updates 4×/s |
-| Timer | `0:03 / 0:30` |
-| Auto-stop | 2 s of silence below the VAD threshold |
-| Hard cap | 30 s, with the last 5 s counting down visibly |
-| Cancel | `Esc`, backdrop tap, or the Cancel button — **discards audio, no upload** |
-| Stop | uploads what was captured |
+| Property | Original spec | Today |
+|:---|:---|:---|
+| Presentation | bottom sheet on `sm`, centred `<dialog>` on `lg` | inline in the field, no dialog |
+| Waveform | 24 bars, 60 fps, `--color-accent` | 4 bars (`.voice-meter`), rAF-driven, red |
+| Reduced motion | static meter at 4×/s | the meter is already static bars; only the button's breathing animation is removed |
+| Timer | `0:03 / 0:30` | `3s` |
+| Auto-stop | 2 s of silence | none |
+| Hard cap | 30 s with a visible countdown | 30 s, no countdown |
+| Cancel | `Esc`, backdrop, Cancel button — discards | `Esc` only — discards |
+| Stop | uploads what was captured | final pass, then searches |
 
-The waveform is not decoration: it is the only feedback that the microphone is actually picking up
-sound. A user speaking into a muted mic needs to see flat bars, not a spinner.
+The meter is not decoration: it is the only feedback that the microphone is actually picking up
+sound. A user speaking into a muted mic needs to see dark bars, not a spinner — and with live
+partials, the words themselves are the second signal.
 
 ---
 
@@ -83,15 +143,14 @@ sound. A user speaking into a muted mic needs to see flat bars, not a spinner.
 
 | Setting | Value |
 |:---|:---|
-| Codec | `audio/webm;codecs=opus`, fallback `audio/ogg;codecs=opus` |
-| Sample rate | 48 kHz (server downsamples to 16 kHz) |
-| Channels | mono |
-| Bitrate | 24 kbps — plenty for speech, small on 3G |
-| Constraints | `echoCancellation: true`, `noiseSuppression: true`, `autoGainControl: true` |
-| Typical upload | ~15 KB for 5 s |
+| Codec | first supported of `audio/webm;codecs=opus`, `audio/webm`, `audio/ogg;codecs=opus`, `audio/mp4`; else the browser default |
+| Bitrate | 24 kbps (`audioBitsPerSecond`) — plenty for speech, small on 3G |
+| Timeslice | 200 ms (`rec.start(200)`), so audio arrives as it is spoken |
+| Constraints | `{ audio: true }` — the original `echoCancellation`/`noiseSuppression`/`autoGainControl` flags are not passed explicitly (browser defaults apply) |
+| Upload | raw POST body, `Content-Type` = the blob's mime type, `cache: 'no-store'` |
 
-Upload uses `fetch` with an `AbortController` wired to the cancel action, so cancelling mid-upload
-actually stops it.
+Upload uses `fetch` with an `AbortController`: a new partial aborts the previous one, and cancel
+aborts whatever is in flight, so cancelling mid-upload actually stops it.
 
 ---
 
@@ -99,55 +158,57 @@ actually stops it.
 
 - Requested **only on tap**, never on page load. A page that asks for the microphone unprompted
   destroys trust in a product whose main claim is privacy.
-- Denial is remembered by the browser; we detect it via `navigator.permissions.query({name:'microphone'})`
-  where supported and show the muted state without re-prompting.
-- The re-enable instructions are browser-specific (Chrome Android, Firefox, Safari iOS) because the
-  generic "check your settings" is useless.
-- `Permissions-Policy: microphone=(self)` is set at the edge ([[Security and Privacy]] §3).
+- The original spec detected a remembered denial via `navigator.permissions.query` and showed a
+  muted state; today a denied tap simply throws and shows `t.voicePermission`. Not built.
+- Per-browser re-enable instructions: not built; one sentence for all browsers.
+- `Permissions-Policy: geolocation=(), microphone=(self), camera=(self)` is set by
+  `web/next.config.ts` on every route ([[Security and Privacy]] §3).
 
 ---
 
 ## 7. Privacy Surface
 
-Stated plainly in the recording overlay, in small text:
+The original spec put a line in the recording overlay:
 
 > Audio is processed on our servers in Algeria and is never stored.
 
-That is a claim [[Speech to Text]] §6 must keep true — audio is decoded from an in-memory buffer,
-zeroised after inference, and never written to disk, with a test asserting it.
+There is no overlay now and the field shows no such line — the only privacy copy near the box is
+the home page's `privacyLine`. The claim itself still holds and [[Speech to Text]] §6 must keep it
+true — audio is decoded from an in-memory buffer, never written to disk.
 
-The recording indicator is always visible while capturing. The stream's tracks are stopped
-(`track.stop()`) immediately on stop or cancel so the browser's own mic indicator clears — leaving a
-live track open after recording looks, correctly, like eavesdropping.
+The recording indicator (red button + meter) is always visible while capturing. The stream's tracks
+are stopped (`track.stop()`) immediately on stop or cancel so the browser's own mic indicator clears
+— leaving a live track open after recording looks, correctly, like eavesdropping.
 
 ---
 
 ## 8. Error Handling
 
-| Error | Message | Recovery |
-|:---|:---|:---|
-| `NotAllowedError` | "Microphone access is blocked" + per-browser instructions | user action |
-| `NotFoundError` | "No microphone found" | none; hide the flow for the session |
-| `NotReadableError` | "Your microphone is in use by another app" | Retry |
-| 413 payload too large | "Recording too long" | Retry (should be impossible — the 30 s cap prevents it) |
-| 415 unsupported | "This browser's audio format isn't supported" | hide the button for the session |
-| 422 `no_speech_detected` | "We didn't hear anything" | Retry |
-| 503 / queue full | "Voice search is busy — try again" | Retry |
-| Network failure | "Connection lost" | Retry with the audio still buffered client-side |
+What the code does today; the original per-status table is folded in.
 
-The last row matters on 3G: keep the recorded blob in memory until the upload succeeds so a retry
-does not require re-recording.
+| Error | Message (key) | Behaviour |
+|:---|:---|:---|
+| `getUserMedia` rejects (`NotAllowedError`, `NotFoundError`, `NotReadableError`, insecure context) | `voicePermission` | tracks released, back to idle; mic stays tappable |
+| 503 / 404 on a **partial** | `voiceUnavailable` | recording stopped at once, no final pass — the server has no transcriber, no point recording thirty seconds into nothing |
+| any other partial failure | — | ignored; the next partial may land |
+| final pass fails, a live reading exists | — | search runs with the last live reading |
+| final pass fails, nothing read yet | `voiceUnavailable` (503/404) / `voiceFailed` | message under the field |
+| recording produced zero bytes | `voiceFailed` | message under the field |
+
+The original spec's 413/415/422 wording and "Retry with the audio still buffered" are not built:
+the audio is dropped once the recorder is released, so a retry re-records.
 
 ---
 
 ## 9. Accessibility
 
-- The mic button has `aria-label="Search by voice"` and `aria-pressed` while recording.
-- The overlay is a modal `<dialog>`: focus trapped, `Esc` closes, focus returns to the mic button.
-- State changes announce via `aria-live="assertive"` ("Recording", "Transcribing", "Transcript
-  ready") — assertive rather than polite because the user is mid-interaction and timing matters.
-- Every stage is keyboard-operable; the waveform is `aria-hidden`.
-- The 30 s limit is announced at 25 s, not only shown.
+- The mic button has `aria-label` = `t.voiceSearch` (`t.voiceStop` while recording), a matching
+  `title`, and `aria-pressed` while recording.
+- No modal, so no focus trap; `Esc` cancels while recording.
+- The meter/seconds span is `aria-live="polite"` (the original said assertive); the error line
+  under the field is `role="status"`.
+- The meter bars are `aria-hidden`; the button icons are `aria-hidden`.
+- The 30 s limit is not announced ahead of time (original spec: at 25 s) — not built.
 - **Voice search is not the only way to do anything** — it is an alternative input, so no
   functionality is lost if a user cannot speak or the mic is unavailable ([[UI - Accessibility]]).
 
@@ -159,7 +220,10 @@ does not require re-recording.
       user knows what to check? Useful, but risks looking broken.
 - [ ] Hold-to-talk as an alternative to tap-to-start/tap-to-stop? Common on messaging apps here, so
       it may be the more familiar gesture.
-- [ ] Do we offer a language hint selector before recording, or always auto-detect?
+- [ ] Do we offer a language hint selector before recording, or always auto-detect? (Today the UI
+      language is sent as `lang=` on every request.)
+- [ ] Now that stop submits, is a visible Cancel control needed for touch users who cannot press
+      `Esc`?
 
 ## Related
 

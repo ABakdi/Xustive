@@ -4,7 +4,8 @@ tags:
   - milestone
 milestone: 9
 status: done
-updated: 2026-08-26
+updated: 2026-08-27
+closed: 2026-08-26
 ---
 # Milestone 9 - Images and Videos
 
@@ -92,6 +93,12 @@ a click — the reader chooses the disclosure. And no code path downloads video 
 > has never been on (`crawl.raw_ttl_days = 0`), so the repass had nothing to work from and the
 > tab fills at the pace of the revisit crawl. Turning the store on is the operator's storage call.
 
+> **Audit 2026-08-27.** Verified in history: T01 (`55fa72a`), T02+T03 (`45b3b6a`), T04 (`216b143`),
+> T06 SearXNG media federation (`9c0f25c`, closed in `25faf2b`). The thumb secret lives on
+> `globalThis` so dev hot-reload keeps one signature; the federation strip wait must stay under
+> `timeout_search_ms` (a dev 504 fixed at close). Open: T02.5 tests; T04.2 is honest that the raw
+> store has never held a body (`crawl.raw_ttl_days = 0`), so the repass is an operator decision.
+
 ## M9-T01 — Video extraction and a filterable media type
 
 - [x] M9-T01.1 The parser reads `og:video` / `og:video:url`, `<video src>` and `<video><source>`,
@@ -124,7 +131,9 @@ a click — the reader chooses the disclosure. And no code path downloads video 
 - [x] M9-T02.4 Cached a day, keyed by the URL: the same thumbnail for every reader is one fetch
       from the crawled host, which is also the polite thing
 - [ ] M9-T02.5 Tests: a forged signature is a 403; a private host is a 400 even when signed; a
-      redirect to a disallowed host is refused mid-chain
+      redirect to a disallowed host is refused mid-chain — *audit 2026-08-27: no test file for
+      `web/app/api/thumb/route.ts` was found; the guards exist, the tests do not. The one item
+      still open in a closed milestone*
 
 ## M9-T03 — The tabs
 

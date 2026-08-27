@@ -4,7 +4,7 @@ tags:
   - data
 type: reference
 status: draft
-updated: 2026-08-06
+updated: 2026-08-27
 ---
 
 # Data Sources Registry
@@ -12,6 +12,14 @@ updated: 2026-08-06
 > What Xustive crawls, under which policy, and on whose authority. The registry is *data*, versioned
 > in git and exported from the live store on every change.
 > Schema: [[Data Model]] §5 · Managed by [[Admin and Source Submission]] · Consumed by [[Crawler Orchestrator]]
+>
+> **State of the data, 2026-08-27.** Three files under `data/sources/` carry what this note
+> describes: `registry.jsonl` (96 records, all `kind: web`, 92 tier A / 4 tier B, every one
+> `legal_basis: public_web_robots_ok`, every one still `lifecycle: proposed` / `approved: false`
+> — the review step in §6 has not been walked for any of them), `seeds.tsv` (~1 000 categorised
+> crawl entry points: `source_id, url, trust, category, region, note`), and `authority.tsv` (141
+> domains — a **ranking** signal, not a crawl list; see [[Ranking and Relevance]]). The CLI curates
+> the registry (`xustive-cli registry list|approve|activate|disable|lint`).
 
 ---
 
@@ -91,7 +99,9 @@ No source is crawled without one:
 | `hashtag_api_quota` | within the platform's documented public-search allowance |
 
 A source whose basis lapses (token revoked, app un-installed, robots changed) is **auto-disabled** by
-the connector, not merely flagged ([[Social Connector - Facebook]] §7).
+the connector, not merely flagged ([[Social Connector - Facebook]] §7). (2026-08-27: the social
+connectors are not built; for `web` sources the crawler's robots handling refuses the host, but
+nothing flips the registry record automatically yet.)
 
 ---
 
@@ -110,6 +120,10 @@ proposed → reviewed → approved → active → (degraded) → disabled → ar
 | any → disabled | legal basis lapses, host opts out, takedown at domain scope, or persistent failure |
 | disabled → archived | after 90 days; its documents are removed from the index |
 
+(2026-08-27) `registry disable <id> --reason …` starts the 90-day archival clock; the
+`disabled → archived` document removal is not automated — `takedown --domain` is the manual
+counterpart ([[Runbooks]] and [[Operating Xustive]]).
+
 **Quarterly review** of the whole registry: sources that produce nothing, produce spam, or have gone
 dark are demoted or removed. Registries rot silently otherwise — a dead source costs crawl budget
 forever and nobody notices.
@@ -118,7 +132,9 @@ forever and nobody notices.
 
 ## 7. Quality Signals per Source
 
-Tracked per source and visible in the admin surface:
+Tracked per source and visible in the admin surface (2026-08-27: the crawler console —
+[[Crawler Console]], `/admin/crawler` — shows fetch outcomes, per-host skips and discovery
+channels; per-source spam-mean and date-precision ratios are not yet computed as such):
 
 | Signal | Healthy | Action if bad |
 |:---|:---|:---|
@@ -139,8 +155,8 @@ extraction fell back to the generic path, and quality dropped without a single e
 
 | Milestone | Target |
 |:---|:---|
-| [[Milestone 0 - Foundations]] | 10 sources — fixture site + a handful of news sites with clean sitemaps |
-| [[Milestone 1 - Text Search MVP]] | ~50 web sources across news, government, and services |
+| [[Milestone 0 - Foundations]] | 10 sources — fixture site + a handful of news sites with clean sitemaps — ✅ |
+| [[Milestone 1 - Text Search MVP]] | ~50 web sources across news, government, and services — ✅ (96 in the registry, ~1 000 seed URLs, 2026-08-27) |
 | [[Milestone 2 - Ingestion at Scale]] | ~500 web sources + whatever social access has actually been granted |
 | [[Milestone 5 - Beta Launch]] | ~2 000, including community submissions |
 
@@ -152,9 +168,11 @@ a plan.
 
 ## 9. Storage and Review
 
-- Live: Meilisearch `sources` index + Redis for hot policy lookups.
-- Mirror: `data/sources/registry.json`, exported on every change and committed — so registry history
-  is reviewable in git and restorable in minutes ([[Deployment Topology]] §7).
+- Live: Meilisearch `sources` index (searchable `display_name`, `id`, `notes`; filterable `kind`,
+  `trust_tier`, `approved`, `legal_basis`; sortable `last_run_at`).
+- Mirror: `data/sources/registry.jsonl` (one record per line, not a JSON array), committed — so
+  registry history is reviewable in git and restorable in minutes; `scripts/backup.sh` copies it
+  alongside the store snapshots ([[Deployment Topology]] §7).
 - Changes go through PR review like code. A tier promotion or a new source is a reviewable diff.
 
 ---
@@ -164,8 +182,11 @@ a plan.
 - [ ] Who owns curation? This needs a named editor, not "the team" — registry quality is the single
       biggest lever on result quality and it degrades without an owner.
 - [ ] Should trust tiers be public? Transparent, but invites arguments about placement.
-- [ ] Do we crawl `.dz` domains we did not explicitly seed (open discovery), or stay registry-only?
-      Registry-only for v1 ([[Crawler Orchestrator]] §12) — revisit with legal input.
+- [x] Open discovery — decided: the crawler is discovery-led, not registry-only. Every document
+      records its `discovery` channel (`seed`, `link`, `sitemap`, `common_crawl`, `query_driven`,
+      `brave`, `serp`, `federation`) and `authority.tsv` ranks well-known domains however they
+      entered the index ([[ADR-0012 - Discovery-Only Aggregation]],
+      [[ADR-0013 - Direct SERP Collection for Discovery]]).
 - [ ] How do we cover the Algerian diaspora (`.fr`, `.com` sites about Algeria) without the TLD
       heuristic collapsing?
 
@@ -181,6 +202,5 @@ zero documents — the crawler reads robots.txt, is refused, and skips every URL
 list appears to cover social media. `youtube.com` and `tiktok.com` allow some paths but render them
 with JavaScript, so the text fetcher receives a shell.
 
-Social content arrives through direct collection instead ([[ADR-0009 - Direct Collection for Social
-Platforms]]), which is a separate pipeline with its own identity, fingerprint and signature
+Social content arrives through direct collection instead ([[ADR-0009 - Direct Collection for Social Platforms]]), which is a separate pipeline with its own identity, fingerprint and signature
 machinery. It cannot be reached by adding a line to `seeds.tsv`.

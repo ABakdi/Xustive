@@ -2,7 +2,7 @@
 tags:
   - adr
 adr-id: "0003"
-status: accepted
+status: partly implemented
 date: 2026-08-06
 ---
 
@@ -10,7 +10,7 @@ date: 2026-08-06
 
 ## Status
 
-Accepted. Constrains [[Data Model]], [[Query Pipeline]], [[Search Index]].
+Accepted; **partly implemented** — the index exists, the query-time fold does not. Constrains [[Data Model]], [[Query Pipeline]], [[Search Index]].
 
 ## Context
 
@@ -83,3 +83,8 @@ Threading is one level; deeper replies are flattened with `parent_comment_id` re
 
 [[Data Model]] · [[Query Pipeline]] · [[Search Index]] · [[Ranking and Relevance]] ·
 [[Indexer Worker]] · [[Decision Log]]
+
+## Where it stands (2026-08-27)
+
+- The `comments` index and its settings exist (`crates/xustive-search/src/settings.rs`: `COMMENTS`, `comments_settings()`), and the indexer can route a job to it (`IndexJob.index` in `crates/xustive-queue/src/indexer.rs`).
+- The serving side does **not** run a comments leg: `crates/xustive-api/src/search.rs` always sets `matched_comments: Vec::new()`, there is no `multi_search` call anywhere in `crates/xustive-search` or `crates/xustive-api`, and `COMMENTS` is referenced only inside `xustive-search`. No connector writes comments today (the social connectors of [[ADR-0009 - Direct Collection for Social Platforms]] are not built), so the fold has had nothing to fold.

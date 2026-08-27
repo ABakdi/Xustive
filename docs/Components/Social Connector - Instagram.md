@@ -5,15 +5,37 @@ tags:
   - social
   - collection
 component-id: C14
-binary: xustive-crawler
-status: specified
-updated: 2026-08-06
+binary: none (would be xustive-cli crawld)
+status: not built
+updated: 2026-08-27
 ---
 
 # Social Connector - Instagram
 
-> **ID** C14 · **Binary** `xustive-crawler` · **Upstream** [[Crawler Orchestrator]] · **Downstream** [[Content Parser]], [[Image Pipeline]]
+> **ID** C14 · **Binary** none yet (would live in `xustive-cli crawld`) ·
+> **Upstream** [[Crawler Orchestrator]] · **Downstream** [[Content Parser]], [[Image Pipeline]]
 > **Collection stance:** direct, per [[ADR-0009 - Direct Collection for Social Platforms]].
+
+## 0. Status (2026-08-27)
+
+**Not built.** No connector code exists for Instagram — nothing in `crates/`, `services/`, `web/`
+or `config/` fetches, paginates or maps Instagram content, and there is no `xustive-crawler` binary;
+the crawler is `xustive-cli crawld` ([[Crawler Orchestrator]]). What *does* exist is the ground a
+connector would stand on, so the design below is kept as the plan, not as a description:
+
+- `xustive_core::model::SourceType::{Web, Facebook, Instagram, Tiktok}` with `is_platform()`
+  (`platform` vs `open_web` crawl profile), parsed from `"facebook" | "fb"`, etc., and usable in a
+  search `source_type` filter ([[Data Model]]).
+- `Engagement { likes, comments, shares, views, captured_at }` on `Document`.
+- `xustive_ingest::session::Platform::{Instagram, Facebook, Tiktok}`, the identity pool, pinning
+  invariant and budgets ([[Session Manager]]); the proxy ladder with `Datacenter`/`Residential`/
+  `Mobile` pools ([[Proxy Manager]]); fingerprint coherence ([[Fingerprint Engine]]). All are
+  "engine built, fuel deferred" — decision logic with tests, no real accounts or proxies.
+- The queue has one stream, `q:index` ([[Task Queue]]); `q:fetch` / `q:parse` below are the
+  intended shape, not streams that exist.
+
+The only social content reachable today comes sideways: query-time federation may return a
+Instagram URL from an external metasearch engine ([[ADR-0017 - Query-Time Federation with External Metasearch]]), and it is indexed as an ordinary web result, not through this connector.
 
 ## 1. Purpose
 
@@ -34,6 +56,8 @@ mapping to the canonical envelope; expiring-CDN-URL handling; pacing; detection 
 (→ [[Image Pipeline]]).
 
 ## 3. Interface
+
+_Intended shape (2026-08-27): none of these streams or message kinds exist yet; see §0._
 
 Consumes `q:fetch` with `kind = "instagram"`:
 `{ source_id, ig_user_id | hashtag, cursor?, since?, path_hint? }`
@@ -129,6 +153,8 @@ New media every run; engagement refreshed for posts < 7 days old; 404 on refresh
 within 24 h. Unchanged by the collection decision.
 
 ## 5. Configuration
+
+_Intended keys (2026-08-27): no `[instagram]` section exists in `config/*.toml`._
 
 | Key | Default |
 |:---|:---|

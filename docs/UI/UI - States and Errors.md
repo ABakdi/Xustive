@@ -2,8 +2,8 @@
 tags:
   - ui
 type: ui
-status: specified
-updated: 2026-08-06
+status: implemented
+updated: 2026-08-27
 ---
 
 # UI - States and Errors
@@ -11,6 +11,13 @@ updated: 2026-08-06
 > Every non-happy path the user can land in, and what they see. Backend error codes come from
 > [[API Contract]] §8; the degradation ladder from [[Error Handling and Resilience]] §6.
 > Parent: [[UI Specification]]
+>
+> **Audited against the code 2026-08-27.** Where the original spec (2026-08-06) and the shipped
+> page differ, the shipped behaviour is stated and the spec is marked superseded. Code:
+> `web/app/[lang]/search/page.tsx` (the error shell and the empty states),
+> `web/components/layout/OfflineBanner.tsx`, `web/components/search/Summary.tsx`,
+> `web/components/tools/ImageOcr.tsx`, `web/components/search/VoiceButton.tsx`,
+> `web/app/not-found.tsx`. Strings: `web/lib/i18n/messages.ts`.
 
 ---
 
@@ -18,9 +25,12 @@ updated: 2026-08-06
 
 1. **The user is never told a code.** `search_unavailable` becomes "Search is temporarily
    unavailable". The code goes in a `data-` attribute for support, not in the sentence.
+   *(Today: the code never reaches the page at all — the page maps status/code to a sentence and
+   the `data-` attribute was never added. See §4.)*
 2. **Every error offers a way forward.** Retry, adjust, or go back — never a dead end.
 3. **Degradation is invisible.** A missing summary or missing facet counts shows nothing at all. Only
-   failures that block the user's goal are surfaced.
+   failures that block the user's goal are surfaced. *(One exception was added on purpose — the
+   "filters are resting" note in §5.)*
 4. **The query is never lost.** Any error page keeps the query in the search box, ready to retry.
 5. **No blame, no jargon.** "We couldn't read this image", not "Invalid image payload".
 
@@ -28,17 +38,24 @@ updated: 2026-08-06
 
 ## 2. Loading
 
-| Surface | Treatment |
-|:---|:---|
-| Results page | skeleton summary + 5 skeleton cards; header and filter bar render real immediately |
-| Summary | reserved-height shimmer, "Summarising…" |
-| Suggestions | previous list stays; **no spinner** (a 40 ms spinner is visual noise) |
-| Voice | indeterminate bar, "Transcribing…" |
-| Image upload | determinate bar with real byte progress |
-| Filter change | results dim to 60 % opacity; layout does not move |
+The results page is a Server Component: results arrive as HTML in the first response, so there is
+no results skeleton and no "skeleton summary + 5 skeleton cards" — that treatment (2026-08-06) was
+superseded by the server-rendered page and never built. What loads *after* paint is what has a
+loading state.
 
-Skeletons match the real components' dimensions exactly, which is what keeps CLS ≤ 0.05
-([[UI Specification]] §4). Under `prefers-reduced-motion` the shimmer becomes a static tint.
+| Surface | Treatment (today) |
+|:---|:---|
+| Results page | none — the list is in the HTML; the header, verticals and filter chips are real from the first byte |
+| Summary | `Summary` renders a one-line `aria-busy` section — sparkle icon, three pulsing dots (`LoadingDots`), `summaryLoading` ("Generating the summary…") — then either the summary or **nothing** (three states: loading, arrived, absent) |
+| Entity panel | `PanelSkeleton` with `knowledgeLoading`, client-only; collapses to nothing when the store and the live fallback both come back empty ([[UI - Results Page]]) |
+| Relation row | mounts empty and fills after paint; an empty answer collapses ([[UI - Results Page]]) |
+| Suggestions | previous list stays; **no spinner** (a 40 ms spinner is visual noise) |
+| Voice | inline: live partial text in the box every 400 ms, a level meter, `voiceListening` / `voiceTranscribing` ([[UI - Voice Search]]) |
+| Image / OCR | `ocrReading` line while the image is read; no byte-progress bar — the image is downscaled client-side to ≤ 2048 px first, so uploads are small ([[UI - Image Search]]) |
+| Filter change | a full navigation (chips are links), so the browser's own loading indicator — no dimming, and the layout does not move |
+
+Under `prefers-reduced-motion` the `.rise` entrance animation is off (`globals.css`); the summary
+dots use Tailwind's `animate-pulse`, which the same media query does not disable — a small gap.
 
 **Anything expected under 300 ms shows no loading indicator at all.** Flashing a spinner for 80 ms
 looks like a glitch.
@@ -48,6 +65,13 @@ looks like a glitch.
 ## 3. Empty States
 
 ### Zero results
+
+What ships is the plain version: `noResults` ("No results") over `noResultsHint` ("Try other
+words, or fewer words"), centred, `py-16`. The filter chips are not rendered on an empty page at
+all (the `Filters` block sits inside the non-empty branch), so a search that is empty *because of*
+a filter offers no chip to remove — the reader has to edit the URL or re-search.
+
+The richer spec below (2026-08-06) is **not built** and stays here as the target:
 
 ```
               🔍
@@ -62,43 +86,66 @@ looks like a glitch.
 
 Every suggestion is **actionable and specific**: the filter chips are real and removable, the
 transliteration is generated by [[Query Expander]], and the date suggestion only appears if a date
-filter is set. A generic "try different keywords" is not a suggestion, it is a shrug.
+filter is set. A generic "try different keywords" is not a suggestion, it is a shrug — and, to be
+honest about it, `noResultsHint` is currently that shrug.
 
-If the query returned zero results *without* any filters, the transliteration alternative and a
-"submit a source" link are offered — a genuine coverage gap is useful feedback for us and honest for
-the user.
+Instant answers still render above an empty list: `2+2` has an answer whether or not the corpus
+mentions arithmetic ([[UI - Tool Cards]]).
+
+### Empty verticals
+
+An empty Images / Videos / News / Files tab names the vertical — `noImages`, `noVideos`, `noNews`,
+`noFiles` ("No images for this search") — and offers `noNewsHint` ("Show all results") as a link
+back to the `all` vertical, because the corpus may hold the answer outside the tab
+([[UI - Search Verticals]]).
 
 ### Other empties
 
 | Surface | Message |
 |:---|:---|
-| No similar images | "No similar images found" + "Search by text instead" (with OCR text if any) |
+| No text in an image | `ocrEmpty` ("No readable text in the image") + the find-similar action still offered |
+| No similar images | `ocrNoSimilar`; `ocrSimilarUnavailable` when the vector service is off |
 | No suggestions | the list is hidden entirely — never "no suggestions" |
-| Filter with count 0 | chip disabled with its count visible; not hidden |
+| Facet value with count 0 | **hidden** (the spec said "disabled with its count visible"; the chips filter out zeros — [[UI - Filters and Facets]] §7) |
 | No comments matched | the section is absent |
+| No related searches | the section is absent |
 
 ---
 
 ## 4. Error States
 
-| Situation | HTTP / code | UI | Recovery |
-|:---|:---|:---|:---|
-| Search backend down | 503 `search_unavailable` | full-page: "Search is temporarily unavailable" | Retry button; query preserved |
-| Search timeout | 504 `upstream_timeout` | "That took too long" | Retry |
-| Rate limited | 429 `rate_limited` | "Too many searches — try again in 30 s" with a live countdown | auto-enables |
-| Query too long | 400 `query_too_long` | inline under the box: "Search is limited to 512 characters" | text is trimmed, not cleared |
-| Invalid filter in a shared URL | 400 `invalid_filter` | banner: "Some filters in this link weren't valid and were ignored" | search proceeds without them |
-| Summary failed | any | **nothing** — block removed | n/a |
-| Facets dropped | partial | chips without counts | n/a |
-| Voice unavailable | 503 | "Voice search is busy — try again" | Retry |
-| No speech | 422 `no_speech_detected` | "We didn't hear anything" | Retry |
-| Image unreadable | 422 `image_unreadable` | "We couldn't read this image" | choose another |
-| Upload too large | 413 | "Image is too large (max 8 MB)" | choose another |
-| Offline | network | persistent banner: "You appear to be offline" | auto-clears on `online` |
-| Unexpected error | 500 | "Something went wrong on our side" + request id in small text | Retry |
+The search page catches `SearchFailed` (status + API error code) and anything else thrown by the
+fetch, and renders one error shell (§7). The mapping, in the order the code checks it (BUG-041):
 
-The request id is shown (not the code) because it is the one thing that lets an operator find the
-trace — and it contains no user data ([[Observability]] §1).
+| Situation | HTTP / code | UI (message key) | Recovery |
+|:---|:---|:---|:---|
+| Search timeout | 504 or `upstream_timeout` | `errorSlow` — "This search took longer than usual. The engine is busy indexing — try again." | `errorRetry` link |
+| Rate limited | 429 | `errorRateLimited` — "Too many searches in a short time. Wait a moment and try again." | `errorRetry` link — **no countdown** (spec'd 2026-08-06, not built) |
+| Search backend down | 503 or `search_unavailable` | `errorUnavailable` — "The search engine is unavailable right now." | `errorRetry` link |
+| Any other API error | 4xx/5xx with a body | the API's own `error.message`, verbatim | `errorRetry` link |
+| API unreachable | fetch threw (restart, DNS, refused) | `errorUnreachable` — "The search service could not be reached. It may be restarting — try again in a few seconds." | `errorRetry` link |
+| Query too long | — | the box has `maxLength={512}`; the browser stops input, no message is shown | n/a |
+| Invalid filter in a shared URL | — | **not built**; unknown params are ignored silently | n/a |
+| Summary failed | any | **nothing** — the loading line collapses | n/a |
+| Facets dropped | `facets_degraded` | chip row absent + `filtersUnavailable` note (§5) | n/a |
+| Voice unavailable / failed / mic refused | — | inline under the box: `voiceUnavailable`, `voiceFailed`, `voicePermission` ([[UI - Voice Search]]) | press again |
+| Image unreadable | — | `ocrFailed` ("Couldn't read the image") in the OCR page | choose another |
+| Upload too large | — | no such state: the image is resized to ≤ 2048 px on the long edge before upload, metadata stripped | n/a |
+| Offline | `offline` event | persistent banner (§6) | auto-clears on `online` |
+| Unknown route | 404 | `app/not-found.tsx`: "404 / This page does not exist / Go home" — English only, own `<html>` because the root layout is thin | Go home |
+
+The heading over every search error is `errorTitle` ("Something went wrong"); the detail line
+carries `dir="auto"` because the API's own message may be in any language.
+
+**Retry drops the filters.** The `errorRetry` href is `/{lang}/search?q=…` with only the query —
+a deliberate simplification: the most likely cause of a 504 is load, and the cheapest retry is the
+plain query. The query itself is also still in the header box (§7), so the reader can retry with
+or without narrowing.
+
+**No request id.** The spec wanted the request id under a 500 so an operator could find the trace.
+The page never shows it (there is no support channel that would consume it — §8's second open
+question resolved itself by default). If it is added, it belongs where the spec put it: small,
+muted, selectable, never in the sentence.
 
 ---
 
@@ -106,25 +153,35 @@ trace — and it contains no user data ([[Observability]] §1).
 
 Mapped from [[Error Handling and Resilience]] §6:
 
-| Degradation | User-visible |
+| Degradation | User-visible (today) |
 |:---|:---|
 | Summary dropped | summary block absent |
 | Expansion skipped | nothing; slightly different results |
 | Comment index skipped | no `matched_comments` on cards |
-| Facets dropped | chips without counts |
-| Stale/cached results | banner: "Showing recent results — the index is catching up" |
+| Facets dropped | chip row absent, plus a faint one-line note `filtersUnavailable` ("Filters are temporarily unavailable under load") — shown **only** when `facets_degraded` is true, never for a result set that simply has nothing to facet |
+| Stale/cached results | **no banner** — the spec's "Showing recent results — the index is catching up" is not built; the API does not signal staleness today |
 | Index behind | no banner; freshness is an internal SLO |
 
-**Only the stale-results case gets a banner**, because it is the only one where the user might act on
-information that is wrong. The rest are silently less good, which is the correct trade.
+The facets note is the one place the "degradation is invisible" principle was deliberately bent
+(2026-08-2x, BUG audit): a bare row where filters usually are reads as "nothing here to filter by"
+rather than "filters are resting", and that misreading was worth one small sentence.
 
 ---
 
 ## 6. Offline
 
-- `online`/`offline` events drive a persistent banner.
+`OfflineBanner` (client component, mounted in `app/[lang]/layout.tsx`):
+
+- `online`/`offline` events and `navigator.onLine` drive it. Initial render assumes online — the
+  server cannot know, and rendering "offline" during SSR would flash the banner for every reader.
+- While offline: `role="status"`, `aria-live="assertive"`, `--warn` background, fixed to the top at
+  `z-toast`; `<strong>offline</strong>` + `offlineHint` ("Search will resume when the connection
+  returns").
+- On recovery *after* having been offline: the banner turns to `--accent-wash` and says
+  `backOnline` for 3 s (polite), then disappears. A first `online` event on a page that was never
+  offline shows nothing.
 - The current results page stays readable — nothing is cleared.
-- The search box still submits; failure surfaces as a normal network error.
+- The search box still submits; failure surfaces as the `errorUnreachable` shell.
 - **No service worker in v1.** A cache of search results is a query history on the user's device,
   which conflicts with the product's central claim ([[Security and Privacy]] P1). Static assets could
   be cached safely, and that trade-off is §8's first open question.
@@ -133,23 +190,26 @@ information that is wrong. The rest are silently less good, which is the correct
 
 ## 7. Error Page Anatomy
 
+As built (`Shell` in `search/page.tsx`, called without `aside` and without `banner`):
+
 ```
 ┌──────────────────────────────────────┐
-│  XUSTIVE   [ 🔍 query preserved ]    │   ← header always present and usable
+│  Xustive  [ 🔍 query preserved ] ◐ ⚙ │   ← the normal sticky header: wordmark, SearchBox with
+├──────────────────────────────────────┤     initialQuery, LangSwitcher, ThemeToggle, DensityToggle
+│                                      │
+│       Something went wrong           │   errorTitle, text-xl
+│   The search service could not be    │   detail, text-sm, --fg-muted, dir="auto"
+│   reached. It may be restarting…     │
+│                                      │
+│            Try again                 │   errorRetry — a plain accent link, not a button
+│                                      │
 ├──────────────────────────────────────┤
-│              ⚠                       │
-│   Search is temporarily unavailable  │   --text-2xl
-│   We're working on it. Try again in  │   --text-base, muted
-│   a moment.                          │
-│                                      │
-│          [ Try again ]               │   primary action
-│                                      │
-│   Request ID: 01J8ZK…                │   --text-xs, muted, selectable
+│  privacy line                        │   the footer privacy link is on the error shell too (BUG-030)
 └──────────────────────────────────────┘
 ```
 
-The header is fully functional on every error page — the fastest recovery from a failed search is
-usually a different search.
+No ⚠ glyph, no request id, no knowledge rail. The header is fully functional on every error page —
+the fastest recovery from a failed search is usually a different search.
 
 ---
 
@@ -158,11 +218,17 @@ usually a different search.
 - [ ] Cache static assets in a service worker (fast repeat loads) while never caching results? The
       benefit is real; the risk is a future contributor adding result caching to an existing worker.
 - [ ] Should the 500 page expose the request id at all, or is that noise for users with no support
-      channel to use it?
+      channel to use it? *(Resolved by omission so far — nothing shows it. Revisit if a support
+      channel appears.)*
 - [ ] Do we auto-retry once on a 503 before showing an error, or is a silent retry dishonest about
-      what happened?
+      what happened? *(Today: no auto-retry; the page says what happened and offers the link.)*
+- [ ] Build the specific zero-results state (removable filter chips, transliteration alternative)
+      now that the plain one has shipped — and render the filter chips on an empty page so a
+      filter that emptied the search can be undone in place.
+- [ ] A 429 countdown, or is "wait a moment" enough given the limiter's window is seconds?
 
 ## Related
 
 [[API Contract]] · [[Error Handling and Resilience]] · [[UI - Results Page]] ·
-[[UI - Component Library]] · [[UI - Accessibility]] · [[Observability]]
+[[UI - Component Library]] · [[UI - Accessibility]] · [[UI - Voice Search]] · [[UI - Image Search]] ·
+[[UI - Filters and Facets]] · [[Observability]]

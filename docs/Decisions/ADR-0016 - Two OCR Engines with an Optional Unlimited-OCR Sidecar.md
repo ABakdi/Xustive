@@ -1,14 +1,14 @@
 ---
 tags: [adr]
 adr-id: "0016"
-status: accepted
+status: implemented
 date: 2026-08-21
 ---
 # ADR-0016 - Two OCR Engines with an Optional Unlimited-OCR Sidecar
 
 ## Status
 
-Accepted. Constrains [[Image Pipeline]] and [[Milestone 3 - Multimodal Input]] (the OCR track and [[UI - Image Search]]), extends [[ADR-0001 - Two-Plane Architecture]], and relates to the hardware target recorded for the reference machine (Quadro T1000 4 GB, CPU-capable).
+Implemented. Constrains [[Image Pipeline]] and [[Milestone 3 - Multimodal Input]] (the OCR track and [[UI - Image Search]]), extends [[ADR-0001 - Two-Plane Architecture]], and relates to the hardware target recorded for the reference machine (Quadro T1000 4 GB, CPU-capable).
 
 ## Context
 
@@ -50,3 +50,8 @@ The two user-facing surfaces ship on this: the **standalone image-to-text tool**
 - **Replace tesseract entirely with Unlimited-OCR.** Rejected: breaks the CPU-only target for the ingestion path and makes corpus-scale OCR untenable without a GPU on every deployment.
 - **Sidecar only, no fallback.** Rejected: a GPU service that is down would turn OCR off for the tools; fallback costs little and removes that failure mode.
 - **Quantise the VLM to fit 4 GB.** Not pursued now: the model ships bf16 with no ready GGUF/int4 path, and quantising a VLM well is its own project. The trait leaves room to add a quantised backend later without touching callers.
+
+## Where it stands (2026-08-27)
+
+- `OcrBackend` trait, `Tesseract`, `Sidecar` and `Fallback` in `crates/xustive-media/src/backend.rs`; `media.ocr_backend` defaults to `"tesseract"` (`crates/xustive-core/src/config.rs`); `POST /api/v1/ocr` in `crates/xustive-api/src/lib.rs`; the sidecar is `services/ocr-sidecar/app.py` behind the `ocr` compose profile in `deploy/docker-compose.yml`; the tool page is `web/app/[lang]/tools/ocr`.
+- The sidecar's temp-file posture is as decided (write, delete in `finally`), and is the one place [[ADR-0008 - No Query Logging]]'s "never on disk" row is knowingly relaxed. Tested against the code path; the sidecar model weights themselves are not fetched in CI.

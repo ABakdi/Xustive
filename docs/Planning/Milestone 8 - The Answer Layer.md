@@ -4,7 +4,8 @@ tags:
   - milestone
 milestone: 8
 status: done
-updated: 2026-08-26
+updated: 2026-08-27
+closed: 2026-08-26
 ---
 
 # Milestone 8 - The Answer Layer
@@ -18,7 +19,7 @@ updated: 2026-08-26
 > `make egress-test` and the telemetry lint stay green.
 > Parent: [[TODO]] · Previous: [[Milestone 7 - Federated Retrieval and External Tools]] ·
 > Governed by [[ADR-0019 - The Knowledge Layer]] and [[ADR-0020 - Approximate Location from a Local Database]] ·
-> Components: [[Instant Answers]], [[Tool Data Plane]], [[Knowledge Layer]]
+> Components: [[Instant Answers]], [[Tool Data Plane]], [[Knowledge Store|Knowledge Layer]]
 
 ## Why This Milestone Exists
 
@@ -75,7 +76,7 @@ who asked.
 judgement call — it follows from the entity's type, and the type is a fact we store. Wikidata's
 *instance of* says `film`, and `film` selects a fixed authority set. Spending a language model on
 that would add a second of latency and a GPU slot to reproduce a table lookup, on a
-[[Hardware Profile|4 GB Quadro]] that has better things to do. The model earns its place where
+[[Performance Budgets|4 GB Quadro]] that has better things to do. The model earns its place where
 there is genuine ambiguity — *which* `Q` a bare name means when the store holds six candidates, and
 writing a readable line when no encyclopedic extract exists — and both of those results are cached
 against the entity, so the model runs once per entity rather than once per search.
@@ -84,6 +85,14 @@ The visible behaviour is what was asked for. The mechanism is a lookup with a mo
 places a model is actually better than a table.
 
 ---
+
+> **Audit 2026-08-27.** Every ticked task checked against the code; the two `[~]` items (T04.3
+> half-cached against the query, T11.3 SPARQL in the web tier) stand as written. Today's work is
+> recorded in the T11 status block below and in `a231f0b` (resolver tie-break: unclamped score,
+> sitelinks, recent release, then earliest; the "See also" family row) and `1ce4f9e` (relation
+> cards). Governing decisions written up as [[ADR-0022 - Entity Resolution Prefers Silence to a > Wrong Panel]] and [[ADR-0023 - Live Wikidata Fallback Judged by the Local Resolver]]. Known
+> limits carried to [[TODO]]: no legitimate Goodreads ratings, Arabic bare surnames miss on the
+> live path, Wikimedia throttles the live path — harvest is the answer to both.
 
 ## M8-T01 — The knowledge store
 
@@ -400,7 +409,7 @@ places a model is actually better than a table.
 - [x] M8-T10.4 Panel latency: p95 ≤ 100 ms served from the local store, measured cold
 - [x] M8-T10.5 Precision: zero wrong-entity panels across the T02.5 corpus. Not "few"
 - [x] M8-T10.6 Every new dependency clears `cargo deny check licenses` — the
-      [[Qwen licence|non-commercial-model]] lesson, applied before the dependency lands rather than
+      [[Legal and Compliance|non-commercial-model]] lesson, applied before the dependency lands rather than
       after
 
 ---

@@ -2,14 +2,20 @@
 tags:
   - architecture
 type: index
-status: specified
-updated: 2026-08-06
+status: implemented
+updated: 2026-08-27
 ---
 
 # Component Map
 
-> The authoritative inventory of every component, its plane, its owner binary, and its neighbours.
+> The authoritative inventory of every component, its plane, its owner process, and its neighbours.
 > Parent: [[System Architecture]]
+
+> **Audited against the code on 2026-08-27.** The "Binary" column names what actually runs. The
+> 2026-08-06 plan had `xustive-ml`, `xustive-crawler` and `xustive-worker` binaries; none exists.
+> ML lives inside `xustive-api` (llama.cpp) or in Python sidecars under `services/`; the crawl side
+> is `xustive-cli crawld` and `xustive-cli worker`. The component notes' own `binary:` frontmatter
+> still carries the old names — this table is the corrected one.
 
 ---
 
@@ -17,55 +23,69 @@ updated: 2026-08-06
 
 ### Serving plane
 
+| # | Component | Binary / crate | Depends on | Consumed by |
+|:--|:---|:---|:---|:---|
+| C01 | [[API Gateway]] | `xustive-api` | C02, C05, C28, C09, C10, C30 | web tier |
+| C02 | [[Query Pipeline]] | `xustive-api` (`search.rs`), `xustive-text` | C03, C04, C06, C07, C08, C30, C31 | C01 |
+| C03 | [[Language Detector]] | `xustive-lang` | lexicon | C02, C05 |
+| C04 | [[Query Expander]] | `xustive-lang` | lexicon, morphology, transliteration tables (no DziriBERT — never built) | C02 |
+| C05 | [[Autocomplete Service]] | `xustive-api` (`suggest.rs`) | C06, curated list | C01 |
+| C06 | [[Search Index]] | `meilisearch` — indexes `documents`, `comments`, `knowledge`; client crate `xustive-search` | — | C02, C05, C19, C28, C29 |
+| C07 | [[Vector Index]] | `qdrant` — collections `image_clip`, `text_bge`; client crate `xustive-vector` | `clip-embed`, `text-embed` sidecars | C02, C10, C17 |
+| C08 | [[Summarizer]] | `xustive-api` via `xustive-ml` (llama.cpp, feature `summariser`; `cuda` optional); opt-in external LLM via C31 | GGUF model on disk | C02 |
+| C09 | [[Speech to Text]] | `services/stt-sidecar` (faster-whisper `small` + `base` for partials, GPU when present), client `xustive-api/stt.rs` | model volume | C01 |
+| C10 | [[Image Pipeline]] | tesseract in-process (`xustive-media`) or `services/ocr-sidecar`; `services/clip-embed`; `xustive-api/image_search.rs` | C07 | C01, C17 |
+| C28 | [[Instant Answers]] | `xustive-tools` (calculator via fend, units, dates, prayer, fuel, exam, wilaya, utilities, translator, transliterator); weather + currency handlers in `xustive-api` | C29 cache, geoip (DB-IP, local) | C02 |
+| C29 | [[Tool Data Plane]] | `xustive-toold` — weather (Open-Meteo), rates (open.er-api), Wikidata knowledge harvest | Redis, C06 (`knowledge`) | C28, C32 |
+| C30 | [[Interaction Signals]] | `xustive-api/interaction.rs`, `xustive-ingest/interaction.rs` | `redis-signals` | C02, admin |
+| C32 | Knowledge layer ([[ADR-0019 - The Knowledge Layer]]; documented under [[Instant Answers]]) | `xustive-knowledge` (entity model, kind table, resolver, templates, Wikidata parsing); `xustive-api/knowledge.rs`; web `/api/knowledge-live`, `/api/knowledge-list` | C06 (`knowledge`), C29 | C01, web tier |
+
+### Bridge processes (dual-homed, the only crossings of the egress boundary)
+
 | # | Component | Binary | Depends on | Consumed by |
 |:--|:---|:---|:---|:---|
-| C01 | [[API Gateway]] | `xustive-api` | [[Query Pipeline]] | browser |
-| C02 | [[Query Pipeline]] | `xustive-api` | C03, C04, C06, C07, C08 | C01 |
-| C03 | [[Language Detector]] | `xustive-api` | — | C02, C15 |
-| C04 | [[Query Expander]] | `xustive-api` | lexicon, DziriBERT | C02, C09 |
-| C05 | [[Autocomplete Service]] | `xustive-api` | C06 | C01 |
-| C06 | [[Search Index]] | `meilisearch` | — | C02, C05, C19 |
-| C07 | [[Vector Index]] | `qdrant` | — | C02, C11, C19 |
-| C28 | [[Instant Answers]] | `xustive-api` | tool routing and instant answers |
-| C29 | [[Tool Data Plane]] | `xustive-toold` | scheduled fetch of external tool data |
-| C08 | [[Summarizer]] | `xustive-ml` | model files | C02 |
-| C09 | [[Speech to Text]] | `xustive-ml` | model files | C01 |
-| C10 | [[Image Pipeline]] | `xustive-ml` | C07, tesseract, CLIP | C01, C17 |
+| C29 | [[Tool Data Plane]] | `xustive-toold` (`ingest` + `core`) | open internet, Redis, Meilisearch | C28, C32 |
+| C31 | [[Federation Gateway]] | `xustive-federator` (`core` + `ingest`); client crate `xustive-federation` | `searxng` (profile `federation`) | C02, C08 |
 
 ### Ingestion plane
 
-| # | Component | Binary | Depends on | Consumed by |
+| # | Component | Binary / crate | Depends on | Consumed by |
 |:--|:---|:---|:---|:---|
-| C11 | [[Crawler Orchestrator]] | `xustive-crawler` | C20, C21, C22 | — |
-| C12 | [[Web Fetcher]] | `xustive-crawler` | C20, C21 | C11 |
-| C13 | [[Social Connector - Facebook]] | `xustive-crawler` | C20, C21, C25, C26, C27 | C11 |
-| C14 | [[Social Connector - Instagram]] | `xustive-crawler` | C20, C21, C25, C26, C27 | C11 |
-| C15 | [[Social Connector - TikTok]] | `xustive-crawler` | C20, C21, C25, C26, C27 | C11 |
-| C16 | [[Content Parser]] | `xustive-worker` | C03 | queue |
-| C17 | [[Enrichment Pipeline]] | `xustive-worker` | C10, C18 | queue |
-| C18 | [[Sentiment Engine]] | `xustive-worker` / `xustive-ml` | lexicon, model | C17 |
-| C19 | [[Indexer Worker]] | `xustive-worker` | C06, C07 | queue |
-| C23 | [[Deduplication Service]] | `xustive-worker` | Redis | C16, C17 |
+| C11 | [[Crawler Orchestrator]] | `xustive-cli crawld` → `xustive-ingest::orchestrator` | C20 (frontier, revisit, raw store, link graph, crawl stats in Redis), C22 | — |
+| C12 | [[Web Fetcher]] | `xustive-ingest::fetch` | C22, `SafeUrl` (`xustive-core`) | C11 |
+| C13 | [[Social Connector - Facebook]] | **not built** | — | — |
+| C14 | [[Social Connector - Instagram]] | **not built** | — | — |
+| C15 | [[Social Connector - TikTok]] | **not built** | — | — |
+| C16 | [[Content Parser]] | `xustive-ingest::parse`, `rules`, `date`; media via `xustive-media` | C03 | C11 (in-process) |
+| C17 | [[Enrichment Pipeline]] | `xustive-ingest::enrichment`, `spam`, `topics`, `media_ocr`, `media_embed`, `text_embed` | C10, C18, C07 | C11 (in-process) |
+| C18 | [[Sentiment Engine]] | `xustive-lang::sentiment` (lexicon; no transformer mode) | lexicon | C17 |
+| C19 | [[Indexer Worker]] | `xustive-cli worker` → `xustive-queue::indexer` | C06, C20 | queue |
+| C23 | [[Deduplication Service]] | `xustive-ingest::dedup`, `simhash_index` | Redis | C11 (in-process) |
+| — | Discovery channels: Common Crawl (`commoncrawl`), Brave (`brave`), direct SERP (`serp`), weak-coverage (`weak_coverage`), sitemap polling | `xustive-cli commoncrawl|discover|crawld` | C20 | C11 — see [[ADR-0012 - Discovery-Only Aggregation]], [[ADR-0013 - Direct SERP Collection for Discovery]] |
 
 ### Platform
 
 | # | Component | Binary | Depends on | Consumed by |
 |:--|:---|:---|:---|:---|
-| C20 | [[Task Queue]] | `redis` | — | all ingestion |
-| C21 | [[Proxy Manager]] | `xustive-crawler` | proxy pool | C12–C15 |
-| C22 | [[Politeness and Robots]] | `xustive-crawler` | C20 | C11, C12 |
-| C24 | [[Admin and Source Submission]] | `xustive-api` | C20, C06 | operators |
+| C20 | [[Task Queue]] | `redis` — stream `q:index`, group `indexers`, dead letters `q:index:dead`; crate `xustive-queue` | — | C11, C19, admin |
+| C21 | [[Proxy Manager]] | `xustive-ingest::proxy` — **library only**, not called by the crawl loop | proxy pool | nothing yet |
+| C22 | [[Politeness and Robots]] | `xustive-ingest::robots`, `robots_cache` | C20 | C11, C12 |
+| C24 | [[Admin and Source Submission]] | `xustive-api/admin*.rs` under `/api/v1/admin/*`; pages under `web/app/(operator)/admin/*` and `/bot` | C20, C06, `api.admin_key` | operators |
+| — | [[Crawler Console]] | the admin pages: crawler, discovery, documents, queue, sources, sources/health, weak-coverage, evaluation, interaction, media, integrations, live, maintenance, compute, config | C24 | operators |
+| — | Load generator | `xustive-loadgen` (`make load`) | C01 | [[Performance Budgets]] |
 
 ### Collection layer
 
-Added by [[ADR-0009 - Direct Collection for Social Platforms]]. These three carry all the
-direct-collection complexity so the connectors stay readable.
+Added by [[ADR-0009 - Direct Collection for Social Platforms]]. These carry the direct-collection
+complexity so the connectors stay readable. As of 2026-08-27 they are **library modules with
+tests** in `xustive-ingest` and nothing in `crawld` or the SERP client constructs them; the
+connectors they were built for (C13–C15) do not exist.
 
-| # | Component | Binary | Depends on | Consumed by |
+| # | Component | Module | Depends on | Consumed by |
 |:--|:---|:---|:---|:---|
-| C25 | [[Session Manager]] | `xustive-crawler` | C20, C21, C26 | C13–C15 |
-| C26 | [[Fingerprint Engine]] | `xustive-crawler` | catalogue files | C12, C25, C27 |
-| C27 | [[Signature Service]] | `xustive-crawler` | C20, C26, JS runtime | C13–C15 |
+| C25 | [[Session Manager]] | `xustive-ingest::session` (budget, lifecycle, detection, crypto, pool) | C20, C21, C26 | nothing yet |
+| C26 | [[Fingerprint Engine]] | `xustive-ingest::fingerprint` (catalogue, coherence) | catalogue files | nothing yet |
+| C27 | [[Signature Service]] | **not built** | — | — |
 
 ---
 
@@ -73,52 +93,59 @@ direct-collection complexity so the connectors stay readable.
 
 ```mermaid
 graph TD
-  subgraph Serving
+  subgraph Web["Web tier (Next.js, has egress)"]
+    NX[Pages + /api/thumb + /api/knowledge*]
+  end
+  subgraph Serving["xustive-api (no egress)"]
     C01[API Gateway] --> C02[Query Pipeline]
     C01 --> C05[Autocomplete]
-    C01 --> C09[Speech to Text]
-    C01 --> C10[Image Pipeline]
+    C01 --> C09[STT client]
+    C01 --> C10[OCR / image search]
+    C01 --> C32[Knowledge]
     C02 --> C03[Language Detector]
     C02 --> C04[Query Expander]
-    C02 --> C06[(Search Index)]
+    C02 --> C28[Instant Answers]
+    C02 --> C06[(Meilisearch)]
+    C02 --> C07[(Qdrant)]
     C02 --> C08[Summarizer]
+    C02 --> C30[Interaction Signals]
     C05 --> C06
-    C10 --> C07[(Vector Index)]
+    C32 --> C06
+    C10 --> C07
+    C30 --> RSG[(redis-signals)]
+    C28 --> RS[(redis)]
   end
-  subgraph Ingestion
-    C11[Crawler Orchestrator] --> C22[Politeness/Robots]
+  subgraph Sidecars
+    S1[stt-sidecar] ; S2[ocr-sidecar] ; S3[clip-embed] ; S4[text-embed]
+  end
+  C09 --> S1
+  C10 --> S2
+  C10 --> S3
+  subgraph Bridge
+    C29[toold] ; C31[federator]
+  end
+  C02 --> C31
+  C08 --> C31
+  C31 --> SX[SearXNG]
+  C29 --> RS
+  C29 --> C06
+  subgraph Ingestion["xustive-cli crawld / worker (egress)"]
+    C11[Orchestrator] --> C22[Politeness/Robots]
     C11 --> C12[Web Fetcher]
-    C11 --> C13[FB Connector]
-    C11 --> C14[IG Connector]
-    C11 --> C15[TikTok Connector]
-    C12 --> C21[Proxy Manager]
-    C13 --> C25[Session Manager]
-    C14 --> C25
-    C15 --> C25
-    C13 --> C27[Signature Service]
-    C14 --> C27
-    C15 --> C27
-    C25 --> C21
-    C25 --> C26[Fingerprint Engine]
-    C27 --> C26
-    C12 --> C26
     C12 --> C16[Content Parser]
-    C13 --> C16
-    C14 --> C16
-    C15 --> C16
     C16 --> C23[Dedup]
     C23 --> C17[Enrichment]
     C17 --> C18[Sentiment]
-    C17 --> C10
-    C17 --> C19[Indexer]
+    C17 --> S4
+    C17 --> S3
+    C17 --> C07
+    C17 -->|q:index| RS
+    RS -->|q:index| C19[Indexer worker]
     C19 --> C06
-    C19 --> C07
   end
-  C20[(Redis Streams)] -.transport.- C11
-  C20 -.transport.- C16
-  C20 -.transport.- C17
-  C20 -.transport.- C19
-  C24[Admin/Source Submission] --> C11
+  NX --> C01
+  C24[Admin console] --> C01
+  C24 -.-> C11
 ```
 
 ---
@@ -137,7 +164,7 @@ status: draft|specified|implemented|verified
 updated: YYYY-MM-DD
 ---
 # <Name>
-> **ID** Cxx · **Binary** … · **Upstream** [[…]] · **Downstream** [[…]]
+> **ID** Cxx · **Binary** … · **Upstream** … · **Downstream** …
 
 ## 1. Purpose            — one paragraph, why this exists
 ## 2. Responsibilities   — in scope / explicitly out of scope
@@ -166,7 +193,34 @@ updated: YYYY-MM-DD
 | `verified` | Meets its [[Performance Budgets]] entry under integration test |
 
 Query the board in Obsidian with the tag pane (`#component`) or a Bases/Dataview view over
-`status` frontmatter.
+`status` frontmatter. Note (2026-08-27): most component notes still say `specified` in their
+frontmatter although the code is built and tested — the frontmatter has not been kept current,
+so trust the milestone notes ([[Milestone 7 - Federated Retrieval and External Tools]],
+[[Milestone 8 - The Answer Layer]], [[Milestone 9 - Images and Videos]]) for what is closed.
+
+## 5. Crate Index
+
+The workspace, so a name in this vault can be found on disk.
+
+| Crate | Role |
+|:---|:---|
+| `xustive-core` | canonical types, error taxonomy, config, `SafeUrl` SSRF guard, source registry |
+| `xustive-text` | shared normalisation, used at query *and* index time |
+| `xustive-lang` | detection, expansion, lexicon, morphology, transliteration, question shape, sentiment |
+| `xustive-search` | Meilisearch client, index settings, filters, operators, ranking, authority, eval |
+| `xustive-vector` | Qdrant REST client; CLIP and text embedding calls |
+| `xustive-ml` | device selection, model registry, llama.cpp summariser, translation |
+| `xustive-tools` | instant answers: matching, arbitration, the tools |
+| `xustive-knowledge` | entity model, kind table, resolver, panel templates, Wikidata parsing |
+| `xustive-media` | image OCR backends, perceptual hash |
+| `xustive-ingest` | fetch, robots, parse, dedup, enrichment, frontier, discovery channels, SERP |
+| `xustive-queue` | Redis Streams: produce, consumer group, ack, reclaim, dead-letter, breaker |
+| `xustive-federation` | SearXNG client types (leaf crate) |
+| `xustive-federator` | the Federation Gateway binary |
+| `xustive-toold` | the tool data fetcher binary |
+| `xustive-api` | the HTTP surface |
+| `xustive-cli` | operator tooling: migrate, seed, crawld, worker, dlq, eval, registry, keys… |
+| `xustive-loadgen` | open-loop load generator |
 
 ## Related
 

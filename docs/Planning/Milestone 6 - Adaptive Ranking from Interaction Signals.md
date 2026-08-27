@@ -4,7 +4,8 @@ tags:
   - milestone
 milestone: 6
 status: done
-updated: 2026-08-22
+updated: 2026-08-27
+closed: 2026-08-25
 ---
 # Milestone 6 - Adaptive Ranking from Interaction Signals
 
@@ -12,7 +13,7 @@ updated: 2026-08-22
 > **Exit gate:** With interaction on, a replayed click stream measurably lifts the clicked documents in ranking (a CTR/nDCG uplift on a held-out set) **and** every privacy test is green (telemetry lint, egress test, no identifier in any interaction key, k ≥ 20 enforced for multi-user). Default remains off.
 > Parent: [[TODO]] · Previous: [[Milestone 5 - Beta Launch]] · Governed by [[ADR-0015 - Anonymous Interaction Signals for Ranking]] · Component: [[Interaction Signals]]
 
-This milestone realises the escape hatch [[ADR-0008 - No Query Logging]] left open — *"aggregate counters, k-anonymous, default off"* — by generalising the one counter [[weak_coverage]] already ships into ranking and re-crawl signals. Everything here is the k-anonymous-counter pattern: a bare Redis integer, keyed structurally, surfaced only above a k-floor, decaying out of a sliding window. The name is **interaction** (not `engagement`, which is taken).
+This milestone realises the escape hatch [[ADR-0008 - No Query Logging]] left open — *"aggregate counters, k-anonymous, default off"* — by generalising the one counter [[Interaction Signals|weak_coverage]] already ships into ranking and re-crawl signals. Everything here is the k-anonymous-counter pattern: a bare Redis integer, keyed structurally, surfaced only above a k-floor, decaying out of a sliding window. The name is **interaction** (not `engagement`, which is taken).
 
 Read [[ADR-0015 - Anonymous Interaction Signals for Ranking]] and [[Interaction Signals]] first — they hold the privacy rules every task below must satisfy.
 
@@ -41,5 +42,10 @@ reconciled in [[Security and Privacy]] (new P8 + the "no query logging" reconcil
   the count-descending `weak_terms` sort. Live Redis test covers the resolution.
 - **T08.4 (privacy copy)** — done. The homepage line is now "Searches are never linked to you" (the
   guarantee that holds whether interaction is on or off) in all four locales.
+
+> **Audit 2026-08-27.** Confirmed in history: T06 re-crawl pull (`1976108`, `hot_docs_to_recrawl`
+> read in `crates/xustive-cli/src/crawld.rs`), T09 eval replay + guardrail (`1f5223e`), the close
+> measurement (`da43034`), and the signal-shape fix that made the replay honest (`3d7c599`,
+> BUG-011). Header now carries the close date. Default remains off outside dev.
 
 **Exit gate met (2026-08-25).** On the regenerated golden set (200 queries, 79k-doc corpus): nDCG@10 **0.6239** baseline → **0.6288** with the replayed interaction signal — a measurable **+0.0048** uplift, with the zero-result guardrail unchanged (interaction only reorders). Privacy tests were already green (telemetry lint, egress, key-shape, k≥20 guard); default off. All tasks done.

@@ -4,14 +4,30 @@ tags:
   - platform
   - ingestion
 component-id: C22
-binary: xustive-crawler
-status: specified
-updated: 2026-08-06
+binary: xustive-cli
+status: built
+updated: 2026-08-27
 ---
 
 # Politeness and Robots
 
-> **ID** C22 · **Binary** `xustive-crawler` · **Upstream** [[Crawler Orchestrator]], [[Web Fetcher]] · **Downstream** none
+> **ID** C22 · **Binary** `xustive-cli` (`crawld` subcommand; the design called it `xustive-crawler`) · **Upstream** [[Crawler Orchestrator]], [[Web Fetcher]] · **Downstream** none
+
+## 00. Where it lives today
+
+Audited against code 2026-08-27. The open-web profile is built and exercised on every crawl; the
+`platform` profile and the blocklist tiers are not wired (see the notes in each section).
+
+| Piece | Where |
+|:---|:---|
+| `robots.txt` parser (RFC 9309), `Politeness` per-host state, delay resolution, adaptive pacing | `crates/xustive-ingest/src/robots.rs` |
+| Shared parsed-rules cache in Redis, `robots:v1:{authority}`, 24 h | `crates/xustive-ingest/src/robots_cache.rs` |
+| Where it is applied: `Fetcher` holds `Arc<Mutex<Politeness>>` and checks before every request | `crates/xustive-ingest/src/fetch.rs` (`ensure_robots`, `wait_turn`, `observe`) |
+| `X-Robots-Tag` / meta-robots / blocklist tiers (types) | `crates/xustive-ingest/src/exclusion.rs`, `parse.rs` (`ParseError::NoIndex`) |
+| `CrawlConfig { respect_crawl_delay, per_host_concurrency, ignore_politeness }` + `guard` | `crates/xustive-core/src/config.rs` |
+| Runtime bypass toggle `POST /api/v1/admin/politeness` | `crates/xustive-api/src/admin.rs` (`set_politeness`), banner on the [[Crawler Console]] |
+| Public bot page (mirrors the crate constants) | `web/app/(operator)/bot/page.tsx`, served at `/bot` |
+| Tests | `crates/xustive-ingest/tests/{robots_conformance,robots_sharing,fixture_site}.rs`; the config test that loads `config/{prod,staging,ci}.toml` through `guard` |
 
 ## 0. The testing bypass
 
@@ -72,16 +88,29 @@ fetching content (→ [[Web Fetcher]]).
 
 ## 3. Interface
 
+As designed, a trait with `may_fetch`/`crawl_delay`/`observe`. As built (2026-08-27) it is a plain
+struct the fetcher owns behind a mutex — one lock, held across the wait, is what makes per-host
+concurrency exactly one:
+
 ```rust
-pub trait Politeness: Send + Sync {
-    async fn may_fetch(&self, url: &Url) -> Decision;   // Allow | Disallow(reason) | Defer(until)
-    async fn crawl_delay(&self, host: &Host) -> Duration;
-    fn observe(&self, host: &Host, status: u16, latency: Duration, retry_after: Option<Duration>);
+pub struct Politeness { … }                       // crates/xustive-ingest/src/robots.rs
+impl Politeness {
+    pub fn with_bypass(ignore: bool) -> Self;      // the §0 flag lives here, checked in one place
+    pub fn allows(&self, host: &str, path: &str) -> bool;
+    pub fn wait_for(&self, host: &str) -> Duration;   // how long until this host may be hit
+    pub fn reserve(&mut self, host: &str) -> Duration; // claim the next slot
+    pub fn observe(&mut self, host: &str, status: u16, retry_after: Option<Duration>);
+    pub fn record_fetch(&mut self, host: &str);
+    pub fn rules_stale(&self, host: &str, ttl: Duration) -> bool;
 }
+pub fn resolve_delay(robots: Option<Duration>, registry: Option<Duration>,
+                     adaptive: Option<Duration>) -> Duration;   // the max, capped at 60 s
 ```
 
 `observe` closes the adaptive loop — politeness that ignores how the host is actually responding is
-just a static rate limit.
+just a static rate limit. Note it takes the status and `Retry-After` only; the design's latency
+signal (§4.3) was not implemented. Hosts are keyed by **authority**, not bare host, so
+`example.dz:8080` does not inherit `example.dz`'s rules.
 
 ## 4. Internal Design
 
@@ -102,6 +131,11 @@ component governs both, with **different rules**:
 | On 403 / challenge | halt and flag for review | graded ladder ([[Proxy Manager]] §4.6) |
 | Blocklist tiers | all three apply | takedown tier applies |
 
+**Status 2026-08-27:** only the `open_web` column exists in code. There is no profile resolution
+from source `kind`, no `platform` path in the fetcher, and no social connector to use one — the
+platform column stays the design for when [[ADR-0009 - Direct Collection for Social Platforms]]
+collection is built.
+
 The `open_web` column is unchanged from before ADR-0009 and is not negotiable in production. Most
 Algerian sites run on modest hosting where an aggressive crawler is indistinguishable from an
 outage — and being blocked by them is a permanent hole in the index. Changing the collection stance
@@ -115,7 +149,11 @@ overridden per request.
 
 ### 4.1 `robots.txt` *(`open_web` profile)*
 
-- Fetched on first contact per host, cached in `robots:{host}` for **24 h**.
+- Fetched on first contact per host. Cached twice: in-process on `Politeness`, and shared in
+  Redis as `robots:v1:{authority}` for **24 h** — the *source text* plus status, not the parsed
+  tree, so a parser fix applies to everything already cached and a human can read why a host is
+  refused. Another worker's fetch is reused rather than repeated, because fifty workers each
+  requesting `robots.txt` looks, to the site, exactly like misbehaviour.
 - Parsed per RFC 9309. `User-agent: XustiveBot` takes precedence over `*`.
 - Longest-match rule for `Allow`/`Disallow`; wildcards `*` and `$` supported.
 - `Crawl-delay`, though non-standard, is **honoured** when present.
@@ -130,7 +168,7 @@ Fetch-failure semantics (the part implementations usually get wrong):
 | 401 / 403 | **treat as full disallow** — the site is refusing us |
 | 5xx or timeout | **treat as full disallow**, retry the fetch in 1 h with backoff |
 | Unparseable | apply the lines that do parse; ignore the rest |
-| > 500 KB | truncate at 500 KB |
+| > 512 KiB | truncate (`MAX_ROBOTS_BYTES`) |
 
 Failing *closed* on 5xx is deliberate: an unavailable `robots.txt` is not permission.
 
@@ -142,8 +180,14 @@ Effective delay per host, taking the maximum of:
 |:---|:---|
 | `robots.txt` `Crawl-delay` | as stated |
 | Source registry `crawl_policy.crawl_delay_ms` | as configured |
-| Global default | 1 500 ms |
+| Global default | 1 500 ms (`DEFAULT_CRAWL_DELAY`) |
 | Adaptive component | §4.3 |
+
+The result is capped at **60 s** (`MAX_CRAWL_DELAY`): past that a site is effectively uncrawlable,
+and the honest response is to visit it rarely rather than park a worker (this answers the open
+question in §12). The registry column is `resolve_delay`'s second argument; whether a per-source
+`crawl_delay_ms` is actually passed from [[Data Sources Registry]] could not be confirmed on
+2026-08-27 — see §12.
 
 Concurrency per host is **1**, always. Enforced by [[Crawler Orchestrator]]'s per-host scheduling and
 [[Web Fetcher]]'s per-host connection cap — belt and braces, because this is the rule that prevents
@@ -153,28 +197,39 @@ us from hurting anyone.
 
 `observe` adjusts the delay from real signals:
 
-| Signal | Adjustment |
+| Signal | Adjustment (as built) |
 |:---|:---|
-| Response latency > 2 s | `delay = max(delay, latency × 2)` — a slow host is a loaded host |
-| 429 with `Retry-After` | honour exactly; open the breaker |
-| 429 without `Retry-After` | `delay ×= 4`, minimum 60 s |
-| 503 | `delay ×= 2`, breaker after 3 |
-| 10 consecutive 200s, latency < 500 ms | `delay ×= 0.9`, floored at the configured minimum |
+| 429 with `Retry-After` | honour it, clamped to 60 s … 600 s; streak reset |
+| 429 without `Retry-After` | `delay ×= 4`, clamped to 60 s … 600 s; streak reset |
+| any 5xx | `delay ×= 2`, ceiling 300 s; streak reset |
+| 2xx / 3xx | `delay ×= 0.9` down to a floor: the declared `Crawl-delay` if any; else **1 000 ms once 20 consecutive clean responses have been earned** (`EARNED_MIN_DELAY`, `HEALTHY_STREAK`, PROB-002); else the 1 500 ms default |
 
-Delays only decay slowly and increase quickly — asymmetric on purpose.
+Delays only decay slowly and increase quickly — asymmetric on purpose. *Superseded 2026-08-27:* the
+design's latency-doubling rule and the "breaker after 3" on 503 were not implemented — a single
+error resets the earned streak, which is the same intent with less machinery. The earned floor was
+added in [[PROB-002 - Crawl and Index Throughput]]: a robots-silent host that behaves may be paced at
+one request per second, squarely within accepted practice, and re-proves it continuously.
 
 ### 4.4 Meta-robots and `X-Robots-Tag`
 
-Checked **after** fetching (they cannot be known before). `noindex` → the document is fetched but not
-indexed, and `robots_indexable = false` is recorded ([[Data Model]]). `nofollow` → outlinks are not
-added to the frontier. `noarchive` → we do not retain the raw blob beyond parsing.
+Checked **after** fetching (they cannot be known before). `X-Robots-Tag` is read in the fetcher
+(`exclusion::from_header`, honouring both `*` and a `xustivebot:` prefix — the header matters as much
+as the tag because a PDF or JSON endpoint has no `<head>`); the meta tag surfaces from the parser as
+`ParseError::NoIndex`. Either way the orchestrator counts the skip (`robots` / `x_robots_tag`) and
+the document is not indexed. `nofollow` → outlinks are not added to the frontier. `noarchive` → we do
+not retain the raw blob beyond parsing.
 
 A `noindex` page still costs a fetch; after 3 consecutive `noindex` results the URL's revisit
 interval is pushed to the maximum.
 
 ### 4.5 Exclusion blocklist
 
-Three tiers, all consulted by `may_fetch`:
+Three tiers, designed to be consulted before every fetch. **Status 2026-08-27: the tiers exist as
+a type (`exclusion::Blocklist` with `Tier::{Global, Takedown, HostOptOut}`) but nothing constructs
+or consults one on the crawl path, and there is no `data/crawl/blocklist.txt`.** Today a takedown is
+`xustive-cli takedown --domain <d>` (deletes indexed documents) plus `registry disable`, per
+[[Runbooks]] — which stops re-crawl only through the source registry, not from another discovery
+channel. Wiring a persisted takedown tier into the fetcher is the outstanding follow-up.
 
 | Tier | Source | Effect |
 |:---|:---|:---|
@@ -188,30 +243,32 @@ rate-limit us — publishing that is part of being identifiable rather than evas
 
 ## 5. Configuration
 
+What is actually configurable (`[crawl]` in `config/*.toml`, `CrawlConfig`):
+
 | Key | Default |
 |:---|:---|
-| `robots_cache_ttl_h` | 24 |
-| `robots_fetch_timeout_s` | 10 |
-| `robots_max_bytes` | 512 KiB |
-| `robots_on_5xx` | `disallow` |
-| `default_crawl_delay_ms` | 1500 |
-| `min_crawl_delay_ms` | 500 |
-| `max_crawl_delay_ms` | 300000 |
-| `per_host_concurrency` | 1 |
-| `respect_crawl_delay` | `true` (locked in prod, `open_web`) |
-| `blocklist_path` | `data/crawl/blocklist.txt` |
-| `user_agent_token` | `XustiveBot` |
-| `profile_by_source_kind` | `web → open_web`; `facebook\|instagram\|tiktok → platform` |
+| `respect_crawl_delay` | `true` (locked in prod/staging by `guard`) |
+| `per_host_concurrency` | 1 (locked in prod/staging by `guard`) |
+| `ignore_politeness` | `false` (refused in prod/staging by `guard`) |
+
+Everything else the design listed as a key is a **constant** in `robots.rs`, changed by a reviewed
+code change rather than an env var — which is the stricter of the two and the intent of the CI check
+below: `TTL` 24 h, `MAX_ROBOTS_BYTES` 512 KiB, `DEFAULT_CRAWL_DELAY` 1 500 ms, `EARNED_MIN_DELAY`
+1 000 ms, `MAX_CRAWL_DELAY` 60 s, `USER_AGENT` `XustiveBot/1.0 (+https://xustive.dz/bot; Algerian
+search engine)`, `UA_TOKEN` `xustivebot`, and the fetcher's `politeness_margin` 200 ms. No
+`blocklist_path`, `robots_on_5xx` or `profile_by_source_kind` exists (§4.0, §4.5).
 
 `respect_crawl_delay` and `per_host_concurrency` are configuration in name only for the `open_web`
-profile — a CI check asserts their production values, so relaxing them requires a reviewed change,
-not an env var. The same check asserts that no `web`-kind source can be assigned the `platform`
-profile.
+profile — a test in `config.rs` loads the shipped `config/prod.toml`, `staging.toml` and `ci.toml`
+through `CrawlConfig::guard`, so relaxing them requires a reviewed change, not an env var. (The
+profile-assignment half of that check has nothing to assert yet — §4.0.)
 
 ## 6. Data
 
-Redis: `robots:{host}` (parsed rules, 24 h), `crawl:{host}` (delay, last fetch, adaptive state),
-`blocklist:takedown` (set). Reads the static blocklist file.
+Redis: `robots:v1:{authority}` (source text + status, 24 h). Per-host delay, last-fetch and
+adaptive state are **in-process** on each worker's `Politeness`, not in Redis — so an adaptive
+slowdown learned by one worker is not seen by another. No `blocklist:takedown` set and no static
+blocklist file exist (§4.5).
 
 ## 7. Failure Modes
 
@@ -220,13 +277,14 @@ Redis: `robots:{host}` (parsed rules, 24 h), `crawl:{host}` (delay, last fetch, 
 | `robots.txt` unreachable | timeout/5xx | disallow host, retry in 1 h |
 | `robots.txt` enormous | size cap | truncate |
 | Malformed rules | parser | apply what parses; `WARN` |
-| Redis unavailable | error | **fail closed** — no crawling without politeness state |
+| Redis unavailable | error | *superseded 2026-08-27:* the shared cache **falls through to fetching `robots.txt` directly** — fail-open on the cache, never on the rules. "No rules cached, therefore disallow everything" would turn a cache outage into a silent halt that looks like the crawler having nothing to do. The safety property survives because the fallback is fetching properly, not skipping |
 | Clock skew breaks delay accounting | monotonic clock | use `Instant`, never wall time |
 | Host changes `robots.txt` to disallow | 24 h cache | worst-case 24 h of stale permission; on a 403 we halt immediately anyway |
-| Blocklist file missing | startup | **Fatal** in prod |
+| Blocklist file missing | startup | **Fatal** in prod — *not built; no blocklist file exists (§4.5)* |
 
-The Redis fail-closed rule is the opposite of [[Deduplication Service]]'s fail-open rule, and for the
-same underlying reason: dedup is a quality optimisation, politeness is a commitment.
+The original note said the opposite of what shipped — Redis-down fail-closed. The reasoning that
+won: the cache is an optimisation, the rules are the commitment, and falling through *to the rules*
+keeps the commitment. (Compare [[Deduplication Service]], which fails open for a weaker reason.)
 
 ## 8. Performance
 
@@ -238,11 +296,11 @@ same underlying reason: dedup is a quality optimisation, politeness is a commitm
 
 ## 9. Observability
 
-`xustive_robots_blocked_total{reason}`, `xustive_robots_fetch_total{outcome}`,
-`xustive_crawl_delay_seconds` (histogram), `xustive_adaptive_slowdown_total`,
-`xustive_429_total{host_bucket}`, `xustive_noindex_total`, `xustive_blocklist_hit_total{tier}`.
-
-A rising `xustive_429_total` is treated as **our** bug, not the host's.
+As built, the crawler publishes **skip counters** through `crawl_stats` to Redis for the
+[[Crawler Console]] — `robots`, `x_robots_tag`, and the rest of the skip vocabulary — plus a
+"recent" feed naming the URL and reason; the bypass state is shown as a banner. None of the
+Prometheus series the design named (`xustive_robots_blocked_total`, `xustive_429_total`, …) are
+emitted. A rising count of 429s in the recent feed is still to be read as **our** bug, not the host's.
 
 ## 10. Security and Compliance
 
@@ -271,10 +329,11 @@ cannot be set per request precisely to stop that.
 
 ## 11. Testing
 
-- `robots.txt` conformance suite: RFC 9309 test cases plus real-world oddities (BOM, CRLF, duplicate
-  groups, wildcards, `$` anchors, conflicting `Allow`/`Disallow`, comments mid-rule).
+- `robots.txt` conformance suite — `tests/robots_conformance.rs`, written against RFC 9309 rather
+  than against the implementation: BOM, CRLF, duplicate groups, wildcards, `$` anchors, conflicting
+  `Allow`/`Disallow`, comments mid-rule. Sharing across workers: `tests/robots_sharing.rs`.
 - Failure semantics: 404 → allow; 403 → disallow; 500 → disallow; timeout → disallow. **Each asserted
-  explicitly.**
+  explicitly.** (`fixture_site.rs` runs the whole crawl against the fixture site with the bypass.)
 - Rate limiting: a fixture host with `Crawl-delay: 5`; assert ≥ 5 s between requests over 10 fetches.
 - Concurrency: assert never more than one in-flight request per host under 50 concurrent workers.
 - Adaptive: simulate 429 with and without `Retry-After`, and a slow host; assert the delay curve.
@@ -286,11 +345,14 @@ cannot be set per request precisely to stop that.
 
 - [ ] Should we publish a public crawl-rate commitment on `/bot` (e.g. "never more than 1 request per
       1.5 s per host")? It is a promise we would then have to keep — which is the point.
-- [ ] Do we honour `Crawl-delay` values above 60 s literally, or cap them and reduce crawl frequency
-      instead? (A 300 s delay makes a site effectively uncrawlable.)
+- [x] ~~Do we honour `Crawl-delay` values above 60 s literally?~~ Capped at 60 s (`MAX_CRAWL_DELAY`);
+      the `/bot` page says so.
+- [ ] Wire `exclusion::Blocklist` (takedown + host opt-out tiers, persisted) into the fetcher (§4.5).
+- [ ] Confirm the registry's per-source delay reaches `resolve_delay`'s `registry` argument.
 - [ ] How do we verify a host opt-out request is genuinely from the host owner?
 
 ## Related
 
 [[Crawler Orchestrator]] · [[Web Fetcher]] · [[Proxy Manager]] · [[Legal and Compliance]] ·
-[[Data Sources Registry]] · [[Admin and Source Submission]] · [[Error Handling and Resilience]]
+[[Data Sources Registry]] · [[Admin and Source Submission]] · [[Error Handling and Resilience]] ·
+[[Crawler Console]] · [[Runbooks]] · [[PROB-002 - Crawl and Index Throughput]]

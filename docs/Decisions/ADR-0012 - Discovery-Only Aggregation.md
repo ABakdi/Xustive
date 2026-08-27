@@ -103,8 +103,7 @@ query-driven discovery gives relevance, and neither adds a millisecond to a sear
 boundary and the no-logging position both survive intact.
 
 **Costs.** Common Crawl ingestion is a batch pipeline over Parquet/WARC — real work, and the index
-is a month behind, so it bootstraps but never keeps anything fresh. That is [[ADR-0011 - Adaptive
-Recrawl over Static Crawling]]'s job, and the two are complementary: one gets the URL, the other
+is a month behind, so it bootstraps but never keeps anything fresh. That is [[ADR-0011 - Adaptive Recrawl over Static Crawling]]'s job, and the two are complementary: one gets the URL, the other
 keeps it true.
 
 **Rejected: live metasearch.** Blocked on availability, forbidden by the egress boundary, in

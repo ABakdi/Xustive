@@ -4,14 +4,24 @@ tags:
   - ingestion
   - collection
 component-id: C27
-binary: xustive-crawler
-status: specified
-updated: 2026-08-06
+binary: none yet
+status: not built
+updated: 2026-08-27
 ---
 
 # Signature Service
 
-> **ID** C27 · **Binary** `xustive-crawler` · **Upstream** social connectors · **Downstream** none
+> **ID** C27 · **Binary** none yet · **Upstream** social connectors · **Downstream** none
+
+> **Not built (2026-08-27).** There is no signer, no JS isolate, no `data/signers/` directory and
+> no token cache anywhere in the workspace; the social connectors that would need one do not
+> exist either ([[Social Connector - TikTok]], [[Social Connector - Instagram]],
+> [[Social Connector - Facebook]]). The only signing in Xustive today is unrelated: the HMAC on
+> proxied thumbnail URLs ([[Thumbnail Proxy]]). This note is the design in force, kept because
+> the [[Session Manager]] and [[Fingerprint Engine]] were built to its interface — `SignRequest`
+> takes the identity's exact User-Agent for the reason in §3 — and because the fallback ladder in
+> §4.6 (prefer the embedded-JSON path, which needs no signing) is the part most likely to be
+> built first.
 
 ## 1. Purpose
 

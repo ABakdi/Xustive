@@ -4,7 +4,8 @@ tags:
   - milestone
 milestone: 7
 status: done
-updated: 2026-08-25
+updated: 2026-08-27
+closed: 2026-08-25
 ---
 # Milestone 7 - Federated Retrieval and External Tools
 
@@ -21,6 +22,14 @@ This milestone attacks that on two fronts at once. **First, make the index stand
 Read [[ADR-0017 - Query-Time Federation with External Metasearch]] and [[Federation Gateway]] first — they hold the egress, privacy, and fail-open invariants every federation task below must satisfy. The retrieval-quality tasks (T01–T03) are the durable win and lead the milestone; federation (T04–T06) delivers visible recall immediately and can proceed in parallel.
 
 ## Closed 2026-08-25 — every task done or deliberately settled
+
+> **Audit 2026-08-27.** Checklist re-verified against the code: `crates/xustive-federator`,
+> `crates/xustive-federation`, `services/searxng`, `services/text-embed`, `xustive-cli
+> mine-synonyms` / `calibrate`, and `data/expansion/{entities,synonyms}.tsv`. The post-close
+> audit fixed 40 bugs and PROB-001/002/003 are all solved (bounded frontier, throughput, admin
+> coverage). Still open and human: reviewing mined synonym candidates and the Darija locale
+> (T01.2 / B7). The SERP discovery channel (M2-T16.10/.12/.14) stays blocked on a proxy,
+> session and fingerprint stack. Host binaries need a restart to pick up new code.
 
 All tasks are `[x]` or `[~]` with the decision recorded inline. Against the exit gate: federation
 blends within budget and fail-open (tested), the egress assertion holds (`test-egress.sh` green),
@@ -62,7 +71,7 @@ Give the engine meaning-level matching so a sentence finds pages by concept, reu
 
 > **Built 2026-08-24 (off by default, `[vector] text_enabled`).** A `text-embed` sidecar runs BAAI/bge-m3 (multilingual, 1024-d) on the internal `core` network; `xustive_vector::TextEmbedder` + a dimension-parameterised `Store` speak to it and a separate Qdrant text collection. The crawler embeds each document's title+body at index time (`xustive_ingest::text_embed`, fail-open); the search handler embeds the query, k-NN the collection, and **reciprocal-rank-fuses** the dense candidates with the lexical ones before re-rank (`text_search::rrf_fuse`, unit-tested). Remaining: batching the index-time embed and a deadline gate on the query leg (**T02.4**).
 
-- [x] M7-T02.1 **Text embedding path** in `xustive-vector`: embed document `title`+`body` (and `translit_body`) with a CPU/GPU-switchable model (Qwen-family, per [[xustive-hardware-target]]), written to a Qdrant text collection at index time by the [[Indexer Worker]].
+- [x] M7-T02.1 **Text embedding path** in `xustive-vector`: embed document `title`+`body` (and `translit_body`) with a CPU/GPU-switchable model (Qwen-family, per [[Performance Budgets|xustive-hardware-target]]), written to a Qdrant text collection at index time by the [[Indexer Worker]].
 - [x] M7-T02.2 **Query embedding + dense retrieval** leg: embed the query, k-NN against the text collection, producing a second candidate set alongside the lexical one.
 - [x] M7-T02.3 **Hybrid fusion**: merge lexical + dense candidates (reciprocal-rank fusion or a scored blend) *before* the re-ranker, so [[Ranking and Relevance]] sees one pool. Dense is additive recall, bounded so it cannot swamp exact lexical matches.
 - [~] M7-T02.4 **Cost control**: embedding is opt-in and batched; the dense leg runs within the query deadline and fails open to lexical-only, like every other optional leg.
@@ -84,7 +93,7 @@ The narrow, allowlisted egress hop that keeps the serving plane's no-egress prop
 - [x] M7-T04.1 **`xustive-federator` binary** on a bridged tier: one interface on `core` (faces the API), one on an egress network (faces SearXNG + allowlist). Stateless, read-only, no index.
 - [x] M7-T04.2 **Self-hosted SearXNG sidecar** in compose (egress network only, `mem_limit`, no published ports, passes `lint-compose.sh`), with a pinned engine set.
 - [x] M7-T04.3 **`POST /federate`** on `core`: fan out to enabled tools within `budget_ms`, normalise to `FederatedHit{url,title,snippet,engine,rank}`, return `{hits, partial}`. Defensive, fixture-tested parsers.
-- [x] M7-T04.4 **Allowlist + per-tool config** `[federation]` in [[xustive-core]] (`enabled=false` default, endpoint, key, budget, max_hits, blend cap). Non-allowlisted target refused before dialling.
+- [x] M7-T04.4 **Allowlist + per-tool config** `[federation]` in [[Security and Privacy|xustive-core]] (`enabled=false` default, endpoint, key, budget, max_hits, blend cap). Non-allowlisted target refused before dialling.
 - [x] M7-T04.5 **Circuit breaker per external tool** (reuse `SharedBreaker`) so a failing engine is shed, not retried every request.
 - [x] M7-T04.6 **Egress test update**: assert `xustive-api` can reach the gateway **and nothing else**; the gateway reaches only allowlisted endpoints. `scripts/test-egress.sh` green.
 
@@ -98,7 +107,7 @@ The narrow, allowlisted egress hop that keeps the serving plane's no-egress prop
 ## M7-T06 — Federated results feed the crawler (converge to standalone)
 
 - [x] M7-T06.1 **Crawl-feed**: each federated URL → capped/windowed `federation:hint:<url>` in Redis, through the SSRF + trap guards, read by the [[Crawler Orchestrator]] revisit/discovery pass (search plane only *writes*; crawler only *reads*, per [[ADR-0001 - Two-Plane Architecture]]).
-- [x] M7-T06.2 **New `DiscoveryChannel::Federation`** so the discovery funnel ([[admin/discovery]]) shows federated URLs' fetch/index/yield like every other channel.
+- [x] M7-T06.2 **New `DiscoveryChannel::Federation`** so the discovery funnel ([[UI - Admin Console|admin/discovery]]) shows federated URLs' fetch/index/yield like every other channel.
 - [x] M7-T06.3 **Convergence proof**: a federated URL, once crawled+indexed, is answered locally on the next identical query and drops its federation tag — asserted in a test and visible as a falling blend share.
 
 ## M7-T07 — Learn from external ranking (offline reranker calibration)
@@ -154,7 +163,7 @@ The operator asked to see every term, its result count, and its clicks. This is 
 | Live federation widens serving-plane egress by accident               | The gateway is the *only* new target; `test-egress.sh` asserts "gateway and nothing else" in CI (T04.6), built before any federation code                                                                                                                   |
 | Federation slows the answer                                           | Concurrent call, hard budget, fail-open to index-only; per-tool circuit breaker; latency is measured in the exit gate                                                                                                                                       |
 | External ranking imports another engine's bias                        | Provenance tags + blend cap contain it; the re-ranker still leads on relevance; external ordering is a tuning signal offline, not a live authority                                                                                                          |
-| Query terms leaving the box breaks the privacy promise                | Self-hosted SearXNG strips identity/IP; no query logging; the amendment is stated plainly on the privacy page ([[ADR-0017]] amends [[ADR-0008]])                                                                                                            |
+| Query terms leaving the box breaks the privacy promise                | Self-hosted SearXNG strips identity/IP; no query logging; the amendment is stated plainly on the privacy page ([[ADR-0017 - Query-Time Federation with External Metasearch|ADR-0017]] amends [[ADR-0008 - No Query Logging|ADR-0008]])                                                                                                            |
 | The index never becomes standalone (federation as a permanent crutch) | Every federated result is crawled+indexed; blend share is watched and expected to fall; ADR-0017's "revisit when" demotes live federation once it does                                                                                                      |
 | External summariser leaks document/query text to SaaS                 | Parallel-AI stays opt-in, off by default, offline-preferred, separately flagged; local model remains the default                                                                                                                                            |
 | "See every term" seen as colliding with anonymity                     | It doesn't: anonymity is no-identifier *storage*, k is a multi-user *surfacing* floor. Single-operator (k=1) sees full history; shared deployments threshold to contain content self-identification, with no session chaining or fine timestamps (T10.1/.5) |

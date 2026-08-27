@@ -2,7 +2,7 @@
 tags:
   - adr
 adr-id: "0006"
-status: accepted
+status: partly implemented
 date: 2026-08-06
 ---
 
@@ -10,7 +10,7 @@ date: 2026-08-06
 
 ## Status
 
-Accepted. Constrains [[Task Queue]], every ingestion component.
+Accepted; **partly implemented** — Streams with consumer groups are the transport, but for one stage, not four. Constrains [[Task Queue]], every ingestion component.
 
 ## Context
 
@@ -82,3 +82,8 @@ We already need Redis for the crawl frontier, dedup keys, circuit breakers, and 
 
 [[Task Queue]] · [[Error Handling and Resilience]] · [[Crawler Orchestrator]] · [[Indexer Worker]] ·
 [[ADR-0001 - Two-Plane Architecture]] · [[Decision Log]]
+
+## Where it stands (2026-08-27)
+
+- One stream, `q:index` (`queue.index_stream`, `crates/xustive-core/src/config.rs`), one consumer group `indexers` (`crates/xustive-queue/src/lib.rs`). Fetch, parse and enrich are not separate streams: they run in-process inside `crawld`, fed by a Redis frontier (`crates/xustive-ingest/src/frontier.rs`).
+- Kept: `XREADGROUP`/`XACK` after durable write, `XAUTOCLAIM` with `RECLAIM_AFTER = 300 s`, a dead-letter path (`crates/xustive-queue/src/dlq.rs`, `dead_letter_job` in `indexer.rs`), bounding by `XADD MAXLEN` plus `trim()` (`MAX_LEN = 100 000`, deployment-sized via `queue.index_stream_max_len`), and `--maxmemory-policy noeviction` in `deploy/docker-compose.yml`.

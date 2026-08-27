@@ -1,14 +1,14 @@
 ---
 tags: [adr]
 adr-id: "0021"
-status: accepted
+status: implemented
 date: 2026-08-26
 ---
 # ADR-0021 - Proxied Thumbnails with Signed URLs
 
 ## Status
 
-Accepted. Constrains [[UI - Search Verticals]], [[UI - Results Page]] and
+Implemented (M9). Constrains [[UI - Search Verticals]], [[UI - Results Page]] and
 [[Security and Privacy]]. Generalises the image proxy of
 [[ADR-0014 - Knowledge Panel from Wikipedia via the Web Tier]] from a fixed host allowlist to the
 open web, without becoming an open proxy. Does not amend [[ADR-0001 - Two-Plane Architecture]]:
@@ -97,3 +97,7 @@ else about the proxy is the ADR-0014 discipline, plus the guards an open-web sou
 - A multi-instance web tier is deployed — the shared secret becomes mandatory, not advisory.
 - A resolver-level private-range check becomes cheap to add in the web tier, closing the
   rebinding gap the hostname check leaves.
+
+## Where it stands (2026-08-27)
+
+- `web/app/api/thumb/route.ts` and `web/lib/thumb.ts`. One implementation note beyond the ADR: the per-process fallback secret is held on `globalThis`, not at module level, because Next bundles server components and route handlers separately — a module-level value gave two secrets in one process and every thumbnail broke in dev.

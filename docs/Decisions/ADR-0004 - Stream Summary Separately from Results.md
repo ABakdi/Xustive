@@ -2,7 +2,7 @@
 tags:
   - adr
 adr-id: "0004"
-status: accepted
+status: partly implemented
 date: 2026-08-06
 ---
 
@@ -10,7 +10,7 @@ date: 2026-08-06
 
 ## Status
 
-Accepted. Constrains [[API Contract]], [[UI - Results Page]], [[Summarizer]], [[Query Pipeline]].
+Accepted; **implemented with a divergence** — two requests and a token, but the second is a JSON POST, not an SSE stream. Constrains [[API Contract]], [[UI - Results Page]], [[Summarizer]], [[Query Pipeline]].
 
 ## Context
 
@@ -82,3 +82,9 @@ twice and never lands in a second server-side context.
 
 [[API Contract]] · [[Summarizer]] · [[UI - Results Page]] · [[Performance Budgets]] ·
 [[Error Handling and Resilience]] · [[Decision Log]]
+
+## Where it stands (2026-08-27)
+
+- Kept: `GET /api/v1/search` returns `summary_token` (only on page 1 and when `ml.summaries_enabled`, `crates/xustive-api/src/search.rs`); the token is a single-use, TTL'd, in-process entry (`crates/xustive-api/src/summary.rs`), so the query never travels twice.
+- Diverged: the second request is `POST /api/v1/summary` with `{token}` returning one JSON `SummaryResponse` after generation (`crates/xustive-api/src/lib.rs` route, `summary.rs` handler; client `web/lib/api.ts::summarise`). No SSE, no `delta` events — the summary appears whole. The route has its own timeout (`ml.deadline_ms + 10 s`) and a stricter in-flight limit.
+- The client shows a loading state while waiting (`web/components/search/Summary.tsx`, added with [[ADR-0014 - Knowledge Panel from Wikipedia via the Web Tier]]) rather than a silent empty block; on `summary: null` the block is removed as decided.

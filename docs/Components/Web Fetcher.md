@@ -3,205 +3,195 @@ tags:
   - component
   - ingestion
 component-id: C12
-binary: xustive-crawler
-status: specified
-updated: 2026-08-06
+binary: xustive-cli crawld
+status: built
+updated: 2026-08-27
 ---
 
 # Web Fetcher
 
-> **ID** C12 · **Binary** `xustive-crawler` · **Upstream** [[Crawler Orchestrator]] via `q:fetch` · **Downstream** [[Content Parser]] via `q:parse`
+> **ID** C12 · **Module** `crates/xustive-ingest/src/fetch.rs` (`Fetcher`, `FetchConfig`,
+> `Fetched`, `FetchError`) with `robots.rs`, `robots_cache.rs`, `exclusion.rs`, `raw_store.rs` ·
+> **Upstream** [[Crawler Orchestrator]], in-process · **Downstream** [[Content Parser]], in-process
 
 ## 1. Purpose
 
-Turn a URL into bytes, safely and politely. Two strategies — a cheap static HTTP fetch and an
-expensive headless render — with an explicit rule for when the expensive one is justified.
+Turn a URL into bytes, safely and politely. One strategy today: a plain HTTP fetch that
+identifies itself honestly. The headless and impersonated paths that earlier drafts specified are
+**not built** (2026-08-27); what remains of that design is the seam it would plug into (§4.3).
 
 ## 2. Responsibilities
 
-**In scope**: HTTP(S) fetching with conditional requests; redirect handling; charset detection;
-size/time caps; headless rendering when required; storing the raw blob; emitting `q:parse` messages.
+**In scope**: HTTP(S) fetching with conditional requests; manual redirect handling with `SafeUrl`
+on every hop; charset detection; size and time caps; `robots.txt` and `X-Robots-Tag`; per-host
+pacing; born-digital PDF text; the optional raw-body store.
 
-**Out of scope**: scheduling (→ [[Crawler Orchestrator]]); robots decisions (→ [[Politeness and Robots]]);
-proxy selection policy (→ [[Proxy Manager]]); HTML parsing (→ [[Content Parser]]).
+**Out of scope**: scheduling (→ [[Crawler Orchestrator]]); the robots *policy* (→
+[[Politeness and Robots]]); proxy selection (→ [[Proxy Manager]]); HTML parsing (→
+[[Content Parser]]).
 
 ## 3. Interface
 
-Consumes `q:fetch`: `{ url, kind, depth, etag?, last_modified?, force_headless? }`
-Produces `q:parse`: `{ url, final_url, kind, raw_ref, content_type, charset, http_status, headers_subset, fetched_at, fetch_method, redirect_chain }`
+There are no `q:fetch` / `q:parse` streams. The orchestrator holds a `Fetcher` and calls it
+directly; the only stream in the crawl path is `q:index` after parsing ([[Task Queue]]).
 
-`raw_ref` is a Redis key `raw:{trace_id}` with a 7-day TTL holding the compressed body
-([[Data Model]] §6, §8).
+```rust
+Fetcher::new(FetchConfig) -> Fetcher            // .with_shared_cache(RobotsCache) to share robots via Redis
+fetcher.get(url)                                // blocks until the host's crawl-delay has elapsed
+fetcher.get_conditional(url, Conditional { etag, last_modified })
+fetcher.sitemaps_for(host)                      // Sitemap: lines from robots.txt
+-> Fetched { url, final_url, status, body, content_type, charset_guessed, exclusion, etag, last_modified }
+```
+
+A `304` comes back as `Ok` with `status == 304` and an empty body — not as an error, because it is
+the best possible answer: the page is exactly what we hold, learned for a few hundred bytes.
+`exclusion` carries what `X-Robots-Tag` asked for; the fetcher reports what the server said and
+the caller decides — a `noindex` page is still worth crawling for its links, and the header is the
+only way a PDF or an image can refuse indexing.
 
 ## 4. Internal Design
 
-### 4.1 Static path (default)
+### 4.1 The client
 
-`reqwest` with:
+`reqwest`, with:
 
 | Setting | Value |
 |:---|:---|
-| Timeouts | connect 10 s, read 30 s, total 60 s |
-| Redirects | max 5, **each re-validated** by `SafeUrl` |
-| Body cap | 10 MB, streamed and aborted on exceed |
-| Compression | gzip, brotli, deflate |
-| HTTP version | prefer h2 |
-| Conditional | `If-None-Match`, `If-Modified-Since` from the last visit |
-| User-Agent | `XustiveBot/1.0 (+https://xustive.dz/bot)` — identifiable, with a page explaining how to block us |
-| Connection pool | per-host cap 1 (politeness), global 200 |
+| Timeouts | connect **5 s**, total **20 s** — a worker is pinned to one fetch, so a slow host is stolen throughput, not just a slow page |
+| Redirects | `Policy::none()`; followed by hand, at most `safe_url::MAX_REDIRECTS` = 5 hops, **each re-validated** by `SafeUrl` |
+| Body cap | `max_body_bytes` 10 MiB; PDFs 12 MiB and 200 000 extracted characters |
+| Conditional | `If-None-Match` / `If-Modified-Since` from the last `Visit` |
+| User-Agent | `XustiveBot/1.0 (+https://xustive.dz/bot; Algerian search engine)`; robots token `xustivebot`; the page is `web/app/(operator)/bot` |
+| Per-host concurrency | 1, enforced by the `Politeness` lock held across the wait, plus a 200 ms `politeness_margin` |
+| Indexable types | `text/html`, `application/xhtml+xml`, `text/plain`, `application/xml`, `text/xml`, RSS, Atom, `application/pdf` |
 
-Charset detection: `Content-Type` header → HTML `<meta charset>` → `chardetng` sniff → assume UTF-8.
-Algerian sites still ship `windows-1256` and `iso-8859-1`; getting this wrong silently produces
-mojibake that survives all the way to the index.
+Charset: `Content-Type` header → `<meta charset>` / `<meta http-equiv>` in the first 2 KB →
+`chardetng` sniff. A declared charset, wherever declared, is not counted as guessed. Algerian sites
+still serve `windows-1256` with a bare `Content-Type` header, and getting this wrong silently
+produces mojibake that survives all the way to the index.
 
-### 4.2 Headless path
+PDFs go through `pdf-extract` inside `catch_unwind`, because the library panics on some malformed
+files and a panicking fetch would take a worker with it. Scanned PDFs yield nothing and fall out as
+thin, which is correct until OCR exists ([[Media Extraction]]).
 
-`obscura` headless browser, used **only when justified**:
+### 4.2 Politeness — the part that keeps us welcome
 
-- The source is marked `requires_render` in the registry, **or**
-- the static fetch returned < `min_text_bytes` (512) of extractable text while the HTML contains a
-  known SPA root (`<div id="root">`, `__NEXT_DATA__`, `ng-app`), **or**
-- the parser reported `needs_render` for this URL previously.
+`robots.rs`. An unreachable `robots.txt` is **not** permission: 5xx, timeout, 401 and 403 all
+mean full disallow; only 404 means "no restrictions". Rules are cached 24 h in-process and, when
+`RobotsCache` is attached, in Redis so sixty-four workers do not each re-read the file — a site
+watching its logs sees a burst of identical requests for the one file that tells us not to. That
+cache fails *open* to fetching robots properly, never to "no rules, therefore disallow", which
+would turn a cache outage into a silent halt.
 
-Headless settings: JS enabled, images/fonts/media blocked (bandwidth), 1366×768 viewport, wait for
-`networkidle` or 8 s, hard cap 25 s. Result is the serialised DOM.
+The delay a host gets is the **maximum** of its declared `Crawl-delay`, the registry's value, our
+adaptive delay and the 1.5 s default, capped at 60 s (`resolve_delay`) — taking the minimum would
+let a configuration change silently undo a request the site made. Adaptive pacing grows fast and
+shrinks slowly: 429 → `Retry-After` or 4×, clamped to 60–600 s; 5xx → 2× up to 300 s; each clean
+response relaxes by 10 % toward a floor. A robots-silent host **earns** a 1 s floor after 20
+consecutive clean responses (PROB-002); a single error resets the streak.
 
-Headless costs roughly **30× a static fetch** in CPU and time. Its use is capped at
-`headless_ratio` (default 10 %) of total fetches; over the cap, work is deferred rather than starving
-static crawling.
+`ignore_politeness` is threaded through `FetchConfig`, not a global, so a `Fetcher` built without
+asking for it can never acquire it. It skips robots, delays and host opt-outs; it does **not**
+lift the global or takedown blocklists (`exclusion::Blocklist`), because a testing flag must not
+be able to lift a court order.
 
-### 4.3 Three fetch modes
+### 4.3 What the earlier design specified and where it stands
 
-Mode follows the crawl profile from [[Politeness and Robots]] §4.0, not the individual request.
+| Mode | Status (2026-08-27) |
+|:---|:---|
+| `plain` — honest `XustiveBot` | **Built.** All traffic |
+| `impersonated` — browser-accurate TLS/HTTP-2 client with a pinned [[Fingerprint Engine]] profile | **Not built.** The profile catalogue and coherence checker exist; no impersonating client library is wired |
+| `stealth_headless` — real Chrome under CDP | **Not built.** No headless browser anywhere in the workspace |
 
-| Mode | Client | Used by | Cost |
-|:---|:---|:---|:---|
-| `plain` | `reqwest`, honest `XustiveBot` UA | **all `open_web` sources** | baseline |
-| `impersonated` | `rquest` with a pinned [[Fingerprint Engine]] profile | `platform` sources, HTTP-level paths | +TLS handshake |
-| `stealth_headless` | real Chrome + CDP fingerprint patches, persistent per-identity profile | `platform` sources needing JS execution | ~30× plain |
-
-`plain` remains the default and covers the large majority of traffic. In this mode the fetcher
-identifies itself honestly, publishes a bot info page, honours `robots.txt`, `Crawl-delay`, and
-`429`/`Retry-After`, and does **not** attempt to evade blocking — unchanged by
-[[ADR-0009 - Direct Collection for Social Platforms]].
-
-`impersonated` and `stealth_headless` exist for the `platform` profile. They take their fingerprint,
-proxy, and identity as a pinned tuple from [[Session Manager]] and cannot mix components
-([[Session Manager]] §4.2). A CI check asserts no `web`-kind source can select either mode.
-
-### 4.3b Stealth headless specifics
-
-- Real Chrome with `--headless=new`, not `chromium-headless-shell` — the shell has distinguishing
-  behaviour beyond what patching can hide.
-- Persistent user-data directory **per identity**, so cookies, storage, and cache age naturally. A
-  browser with an empty profile on every visit is itself a signal.
-- CDP `Page.addScriptToEvaluateOnNewDocument` applies the JS-surface patches before any page script
-  runs ([[Fingerprint Engine]] §4.6).
-- WebRTC forced through the proxy or disabled — a leaked local address defeats every other layer.
-- Images and fonts blocked unless the page needs them to render content, since bandwidth is billed on
-  residential pools.
-- Same sandbox as before: own container, no `core` network access, read-only filesystem, dropped
-  capabilities, seccomp. Fingerprint patching does not relax any of it.
+The seam is the [[Proxy Manager]] / [[Session Manager]] lease: a fetch through those would take
+proxy, fingerprint and identity as a pinned tuple. Today the only outbound path that accepts a
+proxy at all is the SERP client's `discovery.serp_proxy`
+([[ADR-0013 - Direct SERP Collection for Discovery]]).
+The commitment that does not change with any of it: in `plain` mode the fetcher publishes a bot
+page, honours `robots.txt`, `Crawl-delay` and `429`/`Retry-After`, and does **not** evade blocking
+([[ADR-0009 - Direct Collection for Social Platforms]] altered the platform stance only).
 
 ### 4.4 Outcome classification
 
-| Status | Class | Action |
+`FetchError::outcome()` gives the crawl counters a finer label than retry-or-not, so a spike in
+`gone` (sites removing content) reads differently from `throttled` (we are rate-limited) or
+`transient` (the network is flaky):
+
+| Result | Outcome | Action |
 |:---|:---|:---|
-| 200 | ok | emit `q:parse` |
-| 304 | unchanged | no parse; update revisit interval |
-| 301/302/307/308 | redirect | follow (≤ 5), record chain, canonicalise |
-| 400/401/403 | permanent | drop; increment host error count |
-| 404/410 | gone | drop; signal orchestrator to remove from frontier |
-| 429 | throttled | honour `Retry-After`, open breaker, requeue |
-| 5xx | transient | retry (4 attempts, jittered backoff) |
-| timeout / reset | transient | retry |
-| body > cap | permanent | drop, `WARN` |
-| non-allowlisted content type | permanent | drop quietly |
+| 200 | ok | parse |
+| 304 | unchanged | no parse; the revisit interval grows |
+| 3xx | followed (≤ 5, each `SafeUrl`-checked); loop → `redirect_loop` | permanent |
+| 404 / 410 | `gone` | the frontier forgets the page |
+| 429 | `throttled` | `Retry-After` honoured, adaptive delay raised |
+| 5xx, timeout, transport | `transient` | retried on a later visit; delay raised on 5xx |
+| robots disallow | `robots` | permanent, counted |
+| unsafe URL or hop | `unsafe` | dropped |
+| non-indexable type, body over cap | `content_type` / `too_large` | permanent |
+
+### 4.5 Sitemaps
+
+`sitemaps_for(host)` reads `Sitemap:` lines from `robots.txt`, following an `http`→`https` or
+apex→`www` redirect on the file itself — those looked like refusals in the first version.
+
+### 4.6 The raw store
+
+`raw_store.rs`. Keeps the fetched body in Redis (`frontier:raw:{url}`) for `crawl.raw_ttl_days`,
+per-blob cap 5 MiB, so
+extraction can be re-run without a re-fetch — the reason `xustive-cli media-repass` is free to the
+sites. **Off by default** (0 days): blanket storage would overwhelm the 1 GB development Redis, and
+the real home is object storage. Best-effort throughout: a store that cannot be written is a lost
+reindex convenience, never a lost document.
 
 ## 5. Configuration
 
-| Key | Default |
-|:---|:---|
-| `user_agent` | `XustiveBot/1.0 (+https://xustive.dz/bot)` |
-| `connect_timeout_s` / `read_timeout_s` / `total_timeout_s` | 10 / 30 / 60 |
-| `max_body_bytes` | 10 MiB |
-| `max_redirects` | 5 |
-| `per_host_concurrency` | 1 |
-| `global_concurrency` | 64 |
-| `headless_enabled` | `true` |
-| `headless_ratio` | 0.10 |
-| `headless_timeout_s` | 25 |
-| `min_text_bytes` | 512 |
-| `raw_ttl_days` | 7 |
-| `allowed_content_types` | html, xhtml, xml, json, text |
-| `fetch_mode_by_profile` | `open_web → plain`; `platform → impersonated`, escalating to `stealth_headless` |
-| `stealth_profile_dir` | `/var/lib/xustive/browser/{identity_id}` |
-| `block_images_headless` | `true` |
-
-## 6. Data
-
-Writes `raw:{trace_id}` (zstd-compressed body, 7-day TTL) and `q:parse` messages. Updates
-`crawl:{host}` counters. Never writes to the index.
-
-## 7. Failure Modes
-
-| Failure | Detection | Response |
+| Key | Default | Where |
 |:---|:---|:---|
-| DNS failure | resolver error | transient ×2, then mark host suspect |
-| TLS error / expired cert | handshake error | permanent for that host; `WARN` (many `.dz` sites have cert issues — do **not** disable verification; record and skip) |
-| Connection reset mid-body | stream error | retry once, then DLQ |
-| Body exceeds cap | streamed counter | abort connection, drop |
-| Charset undetectable | sniff failure | assume UTF-8, flag `charset_guessed` |
-| Headless timeout | 25 s cap | fall back to the static body already fetched |
-| Headless crash / OOM | process supervision | restart browser pool, requeue once |
-| Redirect loop | chain length | permanent, drop |
-| Redirect to a private IP | `SafeUrl` re-check | **drop and alert** — SSRF attempt ([[Security and Privacy]] T3) |
+| `connect_timeout` / `total_timeout` | 5 s / 20 s | `FetchConfig` |
+| `max_body_bytes` | 10 MiB | `FetchConfig` |
+| `robots_ttl` | 24 h | `FetchConfig`, `robots_cache::TTL` |
+| `politeness_margin` | 200 ms | `FetchConfig` |
+| `crawl.ignore_politeness` | `false`; refused in production | `config/*.toml` |
+| `crawl.raw_ttl_days` | `0` (off) | `config/*.toml` |
+| `crawl.respect_crawl_delay`, `crawl.per_host_concurrency` | `true`, `1` | `config/*.toml` |
 
-## 8. Performance
+The headless/proxy keys of earlier drafts (`headless_ratio`, `stealth_profile_dir`, …) do not
+exist.
 
-| Metric | Budget |
+## 6. Failure Modes
+
+| Failure | Response |
 |:---|:---|
-| Static fetch throughput | ≥ 100 pages/min/worker ([[Performance Budgets]]) |
-| Static fetch latency | ≤ 3 s p95 (network-bound) |
-| Headless render | ≤ 12 s p95 |
-| Memory | ≤ 1 GB (static); browser pool bounded to 2 instances |
+| Redirect to a private address, any hop | dropped as `unsafe` — the SSRF check that matters, because a public host can 302 to `169.254.169.254` |
+| TLS error / expired certificate | permanent for that fetch; verification is **never** disabled, many `.dz` sites have certificate issues and are skipped, not trusted |
+| Body over cap | `too_large`, dropped |
+| Charset undeclared | sniffed; `charset_guessed = true` on the document |
+| Malformed PDF | panic caught; `content_type` error |
+| Robots unreachable | disallow, until the TTL passes |
+| Redis (robots cache, raw store) down | robots fetched directly; raw body not stored; the crawl continues |
 
-## 9. Observability
+## 7. Security
 
-`xustive_fetch_total{source_type,outcome}`, `xustive_fetch_duration_seconds{method}`,
-`xustive_fetch_bytes`, `xustive_headless_total`, `xustive_headless_ratio`,
-`xustive_redirect_chain_length`, `xustive_charset_guessed_total`, `xustive_ssrf_blocked_total`.
-URLs are corpus data, not user data — logging them is fine and necessary.
+Every URL and every redirect target passes `SafeUrl` ([[Security and Privacy]]); `tests/ssrf.rs`
+covers private ranges, IPv6 literals, decimal IPs and redirect chains. Bodies are hostile bytes:
+size-capped, never executed, never shell-interpolated. There is no JS execution surface in the
+fetcher today.
 
-## 10. Security
+## 8. Testing
 
-- Every URL and every redirect target passes `SafeUrl` ([[Security and Privacy]] §4). This is the
-  system's primary SSRF defence and it is tested explicitly.
-- TLS verification is **never** disabled. A broken-cert site is skipped, not trusted.
-- Bodies are treated as hostile bytes: size-capped, never executed, never shell-interpolated.
-- The headless browser runs with JS enabled — the highest-risk surface in the system. It runs in its
-  own container with no access to the `core` network, a read-only filesystem, dropped capabilities,
-  and a seccomp profile.
+`tests/fixture_site.rs` (redirect chains, traps, 404s), `tests/ssrf.rs`,
+`tests/robots_conformance.rs`, `tests/robots_sharing.rs` (the Redis cache), `tests/raw_store_redis.rs`,
+`tests/adversarial.rs`; unit tests in `fetch.rs` for `windows-1256` from header, meta and sniff.
 
-## 11. Testing
+## 9. Open Questions
 
-- Local fixture server covering: gzip, brotli, chunked, `windows-1256`, redirect chains, redirect to
-  `127.0.0.1` (must be blocked), 429 with `Retry-After`, slow-loris, 20 MB body, malformed HTML.
-- Conditional requests: assert `If-None-Match` is sent and 304 short-circuits parsing.
-- Politeness: assert single in-flight request per host and `Crawl-delay` compliance.
-- Headless: an SPA fixture that yields text only after render; assert the escalation rule fires and
-  the ratio cap holds.
-- Security: SSRF suite (private IPs, DNS rebinding, redirect chains, IPv6 literals, decimal IPs).
-
-## 12. Open Questions
-
-- [ ] Do we support HTTP/3? Marginal benefit, extra surface.
-- [ ] Should `raw_ref` blobs go to object storage instead of Redis at scale? (Redis memory grows with
-      crawl rate × 7 days — this becomes a real constraint above ~5M docs/week.)
-- [ ] Per-host adaptive concurrency: could we safely go to 2 for large, fast hosts that allow it?
+- [ ] Raw bodies to object storage instead of Redis, so the store can be on by default.
+- [ ] Per-host adaptive concurrency above 1 for large hosts that allow it.
+- [ ] Whether the impersonated client is ever wanted for the open web, or only ever behind a
+      platform lease (the current design says only behind a lease).
 
 ## Related
 
-[[ADR-0011 - Adaptive Recrawl over Static Crawling]] ·
-[[Crawler Orchestrator]] · [[Politeness and Robots]] · [[Proxy Manager]] · [[Content Parser]] ·
-[[Security and Privacy]] · [[Task Queue]]
+[[ADR-0011 - Adaptive Recrawl over Static Crawling]] · [[Crawler Orchestrator]] ·
+[[Politeness and Robots]] · [[Proxy Manager]] · [[Content Parser]] · [[Security and Privacy]] ·
+[[Task Queue]] · [[Media Extraction]]

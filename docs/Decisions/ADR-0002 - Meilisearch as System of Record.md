@@ -2,7 +2,7 @@
 tags:
   - adr
 adr-id: "0002"
-status: accepted
+status: implemented
 date: 2026-08-06
 ---
 
@@ -10,7 +10,7 @@ date: 2026-08-06
 
 ## Status
 
-Accepted. Constrains [[Search Index]], [[Data Model]], [[Indexer Worker]].
+Implemented. Constrains [[Search Index]], [[Data Model]], [[Indexer Worker]].
 
 ## Context
 
@@ -79,3 +79,8 @@ Durability comes from Meilisearch snapshots every 6 h plus the ability to re-cra
 
 [[Search Index]] · [[Data Model]] · [[Indexer Worker]] · [[Deployment Topology]] ·
 [[ADR-0003 - Comments in a Separate Index]] · [[Decision Log]]
+
+## Where it stands (2026-08-27)
+
+- No SQL database exists (no `sqlx`/`rusqlite`/`postgres` in any `crates/*/Cargo.toml`). Indexes: `documents`, `comments`, `sources` (`crates/xustive-search/src/settings.rs`) plus the entity index added by [[ADR-0019 - The Knowledge Layer]] (`crates/xustive-knowledge/src/index.rs`).
+- Snapshots are operator-driven, not "every 6 h": `scripts/backup.sh` drives Meilisearch `POST /snapshots`, Qdrant collection snapshots and a Redis save; `scripts/restore.sh` documents the import-at-startup restore. `deploy/docker-compose.yml` schedules no snapshot.

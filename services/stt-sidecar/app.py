@@ -2,8 +2,8 @@
 
 Voice is a primary input for a large share of the audience — typing Arabic on a phone is slow
 ([[Milestone 3 - Multimodal Input]] §Why). This service is the transcription half; the browser
-records, this turns the recording into text, and the text lands in the search box **editable and not
-auto-submitted** (the frontend's job).
+records, this turns the recording into text, and the text lands in the search box as it is spoken
+(the `?partial=1` readings) and is searched on stop (the frontend's job; ADR-0024).
 
 It follows the same pattern as the OCR and CLIP sidecars ([[ADR-0016 - Two OCR Engines with an
 Optional Unlimited-OCR Sidecar]]): a tiny HTTP contract in front of a model kept out of the Rust

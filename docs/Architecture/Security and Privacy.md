@@ -4,7 +4,7 @@ tags:
   - security
 type: architecture
 status: specified
-updated: 2026-08-06
+updated: 2026-08-27
 ---
 
 # Security and Privacy
@@ -12,6 +12,11 @@ updated: 2026-08-06
 > Xustive's differentiator is a promise: **your searches are not recorded and nothing leaves the
 > country**. This note defines how that promise is made *structurally* true rather than
 > policy-true. Legal obligations are in [[Legal and Compliance]].
+>
+> **Verified against the code, 2026-08-27** (`crates/xustive-api/src/{ratelimit,geoip,stt}.rs`,
+> `web/app/api/thumb`, `web/lib/thumb.ts`, `deploy/docker-compose*.yml`, `scripts/*.sh`). Each
+> invariant below now says what is built and what is still a plan; the plan text was kept where
+> it is still the intent.
 
 ---
 
@@ -22,12 +27,14 @@ These are testable statements, not aspirations. Each has an enforcement mechanis
 | # | Invariant | Enforced by |
 |:---|:---|:---|
 | P1 | A query string is never written to durable storage | CI telemetry lint + code review; no query in any `tracing` field ([[Observability]]) |
-| P2 | A query string is never sent outside the `core` Docker network | `xustive-api`/`xustive-ml` have **no egress route** ([[Deployment Topology]]) |
-| P3 | No cookies, no `localStorage` identifiers, no fingerprinting | UI ships zero third-party JS; CSP blocks external origins ([[UI Specification]]) |
-| P4 | Uploaded audio and images are never written to disk | processed from an in-memory buffer, dropped on response ([[Speech to Text]], [[Image Pipeline]]) |
-| P5 | Client IPs are not stored | rate limiter keys on `HMAC(ip/24, daily_rotating_salt)`, in-memory, 60 s TTL |
+| P2 | A query string is never sent outside the `core` Docker network | `core` is `internal: true`; `scripts/test-egress.sh` proves it. **As built (2026-08-27):** `deploy/docker-compose.yml` has no `xustive-api` service — the API runs on the host in every topology in the repo, so the network guarantee today covers the backends, the sidecars and the federation bridge, not the API process itself ([[Deployment Topology]]) |
+| P3 | No cookies, no `localStorage` identifiers, no fingerprinting | UI ships zero third-party JS and sets `Referrer-Policy: no-referrer`. **A `Content-Security-Policy` header is not set yet** (2026-08-27; `web/next.config.ts` sets Referrer-Policy, nosniff, COOP and Permissions-Policy only) |
+| P4 | Uploaded audio and images are never written to disk | STT sidecar transcribes from `io.BytesIO`, never a file. The OCR sidecar (`services/ocr-sidecar/app.py`) **does** write the image to a private temp file for the model and deletes it in a `finally` — the file exists only for the request ([[Speech to Text]], [[Image Pipeline]]) |
+| P5 | Client IPs are not stored | rate limiter keys on `blake3_keyed(salt, ip/24 v4 · /48 v6)`; salt generated at boot from `/dev/urandom`, rotated every 24 h, memory-only; fixed windows (search 60/min, suggest 300/min, `/sources` 5/h); the peer address only — **`X-Forwarded-For` is never read**. Open **BUG-042**: behind the Next.js proxy every client arrives from the proxy's address, so they share one bucket |
 | P6 | Aggregate query stats are k-anonymous (k ≥ 20) | [[Autocomplete Service]] drops any term seen by < 20 distinct buckets/day; the interaction store (below) is refused at startup with k < 20 outside dev ([[Interaction Signals]]) |
 | P7 | No third-party analytics, fonts, CDNs, or AI APIs | CSP `default-src 'self'`; dependency review in CI |
+| P9 | Approximate location never leaves the request | [[ADR-0020 - Approximate Location from a Local Database]]: DB-IP City Lite (`data/geoip/dbip-city-lite.mmdb`, fetched by `scripts/fetch-geoip.sh`, not committed) is read **into the heap** at start (`maxminddb::Reader<Vec<u8>>`, not mmap); `wilaya_of(ip)` is looked up per request and the result is used for the weather card and dropped — no store, no log. Still owed (2026-08-27): the CC BY 4.0 attribution the script's comment says the weather card carries **is not rendered anywhere in the UI**, and there is no staleness gauge for the monthly database |
+| P10 | Thumbnails do not hand the user's IP to the origin host | [[ADR-0021 - Proxied Thumbnails with Signed URLs]]: `/api/thumb?u=…&s=…` proxies remote images; the results page signs each URL with HMAC-SHA256 and the route refuses anything unsigned before it looks at the URL. The secret is `XUSTIVE_THUMB_SECRET` or, absent that, 32 random bytes **per process** (held on `globalThis` so the page and the route share one value); three public hosts — `upload.wikimedia.org`, `commons.wikimedia.org`, `covers.openlibrary.org` — are served unsigned. The proxy keeps no cache, so it is not a log ([[Thumbnail Proxy]]) |
 | P8 | Interaction signals hold no per-person record | impressions/clicks are bare Redis counters keyed on `(query, doc)` — no IP, session, or user in any key (a key-shape unit test proves the construction has no identifier input); surfaced only above k, decaying out of a sliding window; **off by default** ([[ADR-0015 - Anonymous Interaction Signals for Ranking]], M6) |
 
 ### Interaction signals (M6) reconciled against "no query logging"
@@ -35,21 +42,44 @@ These are testable statements, not aspirations. Each has an enforcement mechanis
 [[ADR-0008 - No Query Logging]] left one escape hatch: *aggregate counters, k-anonymous, default
 off*. The interaction store is that hatch and nothing more. It records how often results are shown
 and clicked, as counters keyed by the (already-normalised) query and the document id — the same
-[[weak_coverage]] pattern already in use — never by anything that identifies a person. The honest
+`weak_coverage` pattern ([[Interaction Signals]]) already in use — never by anything that identifies a person. The honest
 one-line statement of the guarantee: **no identifiable tracking; anonymous aggregate counts only,
 k-anonymous, on your own server, and off unless you turn it on.** The click beacon carries an opaque
 token and a document id — never the query text — so even the click request cannot be tied to what
 was typed.
 
+[[ADR-0018 - Anonymous Search History]] (2026-08-25) then amended ADR-0008's "query text never
+written to durable storage" row: the same counters, browsed at `/admin/interaction`, **are**
+normalised query terms surviving their window. They carry no identifier — that is the property
+the promise rests on — and the public privacy page (`web/app/[lang]/privacy`) says exactly this:
+what is kept (terms, result counts, opened results — as counts), what never is (IP, device,
+session, account), and that the external summariser and federated search are off by default.
+
+### The signals Redis
+
+`redis-signals` in compose is the ephemeral instance for these counters: `--save "" --appendonly
+no`, no volume, `volatile-lru` at 192 MB, and `scripts/backup.sh` deliberately skips it — so a
+backup can never carry query terms. **Caveat (2026-08-27):** only `config/dev.toml` sets
+`queue.signals_url` to it. `staging.toml`, `prod.toml` and `ci.toml` leave it empty, and an empty
+value falls back to the *queue* Redis — which is persistent (AOF) and is backed up. A non-dev
+deployment that turns signals on must set `signals_url` or the ephemerality is lost.
+
 ### Verifying the promise
 
-- **Egress test** (CI, staging): from inside `xustive-api`, attempt outbound DNS + TCP to a public
-  host; the test **passes only if it fails**.
-- **Telemetry lint**: grep `tracing::` call sites for query-shaped identifiers → build failure.
-- **Log scan** (nightly, staging): run the full query corpus, then grep 24 h of logs for any corpus
-  string. One hit = `TelemetryLeak` page.
-- **Disk scan**: after a voice/image request, assert no new files under the container's writable
-  layer.
+- **Egress test** (`scripts/test-egress.sh`, `make egress-test`, CI job `egress guarantee`):
+  asserts the `core` network is `internal`, runs a throwaway container on it and requires outbound
+  HTTP **and** public DNS to fail, runs the same probe off-network as a control, checks a real
+  container (`xustive-redis`) cannot reach out, and — when the `federation` profile is up — that
+  SearXNG is unreachable from `core`, so only the dual-homed gateway can reach it. It does **not**
+  prove "the API reaches the gateway and nothing else": the API is a host process. In CI the
+  topology is brought up `--no-start`, so the real-container and container-log checks skip.
+- **Telemetry lint** (`scripts/lint-telemetry.sh`, in `make lint` and CI): a `tracing::` call
+  site naming a query or credential field fails the build.
+- **Log scan** (`scripts/scan-logs.sh`, `make scan-logs LOG=…`): structural checks for forbidden
+  field names plus the query corpus grep. Run nightly by the operator; **not wired to CI**. There is
+  no `TelemetryLeak` alert — a hit is a finding, not a page (2026-08-27).
+- **Disk scan**: ❌ not built (2026-08-27). The sidecars' behaviour is by inspection: STT never
+  touches disk; OCR's temp file is unlinked in `finally`.
 
 ---
 
@@ -76,9 +106,13 @@ user query data.
 
 ## 3. Transport and Edge
 
+> ❌ **Not built (2026-08-27):** there is no TLS terminator in the repo — no Caddy service in
+> compose, no HSTS. The frontend listens on :3000 and the API on :8080 in the clear. The
+> intent below stands for the beta edge.
+
 - TLS 1.3 only (1.2 permitted through 2026 for old Android); HSTS `max-age=63072000; includeSubDomains`.
 - Certificates via Let's Encrypt / ACME at the Caddy edge, auto-renewed.
-- Security headers on every HTML response:
+- Security headers on every HTML response (intended):
 
 ```
 Content-Security-Policy: default-src 'self'; img-src 'self' data: https:; media-src 'self' blob:;
@@ -89,10 +123,14 @@ Permissions-Policy: microphone=(self), camera=(self), geolocation=(), interest-c
 Cross-Origin-Opener-Policy: same-origin
 ```
 
-`img-src https:` is required to show remote thumbnails; every such image gets
-`referrerpolicy="no-referrer"` and `loading="lazy"` so the origin host learns nothing about the user
-beyond an IP for a thumbnail — see [[UI - Results Page]] for the proxy-thumbnails alternative in
-[[#9. Open Questions]].
+**Set today** (`web/next.config.ts`, every path): `Referrer-Policy: no-referrer`,
+`X-Content-Type-Options: nosniff`, `Cross-Origin-Opener-Policy: same-origin`,
+`Permissions-Policy: geolocation=(), microphone=(self), camera=(self)`; the API adds its own
+`permissions-policy`. `scripts/smoke.sh` checks the privacy headers are present. The CSP is the
+missing one.
+
+Remote thumbnails no longer need `img-src https:` — they go through the signed proxy (P10), so
+the origin host sees the server's address, not the user's ([[Thumbnail Proxy]]).
 
 ---
 
@@ -137,7 +175,7 @@ Mitigations in [[Summarizer]]:
 
 | Control | Audio | Image |
 |:---|:---|:---|
-| Size cap | 10 MB | 8 MB |
+| Size cap | **8 MB** as built (`stt.max_audio_bytes`; a 30 s Opus clip is under 1 MB) | 5 MB fetched for OCR (`enrich.max_image_bytes`); the `/search/image` upload cap of 8 MB is the spec — *not verified in code, 2026-08-27* |
 | Duration / dimension cap | 30 s | 4096 × 4096 px |
 | Type check | magic bytes, not `Content-Type` | magic bytes |
 | Decode | in a memory-limited task, wall-clock capped (5 s) | same |
@@ -155,10 +193,11 @@ the task boundary and returns 422, never taking down the process.
 | Secret | Storage | Rotation |
 |:---|:---|:---|
 | `MEILI_MASTER_KEY` | env from secrets file, `0600`, never in the image | 180 d |
-| Admin `X-Api-Key` | hashed (Argon2id) in config; plaintext only at issue | 90 d |
+| Admin `X-Admin-Key` | **as built:** `api.admin_key` in the config file, plaintext, compared in constant time; empty leaves the admin routes open (development). Argon2id hashing is still the intent | 90 d |
 | Proxy credentials | secrets file mounted to `xustive-crawler` only | 90 d |
-| Rate-limit salt | generated at boot, rotated daily, memory-only | 24 h |
-| Grafana admin | secrets file; UI behind VPN/basic auth | 180 d |
+| Rate-limit salt | generated at boot from `/dev/urandom`, rotated every 24 h, memory-only | 24 h |
+| `XUSTIVE_THUMB_SECRET` | env on the web process; unset → random per process, so signatures do not survive a restart or span replicas ([[Operating Xustive]] §5) | with the process |
+| Grafana admin | **as built:** `admin`/`admin` in compose, anonymous access off, reporting off; the port is only published by `docker-compose.dev.yml` | 180 d |
 
 Meilisearch uses **scoped tenant keys**: `xustive-api` gets a search-only key, `xustive-worker` an
 index-only key. Nothing but the migration job holds the master key.
@@ -184,8 +223,11 @@ the one place we log deliberately, and it contains no user data.
 
 ## 9. Open Questions
 
-- [ ] Proxy remote thumbnails through `xustive-api` so the user's IP never touches Facebook's CDN?
-      Costs bandwidth and adds a cache that could be argued to be a log. **Leaning yes for beta.**
+- [x] Proxy remote thumbnails — done through the web tier, signed, cacheless
+      ([[ADR-0021 - Proxied Thumbnails with Signed URLs]]).
+- [ ] BUG-042: rate limiting keys on the peer address, which behind the Next proxy is the proxy.
+      Either trust a hop count from a configured proxy, or move the limiter into the web tier.
+- [ ] Ship the CSP (P3) and the DB-IP attribution (P9) before beta.
 - [ ] Do we publish a canary/transparency statement, and who signs it?
 - [ ] Is the k ≥ 20 threshold for autocomplete defensible, or should popular-query suggestions be
       dropped entirely in favour of a static curated list?
@@ -194,4 +236,5 @@ the one place we log deliberately, and it contains no user data.
 ## Related
 
 [[Legal and Compliance]] · [[Observability]] · [[Deployment Topology]] · [[API Gateway]] ·
-[[Summarizer]] · [[Politeness and Robots]] · [[Decision Log]]
+[[Summarizer]] · [[Politeness and Robots]] · [[Decision Log]] · [[Operating Xustive]] ·
+[[Thumbnail Proxy]] · [[ADR-0018 - Anonymous Search History]]

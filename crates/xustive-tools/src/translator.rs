@@ -5,11 +5,12 @@
 //! card calls, because a matcher that blocked on a 3B model would put ten seconds on every search
 //! that is not a translation.
 //!
-//! # Not currently registered
+//! # Registered, with the caveat below (was left out until 2026-08-26)
 //!
 //! This detector is correct and tested, and the endpoint behind it streams and cancels properly.
-//! It is **left out of the registry** because the local model's output into Arabic is not good
-//! enough to show anyone. Measured on Qwen2.5-3B-Instruct Q4_K_M, CPU:
+//! It was **left out of the registry** for a while because the local model's output into Arabic
+//! was not good enough to show anyone; it is registered now (see `lib.rs`), and the numbers that
+//! kept it out stay here as the bar to watch. Measured on Qwen2.5-3B-Instruct Q4_K_M, CPU:
 //!
 //! | Direction | Output |
 //! |:---|:---|

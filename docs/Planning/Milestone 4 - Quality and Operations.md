@@ -3,8 +3,8 @@ tags:
   - planning
   - milestone
 milestone: 4
-status: in-progress
-updated: 2026-08-21
+status: in-progress (resilience, backup and runbook tooling built; the 10M-scale, chaos and security gates not run)
+updated: 2026-08-27
 ---
 
 # Milestone 4 - Quality and Operations
@@ -16,6 +16,16 @@ updated: 2026-08-21
 > Parent: [[TODO]] · Previous: [[Milestone 2 - Ingestion at Scale]] · Next: [[Milestone 5 - Beta Launch]]
 
 ---
+
+> **Audit 2026-08-27.** Ticked items verified in code and history: breakers (`17aa5e4`, `2493618`,
+> `5f62684`), graceful shutdown (`d21efb7`), loadgen (`5e7183e`), backup/restore (`0de8fcc`),
+> reindex drill (`1909716`), alerts with promtool tests (`a1baf12`), runbooks + lint (`913c8c0`,
+> `1215c10`, `cbe9ce4`). Settled elsewhere and now ticked: backpressure (M2-T03.9) and the DLQ
+> tooling (`xustive-cli dlq stats|peek|replay` plus the admin Index-queue page, `3389a96`,
+> PROB-003 per-item dead letters `98aeb88`). `deploy/grafana/provisioning` is **empty** — no
+> dashboards are provisioned from git (T01.5). `scripts/scan-logs.sh` exists for T08.4 but nothing
+> schedules it nightly. Nothing in T03.2–.8, T05 (bar the Redis finding), T06, T07 or T08 has
+> run; the milestone's gate is untouched.
 
 ## Why This Milestone Exists
 
@@ -34,7 +44,7 @@ the entire point. Discovering it during beta is not.
 - [ ] M4-T01.2 Structured logging conventions applied across all four binaries
 - [ ] M4-T01.3 Tracing spans and ingestion `trace_id` correlation end to end
 - [ ] M4-T01.4 Sampling: 100 % errors, 1 % successful searches, one full ingestion chain per hour
-- [ ] M4-T01.5 Six Grafana dashboards, provisioned from git
+- [ ] M4-T01.5 Six Grafana dashboards, provisioned from git — *audit 2026-08-27: `deploy/grafana/provisioning/` is empty; the admin console's own pages are the only dashboards*
 - [~] M4-T01.6 Alerts configured with thresholds and severities — *the §6 alerts whose metrics the API emits today are live and **promtool-unit-tested**: `SearchDown`, `SearchLatencyHigh`, `ZeroResultsSpike`, `SummaryDropHigh`, `QueueBacklog`, `DLQGrowth` (plus the existing tool-data set). The social/proxy/signer alerts wait on the metrics their features will emit and are deliberately not configured against absent series. (promtool caught — and I fixed — a `clamp_min(rate,1)` distortion in the ratio exprs.)*
 - [ ] M4-T01.7 **`TelemetryLeak` alert wired and tested** with a deliberate synthetic leak
 - [ ] M4-T01.8 Log volume within the 2 GB/day budget at projected load
@@ -43,8 +53,8 @@ the entire point. Discovering it during beta is not.
 
 - [ ] M4-T02.1 `ErrorClass`-driven retry layer applied everywhere (no string matching)
 - [x] M4-T02.2 Circuit breakers with shared Redis state and exponential cooldown — *two variants: `xustive_core::circuit` (in-process, injectable clock, wired into the STT sidecar with admin visibility) and `xustive_queue::breaker::RedisBreaker` (fleet-wide, atomic Lua transitions, one half-open probe across all instances). Both fully unit/integration-tested — the Redis one verified live against a clean instance (trip → cooldown → probe → close → exponential backoff). **Wired into all three sidecar clients** (STT/OCR/CLIP) with the in-process breaker, and into the **indexer's Meili writes** with the *shared* one: `BreakeredSink` wraps the worker's sink so the whole fleet backs off together when Meili is down — a fast, **retryable** failure that leaves batches for redelivery (nothing lost or dead-lettered), probing for recovery in unison. Verified: the worker arms the shared breaker and drains normally. (A breaker on the *search read* path is deliberately still absent — a down node refuses connections instantly, so there is no timeout to save there.)*
-- [ ] M4-T02.3 Backpressure thresholds wired from queue depth to crawl dispatch
-- [ ] M4-T02.4 DLQ tooling: stats, peek, replay, retention
+- [x] M4-T02.3 Backpressure thresholds wired from queue depth to crawl dispatch — *Settled in M2-T03.9: the crawler throttles on the **indexer's** consumer-group lag (`8819efe`, `7e8ffe0`, `e156273`)*
+- [~] M4-T02.4 DLQ tooling: stats, peek, replay, retention — *`xustive-cli dlq stats|peek|replay` (`crates/xustive-cli/src/worker.rs`) and the admin Index-queue page with a replay control (`3389a96`); per-item dead letters for registry entries came with PROB-003 (`98aeb88`). **Retention** is not implemented (audit 2026-08-27)*
 - [ ] M4-T02.5 Degradation ladder verified by fault injection, step by step
 - [ ] M4-T02.6 Idempotency audit: every stage re-runnable, with a test per stage
 - [x] M4-T02.7 Graceful shutdown: drain in-flight, ack, exit within the grace period — *shared `shutdown` helper (SIGTERM/Ctrl-C + a 25 s grace bound); the worker stops taking batches (unacked in-flight redelivers, idempotent by id), the crawler drains bounded, the API arms a grace timer over axum's drain. Worker exit verified live at ~1 s*
@@ -107,7 +117,7 @@ the entire point. Discovering it during beta is not.
 - [ ] M4-T08.1 Threat-model walkthrough against [[Security and Privacy]] §2, updated for what got built
 - [ ] M4-T08.2 External penetration test of the public surface
 - [ ] M4-T08.3 Re-run the SSRF suite against the live crawler
-- [ ] M4-T08.4 **Nightly log scan for query leakage** — must find zero
+- [~] M4-T08.4 **Nightly log scan for query leakage** — must find zero — *`scripts/scan-logs.sh` / `make scan-logs` does the scan; no nightly schedule exists yet (audit 2026-08-27)*
 - [ ] M4-T08.5 Verify egress segmentation on the real deployment
 - [ ] M4-T08.6 Secrets audit: rotation, scoping, no secrets in images or logs
 - [ ] M4-T08.7 Dependency and model-licence audit refresh

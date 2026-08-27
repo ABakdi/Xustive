@@ -3,8 +3,8 @@ tags:
   - planning
   - milestone
 milestone: 3
-status: in-progress
-updated: 2026-08-21
+status: in-progress (voice, OCR and image similarity built; the WER/CER/recall gates are unmeasured)
+updated: 2026-08-27
 ---
 
 # Milestone 3 - Multimodal Input
@@ -15,6 +15,19 @@ updated: 2026-08-21
 > Parent: [[TODO]] · Previous: [[Milestone 1 - Text Search MVP]] · Previous: [[Milestone 2 - Ingestion at Scale]]
 
 ---
+
+> **Audit 2026-08-27.** Every ticked item below was checked against the code. Two things changed
+> since the 2026-08-21 status: **voice is live, not blocked** — the whisper weights are on disk
+> (`data/models/faster-whisper-{base,small}`), `services/stt-sidecar/run.sh` picks the GPU when
+> CTranslate2 sees one (CPU int8 otherwise), `base` answers live partials and `small` the final
+> pass, and the field itself is the recorder (`8e10e37`, `8b17711`,
+> [[ADR-0024 - Two-Model Voice Transcription that Submits on Stop]]). That ADR **reverses the
+> never-auto-submit rule for voice** (T03.6 is *Settled the other way*; OCR keeps the rule). And
+> `xustive-ml` exists as a **library crate** (engine/device/registry) inside the API, not the
+> service T01 describes — the per-model services are the three sidecars. Still unmeasured: WER
+> (T02.10), CER (T04.8) and ANN recall (T05.6/.9), all waiting on fixture corpora (T08, B7); the
+> CLIP model is still not provisioned into `clip-embed`. No test file for M3-T02.8's raw-body
+> forwarding was found (unverified).
 
 ## Status as of 2026-08-21 — the image OCR track is up, and image *input* is a real feature
 
@@ -31,8 +44,7 @@ a page's images (SSRF-guarded, size-capped, bounded per doc), OCRs them, fills `
 (searchable, weighted below body), backfills a thin body, and **a failed image never fails its
 document** (M3-T07.1/.4/.5/.7). Opt-in via `[media] image_ocr_enabled`, default off.
 
-Done (input, M3-T06): an **`OcrBackend` trait** ([[ADR-0016 - Two OCR Engines with an Optional
-Unlimited-OCR Sidecar]]) with two engines — in-process tesseract (the CPU-only default and the whole
+Done (input, M3-T06): an **`OcrBackend` trait** ([[ADR-0016 - Two OCR Engines with an Optional Unlimited-OCR Sidecar]]) with two engines — in-process tesseract (the CPU-only default and the whole
 ingestion path) and an optional **Unlimited-OCR sidecar** (a 3B vision-language model, `services/
 ocr-sidecar`) preferred for the tools when `media.ocr_backend = "unlimited"`, with automatic fallback
 to tesseract. **`POST /api/v1/ocr`** takes a raw image body and returns the text. The **standalone
@@ -93,13 +105,19 @@ document ([[Social Connector - Instagram]] §4.2).
 
 ## M3-T01 — `xustive-ml` service
 
-- [ ] M3-T01.1 Service scaffold: internal HTTP, health, readiness gated on model load
+- [~] M3-T01.1 Service scaffold: internal HTTP, health, readiness gated on model load — *Settled
+      2026-08-27: no `xustive-ml` service; the crate is a library the API links (summariser,
+      device switch, model registry) and each heavy model is its own sidecar (OCR, CLIP, STT,
+      text-embed) with a health endpoint the admin Compute/Image-AI pages read*
 - [ ] M3-T01.2 Model manifest with checksums; `model-init` job populating the shared read-only volume
       ([[Deployment Topology]] §5)
 - [x] M3-T01.3 Model licence audit → `models/LICENSES.md` ([[Legal and Compliance]] §7) — *done; **found the default summariser (Qwen2.5-3B) is `qwen-research`, non-commercial** — swap to an Apache-2.0 size (1.5B/7B) before commercial launch. Unlimited-OCR is MIT; CLIP/Whisper/tesseract flagged for per-artefact confirmation*
 - [ ] M3-T01.4 Shared admission controller so voice/image bursts cannot starve [[Summarizer]]
 - [ ] M3-T01.5 Per-model memory and latency metrics
-- [ ] M3-T01.6 Decide B6: is a GPU in the budget? Config path either way, no redesign
+- [x] M3-T01.6 Decide B6: is a GPU in the budget? Config path either way, no redesign — *Settled:
+      the reference card is a Quadro T1000 4 GB, everything must also run CPU-only, and the device
+      is switchable from the admin Compute page; the STT launcher picks CUDA when CTranslate2 sees
+      it (`run.sh`, ADR-0024)*
 
 ## M3-T02 — [[Speech to Text]]
 
@@ -112,7 +130,7 @@ document ([[Social Connector - Instagram]] §4.2).
 - [~] M3-T02.2 Decode with caps — *in-sidecar (PyAV), not `symphonia`; wall-clock bounded by the request timeout*
 - [~] M3-T02.3 Resample to 16 kHz mono — *whisper resamples internally*
 - [x] M3-T02.4 VAD trimming — *`vad_filter=True` in the sidecar*
-- [~] M3-T02.5 Whisper `small`, Arabic-preferred language — *faster-whisper, with the UI language forwarded as `?lang=`; not `whisper.cpp` FFI*
+- [x] M3-T02.5 Whisper `small`, Arabic-preferred language — *faster-whisper, with the UI language forwarded as `?lang=`; not `whisper.cpp` FFI. Settled 2026-08-27 as **two models**: `base` for live partials (`?partial=1`, greedy), `small` beam-5 for the final; CUDA OOM on the final is answered by the partial model, not a 500 (`8b17711`, ADR-0024)*
 - [x] M3-T02.6 **Artefact filter** for hallucinated trailing text on near-silent input — *the sidecar drops segments with high `no_speech_prob` + low `avg_logprob`; the API blanks a transcript that is only a known phantom phrase (multilingual, whole-match only), unit-tested*
 - [~] M3-T02.7 Bounded queue and slot management — *the API rate-limits `/transcribe`; the sidecar is single-model*
 - [x] M3-T02.8 **Zero-disk-write** — *the sidecar decodes from a `BytesIO`, no temp file; the API forwards a raw body (test still to add)*
@@ -123,14 +141,14 @@ document ([[Social Connector - Instagram]] §4.2).
 
 - [x] M3-T03.1 Capability detection; hide the button when unsupported
 - [x] M3-T03.2 Permission on tap only, never on load; guidance on denial
-- [~] M3-T03.3 Recording overlay: timer, stop, cancel; focus-trapped `<dialog>` — *no waveform yet*
+- [x] M3-T03.3 Recording overlay: timer, stop, cancel; focus-trapped `<dialog>` — *Settled the other way 2026-08-27 (`8e10e37`): no overlay — the search field is the recorder; the button breathes red, a level meter shows the mic is hearing, the words so far appear dimmed in the box every ~400 ms, Esc cancels. No waveform*
 - [x] M3-T03.4 `MediaRecorder` Opus capture at 24 kbps
 - [~] M3-T03.5 30 s hard cap — *silence auto-stop and the 25 s announce not done yet*
-- [x] M3-T03.6 **Transcript lands in the search box, editable, not auto-submitted**
+- [x] M3-T03.6 **Transcript lands in the search box, editable, not auto-submitted** — *Settled the other way 2026-08-27: **stop means search** ([[ADR-0024 - Two-Model Voice Transcription that Submits on Stop]]) because the words were on screen the whole time; Esc still cancels without searching, and the results page keeps the same editable box. OCR keeps never-auto-submit*
 - [x] M3-T03.7 Track stop on completion/cancel so the browser mic indicator clears
 - [ ] M3-T03.8 Retry keeps the recorded blob in memory (3G resilience)
 - [~] M3-T03.9 `prefers-reduced-motion` — *the recording indicator is `motion-safe`; no waveform to vary*
-- [~] M3-T03.10 Live-region announcements — *state and errors are announced; not yet every transition*
+- [~] M3-T03.10 Live-region announcements — *state and errors are announced; not yet every transition. A server with no transcriber now stops the recording and says so visibly under the field, not only to screen readers (`8e10e37`)*
 
 ## M3-T04 — [[Image Pipeline]] — OCR path
 

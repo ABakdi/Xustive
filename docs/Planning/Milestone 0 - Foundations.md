@@ -3,8 +3,9 @@ tags:
   - planning
   - milestone
 milestone: 0
-status: complete
-updated: 2026-08-06
+status: done
+updated: 2026-08-27
+closed: 2026-08-07
 ---
 
 # Milestone 0 - Foundations
@@ -14,6 +15,12 @@ updated: 2026-08-06
 > **Exit gate:** 10k documents indexed and searchable end-to-end; CI green; `make check` passes on a
 > clean machine.
 > Parent: [[TODO]] · Next: [[Milestone 1 - Text Search MVP]]
+
+> **Closed 2026-08-07** (commit `3f178ab` "close out M0"). Audit 2026-08-27 against the code:
+> every ticked item has its artefact (workspace, compose + `lint-compose.sh`, `SafeUrl` + SSRF
+> suite, `xustive-text` symmetry test, alias migration, `/search`, fixture site, `lint-telemetry.sh`,
+> `test-egress.sh`, `cargo-deny`). The three `[~]` items are honest partials, not gaps. The one
+> unverified gate row is CI duration (T09.6).
 
 ---
 
@@ -123,7 +130,9 @@ either is painful, and getting normalisation wrong means Arabic search silently 
 - [x] M0-T09.3 **Telemetry lint** — fails on query-shaped identifiers in `tracing::` calls
 - [x] M0-T09.4 **Egress test** — `xustive-api` cannot reach the public internet
 - [x] M0-T09.5 `cargo-deny` (licences) and `cargo-audit` (advisories)
-- [ ] M0-T09.6 Total PR feedback under 10 minutes — unverified until CI runs on a real PR
+- [ ] M0-T09.6 Total PR feedback under 10 minutes — unverified until CI runs on a real PR.
+      *Audit 2026-08-27: still unverified — `.github/workflows/ci.yml` exists, but no timed run on
+      a real PR is recorded anywhere in the repo*
 
 ## M0-T10 — Offline fixture site
 

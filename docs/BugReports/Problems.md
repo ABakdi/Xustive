@@ -110,8 +110,7 @@ raise `maxmemory`; then restart the worker to drain the small remainder.
 
 ## PROB-002 — Crawl and index throughput is low
 
-**Status: SOLVED 2026-08-25 (code side) — see [[PROB-002 - Crawl and Index Throughput|the solution
-document]] ([Solutions/PROB-002 - Crawl and Index Throughput.md](<Solutions/PROB-002 - Crawl and Index Throughput.md>)).**
+**Status: SOLVED 2026-08-25 (code side) — see [[PROB-002 - Crawl and Index Throughput|the solution document]] ([Solutions/PROB-002 - Crawl and Index Throughput.md](<Solutions/PROB-002 - Crawl and Index Throughput.md>)).**
 The pipeline overhead is gone: a page's outlinks enqueue in ~3 pipelined round trips, guard probes
 run per-2s instead of per-claim, the indexer dwells into few large Meilisearch batches, and
 robots-silent healthy hosts earn a 1 rps floor. The remaining ceiling — distinct ready hosts — is

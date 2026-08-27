@@ -2,7 +2,7 @@
 tags:
   - adr
 adr-id: "0008"
-status: accepted
+status: partly implemented
 date: 2026-08-06
 ---
 
@@ -10,9 +10,8 @@ date: 2026-08-06
 
 ## Status
 
-Accepted, **amended twice**. [[ADR-0015 - Anonymous Interaction Signals for Ranking]] amended the
-"No click tracking" and "Aggregate counters … default off" rows; [[ADR-0018 - Anonymous Search
-History]] amends the "Query text never written to durable storage" row (identifier-free, windowed
+Accepted, **amended twice**, **partly implemented** (see Where it stands). [[ADR-0015 - Anonymous Interaction Signals for Ranking]] amended the
+"No click tracking" and "Aggregate counters … default off" rows; [[ADR-0018 - Anonymous Search History]] amends the "Query text never written to durable storage" row (identifier-free, windowed
 retention of the normalised term, for the operator console and ranking). The rows below stand except
 where those ADRs supersede them. Constrains [[Security and Privacy]], [[Observability]],
 [[Autocomplete Service]], [[API Gateway]], [[Error Handling and Resilience]].
@@ -95,3 +94,15 @@ something is broken ([[Observability]] §2).
 
 [[Security and Privacy]] · [[Observability]] · [[Autocomplete Service]] · [[Ranking and Relevance]] ·
 [[Testing Strategy]] · [[Legal and Compliance]] · [[Decision Log]]
+
+## Where it stands (2026-08-27)
+
+Row by row, against the code:
+
+- **Telemetry lint** — `scripts/lint-telemetry.sh` exists and runs in CI (`.github/workflows/ci.yml`). Holds.
+- **No egress** — `scripts/test-egress.sh` proves SearXNG is unreachable from the `core` network, but never asserts the ADR-0017 form "the API reaches the gateway and nothing else". `deploy/docker-compose.yml` has no `api` service (the API runs on the host), so the network-level no-egress claim for `xustive-api` is not enforced by compose at all.
+- **Live-log scan** — in CI compose is brought up with `up -d --no-start` (`ci.yml`), so the live-container log scan in `test-egress.sh` runs against nothing and is vacuous. `scripts/scan-logs.sh` is nightly-only and its pattern list omits `token`, `password`, `cookie` and `secret`.
+- **No query-keyed cache** — holds: the tool cache is keyed by wilaya, the knowledge cache by entity id (`crates/xustive-api/src/knowledge.rs`); there is no result cache keyed by query.
+- **Client IPs** — `crates/xustive-api/src/ratelimit.rs` keys on keyed BLAKE3 over `/24` (v4) and `/48` (v6) with a **24 h** rotating salt, memory-only, never reading `X-Forwarded-For`. Divergences: the salt rotates daily as written but the `SOURCES` bucket window is **3600 s**, not 60 s.
+- **Media never on disk** — diverged for the OCR sidecar: `services/ocr-sidecar/app.py` writes the image to a `tempfile` and deletes it in `finally` (as [[ADR-0016 - Two OCR Engines with an Optional Unlimited-OCR Sidecar]] records). No zeroisation of in-memory media buffers and no disk-scan test exists.
+- **Click tracking / counters** — amended by ADR-0015 and ADR-0018; see their Where it stands.

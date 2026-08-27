@@ -2,14 +2,14 @@
 tags:
   - adr
 adr-id: "0017"
-status: accepted
+status: implemented
 date: 2026-08-23
 ---
 # ADR-0017 - Query-Time Federation with External Metasearch
 
 ## Status
 
-Accepted. **Amends [[ADR-0001 - Two-Plane Architecture]]** (the serving plane's no-egress property and the "planes couple only through the index" rule) and **extends [[ADR-0013 - Direct SERP Collection for Discovery]]** (query-term egress, until now confined to the ingestion plane and offline, is allowed onto the serving path under strict controls). Interacts with [[ADR-0008 - No Query Logging]] (query terms now leave the box at request time) and [[ADR-0005 - Local Quantised LLM for Summaries]] (an external summariser becomes an *optional* alternative, never the default). Introduces the [[Federation Gateway]] component and governs [[Milestone 7 - Federated Retrieval and External Tools]].
+Implemented (M7, extended in M9); one enforcement gap noted below. **Amends [[ADR-0001 - Two-Plane Architecture]]** (the serving plane's no-egress property and the "planes couple only through the index" rule) and **extends [[ADR-0013 - Direct SERP Collection for Discovery]]** (query-term egress, until now confined to the ingestion plane and offline, is allowed onto the serving path under strict controls). Interacts with [[ADR-0008 - No Query Logging]] (query terms now leave the box at request time) and [[ADR-0005 - Local Quantised LLM for Summaries]] (an external summariser becomes an *optional* alternative, never the default). Introduces the [[Federation Gateway]] component and governs [[Milestone 7 - Federated Retrieval and External Tools]].
 
 ## Context
 
@@ -80,3 +80,11 @@ The structure, and how each old invariant is kept or knowingly amended:
 ## Related
 
 [[ADR-0001 - Two-Plane Architecture]] · [[ADR-0013 - Direct SERP Collection for Discovery]] · [[ADR-0008 - No Query Logging]] · [[ADR-0005 - Local Quantised LLM for Summaries]] · [[Federation Gateway]] · [[Query Pipeline]] · [[Crawler Orchestrator]] · [[Ranking and Relevance]] · [[Security and Privacy]] · [[Milestone 7 - Federated Retrieval and External Tools]]
+
+## Where it stands (2026-08-27)
+
+- Gateway: `crates/xustive-federator` (binary, `deploy/Dockerfile.federator`) on the `core` + `ingest` networks; SearXNG on `ingest` only; both behind the `federation` compose profile (`deploy/docker-compose.yml`). Client and blending in `crates/xustive-federation` and `crates/xustive-api/src/federate.rs` (fail-open, budgeted, provenance-tagged).
+- Runtime switch: `GET`/`POST /admin/integrations` (`crates/xustive-api/src/admin.rs`, M7-T09) turns each integration on or off without a restart. Default off in every `config/*.toml`.
+- Extended by M9-T06: federation per category — `Category::{Web, Images, Videos}` in `crates/xustive-federation/src/lib.rs` feeds the Images/Videos tabs ([[ADR-0021 - Proxied Thumbnails with Signed URLs]]).
+- Convergence: federated URLs enter the index as thin eager documents and are fetched by the orchestrator (`crates/xustive-ingest/src/orchestrator.rs`), rather than through a separate "crawl hint" key.
+- **Gap:** `scripts/test-egress.sh` proves SearXNG is unreachable from `core` but does not assert "the API reaches only the gateway" as this ADR's first row requires; and because the API runs on the host (no `api` compose service) that property is not network-enforced.

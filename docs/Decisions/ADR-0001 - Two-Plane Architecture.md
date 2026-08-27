@@ -2,7 +2,7 @@
 tags:
   - adr
 adr-id: "0001"
-status: accepted
+status: implemented
 date: 2026-08-06
 ---
 
@@ -10,7 +10,7 @@ date: 2026-08-06
 
 ## Status
 
-Accepted. Constrains [[System Architecture]], [[Component Map]], [[Deployment Topology]].
+Implemented; amended by [[ADR-0017 - Query-Time Federation with External Metasearch]] (one allowlisted internal hop to the Federation Gateway). Constrains [[System Architecture]], [[Component Map]], [[Deployment Topology]].
 
 ## Context
 
@@ -75,3 +75,10 @@ Separate binaries, separate scaling, separate failure domains, separate Docker n
 
 [[System Architecture]] · [[Component Map]] · [[Deployment Topology]] · [[Performance Budgets]] ·
 [[Decision Log]]
+
+## Where it stands (2026-08-27)
+
+- Planes are separate binaries: `crates/xustive-api` (serving) and `crates/xustive-cli` (`crawld`, `toold`, ingestion commands). They share only Meilisearch, Qdrant and Redis; no serving code calls ingestion code (`crates/xustive-api/src` has no `xustive_ingest` dependency beyond the leaf `xustive-federation` client re-export).
+- Amended by ADR-0017: `xustive-api` gains one outbound target, `xustive-federator` (`crates/xustive-federator`, on `core` + `ingest` networks in `deploy/docker-compose.yml`). SearXNG sits on `ingest` only, behind the `federation` compose profile.
+- Divergence in deployment, not in code: `deploy/docker-compose.yml` defines no `api` service — `xustive-api` runs on the host and reaches the containers over published ports. The "separate Docker networks" property therefore holds for the data stores (`core` is `internal: true`) but the API's own egress is bounded by host configuration, not by compose (see [[ADR-0008 - No Query Logging]] Where it stands).
+- The summariser is not a separate `xustive-ml` process: `crates/xustive-ml` is a library linked into `xustive-api` (no `main.rs`).
