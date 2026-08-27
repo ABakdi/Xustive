@@ -16,7 +16,10 @@ NVLIBS="$(ls -d .venv/lib/python3.*/site-packages/nvidia/*/lib 2>/dev/null | tr 
 export LD_LIBRARY_PATH="${NVLIBS}${LD_LIBRARY_PATH:-}"
 if [ -z "${STT_DEVICE:-}" ]; then
   if .venv/bin/python -c "import ctranslate2 as c, sys; sys.exit(0 if c.get_cuda_device_count() > 0 else 1)" 2>/dev/null; then
-    export STT_DEVICE=cuda STT_COMPUTE="${STT_COMPUTE:-float32}"
+    # The final model quantised (int8 weights, fp16 math): on the T1000 that is as fast as
+    # float32 at beam 5 — 1.2 s against 1.4 s — and a third of the memory on a card shared with
+    # the API's own models. The partial model stays float32, where its encoder is fastest.
+    export STT_DEVICE=cuda STT_COMPUTE="${STT_COMPUTE:-int8_float16}" STT_PARTIAL_COMPUTE="${STT_PARTIAL_COMPUTE:-float32}"
   else
     export STT_DEVICE=cpu STT_COMPUTE="${STT_COMPUTE:-int8}"
   fi

@@ -194,3 +194,18 @@ the GPU when CTranslate2 sees one. On the Quadro T1000, measured on a 10 s Arabi
 the API: a partial in 0.35–0.5 s, the final in 1.0–1.5 s. A finding worth keeping: on that card
 `float16` is *slower* than `float32` (435 ms vs 128 ms for the `base` encoder), so float32 is
 the launcher's default. The box asks every 400 ms and sends the audio so far in 200 ms slices.
+
+## Revision, 2026-08-27 (later still) — stop means search
+
+Two changes asked for after using it. **Stop searches.** The words were in the box the whole
+time they were spoken, so confirming them again is a second tap for nothing; editing is one tap
+away on the results page. This overrides the earlier rule never to submit for the person — that
+rule was written for a box that showed nothing until the end.
+
+**"Unavailable" after a good recording.** The GPU is shared — the API's own models held 1.6 GB,
+the sidecar 1.5 GB at float32, the desktop the rest of 4 GB — and the careful model's beam search
+was the first thing to run out of room: CUDA OOM on the final pass, three of those, and the
+breaker turned every request into an instant 503. Three fixes: the final model is quantised
+(`int8_float16`, 756 MB for both models now, and no slower at beam 5); a final that hits OOM is
+answered by the light model in-process rather than with a 500; and the box, if the final pass
+fails anyway, searches with the last live reading instead of showing an error under text.

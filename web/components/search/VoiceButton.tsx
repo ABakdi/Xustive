@@ -16,7 +16,9 @@ import type { Messages } from '@/lib/i18n/messages'
  * greedy — and the box shows the newest reading, so the text grows while you talk; on stop, one
  * last pass with the careful model gives the final words. The
  * result stays editable and is never submitted for you (M3-T03.6) — Darija transcription is
- * imperfect, and the person confirms the words before searching.
+ * imperfect — and then, on stop, the search runs with them: the words were on screen the whole
+ * time, and editing is one tap away on the results page. (Auto-submit on stop was asked for
+ * after the live version shipped; the earlier rule was never to submit for the person.)
  *
  * The first version put all this behind a modal dialog with a timer in it and pasted the text at
  * the end. It looked like a phone call, not a search box, and when the server was off it failed
@@ -49,7 +51,7 @@ export function VoiceButton({
   size?: number
   /** A reading of the words so far, while still recording. Replaces the previous reading. */
   onInterim: (text: string) => void
-  /** The final words. Never submitted here. */
+  /** The final words; the box searches with them. */
   onTranscript: (text: string) => void
   /** What the field should show around the button: phase, elapsed seconds, mic level, error. */
   onState: (state: VoiceState) => void
@@ -67,6 +69,9 @@ export function VoiceButton({
   const startedAt = useRef(0)
   const lastPartial = useRef(0)
   const cancelled = useRef(false)
+  // The newest live reading. If the final pass fails, these are the words — they were on screen
+  // already, and "unavailable" under a box full of text is a lie.
+  const lastInterim = useRef('')
   const state = useRef<VoiceState>({ phase: 'idle', seconds: 0, level: 0, error: '' })
 
   const emit = useCallback(
@@ -123,9 +128,11 @@ export function VoiceButton({
       if (controller.signal.aborted) return
       const text = out.text.trim()
       if (final) {
-        if (text) onTranscript(text)
+        const words = text || lastInterim.current
+        if (words) onTranscript(words)
         finish('')
       } else if (text) {
+        lastInterim.current = text
         onInterim(text)
       }
     } catch (err) {
@@ -134,9 +141,15 @@ export function VoiceButton({
         err instanceof SearchFailed && (err.status === 503 || err.status === 404)
           ? t.voiceUnavailable
           : t.voiceFailed
-      // A failed partial is not worth interrupting for — the next one may land; a failed final
-      // is the answer, and it is shown.
-      if (final) finish(message)
+      // A failed partial is not worth interrupting for — the next one may land. A failed final
+      // hands over the last live reading if there is one, and is the answer only when there is
+      // nothing else to give.
+      if (final) {
+        if (lastInterim.current) {
+          onTranscript(lastInterim.current)
+          finish('')
+        } else finish(message)
+      }
       else if (err instanceof SearchFailed && (err.status === 503 || err.status === 404)) {
         // The server has no transcriber at all: stop early and say so, rather than record thirty
         // seconds into nothing.
@@ -174,6 +187,7 @@ export function VoiceButton({
 
   async function start() {
     cancelled.current = false
+    lastInterim.current = ''
     emit({ error: '', seconds: 0, level: 0 })
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true })

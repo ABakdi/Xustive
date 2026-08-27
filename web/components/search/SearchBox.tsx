@@ -229,7 +229,8 @@ export function SearchBox({
             typedRef.current = text
             setValue(text)
             setOpen(false)
-            inputRef.current?.focus()
+            // Stop means search: the words were in the box while they were spoken.
+            submit(text)
           }}
         />
         {/* Search by image — the Lens-style entry. A real link, not a button: it navigates to the

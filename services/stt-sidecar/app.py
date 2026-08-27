@@ -63,14 +63,17 @@ async def lifespan(_app: FastAPI):
     # int8 on CPU is the reference path; a GPU host can set STT_DEVICE=cuda / STT_COMPUTE=float16.
     device = os.environ.get("STT_DEVICE", "cpu")
     compute = os.environ.get("STT_COMPUTE", "int8")
+    # The partial model may run at a different precision: on a 4 GB card the final model is
+    # quantised to leave room, while the partial one — whose whole job is speed — stays float32.
+    partial_compute = os.environ.get("STT_PARTIAL_COMPUTE", "") or compute
     _state["model"] = WhisperModel(MODEL_NAME, device=device, compute_type=compute, cpu_threads=CPU_THREADS)
     if PARTIAL_MODEL_NAME:
         _state["partial"] = WhisperModel(
-            PARTIAL_MODEL_NAME, device=device, compute_type=compute, cpu_threads=CPU_THREADS
+            PARTIAL_MODEL_NAME, device=device, compute_type=partial_compute, cpu_threads=CPU_THREADS
         )
     print(
-        f"stt ready model={MODEL_NAME} partial={PARTIAL_MODEL_NAME or '-'} device={device} "
-        f"compute={compute} threads={CPU_THREADS}",
+        f"stt ready model={MODEL_NAME}({compute}) partial={PARTIAL_MODEL_NAME or '-'}({partial_compute}) "
+        f"device={device} threads={CPU_THREADS}",
         flush=True,
     )
     yield
@@ -101,10 +104,24 @@ async def transcribe(request: Request) -> Response:
     partial = request.query_params.get("partial") in ("1", "true")
     started = time.monotonic()
     try:
-        text, detected = _run(body, lang, partial)
+        try:
+            text, detected = _run(body, lang, partial)
+        except RuntimeError as exc:
+            # The GPU is shared — with the API's own models and the desktop — and the careful
+            # model's beam search is the first thing to run out of room. The light model's
+            # reading is a worse answer than the careful one and a far better one than a 500.
+            if "out of memory" not in str(exc).lower() or partial or _state["partial"] is None:
+                raise
+            print("stt oom on final; answering with the partial model", flush=True)
+            text, detected = _run(body, lang, True)
     except Exception as exc:  # noqa: BLE001 — a bad container is a 422, everything else a 500
         name = type(exc).__name__
-        print(f"stt error: {name}", flush=True)
+        # The whole traceback, to the log only: the reply stays a bare 500. The first version
+        # printed the name alone, and "RuntimeError" was not a diagnosis.
+        import traceback
+
+        print(f"stt error: {name}: {exc}", flush=True)
+        traceback.print_exc()
         return JSONResponse({"error": "transcription failed"}, status_code=500)
 
     elapsed_ms = int((time.monotonic() - started) * 1000)
