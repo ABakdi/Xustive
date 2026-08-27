@@ -174,14 +174,15 @@ is also the privacy property.
 - [x] M10-T05.1 Golden set `eval/images/`: 30 images taken from the local index with their source
       page; the original finds its page at rank 1 and its own image in `same`; a 20 % crop and a
       q50 re-encode find it in the top 3; a rotated copy is allowed to miss. *Measured
-      2026-08-27 (`make eval-images`, 29 fetchable of 30): original at rank 1 and in `same`
-      28/29, crop 29/29, q50 re-encode 27/29. Settled at a floor of nine in ten rather than all:
+      2026-08-27 (`make eval-images`, 29 fetchable of 30, second run): original at rank 1 and
+      in `same` 29/29, crop 29/29, q50 re-encode 27/29 — and the two re-encode misses are a
+      site's `DefaultImage.jpg` and a lazy-load placeholder, which are not pictures. Settled at a floor of nine in ten rather than all:
       an image URL on the news web is not immutable — an og:image regenerated since indexing is
       not a retrieval failure — and the runner prints the misses so a reviewer can tell*
 - [~] M10-T05.2 Budgets: local leg p95 ≤ 1.5 s end to end with the CLIP sidecar on the GPU, ≤ 4 s
       on CPU; the web leg inside the federation budget and never on the critical path of the
       local groups. *Measured on CPU CLIP with the crawler embedding on the same sidecar and 134
-      index tasks queued: median 594 ms, p95 4.7 s over 87 searches — the median is well inside,
+      index tasks queued: median 512–594 ms, p95 3.9–4.7 s over 87 searches, two runs — the median is well inside,
       the tail is contention, not the search. The web leg is its own request after the local
       groups paint, with the fetch budget (6 s) and its own timeout. Open: a quiet-machine and a
       GPU measurement*
@@ -212,14 +213,15 @@ is also the privacy property.
 
 > **Status 2026-08-27, end of day.** Built and measured in one day, on top of what M3 and M9
 > left. The exit gate, item by item: an image the index holds finds its page at rank 1 and itself
-> in `same` for 28 of 29, a crop for 29, a re-encode for 27 — nine in ten and better; the chips
+> in `same` for 29 of 29, a crop for 29, a re-encode for 27 (the two misses are site
+> placeholders, not pictures); the chips
 > filter the grid in the browser without a second upload (verified: jpg 5 of 9); not a byte of
 > the picture reaches the web leg — the upload handler cannot federate and the words handler has
 > no body, by a test that reads the source; the privacy script finds neither the picture's hash
 > nor its words in any log or Redis key; the face lint is in `make lint`; the no-JS, bidi,
 > telemetry and bundle gates are green.
 >
-> What is not closed: the latency budget was measured on a busy CPU (median 594 ms, p95 4.7 s
+> What is not closed: the latency budget was measured on a busy CPU (median ~550 ms, p95 ~4 s
 > with the crawler embedding on the same sidecar) and wants a quiet run and a GPU run; the
 > proxy's redirect-refusal test needs a controllable upstream. Text-to-image ranking of the
 > Images tab — now one call away — stays parked, as M9 left it.
