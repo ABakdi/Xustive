@@ -13,6 +13,7 @@ pub mod currency;
 pub mod dataage;
 pub mod deadline;
 pub mod error;
+pub mod events;
 pub mod federate;
 pub mod geoip;
 pub mod image_search;
@@ -135,6 +136,8 @@ pub fn app(state: AppState) -> Router {
     // rate limit (a click happens far less often than a keystroke) and always answers 204.
     let interaction_routes = Router::new()
         .route("/interaction", axum::routing::post(interaction::handler))
+        // "Not relevant" (M11-T03): the same shape and the same budget as a click.
+        .route("/report", axum::routing::post(events::report))
         .layer(middleware::from_fn_with_state(state.clone(), limit_suggest))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::GATEWAY_TIMEOUT,
@@ -219,6 +222,10 @@ pub fn app(state: AppState) -> Router {
         .route("/eval", get(admin_eval::status))
         .route("/media", get(admin::media))
         .route("/interaction", get(admin::interaction))
+        // First-party search events (M11-T04): the overview, one visitor, and forgetting one.
+        .route("/events/overview", get(events::overview))
+        .route("/events/visitor", get(events::visitor))
+        .route("/events/forget", axum::routing::post(events::forget))
         .route(
             "/integrations",
             get(admin::integrations).post(admin::set_integrations),

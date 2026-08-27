@@ -10,6 +10,8 @@ use serde_json::{json, Value};
 pub const DOCUMENTS: &str = "documents";
 pub const COMMENTS: &str = "comments";
 pub const SOURCES: &str = "sources";
+/// First-party search events ([[ADR-0030]], M11): one document per search, click or report.
+pub const EVENTS: &str = "events";
 /// The knowledge index (M8-T01.3). Its field names come from `xustive-knowledge` rather than being
 /// written out again here: a searchable attribute naming a field the document does not emit fails
 /// silently — it matches nothing, which reads as bad relevance rather than as a typo.
@@ -102,6 +104,8 @@ pub fn documents_settings() -> Value {
             // provenance — what the crawler found directly vs what came through external tools like
             // federation (M7). Facetable = filterable in Meilisearch.
             "discovery",
+            // Opens and reports (M11-T02), for the documents console.
+            "hits",
             // So the repass job (M2-T06.9) can find documents that were enriched under load.
             "enrichment_level",
             // The fetched MIME, so a "Files" vertical can select PDFs (M2-T14.3).
@@ -114,11 +118,12 @@ pub fn documents_settings() -> Value {
             // at least one entry of that type — a settings change, not a reindex.
             "media.type", "media.provider",
             // The reverse-image chips, and the same filters on the Images tab (M10-T02.3).
-            "media.ext", "media.style"
+            "media.ext", "media.style",
+            // What readers did with the page (M11-T02): opens and "not relevant" reports.
+            "hits.opens", "hits.reports"
         ],
         "sortableAttributes": [
-            "published_at", "crawled_at", "quality_score", "engagement.likes"
-        ],
+            "published_at", "crawled_at", "quality_score", "engagement.likes", "hits.opens", "hits.reports"],
         "displayedAttributes": [
             "id", "title", "url", "canonical_url", "excerpt", "source_type", "source_id",
             "domain", "author", "published_at", "published_at_precision", "sentiment",
@@ -237,9 +242,27 @@ pub fn knowledge_settings() -> Value {
 }
 
 /// Every index and its settings, in creation order.
+/// The `events` index ([[ADR-0030]]). Searchable by the query text alone; filterable by every
+/// field an operator or a learner slices on; sortable by time. `visitor` is filterable so one
+/// person's events can be listed and deleted (§6 of the ADR), and by nothing else.
+pub fn events_settings() -> Value {
+    json!({
+        "searchableAttributes": ["query", "normalized"],
+        "filterableAttributes": [
+            "kind", "at", "visitor", "session", "doc", "vertical", "ui", "lang", "total_hits",
+            "reason", "shown", "rank"
+        ],
+        "sortableAttributes": ["at"],
+        "displayedAttributes": ["*"],
+        "rankingRules": ["sort", "words", "typo", "proximity", "attribute", "exactness"],
+        "pagination": { "maxTotalHits": 100000 }
+    })
+}
+
 pub fn all() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         (DOCUMENTS, "id", documents_settings()),
+        (EVENTS, "id", events_settings()),
         (COMMENTS, "id", comments_settings()),
         (SOURCES, "id", sources_settings()),
         (

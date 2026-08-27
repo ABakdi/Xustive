@@ -115,6 +115,12 @@ pub struct AppState {
     /// Opaque search→click tokens (M6-T03): `token → (qhash, minted_at)`, in memory, swept on write.
     /// The query text never leaves the process; the click endpoint resolves a token to a qhash here.
     pub interaction_tokens: Arc<std::sync::RwLock<HashMap<String, (String, std::time::Instant)>>>,
+    /// What the token's search showed, kept only while first-party collection is on (M11): the
+    /// query as typed and the ids in rank order, so a click or a report can be written with
+    /// the query and the rank without the browser ever sending either.
+    pub token_context: Arc<std::sync::RwLock<HashMap<String, (String, Vec<String>)>>>,
+    /// The first-party events sink ([[ADR-0030]]); `None` when `[collection] enabled = false`.
+    pub events: Option<crate::events::EventSink>,
     /// Live crawl counters, connected **once** with a shared auto-reconnecting manager. Reused by
     /// every `/crawler/events` SSE frame and metrics sample rather than reconnecting per call — the
     /// per-frame reconnect was what surfaced a transient blip as "Redis unreachable" on the Live
@@ -179,6 +185,14 @@ impl AppState {
     }
 
     /// The index searches actually run against.
+    /// The query and the rank of `doc` for a token's search, when collection kept them.
+    pub fn token_context(&self, token: &str, doc: &str) -> Option<(String, Option<u32>)> {
+        let map = self.token_context.read().ok()?;
+        let (query, shown) = map.get(token)?;
+        let rank = shown.iter().position(|d| d == doc).map(|i| i as u32 + 1);
+        Some((query.clone(), rank))
+    }
+
     pub fn documents_index(&self) -> String {
         self.documents_index
             .read()
@@ -308,14 +322,19 @@ impl AppState {
         let vector = config.vector.clone();
         let stt = config.stt.clone();
         let federation = config.federation.clone();
-        let search = MeiliClient::new(
+        let search = Arc::new(MeiliClient::new(
             &config.search.meili_url,
             &config.search.meili_key,
             Duration::from_millis(config.search.timeout_ms),
-        )?;
+        )?);
+        // First-party events ([[ADR-0030]]): the writer task starts with the state when on.
+        let events = config
+            .collection
+            .enabled
+            .then(|| crate::events::EventSink::start(search.clone()));
         Ok(Self {
             config: Arc::new(config),
-            search: Arc::new(search),
+            search: search.clone(),
             detector: Arc::new(Detector::default()),
             expander: Arc::new(Expander::new(ExpanderConfig::default())),
             ranking: Arc::new(load_ranking_weights()),
@@ -343,6 +362,8 @@ impl AppState {
             federator: crate::federate::FederatorClient::from_config(&federation),
             interactions: Arc::new(std::sync::RwLock::new(None)),
             interaction_tokens: Arc::new(std::sync::RwLock::new(HashMap::new())),
+            token_context: Arc::new(std::sync::RwLock::new(HashMap::new())),
+            events,
             crawl_stats: Arc::new(std::sync::RwLock::new(None)),
             limiter: Arc::new(RateLimiter::new()),
             pending: Arc::new(PendingStore::default()),

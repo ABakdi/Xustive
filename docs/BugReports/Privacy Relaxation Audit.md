@@ -30,6 +30,11 @@ Three rules stand, and several items below lean on them:
   address in a log line is exactly the combination rule 2 forbids. What changes is *stores*,
   once the first-party-data ADR says how they are kept.
 
+> **2026-08-27, later:** [[ADR-0030 - First-Party Search Data, Kept to Learn From]] is written
+> and [[Milestone 11 - Learning from Readers]] built — the events every *needs ADR-0030* item
+> below depends on now exist. PRIV-001's policy text is rewritten with it; the README's
+> guarantees section too.
+
 ## Order of work
 
 The register is ranked by what it buys search and the AI, against effort. Two things come

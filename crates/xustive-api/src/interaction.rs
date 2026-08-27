@@ -29,12 +29,25 @@ pub struct ClickBeacon {
 }
 
 /// `POST /api/v1/interaction` — record an anonymous click. Always 204.
-pub async fn handler(State(state): State<AppState>, body: Option<Json<ClickBeacon>>) -> StatusCode {
+pub async fn handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    body: Option<Json<ClickBeacon>>,
+) -> StatusCode {
     // A malformed or missing body is not worth distinguishing from a valid one — 204 regardless, so
     // the endpoint leaks nothing about what it accepted.
     let Some(Json(beacon)) = body else {
         return StatusCode::NO_CONTENT;
     };
+    // The first-party record of the open (M11-T01.4): the query and the rank come from what the
+    // server kept for this token, never from the request.
+    if let Some(sink) = state.events.as_ref() {
+        if !beacon.d.is_empty() {
+            if let Some((query, rank)) = state.token_context(&beacon.t, &beacon.d) {
+                sink.hit(&headers, &query, &beacon.d, rank, None);
+            }
+        }
+    }
     let Some(store) = state.interactions() else {
         return StatusCode::NO_CONTENT;
     };

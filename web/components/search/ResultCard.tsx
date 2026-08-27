@@ -19,9 +19,12 @@ export function ResultCard({
   result,
   t,
   locale,
+  reportable = false,
 }: {
   result: Result
   t: Messages
+  /** Show the "Not relevant" control (M11-T03) — only when a beacon token exists to attribute it. */
+  reportable?: boolean
   locale: string
 }) {
   const dated = result.published_at_precision !== 'unknown' && result.published_at > 0
@@ -102,6 +105,22 @@ export function ResultCard({
         style={{ color: 'var(--fg-muted)', overflowWrap: 'anywhere' }}
         dangerouslySetInnerHTML={{ __html: result.excerpt }}
       />
+      {reportable && (
+        // "Not relevant" (M11-T03): a quiet button the beacon around the list picks up by its
+        // `data-report`; one tap, then it says thanks. A button, not a link — nothing to follow.
+        <p className="m-0 mt-2 text-xs">
+          <button
+            type="button"
+            data-report={result.id}
+            data-thanks={(t as Record<string, string>).reportThanks}
+            aria-pressed={false}
+            className="cursor-pointer border-0 bg-transparent p-0 underline-offset-2 hover:underline"
+            style={{ color: 'var(--fg-faint)' }}
+          >
+            {(t as Record<string, string>).reportNotRelevant}
+          </button>
+        </p>
+      )}
     </li>
   )
 }

@@ -140,6 +140,14 @@ enforcement route in Algeria.
 
 ## 5. Personal Data — Algerian Law 18-07
 
+> **Live since 2026-08-27.** [[ADR-0030 - First-Party Search Data, Kept to Learn From]] keeps
+> searches, results shown, opens and reports per event with a first-party visitor cookie; the
+> operator is a **controller**. Owed before a public deployment turns `[collection]` on: the
+> lawful basis, the ANPDP position, the retention schedule (default 365 days, `xustive events
+> sweep`), deletion on request (`xustive events forget`, and the admin page's button), and —
+> under ADR-0029 — processor terms with every third party that receives a query. The privacy
+> page now states all of it; the rows below are the checklist.
+
 Law 18-07 (2018) governs the protection of natural persons in the processing of personal data. As we
 understand it, and **⚖ VERIFY every line**:
 

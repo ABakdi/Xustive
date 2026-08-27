@@ -34,8 +34,30 @@ export function InteractionBeacon({
     if (!root || typeof navigator === 'undefined' || !navigator.sendBeacon) return
 
     function onClick(e: MouseEvent) {
+      const target = e.target as HTMLElement | null
+      // "Not relevant" (M11-T03): a button on the card, same token, its own endpoint. Then the
+      // button says thanks and takes no second press.
+      const report = target?.closest('button[data-report]')
+      if (report) {
+        const doc = report.getAttribute('data-report')
+        if (doc && !report.hasAttribute('data-done')) {
+          try {
+            navigator.sendBeacon(
+              '/api/v1/report',
+              new Blob([JSON.stringify({ t: token, d: doc, r: 'irrelevant' })], { type: 'application/json' }),
+            )
+          } catch {
+            // Never surfaced.
+          }
+          report.setAttribute('data-done', '1')
+          report.setAttribute('aria-pressed', 'true')
+          const thanks = report.getAttribute('data-thanks')
+          if (thanks) report.textContent = thanks
+        }
+        return
+      }
       // Find the result anchor the click landed on (or inside).
-      const anchor = (e.target as HTMLElement | null)?.closest('a[data-doc]')
+      const anchor = target?.closest('a[data-doc]')
       const doc = anchor?.getAttribute('data-doc')
       if (!doc) return
       try {

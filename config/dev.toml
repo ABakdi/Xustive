@@ -101,6 +101,13 @@ max_hits = 10
 # this personal dev engine, where immediacy is wanted; only fires when federation is switched on.
 eager_index = true
 
+[collection]
+# First-party search events (ADR-0030, M11): every search, the results shown, every open and every
+# "not relevant" report, with a first-party visitor cookie. On in dev; off by default elsewhere
+# until the lawful basis is in place (Legal and Compliance §5).
+enabled = true
+retention_days = 365
+
 [interaction]
 # Anonymous interaction signals + search history (M6 + M7-T10): searches, result counts, impressions
 # and clicks as windowed counters that feed CTR ranking, re-crawl, and the admin search-history view.

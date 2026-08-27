@@ -48,6 +48,7 @@ updated: 2026-08-27
 | [[ADR-0027 - Narrow the Search Under Load Instead of Failing]] | on a retrieval timeout retry once page-sized without facets or highlighting, mark `facets_degraded`, count it (BUG-041) | accepted, implemented | [[API Gateway]], [[Query Pipeline]], [[Error Handling and Resilience]], [[Performance Budgets]] |
 | [[ADR-0028 - Reverse Image Search Sends Words to the Web, Never the Picture]] | accepted, in progress | The picture is read locally; SearXNG gets labels, never the image; visual ranking local only, the crawl closes the loop |
 | [[ADR-0029 - Raw Queries May Leave, Identities Never; First-Party Data Comes Later]] | accepted 2026-08-27, amends 0008/0018/0020/0028 | Raw queries, images and audio may go to third parties without any identity; the policy admits leaks are possible; first-party collection (incl. identifiable) comes later and is never shared |
+| [[ADR-0030 - First-Party Search Data, Kept to Learn From]] | accepted 2026-08-27, in progress | Searches, results shown, opens and reports kept as events with a first-party visitor cookie; documents carry hits; retention and deletion; never shared |
 
 ---
 

@@ -11,19 +11,14 @@ const ar = {
   tagline: 'محرك البحث الجزائري',
   searchPlaceholder: 'ابحث…',
   searchLabel: 'بحث',
-  privacyLine: 'بحثك ما يترابط بيك أبداً',
+  privacyLine: 'نحتفظ بعمليات البحث لتحسين النتائج، ولا نشاركها مع أحد',
   privacyTitle: 'الخصوصية',
-  privacyLead: 'لا نُخزّن أي مُعرّف، وبحثك لا يُربط بك أبداً.',
-  privacyStored:
-    'ما نُخزّنه: كلمات البحث التي تكتبها، وعدد النتائج التي أعادها كل بحث، والنتائج التي فُتحت — كأعداد فقط، دون أي مُعرّف.',
-  privacyNotStored:
-    'ما لا نُخزّنه أبداً: عنوان IP، أو الجهاز، أو الجلسة أو الحساب، أو أي شيء يربط بحثاً بك.',
-  privacyModeNote:
-    'على خادم بمُشغِّل واحد، هذا السجل خاص بك وحدك على جهازك. على خادم مُشترك، لا يظهر إلا مُجمّعاً فوق عتبة، دون ربط الجلسات ودون توقيتات دقيقة.',
-  privacyExternalNote:
-    'إذا فعّل المشغّل خدمة التلخيص الخارجية الاختيارية، تُرسل كلمات البحث ومقتطفات النتائج إلى مزوّد ذكاء اصطناعي خارجي لتوليد الملخص — دون أي شيء يعرّف بك. هذه الخدمة معطّلة افتراضياً، والملخصات تُولَّد محلياً على هذا الخادم.',
-  privacyFederationNote:
-    'إذا فعّل المشغّل البحث الموسّع الاختياري عبر الويب، تُرسل كلمات بحثك — عبر مجمّعنا الخاص، دون عنوانك أو أي شيء يعرّف بك — إلى محركات بحث خارجية لجلب نتائج إضافية. هذه الخدمة معطّلة افتراضياً.',
+  privacyLead: 'نحتفظ بما تبحث عنه لتحسين النتائج وتخصيصها ولأنظمتنا الذكية. لا نبيعه ولا نشاركه. لا نحتفظ بعنوان IP الخاص بك ولا بجهازك.',
+  privacyStored: 'ما نحتفظ به: عمليات البحث، النتائج المعروضة، النتائج التي فتحتها، النتائج التي أبلغت أنها غير ذات صلة، ومعرّف زائر عشوائي في ملف تعريف ارتباط خاص بنا (سنة واحدة). يُحذف كل ذلك بعد سنة، أو عند طلبك.',
+  privacyNotStored: 'ما لا نحتفظ به أبدًا: عنوان IP الخاص بك، جهازك أو متصفحك، موقعك الدقيق. ولا نشارك أي شيء نحتفظ به مع أي جهة.',
+  privacyModeNote: 'لتُنسى: أرسل لنا معرّف الزائر (ملف تعريف الارتباط xv) ونحذف كل ما يخصه.',
+  privacyExternalNote: 'قد تُعالج عمليات البحث والصور والتسجيلات الصوتية لدى جهات خارجية نيابةً عنا (نماذج ذكاء اصطناعي، محركات بحث) لتحسين الإجابة — دائمًا بدون عنوان IP أو أي شيء يعرّف بك. رغم حرصنا، قد تتسرب بعض البيانات لدى تلك الجهات؛ نقول ذلك صراحةً.',
+  privacyFederationNote: 'الصور المصغّرة تمر عبر خادمنا، فلا يعرف الموقع المصدر عنوانك.',
   privacyBack: 'العودة إلى البحث',
   resultsCount: 'نتيجة',
   resultsApprox: 'حوالي',
@@ -204,6 +199,8 @@ const ar = {
   ocrConfidence: 'الثقة',
   ocrByImage: 'البحث بالصورة',
   ocrEnhanced: 'قراءة محسّنة (نموذج بصري)',
+  reportNotRelevant: 'غير ذي صلة',
+  reportThanks: 'شكرًا، سُجّل',
   ocrFindSimilar: 'صور مشابهة',
   reverseTitle: 'البحث بصورة',
   reverseTextTitle: 'النص في الصورة',
@@ -302,19 +299,14 @@ const fr: Messages = {
   tagline: 'Le moteur de recherche algérien',
   searchPlaceholder: 'Rechercher…',
   searchLabel: 'Rechercher',
-  privacyLine: 'Vos recherches ne sont jamais liées à vous',
+  privacyLine: 'Nous gardons les recherches pour améliorer les résultats, sans jamais les partager',
   privacyTitle: 'Confidentialité',
-  privacyLead: 'Nous ne stockons aucun identifiant, et votre recherche n’est jamais liée à vous.',
-  privacyStored:
-    'Ce que nous conservons : les termes recherchés, le nombre de résultats obtenus et les résultats ouverts — sous forme de compteurs, sans aucun identifiant.',
-  privacyNotStored:
-    'Ce que nous ne conservons jamais : votre adresse IP, votre appareil, une session ou un compte, ni rien qui relie une recherche à vous.',
-  privacyModeNote:
-    'Sur une instance à opérateur unique, cet historique n’est qu’à vous, sur votre propre machine. Sur une instance partagée, il n’apparaît qu’agrégé au-dessus d’un seuil, sans regroupement de sessions ni horodatage précis.',
-  privacyExternalNote:
-    'Si l’opérateur active le résumé externe optionnel, les termes recherchés et les extraits de résultats sont envoyés à un fournisseur d’IA tiers pour générer le résumé — jamais rien qui vous identifie. Ce service est désactivé par défaut : les résumés sont générés localement, sur ce serveur.',
-  privacyFederationNote:
-    'Si l’opérateur active la recherche web fédérée optionnelle, vos termes de recherche sont transmis — via notre propre agrégateur, sans votre adresse ni rien qui vous identifie — à des moteurs de recherche externes pour ramener des résultats supplémentaires. Désactivée par défaut.',
+  privacyLead: 'Nous gardons ce que vous cherchez pour améliorer et personnaliser les résultats et pour nos propres systèmes d’IA. Nous ne le vendons ni ne le partageons. Nous ne gardons ni votre adresse IP ni votre appareil.',
+  privacyStored: 'Ce que nous gardons : vos recherches, les résultats affichés, ceux que vous avez ouverts, ceux que vous avez signalés comme non pertinents, et un identifiant de visiteur aléatoire dans un cookie qui nous appartient (un an). Tout est supprimé après un an, ou à votre demande.',
+  privacyNotStored: 'Ce que nous ne gardons jamais : votre adresse IP, votre appareil ou navigateur, votre position précise. Et nous ne partageons rien de ce que nous gardons avec qui que ce soit.',
+  privacyModeNote: 'Pour être oublié : envoyez-nous votre identifiant de visiteur (le cookie xv) et nous supprimons tout ce qui s’y rattache.',
+  privacyExternalNote: 'Vos recherches, images et enregistrements vocaux peuvent être traités par des tiers pour notre compte (modèles d’IA, moteurs de recherche) afin d’améliorer la réponse — toujours sans votre adresse IP ni rien qui vous identifie. Malgré nos précautions, des données peuvent fuir chez ces tiers ; nous le disons clairement.',
+  privacyFederationNote: 'Les vignettes passent par notre serveur : le site d’origine ne voit jamais votre adresse.',
   privacyBack: 'Retour à la recherche',
   resultsCount: 'résultats',
   resultsApprox: 'environ',
@@ -495,6 +487,8 @@ const fr: Messages = {
   ocrConfidence: 'Confiance',
   ocrByImage: 'Recherche par image',
   ocrEnhanced: 'Lecture améliorée (modèle visuel)',
+  reportNotRelevant: 'Pas pertinent',
+  reportThanks: 'Merci, c’est noté',
   ocrFindSimilar: 'Images similaires',
   reverseTitle: 'Rechercher avec une image',
   reverseTextTitle: 'Le texte de l’image',
@@ -584,19 +578,14 @@ const en: Messages = {
   tagline: 'The Algerian search engine',
   searchPlaceholder: 'Search…',
   searchLabel: 'Search',
-  privacyLine: 'Searches are never linked to you',
+  privacyLine: 'We keep searches to improve results, and never share them',
   privacyTitle: 'Privacy',
-  privacyLead: 'We store no identifier, and your search is never linked to you.',
-  privacyStored:
-    'What we keep: the terms you search, how many results each returned, and which results were opened — as counts, with no identifier attached.',
-  privacyNotStored:
-    'What we never keep: your IP address, your device, a session or account, or anything that ties a search to you.',
-  privacyModeNote:
-    'On a single-operator instance this history is yours alone, on your own machine. On a shared instance it appears only in aggregate above a threshold, with no session grouping and no fine-grained timestamps.',
-  privacyExternalNote:
-    'If the operator enables the optional external summariser, the search terms and result excerpts of summarised searches are sent to a third-party AI provider to write the summary — never anything that identifies you. It is off by default: summaries are generated locally, on this server.',
-  privacyFederationNote:
-    'If the operator enables the optional federated web search, your search terms are sent — through our own aggregator, without your address or anything that identifies you — to external search engines to fetch extra results. It is off by default.',
+  privacyLead: 'We keep what you search to improve and personalise results and for our own AI systems. We never sell or share it. We keep neither your IP address nor your device.',
+  privacyStored: 'What we keep: your searches, the results shown, the ones you opened, the ones you reported as not relevant, and a random visitor id in a cookie of our own (one year). All of it is deleted after a year, or when you ask.',
+  privacyNotStored: 'What we never keep: your IP address, your device or browser, your precise location. And nothing we keep is shared with anyone.',
+  privacyModeNote: 'To be forgotten: send us your visitor id (the xv cookie) and we delete everything attached to it.',
+  privacyExternalNote: 'Your searches, images and voice recordings may be processed by third parties on our behalf (AI models, search engines) to improve the answer — always without your IP address or anything that identifies you. Despite our care, some data may leak at those third parties; we say so plainly.',
+  privacyFederationNote: 'Thumbnails go through our server, so the source site never sees your address.',
   privacyBack: 'Back to search',
   resultsCount: 'results',
   resultsApprox: 'about',
@@ -777,6 +766,8 @@ const en: Messages = {
   ocrConfidence: 'Confidence',
   ocrByImage: 'Search by image',
   ocrEnhanced: 'Enhanced reading (vision model)',
+  reportNotRelevant: 'Not relevant',
+  reportThanks: 'Thanks, noted',
   ocrFindSimilar: 'Similar images',
   reverseTitle: 'Search with a picture',
   reverseTextTitle: 'Text in the picture',
@@ -897,20 +888,6 @@ const ary: Messages = {
   tagline: 'محرك البحث تاع الجزائر',
   searchPlaceholder: 'قلب على…',
   searchLabel: 'قلب',
-  privacyLine: 'البحث تاعك عمرو ما يتربط بيك',
-  privacyTitle: 'الخصوصية',
-  privacyLead: 'ما نخزنو حتى معرّف، وبحثك عمرو ما يتربط بيك.',
-  privacyStored:
-    'واش نخزنو: الكلمات لي تبحث بيهم، شحال من نتيجة رجعت، وأنهي نتائج تحلّات — غير كأعداد، بلا حتى معرّف.',
-  privacyNotStored:
-    'واش عمرنا ما نخزنو: عنوان IP، الجهاز، الجلسة ولا الحساب، ولا أي حاجة تربط بحثك بيك.',
-  privacyModeNote:
-    'في سيرفور بمستعمل واحد، هاد التاريخ تاعك وحدك في جهازك. في سيرفور مشترك، ما يبانش غير مجمّع فوق عتبة، بلا ربط تاع الجلسات وبلا أوقات دقيقة.',
-  privacyExternalNote:
-    'إذا فعّل المشغّل التلخيص الخارجي الاختياري، كلمات البحث ومقتطفات النتائج يتبعثو لمزوّد ذكاء اصطناعي خارجي باش يكتب الملخص — بلا حتى حاجة تعرّف بيك. هاد الخدمة مطفية افتراضياً: الملخصات يتصنعو محلياً في هاد السيرفور.',
-  privacyFederationNote:
-    'إذا فعّل المشغّل البحث الموسّع الاختياري عبر الويب، كلمات بحثك يتبعثو — عبر المجمّع تاعنا، بلا عنوانك وبلا حتى حاجة تعرّف بيك — لمحركات بحث خارجية باش يجيبو نتائج زيادة. هاد الخدمة مطفية افتراضياً.',
-  privacyBack: 'رجع للبحث',
   resultsCount: 'نتيجة',
   resultsApprox: 'تقريبا',
   fromTheWeb: 'من الويب',

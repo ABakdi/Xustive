@@ -304,6 +304,12 @@ enum Command {
         #[arg(long)]
         embed: bool,
     },
+    /// First-party search events ([[ADR-0030]], M11): retention sweep, the right to be
+    /// forgotten, and rebuilding the documents' open/report counters from the events.
+    Events {
+        #[command(subcommand)]
+        action: EventsAction,
+    },
     /// Delete image vectors whose parent document is gone from the index (orphan reconciliation).
     ///
     /// A takedown or reindex can remove a document from the lexical index while its image
@@ -573,6 +579,7 @@ async fn main() -> Result<()> {
         }
         Command::Worker { once } => worker::run(&config, &client, once).await,
         Command::Dlq { action, limit } => worker::dlq(&config, &action, limit).await,
+        Command::Events { action } => cmd_events(&client, &config, action).await,
         Command::Keys { show } => cmd_keys(&client, show).await,
         Command::Stats => cmd_stats(&client, &config).await,
         Command::MediaRepass { limit, dry_run } => {
@@ -1618,6 +1625,87 @@ mod tests {
 /// and how many did not, because "the Videos tab is sparse" has two very different causes and an
 /// operator needs to know which one they are looking at.
 /// `vector-repass --embed`: embed the images of documents that have no point yet.
+#[derive(clap::Subcommand, Debug)]
+enum EventsAction {
+    /// Delete events older than `collection.retention_days`.
+    Sweep,
+    /// Delete every event carrying this visitor id.
+    Forget { visitor: String },
+    /// Recompute `hits.opens` / `hits.reports` on every document from the events — the counters
+    /// are a cache the crawler's rewrite can reset; the events are the truth.
+    RebuildHits,
+}
+
+async fn cmd_events(client: &MeiliClient, config: &Config, action: EventsAction) -> Result<()> {
+    match action {
+        EventsAction::Sweep => {
+            let n = xustive_search::events::sweep(client, config.collection.retention_days)
+                .await
+                .map_err(|e| anyhow::anyhow!(e))?;
+            println!(
+                "swept {n} events older than {} days",
+                config.collection.retention_days
+            );
+        }
+        EventsAction::Forget { visitor } => {
+            let n = xustive_search::events::forget_visitor(client, &visitor)
+                .await
+                .map_err(|e| anyhow::anyhow!(e))?;
+            println!("forgot {n} events of {visitor}");
+        }
+        EventsAction::RebuildHits => {
+            use std::collections::HashMap;
+            let events = client.resolve(xustive_search::settings::EVENTS).await?;
+            let mut counts: HashMap<String, (u64, u64, i64)> = HashMap::new();
+            let mut offset = 0usize;
+            loop {
+                let q = xustive_search::Query::new("")
+                    .filter("kind IN [click, report]")
+                    .limit(1000)
+                    .offset(offset);
+                let r = client.search::<serde_json::Value>(&events, &q).await?;
+                let n = r.hits.len();
+                for h in r.hits {
+                    let Some(doc) = h.get("doc").and_then(|d| d.as_str()) else {
+                        continue;
+                    };
+                    let e = counts.entry(doc.to_string()).or_insert((0, 0, 0));
+                    let at = h.get("at").and_then(|a| a.as_i64()).unwrap_or(0);
+                    if h.get("kind").and_then(|k| k.as_str()) == Some("click") {
+                        e.0 += 1;
+                        e.2 = e.2.max(at);
+                    } else {
+                        e.1 += 1;
+                    }
+                }
+                offset += n;
+                if n < 1000 {
+                    break;
+                }
+            }
+            let index = client.resolve(xustive_search::settings::DOCUMENTS).await?;
+            let updates: Vec<serde_json::Value> = counts
+                .iter()
+                .map(|(id, (o, r, at))| {
+                    let mut hits = serde_json::json!({ "opens": o, "reports": r });
+                    if *at > 0 {
+                        hits["last_opened_at"] = serde_json::json!(at);
+                    }
+                    serde_json::json!({ "id": id, "hits": hits })
+                })
+                .collect();
+            for chunk in updates.chunks(500) {
+                client.update_documents(&index, chunk).await?;
+            }
+            println!(
+                "rebuilt hits on {} documents from the events",
+                updates.len()
+            );
+        }
+    }
+    Ok(())
+}
+
 async fn cmd_vector_embed(
     client: &MeiliClient,
     config: &Config,

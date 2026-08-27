@@ -47,6 +47,7 @@ updated: 2026-08-27
 | M8 | [[Milestone 8 - The Answer Layer]] | **closed** 2026-08-26 | knowledge store + resolver (ADR-0022/0023), entity panel, weather, currency (ADR-0025), fend calculator, demand-driven harvest, list answers (T11) with today's tie-break fix and See-also row |
 | M9 | [[Milestone 9 - Images and Videos]] | **closed** 2026-08-26 | Images/Videos tabs, signed thumbnail proxy (ADR-0021), metadata-only video, media repass, SearXNG media federation (T06) |
 | M10 | [[Milestone 10 - Reverse Image Search]] | **built 2026-08-27**, two gate items open | Picture in, pictures out: local CLIP/pHash first, SearXNG by derived labels (ADR-0028), extension and style chips from the results; golden set 29/29 originals, 27/29 re-encodes (the misses are placeholders); open: a quiet-machine/GPU latency run, the proxy redirect test |
+| M11 | [[Milestone 11 - Learning from Readers]] | **built 2026-08-27** (T05 docs/gates closing) | First-party search/click/report events with a visitor cookie (ADR-0030), hits on documents, *Not relevant* on every card, `/admin/searches`, sweep/forget/rebuild-hits |
 
 ```
 M0 ──► M1 ──► M1B ──► M2 ──► M6 ──► M7 ──► M8 ──► M9        (closed, in this order)

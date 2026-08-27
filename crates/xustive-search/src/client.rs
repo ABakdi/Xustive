@@ -579,6 +579,20 @@ impl MeiliClient {
     /// One page of raw documents from an index, with **all** stored fields (the documents endpoint
     /// is not restricted by `displayedAttributes`, unlike search — so a reindex copy keeps `body`
     /// and everything else). Empty when the page is past the end.
+    /// Delete every document matching a filter expression (retention sweeps, the right to be
+    /// forgotten). Returns the task id; the deletion is applied asynchronously by the engine.
+    pub async fn delete_by_filter(&self, index: &str, filter: &str) -> Result<u64, SearchError> {
+        let url = self.url(&format!("/indexes/{index}/documents/delete"))?;
+        let t: TaskRef = self
+            .send(
+                self.http
+                    .post(url)
+                    .json(&serde_json::json!({ "filter": filter })),
+            )
+            .await?;
+        Ok(t.task_uid)
+    }
+
     pub async fn documents_page(
         &self,
         index: &str,

@@ -7,6 +7,7 @@ import { ImageGrid, VideoList } from '@/components/search/MediaGrid'
 import { detectRelation, SUBJECT_KINDS } from '@/lib/relations'
 import { ResultCard } from '@/components/search/ResultCard'
 import { InteractionBeacon } from '@/components/search/InteractionBeacon'
+import { Visitor } from '@/components/search/Visitor'
 import { SearchBox } from '@/components/search/SearchBox'
 import { Summary } from '@/components/search/Summary'
 import { Verticals } from '@/components/search/Verticals'
@@ -298,12 +299,14 @@ export default async function SearchPage({
             <VideoList results={data.results} t={t} />
           ) : data.interaction_token ? (
             <InteractionBeacon token={data.interaction_token}>
+              {/* The first-party visitor cookie (M11): set by our page, read by our servers. */}
+              <Visitor />
               <ol
                 className="list-none p-0"
                 style={{ display: 'grid', gap: 'var(--result-gap)', gridTemplateColumns: 'minmax(0, 1fr)' }}
               >
                 {data.results.map((result) => (
-                  <ResultCard key={result.id} result={result} t={t} locale={lang} />
+                  <ResultCard key={result.id} result={result} t={t} locale={lang} reportable />
                 ))}
               </ol>
             </InteractionBeacon>

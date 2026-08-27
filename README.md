@@ -44,7 +44,7 @@ against the code on 2026-08-27.
 | **Voice and image input** | Tap the microphone and the words appear in the search box as you speak (Whisper on our own server — a fast model for the live reading, a careful one for the final pass; stop searches). Search by image via OCR. |
 | **Reverse image search** | Drop, paste or photograph a picture: where it appears on the Algerian web (the same picture, then similar ones, from a local CLIP index), then the web by *description* — the picture never leaves; SearXNG receives words. Chips for kind (photo, illustration, screenshot…) and format (png, jpg…) computed from the results. | [Milestone 10 - Reverse Image Search](docs/Planning/Milestone%2010%20-%20Reverse%20Image%20Search.md) · [UI - Image Search](docs/UI/UI%20-%20Image%20Search.md) · [ADR-0028](docs/Decisions/ADR-0028%20-%20Reverse%20Image%20Search%20Sends%20Words%20to%20the%20Web%2C%20Never%20the%20Picture.md) | [UI - Voice Search](docs/UI/UI%20-%20Voice%20Search.md) · [Speech to Text](docs/Components/Speech%20to%20Text.md) · [UI - Image Search](docs/UI/UI%20-%20Image%20Search.md) |
 | **Federation** | Optional query-time enrichment from a self-hosted SearXNG through a single gateway — the one allow-listed egress, off by a runtime switch. | [Federation Gateway](docs/Components/Federation%20Gateway.md) · [ADR-0017 - Query-Time Federation with External Metasearch](docs/Decisions/ADR-0017%20-%20Query-Time%20Federation%20with%20External%20Metasearch.md) |
-| **Anonymous ranking signals** | Clicks are counted per query hash under a k-anonymity floor and feed a small, bounded ranking term. Off by default. | [Interaction Signals](docs/Components/Interaction%20Signals.md) · [ADR-0015 - Anonymous Interaction Signals for Ranking](docs/Decisions/ADR-0015%20-%20Anonymous%20Interaction%20Signals%20for%20Ranking.md) |
+| **Learning from readers** | Every search, the results shown, every opened result and every "not relevant" report are kept as first-party events with a visitor cookie of our own — never shared — and shown to the operator as the lists that say what to fix. Beside it, the older anonymous click counters still feed a small ranking term. | [Interaction Signals](docs/Components/Interaction%20Signals.md) · [ADR-0015 - Anonymous Interaction Signals for Ranking](docs/Decisions/ADR-0015%20-%20Anonymous%20Interaction%20Signals%20for%20Ranking.md) |
 | **Operator console** | Crawler live view (pages, images and videos counted separately), documents browser with media facet, sources registry and health, queue and dead-letter, integrations switches, compute device, evaluation, maintenance. | [UI - Admin Console](docs/UI/UI%20-%20Admin%20Console.md) · [Crawler Console](docs/Components/Crawler%20Console.md) |
 | **Four languages, RTL first** | The interface is translated into Arabic, Darija, French and English; Arabic is the default and the layout is designed right-to-left first. | [UI - RTL and Localization](docs/UI/UI%20-%20RTL%20and%20Localization.md) · [UI - Accessibility](docs/UI/UI%20-%20Accessibility.md) |
 
@@ -158,26 +158,24 @@ they lack.
 | 5 Beta launch | not started — only `/privacy` and `/bot` exist; no about/terms/submit-a-site |
 | 6 Adaptive ranking · 7 Federated retrieval and tools · 8 The answer layer · 9 Images and videos | closed 2026-08-25/26 |
 | 10 Reverse image search | built 2026-08-27 — a picture in, pictures out; two gate items open ([spec](docs/Planning/Milestone%2010%20-%20Reverse%20Image%20Search.md)) |
+| 11 Learning from readers | built 2026-08-27 — first-party search events, hits on documents, "not relevant", the admin page ([spec](docs/Planning/Milestone%2011%20-%20Learning%20from%20Readers.md)) |
 
 The current, verified picture — open items, what is deliberately not built, and what is next —
 is kept in **[TODO](docs/Planning/TODO.md)**; the problem register is
 [Problems](docs/BugReports/Problems.md).
 
-> **Decision of 2026-08-27 ([ADR-0029](docs/Decisions/ADR-0029%20-%20Raw%20Queries%20May%20Leave%2C%20Identities%20Never%3B%20First-Party%20Data%20Comes%20Later.md)):** the privacy posture below is being relaxed — raw queries, images and recordings may be sent to third-party services, never with an identity; first-party collection comes later. The guarantees listed here describe the build *as it is today*; the [audit](docs/BugReports/Privacy%20Relaxation%20Audit.md) lists what changes, and PRIV-001 there is rewriting this section and the privacy page truthfully before anything goes out.
+## What the build enforces
 
-## Guarantees enforced by the build
+Since [ADR-0029](docs/Decisions/ADR-0029%20-%20Raw%20Queries%20May%20Leave%2C%20Identities%20Never%3B%20First-Party%20Data%20Comes%20Later.md) and [ADR-0030](docs/Decisions/ADR-0030%20-%20First-Party%20Search%20Data%2C%20Kept%20to%20Learn%20From.md) the product keeps first-party search data (searches, results shown, opens, "not relevant" reports, a visitor cookie of its own — never shared) and may send raw queries, images and recordings to third-party services. What the build still guarantees, and the lints that guarantee it:
 
-- **No query logging.** `scripts/lint-telemetry.sh` fails CI if a query or credential field appears
-  in a `tracing` call; the metrics registry accepts only static label names; the smoke suite runs
-  a canary query and greps the logs for it.
-- **No exposed databases, no egress.** `scripts/lint-compose.sh` asserts the production compose
-  publishes no ports and keeps its networks `internal: true`; `scripts/test-egress.sh` proves a
-  container on the core network cannot reach the internet.
-- **Crawled markup is text, never markup.** Rendering escapes everything and re-admits only the
-  `<em>` the engine inserts; tested with live hostile documents.
+- **No identity leaves, ever.** Third-party calls originate from our servers with our credentials; no IP, device, session or precise location goes with them. Thumbnails are proxied and signed (`scripts/thumb-proxy-check.sh`), so no crawled host learns a reader's address.
+- **No query text in logs or metrics.** `scripts/lint-telemetry.sh` fails CI if a query or credential field appears in a `tracing` call; the metrics registry accepts only static label names. Queries live in the events index, read through the admin API — a store, not a log.
+- **No face recognition.** `scripts/lint-no-face.sh` fails the build on the commit that adds one.
+- **No exposed databases.** `scripts/lint-compose.sh` asserts the production compose publishes no ports and keeps its networks `internal: true`.
+- **Deletion works.** `xustive events forget <visitor>` removes every event a visitor id carries; the admin page has the button.
+- **Crawled markup is text, never markup.** Rendering escapes everything and re-admits only the `<em>` the engine inserts.
 - **Search works without JavaScript.** `/search` is server-rendered; scripts are enhancements.
-- **Documented commands exist.** `scripts/lint-docs.sh` fails the commit if a doc names a `make`
-  target or script that does not exist.
+- **Documented commands exist.** `scripts/lint-docs.sh` fails the commit if a doc names a `make` target or script that does not exist.
 
 ## Documentation map
 
@@ -228,6 +226,7 @@ One note per component, each with its crate or service, its contract, and what i
 - [Proxy Manager](docs/Components/Proxy%20Manager.md)
 - [Query Expander](docs/Components/Query%20Expander.md)
 - [Query Pipeline](docs/Components/Query%20Pipeline.md)
+- [Search Events](docs/Components/Search%20Events.md)
 - [Search Index](docs/Components/Search%20Index.md)
 - [Sentiment Engine](docs/Components/Sentiment%20Engine.md)
 - [Session Manager](docs/Components/Session%20Manager.md)
@@ -277,6 +276,7 @@ Why the system is the way it is. Index: [Decision Log](docs/Decisions/Decision%2
 - [ADR-0027 - Narrow the Search Under Load Instead of Failing](docs/Decisions/ADR-0027%20-%20Narrow%20the%20Search%20Under%20Load%20Instead%20of%20Failing.md)
 - [ADR-0028 - Reverse Image Search Sends Words to the Web, Never the Picture](docs/Decisions/ADR-0028%20-%20Reverse%20Image%20Search%20Sends%20Words%20to%20the%20Web%2C%20Never%20the%20Picture.md)
 - [ADR-0029 - Raw Queries May Leave, Identities Never; First-Party Data Comes Later](docs/Decisions/ADR-0029%20-%20Raw%20Queries%20May%20Leave%2C%20Identities%20Never%3B%20First-Party%20Data%20Comes%20Later.md)
+- [ADR-0030 - First-Party Search Data, Kept to Learn From](docs/Decisions/ADR-0030%20-%20First-Party%20Search%20Data%2C%20Kept%20to%20Learn%20From.md)
 
 ### User interface
 
@@ -326,6 +326,7 @@ differently says so.
 - [Milestone 8 - The Answer Layer](docs/Planning/Milestone%208%20-%20The%20Answer%20Layer.md)
 - [Milestone 9 - Images and Videos](docs/Planning/Milestone%209%20-%20Images%20and%20Videos.md)
 - [Milestone 10 - Reverse Image Search](docs/Planning/Milestone%2010%20-%20Reverse%20Image%20Search.md)
+- [Milestone 11 - Learning from Readers](docs/Planning/Milestone%2011%20-%20Learning%20from%20Readers.md)
 - [TODO](docs/Planning/TODO.md) — the verified current picture
 - [Problems](docs/BugReports/Problems.md) — the problem register
 - [Privacy Relaxation Audit](docs/BugReports/Privacy%20Relaxation%20Audit.md) — what the original privacy posture held back, ranked, after ADR-0029

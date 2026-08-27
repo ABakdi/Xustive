@@ -443,3 +443,69 @@ export interface TakedownResult {
 /** Preview (execute:false) or run a domain takedown. `confirm` must equal `domain` to execute. */
 export const takedown = (domain: string, execute: boolean, confirm: string) =>
   postJSON<TakedownResult>('/takedown', { domain, execute, confirm })
+
+/** First-party search events (M11-T04): the overview an operator acts on. */
+export interface EventsOverview {
+  enabled: boolean
+  days?: number
+  retention_days?: number
+  written?: number
+  dropped?: number
+  totals?: {
+    searches: number
+    clicks: number
+    reports: number
+    distinct_queries: number
+    zero_result_searches: number
+    searches_with_a_click: number
+    visitors: number
+  }
+  zero_results?: { query: string; count: number }[]
+  unopened?: { query: string; count: number; results: number }[]
+  top_queries?: { query: string; count: number; results: number; clicks: number }[]
+  most_opened?: EventDocRow[]
+  reported?: EventDocRow[]
+  recent?: EventRow[]
+}
+export interface EventDocRow {
+  doc: string
+  title?: string | null
+  url?: string | null
+  opens: number
+  reports: number
+  queries: { query: string; count: number }[]
+}
+export interface EventRow {
+  id: string
+  kind: 'search' | 'click' | 'report'
+  at: number
+  visitor?: string
+  session?: string
+  query: string
+  normalized?: string
+  ui?: string
+  lang?: string
+  vertical?: string
+  page?: number
+  total_hits?: number
+  shown?: string[]
+  doc?: string
+  rank?: number
+  reason?: string
+  latency_ms?: number
+}
+export function getEventsOverview(days: number) {
+  return (signal?: AbortSignal) => getJSON<EventsOverview>(`/api/v1/admin/events/overview?days=${days}`, signal)
+}
+export function getVisitorEvents(visitor: string, signal?: AbortSignal) {
+  return getJSON<{ visitor: string; events: EventRow[] }>(`/api/v1/admin/events/visitor?visitor=${encodeURIComponent(visitor)}`, signal)
+}
+export async function forgetVisitor(visitor: string): Promise<{ deleted: number }> {
+  const res = await fetch('/api/v1/admin/events/forget', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ visitor }),
+  })
+  if (!res.ok) throw new Error(`forget failed: ${res.status}`)
+  return (await res.json()) as { deleted: number }
+}

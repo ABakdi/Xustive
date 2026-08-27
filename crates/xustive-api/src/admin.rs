@@ -365,7 +365,7 @@ pub async fn interaction(
 }
 
 /// Resolve document ids to `(title, url)` from the lexical index — best-effort, empty on failure.
-async fn resolve_doc_titles(
+pub(crate) async fn resolve_doc_titles(
     state: &AppState,
     ids: &[String],
 ) -> std::collections::HashMap<String, (String, String)> {

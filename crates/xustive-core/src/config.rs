@@ -508,6 +508,26 @@ impl Default for InteractionConfig {
     }
 }
 
+/// `[collection]` — first-party search events ([[ADR-0030]]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CollectionConfig {
+    /// Keep search, click and report events with a first-party visitor id. No k floor: this
+    /// is the operator's own data under the operator's own lawful basis.
+    pub enabled: bool,
+    /// Events older than this are deleted by `xustive events sweep`.
+    pub retention_days: u64,
+}
+
+impl Default for CollectionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            retention_days: 365,
+        }
+    }
+}
+
 impl InteractionConfig {
     /// The effective k floor (never below 1).
     pub fn effective_k(&self) -> u32 {
@@ -847,6 +867,10 @@ pub struct Config {
     pub federation: FederationConfig,
     #[serde(default)]
     pub interaction: InteractionConfig,
+    /// First-party search data — searches, results shown, opens, reports — kept as events
+    /// ([[ADR-0030]], M11). Off by default: turning it on makes the operator a data controller.
+    #[serde(default)]
+    pub collection: CollectionConfig,
     #[serde(default)]
     pub media: MediaConfig,
     #[serde(default)]
@@ -869,6 +893,7 @@ impl Default for Config {
             discovery: DiscoveryConfig::default(),
             federation: FederationConfig::default(),
             interaction: InteractionConfig::default(),
+            collection: CollectionConfig::default(),
             media: MediaConfig::default(),
             vector: VectorConfig::default(),
             stt: SttConfig::default(),

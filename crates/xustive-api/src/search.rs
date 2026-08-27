@@ -339,6 +339,9 @@ pub async fn handler(
     // The connection address, used for one thing only: turning "weather" with no place in it into
     // a wilaya, by an in-process lookup that discards the address immediately ([[ADR-0020]]).
     crate::admin::Peer(peer): crate::admin::Peer,
+    // Read for one thing: the first-party `xv`/`xs` cookies the events carry (M11). Nothing
+    // else in the headers is looked at.
+    headers: axum::http::HeaderMap,
     AxumQuery(params): AxumQuery<SearchParams>,
 ) -> Result<Json<SearchResponse>, ApiError> {
     let started = Instant::now();
@@ -894,10 +897,41 @@ pub async fn handler(
                 total_hits as u32,
             )
             .await;
-        Some(mint_interaction_token(&state, &store, &normalized))
+        Some(mint_interaction_token(&state, Some(&store), &normalized))
+    } else if state.events.is_some() && !results.is_empty() {
+        // Collection without the anonymous signals: a token is still needed so a click or a
+        // report can be attributed to this search without the browser sending the query.
+        Some(mint_interaction_token(&state, None, &normalized))
     } else {
         None
     };
+    // The first-party record of this search (M11-T01.3): what was asked, what was shown. Kept
+    // beside the token so a click can carry the query and the rank; written off the critical
+    // path by the sink's own task.
+    if let (Some(sink), Some(token)) = (state.events.as_ref(), interaction_token.as_ref()) {
+        let shown: Vec<String> = results.iter().map(|c| c.id.clone()).collect();
+        if let Ok(mut map) = state.token_context.write() {
+            if map.len() >= 4096 {
+                map.clear();
+            }
+            map.insert(
+                token.clone(),
+                (params.q.clone().unwrap_or_default(), shown.clone()),
+            );
+        }
+        sink.search(
+            &headers,
+            params.q.as_deref().unwrap_or(""),
+            &normalized,
+            ui_lang,
+            Some(language.as_str()),
+            params.v.as_deref(),
+            page as u32,
+            total_hits as u64,
+            shown,
+            started.elapsed().as_millis() as u64,
+        );
+    }
 
     if results.is_empty() {
         state.metrics.incr(
@@ -1314,7 +1348,7 @@ fn interaction_category(vertical: Option<&str>) -> &'static str {
 /// (M6-T03.1). The token is a fresh ULID — it carries no information about the query.
 fn mint_interaction_token(
     state: &AppState,
-    store: &xustive_ingest::interaction::Interactions,
+    store: Option<&xustive_ingest::interaction::Interactions>,
     normalized_query: &str,
 ) -> String {
     use std::time::Instant;
@@ -1324,7 +1358,9 @@ fn mint_interaction_token(
     const MAX_TOKENS: usize = 4096;
     let token = ulid::Ulid::new().to_string();
     // The store's hash, salted per deployment (BUG-036) — a static would not know the salt.
-    let qh = store.qhash(normalized_query);
+    // Without the anonymous store there is no hash to key its counters by; the token still
+    // attributes clicks to the first-party record (M11).
+    let qh = store.map(|s| s.qhash(normalized_query)).unwrap_or_default();
     if let Ok(mut map) = state.interaction_tokens.write() {
         let now = Instant::now();
         map.retain(|_, (_, minted)| now.duration_since(*minted) < TTL);

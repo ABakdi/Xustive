@@ -3,6 +3,7 @@
 pub mod authority;
 pub mod client;
 pub mod eval;
+pub mod events;
 pub mod filter;
 pub mod operators;
 pub mod rank;
