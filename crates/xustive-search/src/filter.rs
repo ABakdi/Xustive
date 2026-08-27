@@ -27,6 +27,10 @@ pub struct Filters {
     /// `image` or `video`: the Images and Videos verticals (M9). A saved filter over `media.type`,
     /// which Meilisearch flattens out of the array of objects, so no reindex was needed.
     pub media_kind: Option<String>,
+    /// File type (`png`, `jpg`…) and kind of picture (`photo`, `screenshot`…) of the images the
+    /// Images tab shows — the reverse-image chips, offered on the ordinary direction too (M10).
+    pub media_ext: Option<String>,
+    pub media_style: Option<String>,
     /// Hide documents suppressed as spam. On by default.
     pub exclude_spam: bool,
     /// Hide documents whose publish date we guessed. Set when a date filter is active, because
@@ -44,6 +48,8 @@ impl Filters {
             && self.domain.is_none()
             && self.content_type.is_none()
             && self.media_kind.is_none()
+            && self.media_ext.is_none()
+            && self.media_style.is_none()
     }
 
     /// Render as a Meilisearch filter expression.
@@ -85,6 +91,12 @@ impl Filters {
         }
         if let Some(kind) = &self.media_kind {
             clauses.push(format!("media.type = {}", quote(kind)));
+        }
+        if let Some(ext) = &self.media_ext {
+            clauses.push(format!("media.ext = {}", quote(ext)));
+        }
+        if let Some(style) = &self.media_style {
+            clauses.push(format!("media.style = {}", quote(style)));
         }
         if self.exclude_spam {
             clauses.push(format!("spam_score < {spam_threshold}"));

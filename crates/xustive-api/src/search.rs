@@ -51,6 +51,12 @@ pub struct SearchParams {
     /// `news` is web documents that carry a real publication date. Shareable in the URL (`?v=news`).
     #[serde(default)]
     pub v: Option<String>,
+    /// Images tab only (M10-T02.3): the file type and the kind of picture. Bounded to the values
+    /// the index knows, so a stray parameter cannot reach the filter.
+    #[serde(default)]
+    pub ext: Option<String>,
+    #[serde(default)]
+    pub style: Option<String>,
     /// Interface language, for tool labels. Distinct from `lang`, which filters results —
     /// someone reading a French interface searching in Darija is the normal case.
     #[serde(default)]
@@ -128,6 +134,11 @@ pub struct MediaOut {
     pub width: u32,
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub height: u32,
+    /// File type and kind of picture (M10) — the chips.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ext: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
 }
 
 fn is_zero_u32(n: &u32) -> bool {
@@ -176,6 +187,8 @@ fn media_of(hit: &Value) -> Vec<MediaOut> {
                     .map(str::to_string),
                 width: m.get("width").and_then(Value::as_u64).unwrap_or(0) as u32,
                 height: m.get("height").and_then(Value::as_u64).unwrap_or(0) as u32,
+                ext: m.get("ext").and_then(Value::as_str).map(str::to_string),
+                style: m.get("style").and_then(Value::as_str).map(str::to_string),
             })
         })
         .collect()
@@ -1030,7 +1043,10 @@ async fn fetch_by_ids(state: &AppState, index: &str, ids: &[String]) -> Vec<Valu
 /// The search plane only *writes* Redis (the index queue and the frontier); the crawler *reads* the
 /// frontier ([[ADR-0001 - Two-Plane Architecture]]). Each URL passes the same `SafeUrl` and trap
 /// checks a discovered link does.
-fn ingest_federated(state: &AppState, hits: &[xustive_ingest::federation::FederatedHit]) {
+pub(crate) fn ingest_federated(
+    state: &AppState,
+    hits: &[xustive_ingest::federation::FederatedHit],
+) {
     let queue_url = state.config.queue.url.clone();
     let index_stream = state.config.queue.index_stream.clone();
     let stream_max_len = state.config.queue.index_stream_max_len;
@@ -1259,7 +1275,19 @@ fn parse_filters(p: &SearchParams) -> Result<Filters, ApiError> {
         }
         // Images and Videos (M9): pages that carry media of that kind. A tile is a page that has
         // the picture, ranked by the page's relevance and the image's OCR text.
-        Some("images") => f.media_kind = Some("image".to_string()),
+        Some("images") => {
+            f.media_kind = Some("image".to_string());
+            f.media_ext = p
+                .ext
+                .as_deref()
+                .filter(|e| xustive_media::ext::KNOWN.contains(e))
+                .map(str::to_string);
+            f.media_style = p
+                .style
+                .as_deref()
+                .filter(|s| s.len() <= 24 && s.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+                .map(str::to_string);
+        }
         Some("videos") => f.media_kind = Some("video".to_string()),
         _ => {}
     }
@@ -1470,6 +1498,15 @@ fn federated_media(hit: &xustive_ingest::federation::FederatedHit) -> Vec<MediaO
         provider,
         width: 0,
         height: 0,
+        ext: (hit.media.as_ref().is_some_and(|m| m.kind != "video"))
+            .then(|| {
+                hit.media
+                    .as_ref()
+                    .and_then(|m| xustive_media::ext::from_url(&m.src))
+                    .map(str::to_string)
+            })
+            .flatten(),
+        style: None,
     }]
 }
 
@@ -1743,6 +1780,8 @@ mod tests {
             to: None,
             sort: None,
             v: None,
+            ext: None,
+            style: None,
         };
         let f = parse_filters(&p).unwrap();
         assert_eq!(f.source_types, vec![SourceType::Web, SourceType::Facebook]);
@@ -1764,6 +1803,8 @@ mod tests {
             to: None,
             sort: None,
             v: Some("news".into()),
+            ext: None,
+            style: None,
         };
         let f = parse_filters(&p).unwrap();
         assert_eq!(f.source_types, vec![SourceType::Web]);
@@ -1787,6 +1828,8 @@ mod tests {
             to: None,
             sort: None,
             v: Some("wibble".into()),
+            ext: None,
+            style: None,
         };
         let f = parse_filters(&p).unwrap();
         assert!(
@@ -1810,6 +1853,8 @@ mod tests {
             to: None,
             sort: None,
             v: None,
+            ext: None,
+            style: None,
         };
         let err = parse_filters(&p).unwrap_err();
         assert_eq!(err.code(), "invalid_filter");

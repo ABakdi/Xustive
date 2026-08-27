@@ -42,6 +42,9 @@ export interface ResultCard {
     provider?: string
     width?: number
     height?: number
+    /** File type and kind of picture (M10) — the chips. */
+    ext?: string
+    style?: string
   }[]
 }
 

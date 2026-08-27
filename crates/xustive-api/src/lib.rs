@@ -383,7 +383,14 @@ async fn limit_suggest(State(state): State<AppState>, req: Request, next: Next) 
 async fn limit_ocr(State(state): State<AppState>, req: Request, next: Next) -> Response {
     // The same budget as other media work: OCR is CPU-heavy (tesseract) or holds a GPU slot (the
     // sidecar), so what matters is how many one client can have in flight, not raw request rate.
-    enforce(&state, "/ocr", ratelimit::MEDIA, req, next).await
+    // Two buckets, not one: a reader who reverse-searched ten pictures should still be able to
+    // read one (M10-T03.6). Same limit each.
+    let key = if req.uri().path().ends_with("/search/image") {
+        "/search/image"
+    } else {
+        "/ocr"
+    };
+    enforce(&state, key, ratelimit::MEDIA, req, next).await
 }
 
 async fn enforce(
