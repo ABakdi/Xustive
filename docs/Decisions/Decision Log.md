@@ -46,6 +46,7 @@ updated: 2026-08-27
 | [[ADR-0025 - Official Exchange Rate Only]] | currency card shows the official reference rate from one keyless publisher; the parallel rate is deliberately absent and the card says so | accepted, implemented | [[Instant Answers]], [[Tool Data Plane]] |
 | [[ADR-0026 - The Reader's Language as a Bounded Ranking Signal]] | binary `ui_language` re-ranking term, weight 0.10, reorders equals only; Darija and Arabic count as each other; summary in the reader's language | accepted, implemented | [[Ranking and Relevance]], [[Query Pipeline]], [[Summarizer]] |
 | [[ADR-0027 - Narrow the Search Under Load Instead of Failing]] | on a retrieval timeout retry once page-sized without facets or highlighting, mark `facets_degraded`, count it (BUG-041) | accepted, implemented | [[API Gateway]], [[Query Pipeline]], [[Error Handling and Resilience]], [[Performance Budgets]] |
+| [[ADR-0028 - Reverse Image Search Sends Words to the Web, Never the Picture]] | accepted, in progress | The picture is read locally; SearXNG gets labels, never the image; visual ranking local only, the crawl closes the loop |
 
 ---
 

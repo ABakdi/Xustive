@@ -176,6 +176,7 @@ Sidecars: `stt-sidecar` (faster-whisper), `ocr-sidecar` (Unlimited-OCR, GPU), `c
 - [[Milestone 8 - The Answer Layer]] — closed 2026-08-26 (entity panel, weather, currency,
   calculator, list answers)
 - [[Milestone 9 - Images and Videos]] — closed 2026-08-26 (Images/Videos verticals, thumb proxy)
+- [[Milestone 10 - Reverse Image Search]] — in progress from 2026-08-27 (picture in, pictures out; ADR-0028)
 
 ---
 

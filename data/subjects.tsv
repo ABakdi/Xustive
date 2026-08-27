@@ -1,0 +1,26 @@
+# What is in the picture (M10): the subject vocabulary CLIP scores an image against to describe
+# it in words — the words that go to the web leg instead of the picture (ADR-0028). Algeria
+# first; generic subjects after. id, prompt, then the display name in ar, ary, fr, en.
+# id	prompt	ar	ary	fr	en
+mosque	a mosque	مسجد	جامع	mosquée	mosque
+casbah	the Casbah of Algiers, old white houses on a hill	القصبة	القصبة	Casbah	Casbah
+desert	sand dunes in the Sahara desert	صحراء	صحرا	désert	desert
+mediterranean_coast	a Mediterranean beach or coast	ساحل	البحر	côte	coast
+mountains	mountains	جبال	جبال	montagnes	mountains
+city_street	a city street with buildings and cars	شارع	زنقة	rue	street
+football	a football match or stadium	كرة القدم	الكورة	football	football
+couscous	a plate of couscous	كسكس	كسكسي	couscous	couscous
+traditional_dress	a person in traditional North African dress	لباس تقليدي	قشابية	tenue traditionnelle	traditional dress
+car	a car	سيارة	طوموبيل	voiture	car
+phone	a smartphone	هاتف	تيليفون	téléphone	phone
+food	a dish of food	طعام	ماكلة	plat	food
+building	a building	مبنى	بناية	bâtiment	building
+person	a portrait of a person	شخص	واحد	personne	person
+crowd	a crowd of people	حشد	غاشي	foule	crowd
+animal	an animal	حيوان	حيوان	animal	animal
+plant	a plant or flowers	نبات	نبات	plante	plant
+text	a page of text	نص	كتابة	texte	text
+product	a product on a white background	منتج	سلعة	produit	product
+flag	a flag	علم	راية	drapeau	flag
+sunset	a sunset	غروب	غروب	coucher de soleil	sunset
+night	a night scene with lights	ليل	ليل	nuit	night

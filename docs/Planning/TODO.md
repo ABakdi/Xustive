@@ -46,6 +46,7 @@ updated: 2026-08-27
 | M7 | [[Milestone 7 - Federated Retrieval and External Tools]] | **closed** 2026-08-25 | stemming, hybrid dense recall, related searches, SearXNG gateway, crawl-feed convergence, calibration, integrations console, identifier-free history; PROB-001/002/003 solved |
 | M8 | [[Milestone 8 - The Answer Layer]] | **closed** 2026-08-26 | knowledge store + resolver (ADR-0022/0023), entity panel, weather, currency (ADR-0025), fend calculator, demand-driven harvest, list answers (T11) with today's tie-break fix and See-also row |
 | M9 | [[Milestone 9 - Images and Videos]] | **closed** 2026-08-26 | Images/Videos tabs, signed thumbnail proxy (ADR-0021), metadata-only video, media repass, SearXNG media federation (T06) |
+| M10 | [[Milestone 10 - Reverse Image Search]] | **in progress** (opened 2026-08-27) | Picture in, pictures out: local CLIP/pHash first, SearXNG by derived labels (ADR-0028), extension and style chips computed from the results |
 
 ```
 M0 ──► M1 ──► M1B ──► M2 ──► M6 ──► M7 ──► M8 ──► M9        (closed, in this order)

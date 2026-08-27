@@ -156,6 +156,7 @@ they lack.
 | 4 Quality and operations | tooling built — breakers, load generator, backup/restore, alerts, runbooks; the 10M-document/chaos gate not run |
 | 5 Beta launch | not started — only `/privacy` and `/bot` exist; no about/terms/submit-a-site |
 | 6 Adaptive ranking · 7 Federated retrieval and tools · 8 The answer layer · 9 Images and videos | closed 2026-08-25/26 |
+| 10 Reverse image search | in progress (opened 2026-08-27) — [spec](docs/Planning/Milestone%2010%20-%20Reverse%20Image%20Search.md) |
 
 The current, verified picture — open items, what is deliberately not built, and what is next —
 is kept in **[TODO](docs/Planning/TODO.md)**; the problem register is
@@ -271,6 +272,7 @@ Why the system is the way it is. Index: [Decision Log](docs/Decisions/Decision%2
 - [ADR-0025 - Official Exchange Rate Only](docs/Decisions/ADR-0025%20-%20Official%20Exchange%20Rate%20Only.md)
 - [ADR-0026 - The Reader's Language as a Bounded Ranking Signal](docs/Decisions/ADR-0026%20-%20The%20Reader%27s%20Language%20as%20a%20Bounded%20Ranking%20Signal.md)
 - [ADR-0027 - Narrow the Search Under Load Instead of Failing](docs/Decisions/ADR-0027%20-%20Narrow%20the%20Search%20Under%20Load%20Instead%20of%20Failing.md)
+- [ADR-0028 - Reverse Image Search Sends Words to the Web, Never the Picture](docs/Decisions/ADR-0028%20-%20Reverse%20Image%20Search%20Sends%20Words%20to%20the%20Web%2C%20Never%20the%20Picture.md)
 
 ### User interface
 
@@ -319,6 +321,7 @@ differently says so.
 - [Milestone 7 - Federated Retrieval and External Tools](docs/Planning/Milestone%207%20-%20Federated%20Retrieval%20and%20External%20Tools.md)
 - [Milestone 8 - The Answer Layer](docs/Planning/Milestone%208%20-%20The%20Answer%20Layer.md)
 - [Milestone 9 - Images and Videos](docs/Planning/Milestone%209%20-%20Images%20and%20Videos.md)
+- [Milestone 10 - Reverse Image Search](docs/Planning/Milestone%2010%20-%20Reverse%20Image%20Search.md)
 - [TODO](docs/Planning/TODO.md) — the verified current picture
 - [Problems](docs/BugReports/Problems.md) — the problem register
 - [2026-08-25 - Code Audit Findings](docs/BugReports/2026-08-25%20-%20Code%20Audit%20Findings.md) — the audit findings (BUG-0xx)

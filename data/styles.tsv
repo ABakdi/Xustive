@@ -1,0 +1,16 @@
+# What kind of picture this is (M10). One row per style: id, the CLIP prompt, then the display
+# name in ar, ary, fr, en. Reviewable like the lexicons: add a row, restart the sidecar.
+# id	prompt	ar	ary	fr	en
+photo	a photograph	صورة فوتوغرافية	تصويرة	photo	photo
+illustration	an illustration	رسم توضيحي	رسم	illustration	illustration
+digital_art	a piece of digital art	فن رقمي	فن رقمي	art numérique	digital art
+render_3d	a 3D render	تصيير ثلاثي الأبعاد	3D	rendu 3D	3D render
+painting	a painting	لوحة	لوحة	peinture	painting
+drawing	a pencil drawing or sketch	رسم بالقلم	رسم	dessin	drawing
+cartoon	a cartoon or anime	كرتون	كرتون	dessin animé	cartoon
+screenshot	a screenshot of a screen	لقطة شاشة	سكرين	capture d’écran	screenshot
+logo	a logo	شعار	لوغو	logo	logo
+map	a map	خريطة	خريطة	carte	map
+diagram	a diagram or infographic	مخطط	مخطط	schéma	diagram
+meme	a meme with text over an image	ميم	ميم	mème	meme
+document	a scanned document or page of text	مستند	ورقة	document	document
