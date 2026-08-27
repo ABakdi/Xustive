@@ -40,12 +40,20 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 MODEL_NAME = os.environ.get("STT_MODEL", "small")
+# The model for live partials — a reading of the words so far every half-second while the person
+# is still speaking. Whisper encodes a fixed thirty-second window, so a partial costs a whole
+# encoder pass whatever the clip's length; `base` does that in a fraction of `small`'s time and is
+# decoded greedily. The final pass, once they stop, still gets `small` with a beam. Unset, the
+# main model answers partials too — correct, just not live.
+PARTIAL_MODEL_NAME = os.environ.get("STT_PARTIAL_MODEL", "") or None
+# CTranslate2 defaults to a handful of threads; the encoder scales to the cores it is given.
+CPU_THREADS = int(os.environ.get("STT_CPU_THREADS", str(min(8, os.cpu_count() or 4))))
 # Audio is small; a generous ceiling still bounds a runaway upload. 30 s of Opus is well under 1 MB.
 MAX_BYTES = int(os.environ.get("STT_MAX_BYTES", str(16 * 1024 * 1024)))
 # Bias detection toward the languages Algerian audio actually is, unless the caller forces one.
 DEFAULT_LANG = os.environ.get("STT_DEFAULT_LANG", "") or None
 
-_state: dict = {"model": None}
+_state: dict = {"model": None, "partial": None}
 
 
 @asynccontextmanager
@@ -55,10 +63,19 @@ async def lifespan(_app: FastAPI):
     # int8 on CPU is the reference path; a GPU host can set STT_DEVICE=cuda / STT_COMPUTE=float16.
     device = os.environ.get("STT_DEVICE", "cpu")
     compute = os.environ.get("STT_COMPUTE", "int8")
-    _state["model"] = WhisperModel(MODEL_NAME, device=device, compute_type=compute)
-    print(f"stt ready model={MODEL_NAME} device={device} compute={compute}", flush=True)
+    _state["model"] = WhisperModel(MODEL_NAME, device=device, compute_type=compute, cpu_threads=CPU_THREADS)
+    if PARTIAL_MODEL_NAME:
+        _state["partial"] = WhisperModel(
+            PARTIAL_MODEL_NAME, device=device, compute_type=compute, cpu_threads=CPU_THREADS
+        )
+    print(
+        f"stt ready model={MODEL_NAME} partial={PARTIAL_MODEL_NAME or '-'} device={device} "
+        f"compute={compute} threads={CPU_THREADS}",
+        flush=True,
+    )
     yield
     _state["model"] = None
+    _state["partial"] = None
 
 
 app = FastAPI(lifespan=lifespan, title="Xustive STT sidecar")
@@ -81,16 +98,20 @@ async def transcribe(request: Request) -> Response:
         return JSONResponse({"error": "audio too large"}, status_code=413)
 
     lang = request.query_params.get("lang") or DEFAULT_LANG
+    partial = request.query_params.get("partial") in ("1", "true")
     started = time.monotonic()
     try:
-        text, detected = _run(body, lang)
+        text, detected = _run(body, lang, partial)
     except Exception as exc:  # noqa: BLE001 — a bad container is a 422, everything else a 500
         name = type(exc).__name__
         print(f"stt error: {name}", flush=True)
         return JSONResponse({"error": "transcription failed"}, status_code=500)
 
     elapsed_ms = int((time.monotonic() - started) * 1000)
-    print(f"stt ok bytes={len(body)} chars={len(text)} lang={detected} ms={elapsed_ms}", flush=True)
+    print(
+        f"stt ok {'partial' if partial else 'final'} bytes={len(body)} chars={len(text)} lang={detected} ms={elapsed_ms}",
+        flush=True,
+    )
     return JSONResponse({"text": text, "language": detected})
 
 
@@ -102,14 +123,19 @@ NO_SPEECH_MAX = 0.6
 AVG_LOGPROB_MIN = -1.0
 
 
-def _run(data: bytes, lang: str | None) -> tuple[str, str]:
-    model = _state["model"]
+def _run(data: bytes, lang: str | None, partial: bool = False) -> tuple[str, str]:
+    model = (_state["partial"] if partial else None) or _state["model"]
     # faster-whisper decodes via PyAV from a file-like object — no temp file, so nothing persists.
+    # A partial is greedy and timestamp-free: it is replaced half a second later, so its job is
+    # to be fast, and the words it gets wrong the final pass gets right.
     segments, info = model.transcribe(
         io.BytesIO(data),
         language=lang,
         vad_filter=True,  # trim leading/trailing silence so a near-silent clip returns little
-        beam_size=5,
+        beam_size=1 if partial else 5,
+        best_of=1 if partial else 5,
+        without_timestamps=partial,
+        condition_on_previous_text=not partial,
     )
     kept = []
     for seg in segments:

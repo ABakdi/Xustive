@@ -183,3 +183,14 @@ Verified with a synthetic microphone (an oscillator handed to `getUserMedia`) ag
 sidecar: 2 words at 5 s, 4 at 7 s, final on stop; and the red message with the sidecar down.
 Not yet verified against Whisper itself — the sidecar needs `faster-whisper` and the `small`
 weights (~480 MB), which are not on this machine.
+
+## Revision, 2026-08-27 (later) — live for real
+
+Live partials on CPU took ~1.2 s each: Whisper encodes a fixed thirty-second window, so a
+partial costs a whole encoder pass whatever the clip's length, and no decode setting changes
+that. Two things made it live. The sidecar now loads two models — `base` for partials
+(`?partial=1`: greedy, no timestamps, no context) and `small` for the final pass — and runs on
+the GPU when CTranslate2 sees one. On the Quadro T1000, measured on a 10 s Arabic clip through
+the API: a partial in 0.35–0.5 s, the final in 1.0–1.5 s. A finding worth keeping: on that card
+`float16` is *slower* than `float32` (435 ms vs 128 ms for the `base` encoder), so float32 is
+the launcher's default. The box asks every 400 ms and sends the audio so far in 200 ms slices.

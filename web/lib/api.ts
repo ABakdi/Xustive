@@ -329,8 +329,13 @@ export async function transcribe(
   audio: Blob,
   lang?: string,
   signal?: AbortSignal,
+  /** A reading of the words so far while still recording: the fast model, greedy. */
+  partial = false,
 ): Promise<TranscriptResult> {
-  const qs = lang ? `?lang=${encodeURIComponent(lang)}` : ''
+  const params = new URLSearchParams()
+  if (lang) params.set('lang', lang)
+  if (partial) params.set('partial', '1')
+  const qs = params.size ? `?${params}` : ''
   const res = await fetch(`${BASE}/api/v1/transcribe${qs}`, {
     method: 'POST',
     headers: { 'Content-Type': audio.type || 'application/octet-stream' },

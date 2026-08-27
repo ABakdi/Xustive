@@ -23,8 +23,17 @@ Arabic audio is not mis-detected as something else on a short clip.
 
 ```bash
 uv venv -p 3.12 .venv && uv pip install -p .venv/bin/python -r requirements.txt   # 3.14 has no PyAV wheel yet
-STT_MODEL=$PWD/../../data/models/faster-whisper-small .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8093
+uv pip install -p .venv/bin/python nvidia-cublas-cu12 "nvidia-cudnn-cu12>=9,<10"     # GPU only: CUDA 12 runtime
+./run.sh
 ```
+
+`run.sh` picks the GPU when CTranslate2 sees one and loads two models: `small` for the final pass
+and `base` for the live partials (`?partial=1`, greedy, no timestamps) that update the search box
+while the person is still speaking. Measured on a Quadro T1000 with a 10 s Arabic clip: a partial
+in ~0.4 s, the final in ~1 s; on CPU the same are ~1.2 s and ~3.5 s, because Whisper encodes a
+fixed thirty-second window whatever the clip's length. On that card `float16` is slower than
+`float32` (435 ms vs 128 ms for the `base` encoder), so float32 is the default; set `STT_COMPUTE`
+for a card with real FP16 throughput.
 
 `STT_MODEL` may be a Whisper size (`small`, fetched into `HF_HOME` on first start) or a directory.
 Prefer the directory: on 2026-08-27 the hub client's unauthenticated download ran at ~60 KB/s

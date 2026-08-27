@@ -87,12 +87,17 @@ impl SttClient {
         matches!(self.http.get(format!("{base}/health")).send().await, Ok(r) if r.status().is_success())
     }
 
-    async fn transcribe(&self, audio: Vec<u8>, lang: Option<&str>) -> Result<Transcript, ApiError> {
+    async fn transcribe(
+        &self,
+        audio: Vec<u8>,
+        lang: Option<&str>,
+        partial: bool,
+    ) -> Result<Transcript, ApiError> {
         // Fail fast if the sidecar has been failing — no request, no timeout wait.
         if !self.breaker.allow() {
             return Err(ApiError::model_unavailable("stt_unavailable"));
         }
-        match self.try_transcribe(audio, lang).await {
+        match self.try_transcribe(audio, lang, partial).await {
             Ok(t) => {
                 self.breaker.on_success();
                 Ok(t)
@@ -108,6 +113,7 @@ impl SttClient {
         &self,
         audio: Vec<u8>,
         lang: Option<&str>,
+        partial: bool,
     ) -> Result<Transcript, ApiError> {
         let mut req = self
             .http
@@ -116,6 +122,9 @@ impl SttClient {
             .body(audio);
         if let Some(l) = lang {
             req = req.query(&[("lang", l)]);
+        }
+        if partial {
+            req = req.query(&[("partial", "1")]);
         }
         let resp = req.send().await.map_err(|e| {
             tracing::warn!(error = %e, "STT sidecar request failed");
@@ -148,6 +157,11 @@ pub struct Transcript {
 pub struct TranscribeParams {
     /// Optional language hint (the UI language), so a short Arabic clip is not mis-detected.
     pub lang: Option<String>,
+    /// `partial=1` — a reading of the words so far while the person is still speaking. The
+    /// sidecar answers these with its fast model and a greedy decode: the box updates every
+    /// half-second and the final pass, without this flag, gets the careful model.
+    #[serde(default)]
+    pub partial: Option<String>,
 }
 
 /// `POST /api/v1/transcribe` — turn an uploaded audio clip into text.
@@ -171,7 +185,8 @@ pub async fn handler(
     }
     // Only pass a language hint we recognise, so a stray query value cannot reach the model.
     let lang = params.lang.as_deref().filter(|l| is_known_lang(l));
-    let mut transcript = stt.transcribe(body.to_vec(), lang).await?;
+    let partial = matches!(params.partial.as_deref(), Some("1") | Some("true"));
+    let mut transcript = stt.transcribe(body.to_vec(), lang, partial).await?;
     // Defence in depth against whisper's silence hallucinations (M3-T02.6). The sidecar drops
     // low-confidence segments; this blanks a transcript that is *only* a known phantom phrase, which
     // the per-segment signal occasionally lets through.

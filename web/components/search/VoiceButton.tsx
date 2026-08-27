@@ -12,8 +12,9 @@ import type { Messages } from '@/lib/i18n/messages'
  * Tap the microphone and the field itself becomes the recorder: the button turns red and pulses,
  * a small level meter shows the microphone is hearing you, and the words appear **in the search
  * box as you speak**. The transcription still happens on our own server and nothing else's
- * (M3-T03): every second and a half the audio so far is sent again and the box shows the newest
- * reading, so the text grows while you talk; on stop, one last pass gives the final words. The
+ * (M3-T03): a few times a second the audio so far is sent again — to the sidecar's fast model,
+ * greedy — and the box shows the newest reading, so the text grows while you talk; on stop, one
+ * last pass with the careful model gives the final words. The
  * result stays editable and is never submitted for you (M3-T03.6) — Darija transcription is
  * imperfect, and the person confirms the words before searching.
  *
@@ -28,8 +29,8 @@ import type { Messages } from '@/lib/i18n/messages'
  * the browser's recording indicator clears (M3-T03.7). A 30-second cap ends a forgotten recording.
  */
 const MAX_MS = 30_000
-/** How often the audio so far is re-read while recording. */
-const PARTIAL_EVERY_MS = 1_500
+/** How often the audio so far is re-read while recording — as often as the fast model keeps up. */
+const PARTIAL_EVERY_MS = 400
 
 type Phase = 'idle' | 'recording' | 'finishing'
 
@@ -118,7 +119,7 @@ export function VoiceButton({
     const controller = new AbortController()
     inFlight.current = controller
     try {
-      const out = await transcribe(blob, uiLang, controller.signal)
+      const out = await transcribe(blob, uiLang, controller.signal, !final)
       if (controller.signal.aborted) return
       const text = out.text.trim()
       if (final) {
@@ -207,7 +208,7 @@ export function VoiceButton({
         void read(blob, true)
       }
       // Timesliced, so the audio arrives as it is spoken rather than all at the end.
-      rec.start(500)
+      rec.start(200)
       startedAt.current = Date.now()
       lastPartial.current = Date.now()
       setPhase('recording')
