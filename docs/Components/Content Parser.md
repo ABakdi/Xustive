@@ -97,7 +97,7 @@ article HTML into `og:description`, and a literal `<p>` in an excerpt reaches th
 ### 4.3 Per-domain rules (`rules.rs`, `data/parsers/domains.toml`)
 
 ```toml
-[[domain]]
+`[[domain]]`
 host = "aps.dz"
 date = "span.text-xs"
 note = "date is a bare span with a Tailwind utility class; no JSON-LD, no <time>"
