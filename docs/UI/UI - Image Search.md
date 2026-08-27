@@ -8,34 +8,50 @@ updated: 2026-08-27
 
 # UI - Image Search
 
-> The camera/upload flow. Backend: [[Image Pipeline]] · API: [[API Contract]] §6
+> The camera/upload flow, in both directions. Backend: [[Image Pipeline]] · [[Vector Index]] ·
+> API: [[API Contract]] §6 · Milestone: [[Milestone 10 - Reverse Image Search]]
 > Parent: [[UI Specification]] · Code: `web/app/[lang]/tools/ocr/page.tsx` (the page),
 > `web/components/tools/ImageOcr.tsx` (the island), `ocrImage()` / `imageSearch()` in
 > `web/lib/api.ts`, the Camera link in `web/components/search/SearchBox.tsx`
 
 ---
 
-## 0. Current behaviour (2026-08-27)
+## 0. Current behaviour (2026-08-27, after M10)
 
-Built as **a page, not an overlay**. The camera icon in every search box is a real link to
-`/[lang]/tools/ocr` (`aria-label`/`title` = `t.ocrByImage`), which opens in a new tab if wanted
-and exists without JavaScript. On that page:
+Two pages, one entry. The camera icon in every search box is a real link to
+`/[lang]/tools/ocr` — the **text** path — and the Images tab, every image tile and that page all
+lead to `/[lang]/search/image` — the **picture** path ([[Milestone 10 - Reverse Image Search]]).
 
-- A dashed drop zone (`ImageOcr`) with two buttons — `t.ocrChoose` (plain
-  `<input type="file" accept="image/*">`) and `t.ocrCamera` (`capture="environment"`) — both
-  inputs visually hidden (`sr-only`) and driven by the buttons. Drag & drop onto the zone and
-  **paste anywhere on the page** also work.
-- Before upload the image is downscaled to ≤ 2048 px on the long edge and re-encoded as JPEG
-  q0.92 through a canvas, which drops every EXIF field including GPS.
-- `POST /api/v1/ocr` with the raw bytes as the body. The text lands in an editable `<textarea>`
-  (`dir="auto"`) with **Search this** (`t.ocrSearchThis` → `/[lang]/search?q=…`) and **Copy**.
-  Nothing is searched automatically.
-- **Find similar** (`t.ocrFindSimilar`, quiet button) is offered whether or not OCR found text:
-  `POST /api/v1/search/image` with the same prepared blob. Matches render as a list (title →
-  page, display URL, qualitative label: `similarityVery` ≥ 0.92, `similaritySimilar` ≥ 0.82,
-  else `similarityRelated`). A 503 shows `t.ocrSimilarUnavailable`.
-- Privacy line under the zone (`t.ocrPrivacy`): the image is read on this server and never
-  stored.
+**Search with a picture** (`web/app/[lang]/search/image/page.tsx`, island
+`web/components/search/ReverseImage.tsx`):
+
+- Ways in: a dashed drop zone with *Choose a picture* and *Take a photo* (`capture="environment"`),
+  drag & drop, **paste anywhere on the page**; *Search by picture* on the Images tab; *Find
+  similar* under every image tile (a link carrying the tile's signed thumbnail URL, `?u=&s=`, so
+  the server fetches the picture through its own proxy rules and nothing is uploaded); and the
+  OCR page's *Find similar*, which hands its prepared picture over through `sessionStorage`
+  (`lib/image-prep.ts`, read once and cleared).
+- Before upload the image is downscaled to ≤ 2048 px and re-encoded as JPEG through a canvas,
+  which drops every EXIF field including GPS (`prepareImage`, shared with OCR).
+- The query image is shown small at the top from an object URL — it has no address, is never
+  stored, and a reverse search has no URL to share except the `?u=` form.
+- **Looks like:** the picture's kind (`style_*`), subjects (`subject_*`) and format, from the
+  API's description. Then two chip rows — *Kind* and *Format* — that are **the styles and
+  formats present in the results, counted**; a chip filters the set on screen with no request,
+  and a kind no result has is not offered.
+- Three grids: **The same picture**, **Similar pictures**, and **From the web, by description**,
+  which arrives a moment later from the words (`GET /api/image-search?web=`) and is absent —
+  not empty — when federation is off. Each tile: proxied thumbnail, page title, host, format,
+  kind, *from the web* for federated hits; a click goes to the page.
+- States: reading, searching, per-group empty lines, *unavailable* (vector search off → 503,
+  with a link to the text path), *could not read that picture* (an undecodable or unfetchable
+  image). Errors are visible text, never `sr-only`.
+- Every thumbnail through `/api/thumb` (ADR-0021); the web tier signs in
+  `web/app/api/image-search/route.ts`, which is also the only place the picture's bytes pass.
+
+**Read the picture's text** (`/[lang]/tools/ocr`, `web/components/tools/ImageOcr.tsx`) is
+unchanged from M3: OCR into an editable `<textarea>` with *Search this* and *Copy*, nothing
+searched automatically; its *Find similar* now goes to the picture page.
 
 The rest of this note is the original specification, annotated where it differs.
 

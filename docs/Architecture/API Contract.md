@@ -511,3 +511,20 @@ reader's address or referrer.
 ## Related
 
 [[API Gateway]] · [[Query Pipeline]] · [[UI Specification]] · [[Data Model]] · [[Performance Budgets]]
+
+## Addendum (2026-08-27) — reverse image search (M10)
+
+- `POST /api/v1/search/image` — raw image body, ≤ `media.max_image_bytes` (5 MiB). Reply:
+  `images[] {url, thumb_url?, ext?, style?, score?, group: same|similar|web, page {id, title,
+  url, display_url, source_name?, from_web?}}`, `query {style?, ext?, labels[], web_query?}`,
+  `facets {ext: [[value, count]], style: [[value, count]]}`, `results[]` (the M3 page cards,
+  kept one release), `matched_images`. 503 `image_search_unavailable` when `[vector]` is off or
+  its services are down; 400 `empty_image` / `image_too_large`. Own rate bucket, 10/min.
+- `GET /api/v1/search/image/web?q=<description>` — the web group for a description the endpoint
+  produced (lowercase ASCII words, ≤ 80 bytes; anything else is 400 `bad_description`). Reply
+  `{images[], federation: bool}`; empty with `federation: false` when the switch is off. Budget:
+  `federation.fetch_budget_ms` + 1 s.
+- `GET /api/v1/search?v=images&ext=png&style=photo` — the same two filters on the Images tab.
+- Web tier: `POST /api/image-search` (upload), `GET /api/image-search?u=&s=` (a signed thumbnail
+  URL), `GET /api/image-search?web=` — the same shapes with `thumb` added: the signed, proxied
+  URL for each image.

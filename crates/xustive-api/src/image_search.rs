@@ -258,24 +258,9 @@ pub async fn handler(
             .then_with(|| b.score.unwrap_or(0.0).total_cmp(&a.score.unwrap_or(0.0)))
     });
 
-    // The web leg: words in, pictures out, through the gateway, only when federation is on.
-    if let (Some(q), Some(client)) = (&web_query, state.federator.as_ref()) {
-        if state
-            .federation_enabled
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            let hits = client
-                .federate_in(
-                    q,
-                    xustive_ingest::federation::Category::Images,
-                    Some(state.config.federation.budget_ms),
-                )
-                .await;
-            crate::search::ingest_federated(&state, &hits);
-            images.extend(hits.iter().filter_map(web_hit));
-        }
-    }
-
+    // The web leg is a second request (`GET /search/image/web?q=`), made by the page after the
+    // local groups are on screen: the metasearch takes seconds, and the picture's own matches
+    // must not wait for it. `web_query` above is what the page will ask.
     let facets = facets_of(&images);
 
     // The M3 shape: pages collapsed by best score, in that order.
@@ -303,6 +288,67 @@ pub async fn handler(
         results,
         matched_images,
     }))
+}
+
+/// `GET /api/v1/search/image/web?q=` — the web group: what the metasearch engine returns for
+/// the words the picture was described with. Words in, pictures out, through the one gateway,
+/// only while federation is on; the hits ride the eager index like every federated hit.
+pub async fn web_handler(
+    State(state): State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<WebParams>,
+) -> Result<Json<WebResponse>, ApiError> {
+    let q = params.q.trim();
+    // The words come from our own vocabularies — short, lowercase, letters and spaces. Anything
+    // else is not a description the endpoint produced and does not go to the gateway.
+    if !is_description(q) {
+        return Err(ApiError::BadImage {
+            code: "bad_description",
+        });
+    }
+    let enabled = state
+        .federation_enabled
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let Some(client) = state.federator.as_ref().filter(|_| enabled) else {
+        return Ok(Json(WebResponse {
+            images: Vec::new(),
+            federation: false,
+        }));
+    };
+    let hits = client
+        .federate_in(
+            q,
+            xustive_ingest::federation::Category::Images,
+            Some(state.config.federation.fetch_budget_ms),
+        )
+        .await;
+    crate::search::ingest_federated(&state, &hits);
+    Ok(Json(WebResponse {
+        images: hits.iter().filter_map(web_hit).collect(),
+        federation: true,
+    }))
+}
+
+/// A description this endpoint could have produced: 1–80 bytes of lowercase ASCII letters,
+/// digits and spaces.
+pub fn is_description(q: &str) -> bool {
+    !q.is_empty()
+        && q.len() <= 80
+        && q.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b' ')
+}
+
+#[derive(serde::Deserialize)]
+pub struct WebParams {
+    #[serde(default)]
+    pub q: String,
+}
+
+#[derive(Serialize)]
+pub struct WebResponse {
+    pub images: Vec<ImageHit>,
+    /// Whether federation was on — the page shows no web group at all when it was not, rather
+    /// than an empty one.
+    pub federation: bool,
 }
 
 fn rank(g: Group) -> u8 {
@@ -524,19 +570,30 @@ mod tests {
 
     #[test]
     fn the_web_leg_never_sees_the_body() {
-        // The handler drops `body` before the federation call; this reads the source to keep it so.
+        // The POST handler never federates, and the web handler takes words, not bytes. This
+        // reads the source to keep it so (ADR-0028).
         let src = include_str!("image_search.rs");
-        let handler =
-            &src[src.find("pub async fn handler").unwrap()..src.find("fn rank(").unwrap()];
-        let drop_at = handler.find("drop(body)").expect("the body is dropped");
-        let web_at = handler.find("federate_in(").expect("the web leg exists");
+        let post = &src[src.find("pub async fn handler").unwrap()
+            ..src.find("pub async fn web_handler").unwrap()];
         assert!(
-            drop_at < web_at,
-            "the body must be gone before the web leg runs"
+            !post.contains("federate_in("),
+            "the upload handler must not federate"
         );
+        let web =
+            &src[src.find("pub async fn web_handler").unwrap()..src.find("fn rank(").unwrap()];
         assert!(
-            !handler[web_at..].contains("body"),
-            "nothing after the web leg names the body"
+            !web.contains("Bytes") && !web.contains("body"),
+            "the web leg takes no body"
         );
+        assert!(web.contains("federate_in("));
+    }
+
+    #[test]
+    fn a_description_is_the_only_thing_the_web_leg_accepts() {
+        assert!(is_description("casbah mosque"));
+        assert!(is_description("city street 3d render"));
+        assert!(!is_description("Casbah"));
+        assert!(!is_description("mosque; drop"));
+        assert!(!is_description(""));
     }
 }

@@ -14,6 +14,7 @@ import {
   type SimilarResult,
 } from '@/lib/api'
 import type { Messages } from '@/lib/i18n/messages'
+import { handOff } from '@/lib/image-prep'
 
 /**
  * Image → text, and the front of the "photograph → search" (Lens-style) flow.
@@ -137,6 +138,12 @@ export function ImageOcr({ lang, t }: { lang: string; t: Messages }) {
   async function findSimilar() {
     const image = preparedRef.current
     if (!image) return
+    // The reverse-image page shows pictures, not a list of pages (M10): hand the prepared
+    // picture over and go there. The list below stays as the fallback when the hand-off cannot.
+    if (await handOff(image)) {
+      router.push(`/${lang}/search/image`)
+      return
+    }
     setSimState('searching')
     setSimilar(null)
     try {

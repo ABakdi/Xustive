@@ -285,7 +285,15 @@ export default async function SearchPage({
           {/* The Images and Videos tabs render tiles, not cards (M9-T03). Server-rendered like the
               list, no JavaScript, through the signed proxy so no crawled host ever sees the reader. */}
           {vertical === 'images' ? (
-            <ImageGrid results={data.results} t={t} />
+            <>
+              {/* Search with a picture (M10): a real link to the reverse-image page. */}
+              <p className="mb-4 text-sm">
+                <a href={`/${lang}/search/image`} className="chip no-underline">
+                  {(t as unknown as Record<string, string>).reverseByPicture}
+                </a>
+              </p>
+              <ImageGrid results={data.results} t={t} lang={lang} />
+            </>
           ) : vertical === 'videos' ? (
             <VideoList results={data.results} t={t} />
           ) : data.interaction_token ? (

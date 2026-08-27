@@ -294,26 +294,59 @@ export interface ImageSearchResult {
  * vector services are down — the caller shows "unavailable", never an error, because text search is
  * unaffected.
  */
-export async function imageSearch(
-  image: Blob,
-  signal?: AbortSignal,
-): Promise<ImageSearchResult> {
-  const res = await fetch(`${BASE}/api/v1/search/image`, {
+/** One image of a reverse image search (M10). `thumb` is the signed, proxied URL to show. */
+export interface ImageHit {
+  url: string
+  thumb: string
+  ext?: string
+  style?: string
+  score?: number
+  group: 'same' | 'similar' | 'web'
+  page: { id: string; title: string; url: string; display_url: string; source_name?: string; from_web?: boolean }
+}
+
+export interface ImageSearchAnswer {
+  images: ImageHit[]
+  query: { style?: string; ext?: string; labels: string[]; web_query?: string }
+  facets: { ext: [string, number][]; style: [string, number][] }
+  results: SimilarResult[]
+  matched_images: number
+}
+
+/**
+ * Reverse image search: the picture's own matches, from the local index, through the web tier
+ * (which signs the thumbnails). Raw body, never a form: the bytes stay out of every URL and log.
+ */
+export async function imageSearch(image: Blob, signal?: AbortSignal): Promise<ImageSearchAnswer> {
+  const res = await fetch('/api/image-search', {
     method: 'POST',
     headers: { 'Content-Type': image.type || 'application/octet-stream' },
     body: image,
     signal,
     cache: 'no-store',
   })
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as ApiError | null
-    throw new SearchFailed(
-      body?.error?.code ?? 'image_search_failed',
-      body?.error?.message ?? 'Image search failed',
-      res.status,
-    )
-  }
-  return res.json() as Promise<ImageSearchResult>
+  if (!res.ok) throw new SearchFailed('image_search_failed', 'Image search failed', res.status)
+  return (await res.json()) as ImageSearchAnswer
+}
+
+/** The same search for a picture already on the page, by its signed thumbnail URL. */
+export async function imageSearchByUrl(u: string, s: string, signal?: AbortSignal): Promise<ImageSearchAnswer> {
+  const res = await fetch(`/api/image-search?u=${encodeURIComponent(u)}&s=${encodeURIComponent(s)}`, {
+    signal,
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new SearchFailed('image_search_failed', 'Image search failed', res.status)
+  return (await res.json()) as ImageSearchAnswer
+}
+
+/** The web group, by the words the picture was described with. Never the picture. */
+export async function imageSearchWeb(
+  description: string,
+  signal?: AbortSignal,
+): Promise<{ images: ImageHit[]; federation: boolean }> {
+  const res = await fetch(`/api/image-search?web=${encodeURIComponent(description)}`, { signal, cache: 'no-store' })
+  if (!res.ok) throw new SearchFailed('image_search_failed', 'Image search failed', res.status)
+  return (await res.json()) as { images: ImageHit[]; federation: boolean }
 }
 
 export interface TranscriptResult {

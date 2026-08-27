@@ -195,3 +195,20 @@ the original plan are not built.
 [[Deduplication Service]] · [[UI - Image Search]] · [[API Contract]] · [[Security and Privacy]] ·
 [[ADR-0016 - Two OCR Engines with an Optional Unlimited-OCR Sidecar]] ·
 [[Milestone 3 - Multimodal Input]]
+
+## Since M10 (2026-08-27) — reverse image search
+
+`POST /api/v1/search/image` answers with **images**, not pages
+(`crates/xustive-api/src/image_search.rs`): each hit is the image that matched, with its page,
+`ext`, `style`, cosine, and a group — `same` (dHash within 6 bits, or cosine ≥ 0.92), `similar`,
+or `web`. The upload is embedded *and described* in one sidecar call (`/embed?describe=1`); the
+words — subjects CLIP is sure of, the style when it is telling — become `query.web_query`, which
+the page asks `GET /api/v1/search/image/web?q=` for after the local groups are on screen. That
+leg takes words only and is pinned by a source-reading test (ADR-0028). The "pHash shortcut
+before ANN" listed above as not built is settled differently: the hash decides the *group*, not
+the retrieval — an exact copy has cosine ≈ 1 and is in the ANN set already.
+
+Index side, `media_embed.rs` stamps `ext` (from the bytes, over the URL's word) and `style` on
+each embedded image, and the same fields ride in the Qdrant payload; `xustive vector-repass`
+describes the points already stored from their vectors (`--embed` first fills documents that
+have none). `/ocr` and `/search/image` no longer share one rate bucket.

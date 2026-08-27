@@ -23,7 +23,7 @@ const hostOf = (url: string) => {
   }
 }
 
-type Tile = { key: string; src: string; page: Result }
+type Tile = { key: string; src: string; upstream: string; page: Result }
 
 /** One tile per image, in result order, so relevance still reads left-to-right, top-to-bottom. */
 function imageTiles(results: Result[]): Tile[] {
@@ -31,15 +31,16 @@ function imageTiles(results: Result[]): Tile[] {
   for (const r of results) {
     for (const m of r.media ?? []) {
       if (m.kind !== 'image') continue
-      const src = signThumb(m.thumb_url ?? m.url)
+      const upstream = m.thumb_url ?? m.url
+      const src = signThumb(upstream)
       if (!src) continue
-      tiles.push({ key: `${r.id}:${m.url}`, src, page: r })
+      tiles.push({ key: `${r.id}:${m.url}`, src, upstream, page: r })
     }
   }
   return tiles
 }
 
-export function ImageGrid({ results, t }: { results: Result[]; t: Messages }) {
+export function ImageGrid({ results, t, lang }: { results: Result[]; t: Messages; lang?: string }) {
   const tiles = imageTiles(results)
   if (tiles.length === 0) return null
   return (
@@ -82,6 +83,18 @@ export function ImageGrid({ results, t }: { results: Result[]; t: Messages }) {
               )}
             </span>
           </a>
+          {/* Search with this picture (M10-T04.1): a real link that names the picture by its
+              signed proxy URL, so the reverse page can fetch it through our own rules — no
+              upload, and no crawled host learns who asked. */}
+          {lang && (
+            <a
+              href={`/${lang}/search/image?${new URL(tile.src, 'http://x').searchParams.toString()}`}
+              className="mt-1 block text-[11px] no-underline hover:underline"
+              style={{ color: 'var(--fg-faint)' }}
+            >
+              {(t as unknown as Record<string, string>).reverseFindSimilar ?? 'Find similar'}
+            </a>
+          )}
         </li>
       ))}
     </ul>

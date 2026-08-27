@@ -161,3 +161,11 @@ health, not extraction.
 
 [[Milestone 9 - Images and Videos]] · [[Content Parser]] · [[Image Pipeline]] · [[Thumbnail Proxy]] ·
 [[Search Index]] · [[UI - Search Verticals]] · [[UI - Image Search]]
+
+## Since M10 (2026-08-27)
+
+`Media` has `ext` and `style` (`crates/xustive-core/src/model.rs`). The parser sets `ext` from
+the URL at extraction (`xustive_media::ext::from_url`); the embed pass corrects it from the bytes
+(`from_bytes`, magic numbers — a `.jpg` that is a PNG is a PNG) and sets `style`. Both are
+filterable on `documents` (`media.ext`, `media.style`) and the Images tab accepts `ext=` and
+`style=`; `MediaOut` carries them on the wire.

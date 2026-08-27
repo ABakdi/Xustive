@@ -174,3 +174,14 @@ live Qdrant; skipped without one), unit tests for `l2_normalise`, `point_id`, hi
 [[Image Pipeline]] · [[Enrichment Pipeline]] · [[Query Pipeline]] · [[Search Index]] ·
 [[Deduplication Service]] · [[Data Model]] · [[Deployment Topology]] · [[UI - Image Search]] ·
 [[Milestone 3 - Multimodal Input]] · [[Milestone 7 - Federated Retrieval and External Tools]]
+
+## Since M10 (2026-08-27)
+
+The payload carries two more keyword-indexed fields, `ext` and `style`
+(`crates/xustive-vector/src/lib.rs`), and the `Embedder` trait grew `describe`, `classify` and
+`embed_text` — the sidecar's text tower, in the same 512-d space
+(`crates/xustive-vector/src/embed.rs`, `describe.rs`). `Store::scroll_vectors` and
+`Store::set_payload` exist for the describe backfill. The style label rule lives in
+`describe.rs`: softmax over `100 × cosine` (CLIP's logit scale), kept when the top style holds
+≥ 0.5 and twice the runner-up. Text-to-image ranking on the Images tab — the M9 leftover — is now
+one call away and still not built.

@@ -92,6 +92,18 @@ pub fn app(state: AppState) -> Router {
         .layer(search_budget)
         .with_state(state.clone());
 
+    // The web group of a reverse image search (M10-T03.4): words in, through the gateway. It
+    // waits on the metasearch, so its budget is the federation *fetch* budget, not the search
+    // one — the page asks for it after the local groups are already on screen.
+    let image_web = Router::new()
+        .route("/search/image/web", get(image_search::web_handler))
+        .layer(middleware::from_fn_with_state(state.clone(), limit_search))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            Duration::from_millis(state.config.federation.fetch_budget_ms + 1_000),
+        ))
+        .with_state(state.clone());
+
     // Translation streams, so it gets **no response timeout at all**. A timeout layer bounds the
     // whole response including the body, and a streamed body is not finished until the model is —
     // wrapping this the way `/summary` is wrapped would cut every translation off mid-sentence at
@@ -292,6 +304,7 @@ pub fn app(state: AppState) -> Router {
             "/api/v1",
             api.merge(summary)
                 .merge(translate)
+                .merge(image_web)
                 .merge(suggest_routes)
                 .merge(interaction_routes)
                 .merge(knowledge_routes),
