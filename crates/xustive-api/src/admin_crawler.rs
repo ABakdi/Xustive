@@ -128,6 +128,10 @@ pub struct DocumentQuery {
     pub media: Option<String>,
     #[serde(default)]
     pub page: Option<usize>,
+    /// `crawled_at` (default), `opens` or `reports` — the order of the listing (M12-T03.5).
+    /// A whitelist, not a pass-through: the sortable attributes are a settings decision.
+    #[serde(default)]
+    pub sort: Option<String>,
 }
 
 /// `GET /admin/crawler/documents` — what has actually been collected.
@@ -217,7 +221,11 @@ pub async fn documents(
     let mut query = xustive_search::Query::new(q)
         .limit(per_page)
         .offset((page - 1) * per_page)
-        .sort(&["crawled_at:desc"]);
+        .sort(&[match params.sort.as_deref() {
+            Some("opens") => "hits.opens:desc",
+            Some("reports") => "hits.reports:desc",
+            _ => "crawled_at:desc",
+        }]);
     if !list_filters.is_empty() {
         query = query.filter(list_filters.join(" AND "));
     }

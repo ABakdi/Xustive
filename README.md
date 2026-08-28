@@ -45,7 +45,7 @@ against the code on 2026-08-27.
 | **Reverse image search** | Drop, paste or photograph a picture: where it appears on the Algerian web (the same picture, then similar ones, from a local CLIP index), then the web by *description* — the picture never leaves; SearXNG receives words. Chips for kind (photo, illustration, screenshot…) and format (png, jpg…) computed from the results. | [Milestone 10 - Reverse Image Search](docs/Planning/Milestone%2010%20-%20Reverse%20Image%20Search.md) · [UI - Image Search](docs/UI/UI%20-%20Image%20Search.md) · [ADR-0028](docs/Decisions/ADR-0028%20-%20Reverse%20Image%20Search%20Sends%20Words%20to%20the%20Web%2C%20Never%20the%20Picture.md) | [UI - Voice Search](docs/UI/UI%20-%20Voice%20Search.md) · [Speech to Text](docs/Components/Speech%20to%20Text.md) · [UI - Image Search](docs/UI/UI%20-%20Image%20Search.md) |
 | **Federation** | Optional query-time enrichment from a self-hosted SearXNG through a single gateway — the one allow-listed egress, off by a runtime switch. | [Federation Gateway](docs/Components/Federation%20Gateway.md) · [ADR-0017 - Query-Time Federation with External Metasearch](docs/Decisions/ADR-0017%20-%20Query-Time%20Federation%20with%20External%20Metasearch.md) |
 | **Learning from readers** | Every search, the results shown, every opened result and every "not relevant" report are kept as first-party events with a visitor cookie of our own — never shared — and shown to the operator as the lists that say what to fix. Beside it, the older anonymous click counters still feed a small ranking term. | [Interaction Signals](docs/Components/Interaction%20Signals.md) · [ADR-0015 - Anonymous Interaction Signals for Ranking](docs/Decisions/ADR-0015%20-%20Anonymous%20Interaction%20Signals%20for%20Ranking.md) |
-| **Operator console** | Crawler live view (pages, images and videos counted separately), documents browser with media facet, sources registry and health, queue and dead-letter, integrations switches, compute device, evaluation, maintenance. | [UI - Admin Console](docs/UI/UI%20-%20Admin%20Console.md) · [Crawler Console](docs/Components/Crawler%20Console.md) |
+| **Operator console** | An overview with charts from a 24-hour vitals ring the API keeps itself; runtime settings that persist (ranking weights with the relevance rule enforced, federation budgets, collection/interaction/summaries switches); crawler live view, documents (sortable by what readers opened), sources and health, discovery, weak coverage, queue and dead letters, searches & hits, evaluation trend, maintenance; a ⌘K command palette. | [UI - Admin Console](docs/UI/UI%20-%20Admin%20Console.md) · [Crawler Console](docs/Components/Crawler%20Console.md) |
 | **Four languages, RTL first** | The interface is translated into Arabic, Darija, French and English; Arabic is the default and the layout is designed right-to-left first. | [UI - RTL and Localization](docs/UI/UI%20-%20RTL%20and%20Localization.md) · [UI - Accessibility](docs/UI/UI%20-%20Accessibility.md) |
 
 ## How it works
@@ -159,6 +159,7 @@ they lack.
 | 6 Adaptive ranking · 7 Federated retrieval and tools · 8 The answer layer · 9 Images and videos | closed 2026-08-25/26 |
 | 10 Reverse image search | built 2026-08-27 — a picture in, pictures out; two gate items open ([spec](docs/Planning/Milestone%2010%20-%20Reverse%20Image%20Search.md)) |
 | 11 Learning from readers | built 2026-08-27 — first-party search events, hits on documents, "not relevant", the admin page ([spec](docs/Planning/Milestone%2011%20-%20Learning%20from%20Readers.md)) |
+| 12 The operator's console | built 2026-08-28 — charts from a 24 h vitals ring, runtime settings that persist, controls on every page, a command palette ([spec](docs/Planning/Milestone%2012%20-%20The%20Operator%27s%20Console.md)) |
 
 The current, verified picture — open items, what is deliberately not built, and what is next —
 is kept in **[TODO](docs/Planning/TODO.md)**; the problem register is
@@ -327,6 +328,7 @@ differently says so.
 - [Milestone 9 - Images and Videos](docs/Planning/Milestone%209%20-%20Images%20and%20Videos.md)
 - [Milestone 10 - Reverse Image Search](docs/Planning/Milestone%2010%20-%20Reverse%20Image%20Search.md)
 - [Milestone 11 - Learning from Readers](docs/Planning/Milestone%2011%20-%20Learning%20from%20Readers.md)
+- [Milestone 12 - The Operator's Console](docs/Planning/Milestone%2012%20-%20The%20Operator%27s%20Console.md)
 - [TODO](docs/Planning/TODO.md) — the verified current picture
 - [Problems](docs/BugReports/Problems.md) — the problem register
 - [Privacy Relaxation Audit](docs/BugReports/Privacy%20Relaxation%20Audit.md) — what the original privacy posture held back, ranked, after ADR-0029

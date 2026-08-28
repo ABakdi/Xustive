@@ -28,6 +28,8 @@ BASE="${BASE:-http://localhost:3000}"
 # *regression*. It cannot catch the framework, because the framework was chosen deliberately.
 JS_HOME_KB="${JS_HOME_KB:-185}"
 JS_SEARCH_KB="${JS_SEARCH_KB:-195}"
+# The operator console is heavier by design — charts, editors — and is measured on its own (M12).
+JS_ADMIN_KB="${JS_ADMIN_KB:-260}"
 CSS_KB="${CSS_KB:-20}"
 # Fonts, per direction — what one reader actually fetches, not the total on disk.
 #
@@ -105,6 +107,7 @@ echo "Client asset budgets, gzipped, as a browser would fetch them:"
 check "home JS"      "$(measure "$BASE/ar" js)"          "$JS_HOME_KB"
 check "search JS"    "$(measure "$BASE/ar/search?q=test" js)" "$JS_SEARCH_KB"
 check "CSS"          "$(measure "$BASE/ar" css)"         "$CSS_KB"
+check "admin JS"     "$(measure "$BASE/admin" js)"       "$JS_ADMIN_KB"
 
 # Fonts are counted separately because they are the one asset a reader fetches once and then has
 # for every subsequent page. A budget that lumped them in with per-page JS would either punish the

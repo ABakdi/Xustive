@@ -4,16 +4,11 @@ import { useState } from 'react'
 
 import { dropDeadOne, getQueue, replayDeadOne, replayDlq, type QueueStatus } from '@/lib/admin'
 import { PageHead, usePoll } from '@/components/admin/ui'
-import { LineChart } from '@/components/admin/charts'
+import { LineChart, StatTile } from '@/components/admin/charts'
 import { getTimeseries } from '@/lib/admin'
 
 function Tile({ n, label }: { n: number | string; label: string }) {
-  return (
-    <div className="flex flex-col gap-0.5 border px-4 py-3" style={{ borderColor: 'var(--line)', minInlineSize: '140px' }}>
-      <span className="text-2xl font-medium tabular-nums">{n}</span>
-      <span className="text-xs" style={{ color: 'var(--fg-muted)' }}>{label}</span>
-    </div>
-  )
+  return <StatTile label={label} value={n} />
 }
 
 /**

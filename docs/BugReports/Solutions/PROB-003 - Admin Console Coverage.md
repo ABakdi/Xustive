@@ -121,3 +121,11 @@ what "regression" means, so they stay deliberate CLI acts.
 - `npx tsc --noEmit` clean; telemetry/compose/docs lints green.
 - Operational note: the host API process must be restarted to serve the new endpoints — the same
   restart already owed for the PROB-001/002 binaries.
+
+---
+
+> **2026-08-28 — [[Milestone 12 - The Operator's Console]] revisits the "deliberately not built"
+> list.** The ranking-weights editor is built (runtime settings with `Weights::check`, persisted
+> to `runtime.toml`); config editing exists for the whitelist an operator tunes (budgets,
+> switches) and stays off for the rest; charts exist without Grafana, from a 24-hour ring the
+> API keeps itself. The blocklist manager stays unbuilt for the reason given.

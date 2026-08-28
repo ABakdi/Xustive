@@ -120,6 +120,8 @@ export const forgetWeakTerm = (term: string) =>
 
 // --- documents -------------------------------------------------------------------------------
 export interface DocHit {
+  /** Opens and reports from the first-party events (M11-T02). */
+  hits?: { opens?: number; reports?: number; last_opened_at?: number }
   id: string
   title?: string
   url: string
@@ -146,7 +148,7 @@ export interface DocumentsPage {
 }
 export function getDocuments(
   params: { q?: string; host?: string; lang?: string; channel?: string
-  media?: string; page?: number },
+  media?: string; page?: number; sort?: string },
   signal?: AbortSignal,
 ) {
   const p = new URLSearchParams()
@@ -156,6 +158,7 @@ export function getDocuments(
   if (params.channel) p.set('channel', params.channel)
   if (params.media) p.set('media', params.media)
   p.set('page', String(params.page ?? 1))
+  if (params.sort) p.set('sort', params.sort)
   return getJSON<DocumentsPage>(`/crawler/documents?${p}`, signal)
 }
 

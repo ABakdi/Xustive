@@ -12,6 +12,55 @@ tags:
 
 ---
 
+## 0. The console that exists (2026-08-28, after Milestone 12)
+
+Everything below this section is the original specification, kept for its reasoning; where it
+disagrees with this section, this section is what runs.
+
+**It is a Next.js app**, not a page the Rust API renders: `web/app/(operator)/admin/**`, one
+client page per subject, polling `/api/v1/admin/*` through the Next rewrite (`usePoll`, 5–60 s
+per page; the Live page is the one SSE stream). The old §2 reason — "it must work when the
+frontend is down" — was traded for one stack; the API's JSON is still the console's only source,
+so a curl works when the page does not.
+
+**Time.** The API samples its own vitals every 30 s into a 24-hour ring
+(`crates/xustive-api/src/timeseries.rs`, `GET /admin/timeseries?hours=`): searches, zero
+results, the interval's p95 (histogram-bucket differences), summaries, crawl fetches and
+indexings, frontier depth, events. The overview draws it; the queue page draws the frontier from
+it; Searches & hits gets per-day buckets from the events index; Evaluation draws the dated
+reports. Prometheus and Grafana stay in `deploy/` for long retention and alerting.
+
+**Charts.** `web/components/admin/charts.tsx` — `StatTile` (value, delta, sparkline, status
+icon), `LineChart` (crosshair, one tooltip for every series, legend, table toggle), `Bars`
+(thin, rounded data-end, value at the tip, optionally a control), `Meter`, `Sparkline`. Plain
+SVG, no library; roles `--viz-*` in `globals.css` for both themes, validated (adjacent CVD ΔE
+≥ 8; the light aqua/yellow sit under 3:1 and are always labelled). One axis, ever.
+
+**Controls.** Where the state is: pause/resume and force-crawl on Live; add/remove seeds and
+per-source lifecycle and policy on Sources; forget a weak term; approve/replay/drop dead letters;
+device, log level, **ranking weights** (an editor that checks the relevance-gap rule as you
+drag) and the summaries switch on Compute; federation on/off, **budgets** and eager index on
+Integrations; the **collection** switch on Searches & hits, with a visitor lookup and Forget;
+the **interaction** switch on Anonymous signals; takedowns on Maintenance. The runtime settings
+(`PATCH /admin/settings`, `crates/xustive-api/src/runtime.rs`) validate through the same rules a
+restart applies and persist to `runtime.toml` beside the config, merged on start — including
+the federation switch, which every restart used to reset.
+
+**Navigation.** ⌘K / Ctrl-K (or `/`) opens a command palette over every page and the common
+actions (pause, federation, raise logs, replay the dead letters — the destructive one asks for a
+second Enter), and `?text` jumps to a document search. The sidebar carries a status dot for
+Live, Index queue, Integrations and Media & voice, refreshed every minute. The overview links
+every page.
+
+**Budget.** `scripts/bundle-budget.sh` measures `/admin` on its own line (260 KB gzipped; 186
+measured on 2026-08-28). The kit is one `Tile`, one `Status`, one `Section`, `Toggle`, `Action`
+(`web/components/admin/ui.tsx`); the three inline tile copies and the `--ok` token that never
+existed are gone.
+
+**Still display-only, on purpose:** Configuration (the effective config, read; the editable
+subset is the runtime settings above) and Evaluation's numbers (a new run is `make eval`).
+
+
 ## 1. What it is for
 
 One question, asked constantly: **is the crawler actually working, and is it collecting the right

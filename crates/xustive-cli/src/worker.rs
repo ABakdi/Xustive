@@ -43,7 +43,9 @@ impl Sink for MeiliSink {
     ) -> Result<(), SubmitError> {
         let task = self
             .client
-            .add_documents(index, documents)
+            // A merge, not a replacement (M11-T02): a re-crawl rewrites every field the worker
+            // knows and leaves the ones it does not — `hits`, which readers wrote — in place.
+            .update_documents(index, documents)
             .await
             .map_err(classify)?;
 

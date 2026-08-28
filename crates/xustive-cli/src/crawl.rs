@@ -344,7 +344,7 @@ async fn flush(client: &MeiliClient, index: &str, batch: &mut Vec<Value>) -> Res
         return Ok(());
     }
     let uid = client
-        .add_documents(index, batch)
+        .update_documents(index, batch)
         .await
         .context("submitting batch")?;
     // Wait for the task: reporting success for a batch that later fails is worse than slow.

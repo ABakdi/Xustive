@@ -21,6 +21,8 @@ export default function DocumentsPage() {
   const [channel, setChannel] = useState('')
   // `image` / `video` / '' — the media drill-in (M9), applied immediately like the channel one.
   const [media, setMedia] = useState('')
+  // The order of the listing (M12-T03.5): newest, or what readers opened or reported most.
+  const [sort, setSort] = useState<'' | 'opens' | 'reports'>('')
   // The *applied* filters, updated only on submit — so typing does not refetch per keystroke.
   const [applied, setApplied] = useState({ q: '', host: '', lang: '', channel: '', media: '' })
   const [page, setPage] = useState(1)
@@ -41,7 +43,7 @@ export default function DocumentsPage() {
 
   const load = useCallback(() => {
     const controller = new AbortController()
-    getDocuments({ ...applied, page }, controller.signal)
+    getDocuments({ ...applied, page, sort }, controller.signal)
       .then((d) => {
         setData(d)
         setError(null)
@@ -50,7 +52,7 @@ export default function DocumentsPage() {
         if ((e as Error).name !== 'AbortError') setError((e as Error).message)
       })
     return () => controller.abort()
-  }, [applied, page])
+  }, [applied, page, sort])
 
   useEffect(() => load(), [load])
 
@@ -236,6 +238,14 @@ export default function DocumentsPage() {
               }`}
       </StatusLine>
 
+      <p className="mb-3 flex flex-wrap items-center gap-2 text-sm" style={{ color: 'var(--fg-muted)' }}>
+        <span>Order:</span>
+        {([['', 'newest'], ['opens', 'most opened'], ['reports', 'most reported']] as const).map(([v, label]) => (
+          <button key={v} type="button" className={`chip ${sort === v ? 'chip-active' : ''} cursor-pointer`} onClick={() => setSort(v)}>
+            {label}
+          </button>
+        ))}
+      </p>
       <Table
         head={
           <>
@@ -246,6 +256,8 @@ export default function DocumentsPage() {
             <Th num>length</Th>
             <Th num>media</Th>
             <Th>published</Th>
+            <Th num>opens</Th>
+            <Th num>reports</Th>
           </>
         }
       >
@@ -290,6 +302,8 @@ export default function DocumentsPage() {
                 ? new Date(h.published_at * 1000).toISOString().slice(0, 16).replace('T', ' ')
                 : ''}
             </Td>
+            <Td num>{h.hits?.opens ?? 0}</Td>
+            <Td num>{h.hits?.reports ?? 0}</Td>
           </tr>
         ))}
       </Table>

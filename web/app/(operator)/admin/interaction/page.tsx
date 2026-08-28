@@ -3,6 +3,7 @@
 import { getInteraction, type InteractionStatus } from '@/lib/admin'
 import { PageHead, usePoll } from '@/components/admin/ui'
 import { InteractionSwitch } from '@/components/admin/Switches'
+import { Bars } from '@/components/admin/charts'
 
 /**
  * The interaction-signals console (M6-T07).
@@ -46,6 +47,11 @@ export default function InteractionPage() {
             <strong>{data.hot_floor ?? data.k_anonymity} clicks</strong>
           </p>
 
+          {(data.top_queries?.length ?? 0) > 0 && (
+            <div className="mb-8">
+              <Bars title="Most searched (k-anonymous)" items={(data.top_queries ?? []).slice(0, 15).map((q) => ({ label: q.query, value: q.count, hint: `${q.clicks ?? 0} clicks` }))} />
+            </div>
+          )}
           <section className="mb-8">
             <h2 className="mb-2 text-base font-semibold">Search history</h2>
             <p className="mb-2 text-xs" style={{ color: 'var(--fg-faint)' }}>

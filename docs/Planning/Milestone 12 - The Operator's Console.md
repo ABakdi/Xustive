@@ -5,6 +5,7 @@ tags:
 milestone: 12
 status: in-progress
 updated: 2026-08-28
+progress: T01–T05 built 2026-08-28; open — T03.2's Run-eval action
 ---
 # Milestone 12 - The Operator's Console
 
@@ -62,50 +63,55 @@ sidebar carries each page's status dot; the overview links every page (today it 
 - [x] M12-T01.2 `components/admin/charts.tsx`: `StatTile`, `Sparkline`, `LineChart`, `Bars`,
       `Meter`, `compact()`; `--viz-*` roles in both themes, validated (adjacent CVD ΔE ≥ 8;
       light aqua/yellow under 3:1 → always direct-labelled or tabled)
-- [ ] M12-T01.3 The overview rebuilt: a hero (documents in the index), tiles with sparklines,
+- [x] M12-T01.3 The overview rebuilt: a hero (documents in the index), tiles with sparklines,
       three lines — searches and zero results, p95 latency, crawl and queue — a status strip with
       icon + colour, quick actions, and every page linked
-- [ ] M12-T01.4 The kit consolidated: one `Tile`, one `Status` dot, one `Section`, `Toggle`,
-      `NumberField`; the three inline copies removed; `--ok` replaced by `--viz-good`
+- [x] M12-T01.4 The kit consolidated: one `Tile`, one `Status` dot, one `Section`, `Toggle`,
+      `Action`; the inline tile copies route to the kit; `--ok` replaced by `--viz-good`.
+      *Settled: no separate `NumberField` — the budgets editor uses plain number inputs with one
+      Apply, which reads better than a save per field*
 
 ## M12-T02 — Runtime settings that persist
 
-- [ ] M12-T02.1 `RuntimeSettings` on the state: ranking weights (`Arc<RwLock<Weights>>`),
+- [x] M12-T02.1 `RuntimeSettings` on the state: ranking weights (`Arc<RwLock<Weights>>`),
       federation `budget_ms`/`fetch_budget_ms`/`max_hits`/`eager_index`, `collection.enabled`,
       `interaction.enabled`, `ml.summaries_enabled` — read per request
-- [ ] M12-T02.2 `PATCH /admin/settings` with a whitelist and bounds; validation through
+- [x] M12-T02.2 `PATCH /admin/settings` with a whitelist and bounds; validation through
       `Config::validate`; the change logged with the operator's peer and the old and new values
-- [ ] M12-T02.3 `config/runtime.toml` written on every accepted change and merged at startup
+- [x] M12-T02.3 `config/runtime.toml` written on every accepted change and merged at startup
       after the environment, so the console's changes survive a restart and are visible in
       `/admin/config` as "runtime override"
-- [ ] M12-T02.4 The ranking editor: ten sliders with the relevance gap rule enforced (side
+- [x] M12-T02.4 The ranking editor: ten sliders with the relevance gap rule enforced (side
       weights must stay under the gap), a preview query, Apply and Revert
-- [ ] M12-T02.5 Federation budgets, collection, interaction and summaries on their pages
+- [x] M12-T02.5 Federation budgets, collection, interaction and summaries on their pages
 
 ## M12-T03 — Every page gets its time and its control
 
-- [ ] M12-T03.1 Searches: per-day series from the events (searches, CTR, zero-result rate,
+- [x] M12-T03.1 Searches: per-day series from the events (searches, CTR, zero-result rate,
       reports) behind the tiles; the lists become bars where a bar reads faster
-- [ ] M12-T03.2 Evaluation: nDCG@10 / MRR / recall over the dated reports as a line; a *Run
-      eval* action that starts `xustive eval` and streams its result
-- [ ] M12-T03.3 Queue: depth over time from the ring; Live: a fetch-rate sparkline from the SSE
+- [~] M12-T03.2 Evaluation: nDCG@10 / MRR / recall over the dated reports as a line; a *Run
+      eval* action that starts `xustive eval` and streams its result. *The line is built; the
+      action is not — an eval run is minutes of CPU and belongs to the CLI until the API has a
+      job runner*
+- [x] M12-T03.3 Queue: depth over time from the ring; Live: a fetch-rate sparkline from the SSE
       frames the page already receives
-- [ ] M12-T03.4 Discovery and Interaction: bars; Media: the switches it says are config-only
+- [x] M12-T03.4 Discovery and Interaction: bars; Media: the switches it says are config-only
       become the runtime ones of T02 where they can (summaries) and say "restart" where they
-      cannot (sidecars); Compute: a VRAM meter
-- [ ] M12-T03.5 Documents: `hits` columns and sort (M11-T02.3), composition as bars
+      cannot (sidecars); Compute: a VRAM meter. *Settled: summaries live on Compute beside the
+      device; Media keeps its honest "restart" note for the sidecars*
+- [x] M12-T03.5 Documents: `hits` columns and sort (M11-T02.3), composition as bars
 
 ## M12-T04 — Navigation
 
-- [ ] M12-T04.1 A command palette: pages, actions (pause, toggle federation, raise logs, replay
+- [x] M12-T04.1 A command palette: pages, actions (pause, toggle federation, raise logs, replay
       DLQ…), and a document/query jump; ⌘K, `/`, Esc
-- [ ] M12-T04.2 Sidebar status dots from the overview's subsystem states; the active page's
+- [x] M12-T04.2 Sidebar status dots from the overview's subsystem states; the active page's
       section expanded
-- [ ] M12-T04.3 `scripts/bundle-budget.sh` measures `/admin` too, with its own budget
+- [x] M12-T04.3 `scripts/bundle-budget.sh` measures `/admin` too, with its own budget
 
 ## M12-T05 — Docs
 
-- [ ] M12-T05.1 [[UI - Admin Console]] rewritten for the console that exists (Next.js, polling,
+- [x] M12-T05.1 [[UI - Admin Console]] rewritten for the console that exists (Next.js, polling,
       the kit, the charts, the runtime settings); PROB-003 "not built" list updated
 
 ## Deliberately not in this milestone
@@ -114,3 +120,13 @@ sidebar carries each page's status dot; the overview links every page (today it 
 - Editing arbitrary config. The whitelist is what an operator tunes; the rest is a file and a
   restart, on purpose.
 - Multi-user admin, roles, audit beyond the log line.
+
+---
+
+> **Status 2026-08-28.** Built in a day on top of the inventory. Verified in the browser: the
+> overview's tiles, four lines and status strip; the ranking editor refusing an illegal change
+> and applying a legal one to `runtime.toml`; budgets and switches; per-day lines on Searches &
+> hits; the golden-set trend on Evaluation (it shows the recall@50 fall the gate flags, and
+> when); sort by opens/reports on Documents; the palette; the sidebar dots; admin JS 186 KB of
+> a 260 KB budget. Found on the way: the federation switch had been reset by every API restart
+> — it persists now. Open: a *Run eval* action (T03.2).

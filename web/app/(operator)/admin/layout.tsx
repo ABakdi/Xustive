@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 
 import { AdminSidebar } from '@/components/admin/AdminSidebar'
+import { CommandPalette } from '@/components/admin/CommandPalette'
 
 export const metadata: Metadata = {
   title: 'Xustive admin',
@@ -20,6 +21,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       style={{ gridTemplateColumns: '190px minmax(0, 1fr)', color: 'var(--fg)' }}
     >
       <AdminSidebar />
+        <CommandPalette />
       <main className="min-w-0">{children}</main>
     </div>
   )

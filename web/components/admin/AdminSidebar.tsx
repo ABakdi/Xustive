@@ -2,6 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
+
+import { getIntegrations, getMedia, getQueue, getStatus } from '@/lib/admin'
 
 /** Sidebar sections, in order. Real URLs, one per section — bookmarkable and each loads on its own. */
 const SECTIONS: { group: string; label: string; href: string }[] = [
@@ -23,7 +26,54 @@ const SECTIONS: { group: string; label: string; href: string }[] = [
   { group: 'SYSTEM', label: 'Maintenance', href: '/admin/maintenance' },
 ]
 
+/** A dot per page whose subject has a state worth a glance (M12-T04.2). */
+function useDots() {
+  const [dots, setDots] = useState<Record<string, 'on' | 'warn' | 'critical' | 'off'>>({})
+  useEffect(() => {
+    let alive = true
+    const tick = async () => {
+      const next: Record<string, 'on' | 'warn' | 'critical' | 'off'> = {}
+      try {
+        const st = await getStatus()
+        next['/admin/live'] = st.unavailable ? 'off' : st.paused ? 'warn' : 'on'
+      } catch {
+        next['/admin/live'] = 'off'
+      }
+      try {
+        const q = await getQueue()
+        const pct = q.capacity?.redis_pct
+        next['/admin/queue'] = pct == null ? 'on' : pct >= 85 ? 'critical' : pct >= 80 ? 'warn' : 'on'
+        if ((q.dead_count ?? 0) > 0 && next['/admin/queue'] === 'on') next['/admin/queue'] = 'warn'
+      } catch {
+        next['/admin/queue'] = 'off'
+      }
+      try {
+        const i = await getIntegrations()
+        next['/admin/integrations'] = i.federation?.enabled ? (i.federation.reachable_from_api ? 'on' : 'warn') : 'off'
+      } catch {
+        next['/admin/integrations'] = 'off'
+      }
+      try {
+        const m = await getMedia()
+        const up = (m.ocr?.healthy ?? true) && (!m.stt?.enabled || m.stt.healthy) && (!m.vector?.enabled || m.vector.qdrant_reachable)
+        next['/admin/media'] = up ? 'on' : 'warn'
+      } catch {
+        next['/admin/media'] = 'off'
+      }
+      if (alive) setDots(next)
+    }
+    void tick()
+    const id = setInterval(tick, 60_000)
+    return () => {
+      alive = false
+      clearInterval(id)
+    }
+  }, [])
+  return dots
+}
+
 export function AdminSidebar() {
+  const dots = useDots()
   const path = usePathname()
   let lastGroup: string | null = null
   return (
@@ -55,6 +105,9 @@ export function AdminSidebar() {
               }}
             >
               {s.label}
+            {dots[s.href] && (
+              <span aria-hidden className="ms-2 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: dots[s.href] === 'on' ? 'var(--viz-good)' : dots[s.href] === 'warn' ? 'var(--viz-warning)' : dots[s.href] === 'critical' ? 'var(--viz-critical)' : 'var(--fg-faint)' }} />
+            )}
             </Link>
           </div>
         )

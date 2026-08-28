@@ -5,7 +5,7 @@ import { PageHead, usePoll } from '@/components/admin/ui'
 
 /** A green/amber status dot with a label — up, down, or unknown. */
 function Dot({ ok, label }: { ok: boolean | undefined; label: string }) {
-  const color = ok === undefined ? 'var(--fg-faint)' : ok ? 'var(--ok, #2e7d32)' : 'var(--warn, #b26a00)'
+  const color = ok === undefined ? 'var(--fg-faint)' : ok ? 'var(--viz-good)' : 'var(--viz-warning)'
   return (
     <span className="inline-flex items-center gap-2">
       <span

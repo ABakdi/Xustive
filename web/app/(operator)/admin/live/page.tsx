@@ -4,23 +4,21 @@ import { useEffect, useState } from 'react'
 
 import { setCrawlPaused, type Snapshot } from '@/lib/admin'
 import { PageHead, Table, Td, Th } from '@/components/admin/ui'
+import { StatTile } from '@/components/admin/charts'
 import { ForceCrawl } from '@/components/admin/ForceCrawl'
 
-function Tile({ n, label }: { n: number | string; label: string }) {
-  return (
-    <div className="flex flex-col gap-0.5 border px-4 py-3" style={{ borderColor: 'var(--line)', minInlineSize: '110px' }}>
-      <span className="text-2xl font-medium tabular-nums">{n}</span>
-      <span className="text-xs" style={{ color: 'var(--fg-muted)' }}>
-        {label}
-      </span>
-    </div>
-  )
+/** The kit's tile (M12-T01.4); the page adds a per-second rate behind the counters it can. */
+function Tile({ n, label, trend }: { n: number | string; label: string; trend?: (number | null)[] }) {
+  return <StatTile label={label} value={n} trend={trend} />
 }
 
 export default function LivePage() {
   const [pauseBusy, setPauseBusy] = useState(false)
   const [snap, setSnap] = useState<Snapshot | null>(null)
   const [down, setDown] = useState(false)
+  // The last two minutes of frames, so the counters get a rate behind them (M12-T03.3): the
+  // stream is absolute values once a second, and a difference per frame is a per-second rate.
+  const [frames, setFrames] = useState<Snapshot[]>([])
 
   useEffect(() => {
     // The one live connection carries every number on the page — absolute values, never deltas, so
@@ -28,7 +26,9 @@ export default function LivePage() {
     const es = new EventSource('/api/v1/admin/crawler/events')
     es.onmessage = (e) => {
       try {
-        setSnap(JSON.parse(e.data))
+        const next = JSON.parse(e.data) as Snapshot
+        setSnap(next)
+        setFrames((f) => [...f.slice(-119), next])
         setDown(false)
       } catch {
         /* ignore a partial frame */
@@ -39,6 +39,18 @@ export default function LivePage() {
   }, [])
 
   const s = snap
+  // Per-second rates from consecutive frames, in ~10 s buckets: twelve points over two minutes.
+  const rate = (field: 'fetched' | 'indexed' | 'discovered' | 'failed') => {
+    if (frames.length < 2) return undefined
+    const out: (number | null)[] = []
+    for (let i = 0; i < frames.length - 1; i += 10) {
+      const a = frames[i]!
+      const b = frames[Math.min(i + 10, frames.length - 1)]!
+      const span = Math.max(1, Math.min(i + 10, frames.length - 1) - i)
+      out.push(Math.max(0, ((b[field] ?? 0) - (a[field] ?? 0)) / span))
+    }
+    return out
+  }
   const skips = s ? Object.entries(s.skipped).sort((a, b) => b[1] - a[1]) : []
   const hosts = s ? Object.entries(s.hosts).sort((a, b) => b[1] - a[1]).slice(0, 20) : []
 
@@ -92,16 +104,16 @@ export default function LivePage() {
 
       <div className="mb-6 mt-1 flex flex-wrap gap-3">
         <Tile n={s?.paused ? 'paused' : (s?.state ?? '…')} label="state" />
-        <Tile n={s?.fetched ?? 0} label="fetched" />
+        <Tile n={s?.fetched ?? 0} label="fetched" trend={rate('fetched')} />
         <Tile n={s?.revisited ?? 0} label="revisited" />
         <Tile n={s?.parsed ?? 0} label="parsed" />
         {/* Media enumerated apart from pages (M9): a page is one "parsed" however many pictures
             it carries, and the count of pictures is a different fact about the crawl. */}
         <Tile n={s?.images ?? 0} label="images found" />
         <Tile n={s?.videos ?? 0} label="videos found" />
-        <Tile n={s?.indexed ?? 0} label="indexed" />
-        <Tile n={s?.discovered ?? 0} label="discovered" />
-        <Tile n={s?.failed ?? 0} label="failed" />
+        <Tile n={s?.indexed ?? 0} label="indexed" trend={rate('indexed')} />
+        <Tile n={s?.discovered ?? 0} label="discovered" trend={rate('discovered')} />
+        <Tile n={s?.failed ?? 0} label="failed" trend={rate('failed')} />
         <Tile n={s?.waiting ?? 0} label="waiting" />
         <Tile n={s?.inflight ?? 0} label="in flight" />
         <Tile n={s?.deferred ?? 0} label="deferred (revisit)" />

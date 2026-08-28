@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { getCompute, setDevice, setLogLevel, setPoliteness } from '@/lib/admin'
 import { RankingEditor } from '@/components/admin/RankingEditor'
+import { Meter } from '@/components/admin/charts'
 import { SummariesSwitch } from '@/components/admin/Switches'
 import { PageHead } from '@/components/admin/ui'
 
@@ -76,6 +77,12 @@ export default function ComputePage() {
           </>
         ) : null}
       </p>
+
+      {resolved.gpu?.total_mib != null && resolved.gpu?.free_mib != null && (
+        <div className="mb-6 max-w-md">
+          <Meter label="VRAM in use" value={resolved.gpu.total_mib - resolved.gpu.free_mib} max={resolved.gpu.total_mib} unit="MB" />
+        </div>
+      )}
 
       {/* Which index this deployment actually serves — returned by the API since M4 and never
           rendered anywhere (PROB-003). */}
