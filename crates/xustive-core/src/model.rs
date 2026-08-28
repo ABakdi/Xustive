@@ -428,8 +428,11 @@ pub struct Document {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub web: Option<WebEndorsement>,
     /// `web` folded to one number in `[0, 1]` so the index can break ties on it
-    /// (`endorsement:desc`) and the re-rank can weight it. `0.0` when never endorsed.
-    #[serde(default)]
+    /// (`endorsement:desc`) and the re-rank can weight it. `0.0` when never endorsed — and
+    /// *not serialised* then: the endorse sink is the only writer, and every other writer
+    /// (the eager document, the full crawl) reaches the index as a merge that must not zero
+    /// what the sink wrote.
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub endorsement: f32,
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
@@ -437,6 +440,10 @@ pub struct Document {
 
 fn default_true() -> bool {
     true
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
 }
 
 /// The web's verdict on a page, distilled from query-time federation ([[ADR-0031]]).

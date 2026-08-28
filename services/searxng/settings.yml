@@ -20,3 +20,27 @@ search:
   formats:
     - html
     - json
+
+# More engines than the image's four defaults (M13). All four — Brave, DuckDuckGo, Google CSE,
+# Startpage — suspend a small instance within a day ("too many requests", CAPTCHA), which left
+# the federation returning nothing at all on 2026-08-28. These do not, and several engines
+# agreeing on a URL is what makes an endorsement (ADR-0031) worth more than one engine's say.
+engines:
+  - name: wikipedia
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: qwant
+    disabled: false
+  - name: mojeek
+    disabled: false
+  - name: yahoo
+    disabled: false
+  - name: wikidata
+    disabled: false
+
+outgoing:
+  # The image default (3 s) times Bing and Yahoo out from here; the gateway's own budget
+  # still caps what a search waits for.
+  request_timeout: 4.0
+  max_request_timeout: 6.0

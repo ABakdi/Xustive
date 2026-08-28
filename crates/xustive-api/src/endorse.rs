@@ -26,7 +26,6 @@ use xustive_core::model::WebEndorsement;
 use xustive_search::MeiliClient;
 
 const QUEUE: usize = 4096;
-const BATCH: usize = 200;
 const FLUSH_EVERY: Duration = Duration::from_secs(2);
 
 /// One sighting of a URL in a federated response.
@@ -78,38 +77,74 @@ impl EndorseSink {
     }
 }
 
+/// How many flushes a batch survives a failed read before it is dropped. The read is a
+/// filtered search, and the engine that is too busy to answer it is usually busy indexing a
+/// crawl batch — a condition that clears in minutes, which is what the retries wait out.
+const MAX_ATTEMPTS: u32 = 30;
+
 async fn writer(
     client: Arc<MeiliClient>,
     mut rx: mpsc::Receiver<Sighting>,
     written: Arc<AtomicU64>,
 ) {
     let mut batch: Vec<Sighting> = Vec::new();
+    let mut attempts: u32 = 0;
     let mut tick = tokio::time::interval(FLUSH_EVERY);
     loop {
+        // Sightings accumulate; the tick writes them. One federated response is twenty-odd
+        // sightings arriving together, and one read + one write per tick is the point.
         tokio::select! {
             job = rx.recv() => match job {
-                Some(s) => batch.push(s),
+                Some(s) => { batch.push(s); continue; }
                 None => break,
             },
             _ = tick.tick() => {}
         }
-        if batch.len() >= BATCH || (!batch.is_empty() && tick.period() == FLUSH_EVERY) {
-            flush(&client, &mut batch, &written).await;
+        if batch.is_empty() {
+            continue;
+        }
+        // A failed read keeps the batch for a later tick, with a widening pause: the ticks
+        // keep coming every two seconds, so the wait is counted in ticks skipped.
+        if attempts > 0 && !tick_due(attempts) {
+            attempts += 1;
+            continue;
+        }
+        match flush(&client, &mut batch, &written).await {
+            Ok(()) => attempts = 0,
+            Err(()) => {
+                attempts += 1;
+                if attempts >= MAX_ATTEMPTS {
+                    tracing::warn!(n = batch.len(), "endorse: batch dropped after retries");
+                    batch.clear();
+                    attempts = 0;
+                }
+            }
         }
     }
-    flush(&client, &mut batch, &written).await;
+    let _ = flush(&client, &mut batch, &written).await;
 }
 
-/// Fold a batch of sightings into the documents they name and write the updates.
-async fn flush(client: &MeiliClient, batch: &mut Vec<Sighting>, written: &AtomicU64) {
+/// Retry on the 2nd, 4th, 8th, 16th tick after a failure, then every sixteenth — a long
+/// outage is polled every half minute, not hammered.
+fn tick_due(attempts: u32) -> bool {
+    attempts.is_power_of_two() || attempts % 16 == 0
+}
+
+/// Fold a batch of sightings into the documents they name and write the updates. `Err` means
+/// the batch is intact and should be retried; `Ok` means it was written or had nothing to write.
+async fn flush(
+    client: &MeiliClient,
+    batch: &mut Vec<Sighting>,
+    written: &AtomicU64,
+) -> Result<(), ()> {
     if batch.is_empty() {
-        return;
+        return Ok(());
     }
-    let sightings = std::mem::take(batch);
     let Ok(index) = client.resolve(xustive_search::settings::DOCUMENTS).await else {
-        tracing::warn!("endorse: documents index unresolved; batch dropped");
-        return;
+        tracing::warn!("endorse: documents index unresolved; will retry");
+        return Err(());
     };
+    let sightings = std::mem::take(batch);
     // The current records, one filtered read for the batch.
     let mut ids: Vec<&str> = sightings.iter().map(|s| s.id.as_str()).collect();
     ids.sort_unstable();
@@ -133,20 +168,29 @@ async fn flush(client: &MeiliClient, batch: &mut Vec<Sighting>, written: &Atomic
             })
             .collect(),
         Err(e) => {
-            tracing::warn!(error = %e, "endorse: read failed; batch dropped");
-            return;
+            tracing::warn!(error = %e, n = sightings.len(), "endorse: read failed; will retry");
+            *batch = sightings;
+            return Err(());
         }
     };
     let now = xustive_core::now_unix();
+    let n = sightings.len();
     let updates = fold(sightings, &current, now);
     if updates.is_empty() {
-        return;
+        return Ok(());
     }
     match client.update_documents(&index, &updates).await {
         Ok(_) => {
             written.fetch_add(updates.len() as u64, Ordering::Relaxed);
+            tracing::info!(sightings = n, documents = updates.len(), "endorse: written");
+            Ok(())
         }
-        Err(e) => tracing::warn!(error = %e, "endorse: write failed"),
+        Err(e) => {
+            // The engine took the read but not the write: nothing to retry from — the folded
+            // values would double-count on a second pass — so this one is lost and said so.
+            tracing::warn!(error = %e, "endorse: write failed; batch lost");
+            Ok(())
+        }
     }
 }
 
