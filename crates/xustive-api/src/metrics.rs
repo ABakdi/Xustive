@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Latency buckets in seconds, chosen around the search budget (p95 ≤ 200 ms).
-const BUCKETS: &[f64] = &[0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.5, 3.0, 10.0];
+pub const BUCKETS: &[f64] = &[0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.5, 3.0, 10.0];
 
 type Labels = Vec<(&'static str, String)>;
 
@@ -171,6 +171,44 @@ impl Metrics {
                     .sum()
             })
             .unwrap_or(0)
+    }
+
+    /// Count and sum of a histogram across all its series, for rates and means.
+    pub fn histogram_totals(&self, name: &str) -> (u64, f64) {
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner
+            .histograms
+            .get(name)
+            .map(|fam| {
+                fam.series
+                    .values()
+                    .fold((0u64, 0f64), |(c, s), (_, _, count, sum)| {
+                        (
+                            c + count.load(Ordering::Relaxed),
+                            s + *sum.lock().unwrap_or_else(|e| e.into_inner()),
+                        )
+                    })
+            })
+            .unwrap_or((0, 0.0))
+    }
+
+    /// The cumulative bucket counts of a histogram, summed across series — a snapshot the
+    /// console's sampler diffs against the previous one to get a quantile *for the interval*,
+    /// which is what a chart of "p95 over the last hour" actually needs.
+    pub fn histogram_buckets(&self, name: &str, key: &str, value: &str) -> Vec<u64> {
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut out = vec![0u64; BUCKETS.len()];
+        if let Some(fam) = inner.histograms.get(name) {
+            for (labels, buckets, _, _) in fam.series.values() {
+                if !key.is_empty() && !labels.iter().any(|(k, v)| *k == key && v == value) {
+                    continue;
+                }
+                for (i, b) in buckets.iter().enumerate() {
+                    out[i] += b.load(Ordering::Relaxed);
+                }
+            }
+        }
+        out
     }
 
     /// Total across series whose labels contain a given key/value pair.

@@ -104,7 +104,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let bind = config.api.bind_addr.clone();
-    let state = AppState::new(config)?;
+    let mut state = AppState::new(config)?;
+    // The console's vitals ring (M12): samples the registry every 30 s from here on.
+    state.timeseries = Some(xustive_api::timeseries::start(state.clone()));
     state.resolve_index().await;
     state.refresh_suggestions().await;
     // Connect the anonymous interaction store if enabled (M6). Non-fatal if Redis is down.

@@ -114,3 +114,108 @@ export function usePoll<T>(fn: (signal: AbortSignal) => Promise<T>, ms: number) 
 
   return { data, error, loading }
 }
+
+/** One status dot for the whole console: an icon shape *and* a colour, never colour alone. */
+export function Status({
+  state,
+  label,
+  detail,
+}: {
+  state: 'on' | 'off' | 'warn' | 'critical'
+  label: string
+  detail?: string
+}) {
+  const color =
+    state === 'on' ? 'var(--viz-good)' : state === 'warn' ? 'var(--viz-warning)' : state === 'critical' ? 'var(--viz-critical)' : 'var(--fg-faint)'
+  const glyph = state === 'on' ? '●' : state === 'warn' ? '▲' : state === 'critical' ? '■' : '○'
+  return (
+    <div className="flex items-center gap-2 rounded border px-3 py-2 text-sm" style={{ borderColor: 'var(--line)', background: 'var(--surface)' }}>
+      <span aria-hidden className="text-[10px]" style={{ color }}>
+        {glyph}
+      </span>
+      <span className="sr-only">{state}</span>
+      <span className="font-medium">{label}</span>
+      {detail && <span style={{ color: 'var(--fg-muted)' }}>{detail}</span>}
+    </div>
+  )
+}
+
+/** A titled block with the one-line hint that says what to do with it. */
+export function Section({ title, hint, children, actions }: { title: string; hint?: string; children: React.ReactNode; actions?: React.ReactNode }) {
+  return (
+    <section className="mb-8">
+      <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 className="m-0 text-base font-semibold">{title}</h2>
+          {hint && <p className="m-0 text-xs" style={{ color: 'var(--fg-faint)' }}>{hint}</p>}
+        </div>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+/** A switch that says what it is doing: idle, saving, saved, or why it failed. */
+export function Toggle({
+  label,
+  checked,
+  onChange,
+  disabled,
+  hint,
+}: {
+  label: string
+  checked: boolean
+  onChange: (next: boolean) => Promise<void> | void
+  disabled?: boolean
+  hint?: string
+}) {
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  return (
+    <label className="flex items-center gap-3 text-sm">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        disabled={disabled || busy}
+        onClick={async () => {
+          setBusy(true)
+          setNote(null)
+          try {
+            await onChange(!checked)
+          } catch (e) {
+            setNote((e as Error).message)
+          } finally {
+            setBusy(false)
+          }
+        }}
+        className="relative h-5 w-9 shrink-0 rounded-full transition-colors"
+        style={{ background: checked ? 'var(--accent)' : 'var(--line-strong)', opacity: disabled ? 0.5 : 1 }}
+      >
+        <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform" style={{ insetInlineStart: 2, transform: checked ? 'translateX(16px)' : 'none' }} />
+      </button>
+      <span>
+        <span className="font-medium">{label}</span>
+        {hint && <span className="ms-2 text-xs" style={{ color: 'var(--fg-faint)' }}>{hint}</span>}
+        {busy && <span className="ms-2 text-xs" style={{ color: 'var(--fg-faint)' }}>saving…</span>}
+        {note && <span className="ms-2 text-xs" style={{ color: 'var(--viz-critical)' }}>{note}</span>}
+      </span>
+    </label>
+  )
+}
+
+/** A quiet action button; `danger` for the ones that delete. */
+export function Action({ children, onClick, danger, disabled, busy }: { children: React.ReactNode; onClick: () => void | Promise<void>; danger?: boolean; disabled?: boolean; busy?: boolean }) {
+  return (
+    <button
+      type="button"
+      className={`chip cursor-pointer ${danger ? '' : 'chip-active'}`}
+      disabled={disabled || busy}
+      onClick={() => void onClick()}
+      style={danger ? { color: 'var(--viz-critical)' } : undefined}
+    >
+      {busy ? '…' : children}
+    </button>
+  )
+}

@@ -503,3 +503,30 @@ export function getVisitorEvents(visitor: string, signal?: AbortSignal) {
 export function forgetVisitor(visitor: string): Promise<{ deleted: number }> {
   return postJSON<{ deleted: number }>('/events/forget', { visitor })
 }
+
+/** The console's 24 h vitals ring (M12-T01.1): one point per 30 s, oldest first. */
+export interface VitalsPoint {
+  at: number
+  searches: number
+  zero_results: number
+  rate_limited: number
+  degraded: number
+  search_p95_ms: number | null
+  summaries: number
+  summary_p95_ms: number | null
+  fetched: number
+  indexed: number
+  failed: number
+  frontier_waiting: number
+  inflight: number
+  events_written: number
+  events_dropped: number
+}
+export interface Timeseries {
+  step_seconds: number
+  hours: number
+  points: VitalsPoint[]
+}
+export function getTimeseries(hours: number) {
+  return (signal?: AbortSignal) => getJSON<Timeseries>(`/timeseries?hours=${hours}`, signal)
+}

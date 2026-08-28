@@ -504,3 +504,70 @@ bdi,
 dialog::backdrop {
   background: rgba(0, 0, 0, 0.55);
 }
+
+/* Operator-console charts (M12). Roles, not hexes, so light and dark swap in one place. The
+ * categorical order is validated (CVD ΔE ≥ 8 adjacent, ≥ 3:1 on the dark surface; the light
+ * aqua/yellow sit under 3:1 and so are always direct-labelled or tabled). Series 1 is the brand. */
+:root {
+  --viz-1: #5356f4;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-other: #8c8f93;
+  --viz-seq-1: #c9cbfb;
+  --viz-seq-2: #9a9df7;
+  --viz-seq-3: #5356f4;
+  --viz-seq-4: #3236c9;
+  --viz-good: #0ca30c;
+  --viz-warning: #ae6700;
+  --viz-critical: #be2f2c;
+  --viz-grid: #e6e7ea;
+  --viz-axis: #c3c5c9;
+  --viz-area-alpha: 0.1;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --viz-1: #7d82f5;
+    --viz-2: #d95926;
+    --viz-3: #199e70;
+    --viz-4: #c98500;
+    --viz-other: #6b6e75;
+    --viz-seq-1: #33366e;
+    --viz-seq-2: #4d51b0;
+    --viz-seq-3: #7d82f5;
+    --viz-seq-4: #b0b3ff;
+    --viz-good: #2fbf3a;
+    --viz-warning: #fab219;
+    --viz-critical: #e66767;
+    --viz-grid: #23262c;
+    --viz-axis: #383b43;
+  }
+}
+:root[data-theme='dark'] {
+  --viz-1: #7d82f5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-other: #6b6e75;
+  --viz-seq-1: #33366e;
+  --viz-seq-2: #4d51b0;
+  --viz-seq-3: #7d82f5;
+  --viz-seq-4: #b0b3ff;
+  --viz-good: #2fbf3a;
+  --viz-warning: #fab219;
+  --viz-critical: #e66767;
+  --viz-grid: #23262c;
+  --viz-axis: #383b43;
+}
+.viz-tip {
+  position: absolute;
+  pointer-events: none;
+  z-index: var(--z-dropdown);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: var(--text-xs);
+  box-shadow: var(--shadow-lift);
+  white-space: nowrap;
+}

@@ -121,6 +121,8 @@ pub struct AppState {
     pub token_context: Arc<std::sync::RwLock<HashMap<String, (String, Vec<String>)>>>,
     /// The first-party events sink ([[ADR-0030]]); `None` when `[collection] enabled = false`.
     pub events: Option<crate::events::EventSink>,
+    /// The console's short memory of the system's vitals (M12), started after the state exists.
+    pub timeseries: Option<crate::timeseries::Ring>,
     /// Live crawl counters, connected **once** with a shared auto-reconnecting manager. Reused by
     /// every `/crawler/events` SSE frame and metrics sample rather than reconnecting per call — the
     /// per-frame reconnect was what surfaced a transient blip as "Redis unreachable" on the Live
@@ -364,6 +366,7 @@ impl AppState {
             interaction_tokens: Arc::new(std::sync::RwLock::new(HashMap::new())),
             token_context: Arc::new(std::sync::RwLock::new(HashMap::new())),
             events,
+            timeseries: None,
             crawl_stats: Arc::new(std::sync::RwLock::new(None)),
             limiter: Arc::new(RateLimiter::new()),
             pending: Arc::new(PendingStore::default()),

@@ -30,6 +30,7 @@ pub mod suggest;
 pub mod summary;
 pub mod telemetry;
 pub mod text_search;
+pub mod timeseries;
 pub mod tools;
 pub mod translate;
 pub mod weather;
@@ -223,6 +224,7 @@ pub fn app(state: AppState) -> Router {
         .route("/media", get(admin::media))
         .route("/interaction", get(admin::interaction))
         // First-party search events (M11-T04): the overview, one visitor, and forgetting one.
+        .route("/timeseries", get(timeseries::handler))
         .route("/events/overview", get(events::overview))
         .route("/events/visitor", get(events::visitor))
         .route("/events/forget", axum::routing::post(events::forget))

@@ -49,7 +49,7 @@ fn frontier(state: &AppState) -> Option<xustive_ingest::frontier::Frontier> {
 }
 
 /// The full picture: counters, recent URLs, per-host activity, frontier depth.
-async fn snapshot(state: &AppState) -> xustive_ingest::crawl_stats::Snapshot {
+pub(crate) async fn snapshot(state: &AppState) -> xustive_ingest::crawl_stats::Snapshot {
     let Some(s) = stats(state).await else {
         return xustive_ingest::crawl_stats::Snapshot {
             unavailable: true,
