@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { getCompute, setDevice, setLogLevel, setPoliteness } from '@/lib/admin'
 import { RankingEditor } from '@/components/admin/RankingEditor'
 import { Meter } from '@/components/admin/charts'
-import { SummariesSwitch } from '@/components/admin/Switches'
+import { RerankerSwitch, SummariesSwitch } from '@/components/admin/Switches'
 import { PageHead } from '@/components/admin/ui'
 
 interface Resolved {
@@ -233,6 +233,7 @@ export default function ComputePage() {
       <h2 className="mb-2 text-lg font-semibold">Summaries</h2>
       <div className="mb-8">
         <SummariesSwitch />
+        <RerankerSwitch />
       </div>
 
       {/* Runtime log verbosity. A temporary raise auto-reverts, so turning on debug to chase an

@@ -122,6 +122,9 @@ export const forgetWeakTerm = (term: string) =>
 export interface DocHit {
   /** Opens and reports from the first-party events (M11-T02). */
   hits?: { opens?: number; reports?: number; last_opened_at?: number }
+  /** The web's verdict (ADR-0031, M13). */
+  web?: { seen?: number; engines?: string[]; best_rank?: number; score?: number; last_seen_at?: number }
+  endorsement?: number
   id: string
   title?: string
   url: string
@@ -565,6 +568,7 @@ export interface RankingWeights {
   authority: number
   quality: number
   interaction: number
+  endorsement: number
   spam_penalty: number
   unknown_date_factor: number
   per_domain_cap: number
@@ -574,7 +578,7 @@ export interface RuntimeSettings {
   ranking: RankingWeights
   federation: { budget_ms: number; fetch_budget_ms: number; max_hits: number; eager_index: boolean }
   collection: { enabled: boolean }
-  ml: { summaries_enabled: boolean }
+  ml: { summaries_enabled: boolean; reranker_enabled: boolean }
   interaction: { enabled: boolean }
   overridden: string[]
   changed?: string[]
@@ -584,7 +588,7 @@ export type SettingsPatch = {
   ranking?: RankingWeights
   federation?: Partial<RuntimeSettings['federation']>
   collection?: { enabled: boolean }
-  ml?: { summaries_enabled: boolean }
+  ml?: { summaries_enabled?: boolean; reranker_enabled?: boolean }
   interaction?: { enabled: boolean }
 }
 export const getSettings = (signal?: AbortSignal) => getJSON<RuntimeSettings>('/settings', signal)

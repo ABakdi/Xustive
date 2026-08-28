@@ -24,6 +24,7 @@ const SLIDERS: [keyof RankingWeights, string][] = [
   ['authority', 'Authority — the domain’s curated prior and PageRank'],
   ['quality', 'Quality — length, structure, and no spam signals'],
   ['interaction', 'Interaction — the anonymous click-through term (ADR-0015)'],
+  ['endorsement', 'Endorsement — how often and how high the web returned the page (ADR-0031)'],
   ['spam_penalty', 'Spam penalty — subtracted from pages the classifier flags'],
   ['unknown_date_factor', 'Unknown-date factor — multiplier for pages whose date was guessed'],
 ]
@@ -35,7 +36,7 @@ export function checkWeights(w: RankingWeights): string | null {
   }
   if (w.per_domain_cap < 1 || w.per_domain_cap > 20) return 'per-domain cap must be between 1 and 20'
   if (w.simhash_collapse_distance > 16) return 'simhash collapse distance must be at most 16'
-  const side = w.freshness + w.trust + w.authority + w.quality + w.interaction
+  const side = w.freshness + w.trust + w.authority + w.quality + w.interaction + (w.endorsement ?? 0)
   if (w.relevance <= side) return `relevance (${w.relevance.toFixed(2)}) must stay above the side signals together (${side.toFixed(2)})`
   const gap20 = w.relevance * (1 - Math.exp(-20 / RELEVANCE_DECAY))
   if (side >= gap20) return `side signals (${side.toFixed(2)}) could bridge a 20-position relevance gap (${gap20.toFixed(2)}) — lower them or raise relevance`
@@ -65,7 +66,7 @@ export function RankingEditor() {
   const dirty = useMemo(() => JSON.stringify(w) !== JSON.stringify(held), [w, held])
   if (!w) return <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>{note ?? 'Loading…'}</p>
 
-  const side = w.freshness + w.trust + w.authority + w.quality + w.interaction
+  const side = w.freshness + w.trust + w.authority + w.quality + w.interaction + (w.endorsement ?? 0)
   const gap20 = w.relevance * (1 - Math.exp(-20 / RELEVANCE_DECAY))
   const set = (k: keyof RankingWeights, v: number | boolean) => setW({ ...w, [k]: v })
 
@@ -84,7 +85,7 @@ export function RankingEditor() {
       <label className="mb-3 flex items-center gap-2 text-sm">
         <input type="checkbox" checked={w.federated_first} onChange={(e) => setW({ ...w, federated_first: e.target.checked })} />
         <span className="font-medium">Federated results first</span>
-        <span className="text-xs" style={{ color: 'var(--fg-faint)' }}>pages a proper search engine returned for the query rank above local matches — a tier, not a weight</span>
+        <span className="text-xs" style={{ color: 'var(--fg-faint)' }}>pages the web endorsed — born from a federated hit, or crawled and later returned by the web — rank above local matches — a tier, not a weight</span>
       </label>
       <ul className="m-0 flex flex-col gap-2 p-0" style={{ listStyle: 'none' }}>
         {SLIDERS.map(([k, hint]) => (

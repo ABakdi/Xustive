@@ -19,6 +19,9 @@ export default function LivePage() {
   // The last two minutes of frames, so the counters get a rate behind them (M12-T03.3): the
   // stream is absolute values once a second, and a difference per frame is a per-second rate.
   const [frames, setFrames] = useState<Snapshot[]>([])
+  // Filters over the recent URLs (M12): a host or URL fragment, and an outcome.
+  const [needle, setNeedle] = useState('')
+  const [outcome, setOutcome] = useState('')
 
   useEffect(() => {
     // The one live connection carries every number on the page — absolute values, never deltas, so
@@ -120,9 +123,16 @@ export default function LivePage() {
       </div>
 
       <h2 className="mb-2 mt-8 text-lg font-semibold">Recent URLs</h2>
+      <p className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+        <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="host or url…" className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 220 }} aria-label="Filter recent URLs" />
+        <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Outcome">
+          <option value="">any outcome</option>
+          {Array.from(new Set((s?.recent ?? []).map((u) => String((u as { outcome?: string }).outcome ?? '')).filter(Boolean))).sort().map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </p>
       <Table head={<><Th>at</Th><Th>outcome</Th><Th>host</Th>
               <Th num>media</Th><Th>url</Th><Th num>words</Th></>}>
-        {(s?.recent ?? []).map((r, i) => (
+        {(s?.recent ?? []).filter((r) => (!needle || `${(r as { host?: string }).host ?? ''} ${(r as { url?: string }).url ?? ''}`.toLowerCase().includes(needle.toLowerCase())) && (!outcome || String((r as { outcome?: string }).outcome ?? '') === outcome)).map((r, i) => (
           <tr key={`${r.url}-${i}`}>
             {/* host and at arrived in every frame and were dropped (PROB-003). */}
             <Td>{r.at ? new Date(r.at * 1000).toLocaleTimeString() : '—'}</Td>

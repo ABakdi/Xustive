@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+
 import { getInteraction, type InteractionStatus } from '@/lib/admin'
 import { PageHead, usePoll } from '@/components/admin/ui'
 import { InteractionSwitch } from '@/components/admin/Switches'
@@ -15,6 +17,7 @@ import { Bars } from '@/components/admin/charts'
  */
 export default function InteractionPage() {
   const { data, error } = usePoll<InteractionStatus>(getInteraction, 15_000)
+  const [needle, setNeedle] = useState('')
 
   return (
     <>
@@ -54,6 +57,9 @@ export default function InteractionPage() {
           )}
           <section className="mb-8">
             <h2 className="mb-2 text-base font-semibold">Search history</h2>
+            <p className="mb-2">
+              <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="filter queries…" dir="auto" className="rounded border px-2 py-1 text-sm" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 220 }} aria-label="Filter queries" />
+            </p>
             <p className="mb-2 text-xs" style={{ color: 'var(--fg-faint)' }}>
               Every term searched, how many results it returned, and how many of those were clicked.
               Anonymous by construction — no IP, user-agent, or session is stored, only the term and
@@ -71,7 +77,7 @@ export default function InteractionPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.top_queries.map((q) => (
+                  {data.top_queries.filter((q) => !needle || q.query.toLowerCase().includes(needle.toLowerCase())).map((q) => (
                     <tr key={q.query}>
                       <td className="border-b py-1" style={{ borderColor: 'var(--line)' }} dir="auto">{q.query}</td>
                       <td className="border-b py-1" style={{ borderColor: 'var(--line)' }}>{q.category}</td>

@@ -8,6 +8,7 @@ import { PageHead, StatusLine, Table, Td, Th, usePoll } from '@/components/admin
 export default function WeakCoveragePage() {
   const { data, error } = usePoll(getWeakCoverage, 15_000)
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const [needle, setNeedle] = useState('')
   const k = data?.k_anonymity ?? 20
   const terms = data?.terms ?? []
   const entities = data?.entities ?? []
@@ -48,6 +49,11 @@ export default function WeakCoveragePage() {
                 : 'No coverage gaps yet — search for something the corpus does not have.'}
       </StatusLine>
       {data?.enabled && terms.length > 0 ? (
+        <p className="mb-2">
+          <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="filter terms…" dir="auto" className="rounded border px-2 py-1 text-sm" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 220 }} aria-label="Filter terms" />
+        </p>
+      ) : null}
+      {data?.enabled && terms.length > 0 ? (
         <Table
           head={
             <>
@@ -57,7 +63,7 @@ export default function WeakCoveragePage() {
             </>
           }
         >
-          {terms.filter((t) => !dismissed.has(t.term)).map((t) => (
+          {terms.filter((t) => !dismissed.has(t.term) && (!needle || t.term.toLowerCase().includes(needle.toLowerCase()))).map((t) => (
             <tr key={t.term}>
               {/* The term is a user's search text — React escapes it by rendering as a text node. */}
               <Td>{t.term}</Td>

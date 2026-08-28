@@ -22,7 +22,7 @@ export default function DocumentsPage() {
   // `image` / `video` / '' — the media drill-in (M9), applied immediately like the channel one.
   const [media, setMedia] = useState('')
   // The order of the listing (M12-T03.5): newest, or what readers opened or reported most.
-  const [sort, setSort] = useState<'' | 'opens' | 'reports'>('')
+  const [sort, setSort] = useState<'' | 'opens' | 'reports' | 'endorsement'>('')
   // The *applied* filters, updated only on submit — so typing does not refetch per keystroke.
   const [applied, setApplied] = useState({ q: '', host: '', lang: '', channel: '', media: '' })
   const [page, setPage] = useState(1)
@@ -240,7 +240,7 @@ export default function DocumentsPage() {
 
       <p className="mb-3 flex flex-wrap items-center gap-2 text-sm" style={{ color: 'var(--fg-muted)' }}>
         <span>Order:</span>
-        {([['', 'newest'], ['opens', 'most opened'], ['reports', 'most reported']] as const).map(([v, label]) => (
+        {([['', 'newest'], ['opens', 'most opened'], ['reports', 'most reported'], ['endorsement', 'most endorsed']] as const).map(([v, label]) => (
           <button key={v} type="button" className={`chip ${sort === v ? 'chip-active' : ''} cursor-pointer`} onClick={() => setSort(v)}>
             {label}
           </button>
@@ -258,6 +258,7 @@ export default function DocumentsPage() {
             <Th>published</Th>
             <Th num>opens</Th>
             <Th num>reports</Th>
+            <Th num>web</Th>
           </>
         }
       >
@@ -304,6 +305,15 @@ export default function DocumentsPage() {
             </Td>
             <Td num>{h.hits?.opens ?? 0}</Td>
             <Td num>{h.hits?.reports ?? 0}</Td>
+            <Td num>
+              {h.web?.seen ? (
+                <span title={`returned ${h.web.seen}× by the web, best rank ${h.web.best_rank ?? '?'} (${(h.web.engines ?? []).join(', ') || 'engine unnamed'})`} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  ×{h.web.seen} · #{h.web.best_rank ?? '?'}
+                </span>
+              ) : (
+                <span style={{ color: 'var(--fg-faint)' }}>—</span>
+              )}
+            </Td>
           </tr>
         ))}
       </Table>

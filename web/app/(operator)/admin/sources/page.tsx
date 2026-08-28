@@ -34,6 +34,7 @@ export default function SourcesPage() {
   const [trust, setTrust] = useState('B')
   const [category, setCategory] = useState('news')
   const [filter, setFilter] = useState('') // '' = all categories
+  const [needle, setNeedle] = useState('')
   const [msg, setMsg] = useState('')
 
   const load = useCallback(() => {
@@ -45,9 +46,10 @@ export default function SourcesPage() {
 
   // Group seeds by category, in CATEGORIES order, with anything unknown under "other" (empty slug).
   const groups = useMemo(() => {
+    const visible = seeds.filter((x) => !needle || `${x.url} ${(x as { note?: string }).note ?? ''} ${(x as { category?: string }).category ?? ''}`.toLowerCase().includes(needle.toLowerCase()))
     const order = [...CATEGORIES, ''] as string[]
     const by = new Map<string, Seed[]>()
-    for (const s of seeds) {
+    for (const s of visible) {
       const key = order.includes(s.category) ? s.category : ''
       const list = by.get(key) ?? []
       list.push(s)
@@ -60,7 +62,7 @@ export default function SourcesPage() {
       )
     }
     return order.filter((c) => by.has(c)).map((c) => [c, by.get(c)!] as const)
-  }, [seeds])
+  }, [seeds, needle])
 
   const shown = filter ? groups.filter(([c]) => c === filter) : groups
 
@@ -134,6 +136,7 @@ export default function SourcesPage() {
 
       {/* Category filter chips + totals. */}
       <div className="mb-5 flex flex-wrap items-center gap-1.5 text-sm">
+        <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="url, note or category…" className="rounded border px-2 py-1 text-sm" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 220 }} aria-label="Filter sources" />
         <button
           type="button"
           onClick={() => setFilter('')}

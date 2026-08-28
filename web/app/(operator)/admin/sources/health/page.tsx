@@ -127,7 +127,20 @@ export default function SourceHealthPage() {
   const { data, error } = usePoll(getSourceHealth, 10_000)
   const [open, setOpen] = useState<string | null>(null)
   const [msg, setMsg] = useState('')
-  const rows = data ?? []
+  // Filters (M12): a text match on id/domain, the lifecycle, the tier. Client-side over the
+  // registry, which is small by construction.
+  const [needle, setNeedle] = useState('')
+  const [lifecycle, setLifecycle] = useState('')
+  const [tier, setTier] = useState('')
+  const all = data ?? []
+  const rows = all.filter(
+    (r) =>
+      (!needle || `${r.id} ${(r as { domain?: string }).domain ?? ''}`.toLowerCase().includes(needle.toLowerCase())) &&
+      (!lifecycle || String((r as { lifecycle?: string }).lifecycle ?? '') === lifecycle) &&
+      (!tier || String((r as { trust_tier?: string; tier?: string }).trust_tier ?? (r as { tier?: string }).tier ?? '') === tier),
+  )
+  const lifecycles = Array.from(new Set(all.map((r) => String((r as { lifecycle?: string }).lifecycle ?? '')).filter(Boolean))).sort()
+  const tiers = Array.from(new Set(all.map((r) => String((r as { trust_tier?: string; tier?: string }).trust_tier ?? (r as { tier?: string }).tier ?? '')).filter(Boolean))).sort()
   const COLS = 14
   return (
     <>
@@ -145,6 +158,18 @@ export default function SourceHealthPage() {
             : 'Loading…'}
       </StatusLine>
       {msg ? <p className="mb-3 text-sm" style={{ color: 'var(--fg-muted)' }}>{msg}</p> : null}
+      <p className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+        <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="source id or domain…" className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 220 }} aria-label="Filter sources" />
+        <select value={lifecycle} onChange={(e) => setLifecycle(e.target.value)} className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Lifecycle">
+          <option value="">any lifecycle</option>
+          {lifecycles.map((l) => <option key={l} value={l}>{l}</option>)}
+        </select>
+        <select value={tier} onChange={(e) => setTier(e.target.value)} className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Tier">
+          <option value="">any tier</option>
+          {tiers.map((t) => <option key={t} value={t}>tier {t}</option>)}
+        </select>
+        <span className="text-xs" style={{ color: 'var(--fg-faint)' }}>{rows.length} of {all.length}</span>
+      </p>
       <Table
         head={
           <>

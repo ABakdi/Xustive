@@ -27,6 +27,20 @@ export function SummariesSwitch() {
   )
 }
 
+export function RerankerSwitch() {
+  const [s, setS] = useState<RuntimeSettings | null>(null)
+  useEffect(() => { getSettings().then(setS).catch(() => setS(null)) }, [])
+  if (!s) return null
+  return (
+    <Toggle
+      label="Cross-encoder reranker"
+      checked={s.ml.reranker_enabled}
+      hint="Qwen3-Reranker-0.6B re-reads the top of the page and its order is fused with ours by reciprocal rank (ADR-0032); needs services/reranker up, bounded by its timeout"
+      onChange={async (next) => setS(await patchSettings({ ml: { reranker_enabled: next } }))}
+    />
+  )
+}
+
 export function CollectionSwitch() {
   const [s, setS] = useSettings()
   if (!s) return null
