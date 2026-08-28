@@ -456,7 +456,10 @@ pub async fn handler(
         state.federator.clone().map(|client| {
             let q = normalized.clone();
             let bg = state.clone();
-            let fetch_budget = state.config.federation.fetch_budget_ms;
+            let fetch_budget = state
+                .runtime
+                .fetch_budget_ms
+                .load(std::sync::atomic::Ordering::Relaxed);
             // The Images and Videos tabs federate in their own category (M9-T06): the same
             // gateway, budget and fail-open, asking SearXNG's image or video engines instead.
             let category = xustive_ingest::federation::Category::from_vertical(params.v.as_deref());
@@ -717,7 +720,7 @@ pub async fn handler(
         trust,
         state.authority.as_ref(),
         &interaction_of,
-        &state.ranking,
+        &state.runtime.ranking(),
         Some(ui_lang),
     );
     state.metrics.observe(
@@ -737,7 +740,12 @@ pub async fn handler(
             // budget is a cap, not an entitlement: with `budget_ms` equal to `timeout_search_ms`
             // — which the dev config had — a slow SearXNG made every search a 504, on every
             // vertical, and nobody saw it because federation was off (found by M9-T06).
-            let cap = Duration::from_millis(state.config.federation.budget_ms);
+            let cap = Duration::from_millis(
+                state
+                    .runtime
+                    .federation_budget_ms
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            );
             let wait = deadline
                 .budget_for(cap)
                 .saturating_sub(FEDERATION_SHAPE_MARGIN);
@@ -828,7 +836,7 @@ pub async fn handler(
     // Register the top documents for a summary the browser will ask for separately. Built from
     // the re-ranked head rather than the page the user is on: a summary of page 7 is not what
     // anyone means by "summarise these results".
-    let summary_token = if state.config.ml.summaries_enabled && !ranked.is_empty() && page == 1 {
+    let summary_token = if state.runtime.summaries_enabled() && !ranked.is_empty() && page == 1 {
         let top: Vec<&Value> = ranked
             .iter()
             .take(xustive_ml::prompt::MAX_PASSAGES)
@@ -898,7 +906,7 @@ pub async fn handler(
             )
             .await;
         Some(mint_interaction_token(&state, Some(&store), &normalized))
-    } else if state.events.is_some() && !results.is_empty() {
+    } else if state.events_if_on().is_some() && !results.is_empty() {
         // Collection without the anonymous signals: a token is still needed so a click or a
         // report can be attributed to this search without the browser sending the query.
         Some(mint_interaction_token(&state, None, &normalized))
@@ -908,7 +916,7 @@ pub async fn handler(
     // The first-party record of this search (M11-T01.3): what was asked, what was shown. Kept
     // beside the token so a click can carry the query and the rank; written off the critical
     // path by the sink's own task.
-    if let (Some(sink), Some(token)) = (state.events.as_ref(), interaction_token.as_ref()) {
+    if let (Some(sink), Some(token)) = (state.events_if_on(), interaction_token.as_ref()) {
         let shown: Vec<String> = results.iter().map(|c| c.id.clone()).collect();
         if let Ok(mut map) = state.token_context.write() {
             if map.len() >= 4096 {
@@ -1088,7 +1096,10 @@ pub(crate) fn ingest_federated(
     // federated URL is a discovery like any other and gets no bypass around the bounds.
     let frontier_limits =
         xustive_ingest::frontier::FrontierLimits::from_config(&state.config.crawl);
-    let eager = state.config.federation.eager_index;
+    let eager = state
+        .runtime
+        .eager_index
+        .load(std::sync::atomic::Ordering::Relaxed);
     let now = xustive_core::now_unix();
 
     // Canonicalise once, synchronously, so the eager id and the crawl-feed id are identical.

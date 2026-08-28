@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { getCompute, setDevice, setLogLevel, setPoliteness } from '@/lib/admin'
+import { RankingEditor } from '@/components/admin/RankingEditor'
+import { SummariesSwitch } from '@/components/admin/Switches'
 import { PageHead } from '@/components/admin/ui'
 
 interface Resolved {
@@ -209,38 +211,22 @@ export default function ComputePage() {
         <p className="mb-8 text-sm" style={{ color: 'var(--fg-faint)' }}>No models registered.</p>
       )}
 
-      {/* Live ranking weights — how results are scored right now. Read-only: tuning is a config
-          file (config/ranking.toml) applied at restart, not a runtime knob, so this is the mirror. */}
+      {/* Ranking weights, editable from here since M12-T02: the rule that keeps relevance
+          dominant is checked as you drag and again by the API; Apply keeps the change across
+          a restart in config/runtime.toml. */}
       <h2 className="mb-2 text-lg font-semibold">Ranking weights</h2>
-      <p className="mb-2 text-sm" style={{ color: 'var(--fg-muted)' }}>
+      <p className="mb-3 text-sm" style={{ color: 'var(--fg-muted)' }}>
         How results are scored. Relevance dominates by construction; the rest are bounded
-        tie-breakers. Change these in <code>config/ranking.toml</code> (applied on restart).
+        tie-breakers. Changes apply to the next search and are kept across restarts.
       </p>
-      <ul className="mb-8 flex max-w-xl flex-wrap gap-x-6 gap-y-1 list-none p-0 text-sm">
-        {rankSignals.map((k) => (
-          <li key={k} className="flex gap-2">
-            <span style={{ color: 'var(--fg-muted)' }}>{k}</span>
-            <span className="tabular-nums font-medium">{ranking[k]?.toFixed(2) ?? '—'}</span>
-          </li>
-        ))}
-        <li className="flex gap-2">
-          <span style={{ color: 'var(--fg-muted)' }}>spam (−)</span>
-          <span className="tabular-nums font-medium">{ranking['spam_penalty']?.toFixed(2) ?? '—'}</span>
-        </li>
-        {/* The structural knobs the endpoint always returned and the page dropped (PROB-003). */}
-        <li className="flex gap-2">
-          <span style={{ color: 'var(--fg-muted)' }}>unknown-date ×</span>
-          <span className="tabular-nums font-medium">{ranking['unknown_date_factor']?.toFixed(2) ?? '—'}</span>
-        </li>
-        <li className="flex gap-2">
-          <span style={{ color: 'var(--fg-muted)' }}>per-domain cap</span>
-          <span className="tabular-nums font-medium">{ranking['per_domain_cap'] ?? '—'}</span>
-        </li>
-        <li className="flex gap-2">
-          <span style={{ color: 'var(--fg-muted)' }}>simhash collapse ≤</span>
-          <span className="tabular-nums font-medium">{ranking['simhash_collapse_distance'] ?? '—'}</span>
-        </li>
-      </ul>
+      <div className="mb-8">
+        <RankingEditor />
+      </div>
+
+      <h2 className="mb-2 text-lg font-semibold">Summaries</h2>
+      <div className="mb-8">
+        <SummariesSwitch />
+      </div>
 
       {/* Runtime log verbosity. A temporary raise auto-reverts, so turning on debug to chase an
           issue cannot be left on by accident. */}

@@ -115,6 +115,9 @@ pub fn start(state: AppState) -> Ring {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(STEP);
         tick.tick().await; // the first tick fires immediately; the first point needs an interval
+                           // The first pass only takes the baseline: the counters are lifetime totals, and a point
+                           // diffed against zero would show the whole history as one thirty-second spike.
+        let mut baseline_taken = false;
         loop {
             tick.tick().await;
             let m = &state.metrics;
@@ -139,6 +142,8 @@ pub fn start(state: AppState) -> Ring {
             let at = crate::events::now();
             let mut inner = r.inner.lock().unwrap_or_else(|e| e.into_inner());
             let (ring, prev) = &mut *inner;
+            let first = !baseline_taken;
+            baseline_taken = true;
             let point = Point {
                 at,
                 searches: searches.saturating_sub(prev.searches),
@@ -170,6 +175,9 @@ pub fn start(state: AppState) -> Ring {
                 events_written: ew,
                 events_dropped: ed,
             };
+            if first {
+                continue;
+            }
             ring.push_back(point);
             while ring.len() > KEEP {
                 ring.pop_front();

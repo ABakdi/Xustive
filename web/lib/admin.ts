@@ -530,3 +530,46 @@ export interface Timeseries {
 export function getTimeseries(hours: number) {
   return (signal?: AbortSignal) => getJSON<Timeseries>(`/timeseries?hours=${hours}`, signal)
 }
+
+/** What the console may change at runtime and keep (M12-T02). */
+export interface RankingWeights {
+  relevance: number
+  ui_language: number
+  freshness: number
+  trust: number
+  authority: number
+  quality: number
+  interaction: number
+  spam_penalty: number
+  unknown_date_factor: number
+  per_domain_cap: number
+  simhash_collapse_distance: number
+}
+export interface RuntimeSettings {
+  ranking: RankingWeights
+  federation: { budget_ms: number; fetch_budget_ms: number; max_hits: number; eager_index: boolean }
+  collection: { enabled: boolean }
+  ml: { summaries_enabled: boolean }
+  interaction: { enabled: boolean }
+  overridden: string[]
+  changed?: string[]
+  persisted_to?: string | null
+}
+export type SettingsPatch = {
+  ranking?: RankingWeights
+  federation?: Partial<RuntimeSettings['federation']>
+  collection?: { enabled: boolean }
+  ml?: { summaries_enabled: boolean }
+  interaction?: { enabled: boolean }
+}
+export const getSettings = (signal?: AbortSignal) => getJSON<RuntimeSettings>('/settings', signal)
+export async function patchSettings(patch: SettingsPatch): Promise<RuntimeSettings> {
+  const res = await fetch(`${BASE}/settings`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  const body = (await res.json().catch(() => null)) as (RuntimeSettings & { error?: string }) | null
+  if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+  return body as RuntimeSettings
+}

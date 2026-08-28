@@ -2,6 +2,7 @@
 
 import { getInteraction, type InteractionStatus } from '@/lib/admin'
 import { PageHead, usePoll } from '@/components/admin/ui'
+import { InteractionSwitch } from '@/components/admin/Switches'
 
 /**
  * The interaction-signals console (M6-T07).
@@ -28,10 +29,12 @@ export default function InteractionPage() {
         </p>
       ) : null}
 
+      <div className="mb-6">
+        <InteractionSwitch />
+      </div>
       {data && !data.enabled ? (
         <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>
-          Interaction signals are disabled. Set <code>[interaction] enabled = true</code> (k ≥ 20
-          outside dev) to collect anonymous, aggregate use.
+          Interaction signals are off. The k floor (≥ 20 outside dev) comes from the config.
         </p>
       ) : null}
 

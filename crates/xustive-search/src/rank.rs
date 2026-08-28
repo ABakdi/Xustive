@@ -142,6 +142,52 @@ pub struct Weights {
     pub simhash_collapse_distance: u32,
 }
 
+impl Weights {
+    /// Whether these weights are safe to rank with — the same rule the unit tests pin on the
+    /// defaults, so an operator editing them from the console cannot break it (M12-T02):
+    /// every weight in `[0, 1]`, relevance above the side signals together, and the side
+    /// signals unable to bridge the relevance gap across twenty positions.
+    pub fn check(&self) -> Result<(), String> {
+        let named = [
+            ("relevance", self.relevance),
+            ("ui_language", self.ui_language),
+            ("freshness", self.freshness),
+            ("trust", self.trust),
+            ("authority", self.authority),
+            ("quality", self.quality),
+            ("interaction", self.interaction),
+            ("spam_penalty", self.spam_penalty),
+            ("unknown_date_factor", self.unknown_date_factor),
+        ];
+        for (name, v) in named {
+            if !(0.0..=1.0).contains(&v) || v.is_nan() {
+                return Err(format!("{name} must be between 0 and 1, got {v}"));
+            }
+        }
+        if self.per_domain_cap == 0 || self.per_domain_cap > 20 {
+            return Err("per_domain_cap must be between 1 and 20".into());
+        }
+        if self.simhash_collapse_distance > 16 {
+            return Err("simhash_collapse_distance must be at most 16".into());
+        }
+        let side_total =
+            self.freshness + self.trust + self.authority + self.quality + self.interaction;
+        if self.relevance <= side_total {
+            return Err(format!(
+                "relevance ({}) must stay above the side signals together ({side_total:.2})",
+                self.relevance
+            ));
+        }
+        let gap_over_20 = self.relevance * (1.0 - (-20.0f32 / RELEVANCE_DECAY).exp());
+        if side_total >= gap_over_20 {
+            return Err(format!(
+                "side signals ({side_total:.2}) could bridge a 20-position relevance gap ({gap_over_20:.2}); lower them or raise relevance"
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl Default for Weights {
     fn default() -> Self {
         Self {

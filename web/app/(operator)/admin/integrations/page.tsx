@@ -12,6 +12,7 @@ import {
   type IntegrationEffectiveness,
 } from '@/lib/admin'
 import { PageHead } from '@/components/admin/ui'
+import { FederationBudgets } from '@/components/admin/Switches'
 
 /**
  * External-tool integrations (M7-T09, ADR-0017).
@@ -129,6 +130,12 @@ export default function IntegrationsPage() {
               ))}
             </tbody>
           </table>
+
+          {/* The budgets and the eager index, editable since M12-T02; kept across restarts. */}
+          <h3 className="mb-2 text-sm font-semibold">Budgets</h3>
+          <div className="mb-6 max-w-2xl">
+            <FederationBudgets />
+          </div>
 
           <p className="mb-6 max-w-2xl rounded border px-3 py-2 text-sm" style={{ borderColor: 'var(--line)', background: 'var(--bg-sunk)' }}>
             With federation on, web results are mixed into searches with a “from the web” badge,

@@ -23,6 +23,7 @@ pub mod knowledge_model;
 pub mod metrics;
 pub mod ocr;
 pub mod ratelimit;
+pub mod runtime;
 pub mod search;
 pub mod state;
 pub mod stt;
@@ -225,6 +226,8 @@ pub fn app(state: AppState) -> Router {
         .route("/interaction", get(admin::interaction))
         // First-party search events (M11-T04): the overview, one visitor, and forgetting one.
         .route("/timeseries", get(timeseries::handler))
+        // What the console may change and keep (M12-T02).
+        .route("/settings", get(runtime::get).patch(runtime::patch))
         .route("/events/overview", get(events::overview))
         .route("/events/visitor", get(events::visitor))
         .route("/events/forget", axum::routing::post(events::forget))

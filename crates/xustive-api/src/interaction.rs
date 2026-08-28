@@ -41,7 +41,7 @@ pub async fn handler(
     };
     // The first-party record of the open (M11-T01.4): the query and the rank come from what the
     // server kept for this token, never from the request.
-    if let Some(sink) = state.events.as_ref() {
+    if let Some(sink) = state.events_if_on() {
         if !beacon.d.is_empty() {
             if let Some((query, rank)) = state.token_context(&beacon.t, &beacon.d) {
                 sink.hit(&headers, &query, &beacon.d, rank, None);

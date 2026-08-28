@@ -138,7 +138,7 @@ pub async fn status(
             "documents": state.documents_index(),
             "meili_url": state.config.search.meili_url,
         },
-        "ranking": &*state.ranking,
+        "ranking": &*state.runtime.ranking(),
     })))
 }
 

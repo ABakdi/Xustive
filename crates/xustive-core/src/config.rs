@@ -867,6 +867,10 @@ pub struct Config {
     pub federation: FederationConfig,
     #[serde(default)]
     pub interaction: InteractionConfig,
+    /// Where this config was loaded from, so the console's overrides can be written beside it.
+    /// Not part of the file; set by `load`.
+    #[serde(skip)]
+    pub config_path: Option<std::path::PathBuf>,
     /// First-party search data — searches, results shown, opens, reports — kept as events
     /// ([[ADR-0030]], M11). Off by default: turning it on makes the operator a data controller.
     #[serde(default)]
@@ -893,6 +897,7 @@ impl Default for Config {
             discovery: DiscoveryConfig::default(),
             federation: FederationConfig::default(),
             interaction: InteractionConfig::default(),
+            config_path: None,
             collection: CollectionConfig::default(),
             media: MediaConfig::default(),
             vector: VectorConfig::default(),
@@ -920,9 +925,40 @@ impl Config {
             }
             _ => Self::default(),
         };
+        cfg.config_path = path.map(|p| p.to_path_buf());
         cfg.apply_env();
+        // The console's changes ([[M12]] runtime settings): a small file beside the config,
+        // written by the API on every accepted change, applied last so a restart keeps them.
+        if let Some(o) = RuntimeOverrides::load(path) {
+            cfg.apply_runtime(&o);
+        }
         cfg.validate()?;
         Ok(cfg)
+    }
+
+    /// Apply the console's runtime overrides onto the loaded config.
+    pub fn apply_runtime(&mut self, o: &RuntimeOverrides) {
+        if let Some(v) = o.federation.budget_ms {
+            self.federation.budget_ms = v;
+        }
+        if let Some(v) = o.federation.fetch_budget_ms {
+            self.federation.fetch_budget_ms = v;
+        }
+        if let Some(v) = o.federation.max_hits {
+            self.federation.max_hits = v;
+        }
+        if let Some(v) = o.federation.eager_index {
+            self.federation.eager_index = v;
+        }
+        if let Some(v) = o.collection.enabled {
+            self.collection.enabled = v;
+        }
+        if let Some(v) = o.ml.summaries_enabled {
+            self.ml.summaries_enabled = v;
+        }
+        if let Some(v) = o.interaction.enabled {
+            self.interaction.enabled = v;
+        }
     }
 
     /// Environment overrides for the handful of values that differ per deployment.
@@ -1375,5 +1411,87 @@ mod tests {
         let text = toml::to_string(&cfg).unwrap();
         let back: Config = toml::from_str(&text).unwrap();
         assert_eq!(cfg, back);
+    }
+}
+
+/// What the console may change at runtime and persist ([[M12]]-T02): a whitelist, each field
+/// optional, kept in `runtime.toml` beside the config file (or `config/runtime.toml` when the
+/// config came from defaults). Ranking weights ride in the same file under `[ranking]`, read
+/// by the API beside `config/ranking.toml`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RuntimeOverrides {
+    pub federation: FederationOverrides,
+    pub collection: CollectionOverrides,
+    pub ml: MlOverrides,
+    pub interaction: InteractionOverrides,
+    /// Free-form so this crate need not know the ranking `Weights` type; the API validates it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ranking: Option<toml::Value>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FederationOverrides {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fetch_budget_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_hits: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eager_index: Option<bool>,
+}
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CollectionOverrides {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+}
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MlOverrides {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summaries_enabled: Option<bool>,
+}
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InteractionOverrides {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+}
+
+impl RuntimeOverrides {
+    /// Where the overrides live for a given config path.
+    pub fn path_for(config: Option<&Path>) -> std::path::PathBuf {
+        match config {
+            Some(p) => p.with_file_name("runtime.toml"),
+            None => std::path::PathBuf::from("config/runtime.toml"),
+        }
+    }
+
+    /// The overrides on disk, or `None` when there are none (or the file is unreadable — a
+    /// malformed override file is logged and ignored rather than refusing to start).
+    pub fn load(config: Option<&Path>) -> Option<Self> {
+        let path = Self::path_for(config);
+        let text = std::fs::read_to_string(&path).ok()?;
+        match toml::from_str::<Self>(&text) {
+            Ok(o) => Some(o),
+            Err(e) => {
+                eprintln!(
+                    "warning: {} is malformed and was ignored: {e}",
+                    path.display()
+                );
+                None
+            }
+        }
+    }
+
+    pub fn save(&self, config: Option<&Path>) -> Result<std::path::PathBuf, String> {
+        let path = Self::path_for(config);
+        let text = toml::to_string_pretty(self).map_err(|e| e.to_string())?;
+        let header = "# Written by the operator console (M12). Applied after the config file and the\n# environment on every start; delete a key here to fall back to the config file.\n\n";
+        std::fs::write(&path, format!("{header}{text}")).map_err(|e| e.to_string())?;
+        Ok(path)
     }
 }

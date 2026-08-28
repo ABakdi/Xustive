@@ -28,7 +28,8 @@ pub struct AppState {
     /// expansion runs on every query that needs a second retrieval leg.
     pub expander: Arc<Expander>,
     /// Ranking weights. Loaded once at startup from `config/ranking.toml` if present, else defaults.
-    pub ranking: Arc<Weights>,
+    /// What the console may change at runtime (M12-T02): ranking weights, budgets, switches.
+    pub runtime: Arc<crate::runtime::RuntimeSettings>,
     /// Source id to trust tier, from the seed registry.
     pub trust_tiers: Arc<HashMap<String, TrustTier>>,
     /// Domain to authority (0–1), from `data/sources/authority.tsv` — the "famous websites" signal.
@@ -195,6 +196,15 @@ impl AppState {
         Some((query.clone(), rank))
     }
 
+    /// The events sink, when first-party collection is on right now ([[ADR-0030]], M12 switch).
+    pub fn events_if_on(&self) -> Option<&crate::events::EventSink> {
+        if self.runtime.collection_enabled() {
+            self.events.as_ref()
+        } else {
+            None
+        }
+    }
+
     pub fn documents_index(&self) -> String {
         self.documents_index
             .read()
@@ -231,10 +241,15 @@ impl AppState {
     /// store opens a Redis connection manager), so it runs after the sync `new`, like the model
     /// load. Failure is non-fatal: search runs without interaction signals.
     pub async fn connect_interactions(&self) {
-        let cfg = &self.config.interaction;
-        if !cfg.enabled {
+        if !self.config.interaction.enabled {
             return;
         }
+        self.connect_interactions_forced().await;
+    }
+
+    /// Connect regardless of the config flag — the console turning it on at runtime (M12).
+    pub async fn connect_interactions_forced(&self) {
+        let cfg = &self.config.interaction;
         let store = xustive_ingest::interaction::Interactions::connect_in(
             self.config.queue.signals_url(),
             "interaction",
@@ -330,16 +345,19 @@ impl AppState {
             Duration::from_millis(config.search.timeout_ms),
         )?);
         // First-party events ([[ADR-0030]]): the writer task starts with the state when on.
-        let events = config
-            .collection
-            .enabled
-            .then(|| crate::events::EventSink::start(search.clone()));
+        // The sink always exists (an idle task costs nothing); the runtime switch gates the writes,
+        // so collection can be turned on from the console without a restart (M12-T02).
+        let events = Some(crate::events::EventSink::start(search.clone()));
+        let runtime = Arc::new(crate::runtime::RuntimeSettings::from_config(
+            &config,
+            load_ranking_weights(),
+        ));
         Ok(Self {
             config: Arc::new(config),
             search: search.clone(),
             detector: Arc::new(Detector::default()),
             expander: Arc::new(Expander::new(ExpanderConfig::default())),
-            ranking: Arc::new(load_ranking_weights()),
+            runtime,
             trust_tiers: Arc::new(load_trust_tiers()),
             authority: Arc::new(load_authority(&queue_url)),
             device_preference: Arc::new(AtomicU8::new(

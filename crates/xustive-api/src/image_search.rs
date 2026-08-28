@@ -318,7 +318,12 @@ pub async fn web_handler(
         .federate_in(
             q,
             xustive_ingest::federation::Category::Images,
-            Some(state.config.federation.fetch_budget_ms),
+            Some(
+                state
+                    .runtime
+                    .fetch_budget_ms
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            ),
         )
         .await;
     crate::search::ingest_federated(&state, &hits);

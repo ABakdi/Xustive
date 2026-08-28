@@ -11,6 +11,7 @@ import {
   type EventsOverview,
 } from '@/lib/admin'
 import { PageHead, StatusLine, Table, Td, Th, usePoll } from '@/components/admin/ui'
+import { CollectionSwitch } from '@/components/admin/Switches'
 
 /**
  * Searches & hits — the first-party events console ([[ADR-0030]], M11-T04).
@@ -59,10 +60,13 @@ export default function SearchesPage() {
       </PageHead>
 
       {error ? <StatusLine>Could not reach the API: {error}</StatusLine> : null}
+      <div className="mb-6">
+        <CollectionSwitch />
+      </div>
       {data && !data.enabled ? (
         <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>
-          Collection is off. Set <code>[collection] enabled = true</code> — and read Legal and
-          Compliance §5 first: on, the operator is a data controller.
+          Collection is off. Read Legal and Compliance §5 before turning it on: on, the operator
+          is a data controller.
         </p>
       ) : null}
 

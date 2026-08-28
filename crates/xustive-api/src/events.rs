@@ -359,7 +359,7 @@ pub async fn report(
     let Some(Json(b)) = body else {
         return StatusCode::NO_CONTENT;
     };
-    let Some(sink) = state.events.clone() else {
+    let Some(sink) = state.events_if_on().cloned() else {
         return StatusCode::NO_CONTENT;
     };
     if b.d.is_empty() || b.r != "irrelevant" {
@@ -388,7 +388,7 @@ pub async fn overview(
     axum::extract::Query(p): axum::extract::Query<OverviewParams>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     crate::admin::authorise(&state, peer, &headers).map_err(|d| d.json())?;
-    let Some(sink) = state.events.as_ref() else {
+    let Some(sink) = state.events_if_on() else {
         return Ok(Json(json!({ "enabled": false })));
     };
     let days = p.days.unwrap_or(7).clamp(1, 365);
