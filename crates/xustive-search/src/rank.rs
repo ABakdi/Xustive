@@ -125,6 +125,11 @@ pub struct Weights {
     pub federated_first: bool,
     /// Textual relevance. Deliberately the largest by a wide margin.
     pub relevance: f32,
+    /// The web's verdict on the page ([[ADR-0031]], M13): `Document.endorsement`, the folded
+    /// count and best rank of the times query-time federation returned it. A bounded side
+    /// signal like the rest — and the key of the leading tier when `federated_first` is on.
+    #[serde(default = "default_endorsement")]
+    pub endorsement: f32,
     /// A document written in the language the reader chose in the nav bar. A tie-breaker like
     /// the rest — it lifts same-language documents among equally relevant ones, and cannot lift an
     /// irrelevant one over a relevant one. Darija and Arabic count as each other's language.
@@ -163,6 +168,7 @@ impl Weights {
             ("authority", self.authority),
             ("quality", self.quality),
             ("interaction", self.interaction),
+            ("endorsement", self.endorsement),
             ("spam_penalty", self.spam_penalty),
             ("unknown_date_factor", self.unknown_date_factor),
         ];
@@ -177,8 +183,12 @@ impl Weights {
         if self.simhash_collapse_distance > 16 {
             return Err("simhash_collapse_distance must be at most 16".into());
         }
-        let side_total =
-            self.freshness + self.trust + self.authority + self.quality + self.interaction;
+        let side_total = self.freshness
+            + self.trust
+            + self.authority
+            + self.quality
+            + self.interaction
+            + self.endorsement;
         if self.relevance <= side_total {
             return Err(format!(
                 "relevance ({}) must stay above the side signals together ({side_total:.2})",
@@ -199,6 +209,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_endorsement() -> f32 {
+    0.09
+}
+
 impl Default for Weights {
     fn default() -> Self {
         Self {
@@ -209,6 +223,9 @@ impl Default for Weights {
             // numbers work out — adding the interaction signal (M6) rebalanced the others down to
             // keep it, rather than widening the side budget.
             relevance: 0.55,
+            // The endorsement weight (M13) joins the checked side total: freshness+trust+
+            // authority+quality+interaction+endorsement = 0.46, under the 0.48 gap.
+            endorsement: 0.09,
             // Rebalanced again for the reader's-language signal, the same way the interaction
             // signal was folded in: the additive side weights still sum to 0.47, under the 0.48
             // relevance gap across twenty positions.
@@ -230,6 +247,10 @@ impl Default for Weights {
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Explain {
     pub relevance: f32,
+    pub endorsement: f32,
+    /// The cross-encoder's score for the candidate, when the reranker ran ([[ADR-0032]]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<f32>,
     pub freshness: f32,
     pub trust: f32,
     pub authority: f32,
@@ -355,6 +376,8 @@ pub fn rerank(
 
             let quality = f32_field(hit, "quality_score").unwrap_or(0.4);
             let spam = f32_field(hit, "spam_score").unwrap_or(0.0);
+            // The web's verdict, already folded to [0, 1] on the document (ADR-0031).
+            let endorsement = f32_field(hit, "endorsement").unwrap_or(0.0).clamp(0.0, 1.0);
 
             // Anonymous CTR, keyed on the document id. Absent (below the k-floor, or no data) is a
             // neutral 0 — the signal only ever *adds* a small, bounded nudge, never a penalty, so a
@@ -379,6 +402,7 @@ pub fn rerank(
             };
 
             let total = weights.relevance * relevance
+                + weights.endorsement * endorsement
                 + weights.freshness * freshness
                 + weights.trust * trust
                 + weights.authority * authority
@@ -390,6 +414,8 @@ pub fn rerank(
             Ranked {
                 explain: Explain {
                     relevance: weights.relevance * relevance,
+                    endorsement: weights.endorsement * endorsement,
+                    model: None,
                     freshness: weights.freshness * freshness,
                     trust: weights.trust * trust,
                     authority: weights.authority * authority,
@@ -411,10 +437,13 @@ pub fn rerank(
 
     // Origin first when the operator says so, score within: a page a proper search engine
     // returned for this query outranks what our small index scored higher on its own.
+    // Endorsement, not provenance (M13-T02.3): a page born from a federated hit *or* one we
+    // crawled ourselves that the web later returned both carry `endorsement > 0`; the
+    // provenance check is kept for thin documents indexed before the endorse sink existed.
     let tier = |r: &Ranked| -> u8 {
-        if weights.federated_first
-            && r.hit.get("discovery").and_then(Value::as_str) == Some("federation")
-        {
+        let endorsed = f32_field(&r.hit, "endorsement").unwrap_or(0.0) > 0.0;
+        let born_federated = r.hit.get("discovery").and_then(Value::as_str) == Some("federation");
+        if weights.federated_first && (endorsed || born_federated) {
             1
         } else {
             0
@@ -516,6 +545,108 @@ fn precision_of(v: &Value) -> DatePrecision {
 fn age_days(v: &Value, now: i64) -> f32 {
     let published = v.get("published_at").and_then(Value::as_i64).unwrap_or(now);
     ((now - published).max(0) as f32) / 86_400.0
+}
+
+/// Reciprocal-rank fusion constant. 60 is the value the original evaluation used and every
+/// engine since has kept: large enough that the first few positions of either list do not
+/// dominate, small enough that agreement between the lists still moves a document.
+const RRF_K: f32 = 60.0;
+
+/// Fuse the stage-2 order with a cross-encoder's scores by reciprocal rank ([[ADR-0032]],
+/// M13-T04.3), within each tier — the endorsed tier stays ahead of the rest whatever the model
+/// thinks — and only over the prefix that was scored (`model_scores[i]` is the score of
+/// `ranked[i]`; shorter than `ranked` means the tail keeps its order after the fused prefix).
+///
+/// Neither list can move a document more than the other allows: a document first for the
+/// model and twentieth for us lands near one that was tenth for both. No score calibration
+/// is needed, which is the point of RRF over a weighted sum of two unrelated scales.
+pub fn fuse_rrf(ranked: Vec<Ranked>, model_scores: &[f32], federated_first: bool) -> Vec<Ranked> {
+    let n = model_scores.len().min(ranked.len());
+    if n < 2 {
+        return ranked;
+    }
+    let tier_of = |r: &Ranked| -> u8 {
+        let endorsed = f32_field(&r.hit, "endorsement").unwrap_or(0.0) > 0.0;
+        let born = r.hit.get("discovery").and_then(Value::as_str) == Some("federation");
+        u8::from(federated_first && (endorsed || born))
+    };
+    let mut head: Vec<Ranked> = ranked.into_iter().collect();
+    let tail = head.split_off(n);
+
+    // Model rank among the scored prefix, stable on ties so equal scores keep our order.
+    let mut by_model: Vec<usize> = (0..n).collect();
+    by_model.sort_by(|&a, &b| {
+        model_scores[b]
+            .partial_cmp(&model_scores[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut model_rank = vec![0usize; n];
+    for (rank, &i) in by_model.iter().enumerate() {
+        model_rank[i] = rank;
+    }
+
+    let mut fused: Vec<(u8, f32, usize, Ranked)> = head
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut r)| {
+            let tier = tier_of(&r);
+            let score = 1.0 / (RRF_K + i as f32) + 1.0 / (RRF_K + model_rank[i] as f32);
+            r.explain.model = Some(model_scores[i]);
+            (tier, score, i, r)
+        })
+        .collect();
+    fused.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal))
+            .then_with(|| a.2.cmp(&b.2))
+    });
+    let mut out: Vec<Ranked> = fused.into_iter().map(|(_, _, _, r)| r).collect();
+    out.extend(tail);
+    out
+}
+
+#[cfg(test)]
+mod fusion {
+    use super::*;
+    use serde_json::json;
+
+    fn ranked(id: &str, endorsement: f32) -> Ranked {
+        Ranked {
+            hit: json!({ "id": id, "endorsement": endorsement }),
+            score: 0.0,
+            explain: Explain::default(),
+            collapsed: Vec::new(),
+        }
+    }
+
+    fn ids(v: &[Ranked]) -> Vec<&str> {
+        v.iter().map(|r| r.hit["id"].as_str().unwrap()).collect()
+    }
+
+    #[test]
+    fn agreement_moves_a_document_and_the_tail_is_untouched() {
+        let list: Vec<Ranked> = ["a", "b", "c", "d", "e"]
+            .iter()
+            .map(|id| ranked(id, 0.0))
+            .collect();
+        // The model likes c best, then a, then b; d and e were not scored.
+        let out = fuse_rrf(list, &[0.6, 0.5, 0.9], false);
+        assert_eq!(ids(&out), vec!["a", "c", "b", "d", "e"]);
+    }
+
+    #[test]
+    fn the_endorsed_tier_stays_ahead_whatever_the_model_says() {
+        let list = vec![ranked("endorsed", 0.4), ranked("plain", 0.0)];
+        let out = fuse_rrf(list, &[0.1, 0.9], true);
+        assert_eq!(ids(&out), vec!["endorsed", "plain"]);
+        assert_eq!(out[0].explain.model, Some(0.1));
+    }
+
+    #[test]
+    fn fewer_than_two_scores_changes_nothing() {
+        let list = vec![ranked("a", 0.0), ranked("b", 0.0)];
+        assert_eq!(ids(&fuse_rrf(list, &[0.2], false)), vec!["a", "b"]);
+    }
 }
 
 #[cfg(test)]
@@ -1104,5 +1235,80 @@ mod tests {
             out[0].hit["id"], "d0",
             "the most relevant document should stay first"
         );
+    }
+}
+
+#[cfg(test)]
+mod endorsement {
+    use super::*;
+    use serde_json::json;
+
+    fn doc(id: &str, endorsement: f32, discovery: &str) -> Value {
+        json!({
+            "id": id, "domain": "example.dz", "source_id": "x", "published_at": 1_700_000_000,
+            "published_at_precision": "day", "quality_score": 0.5, "spam_score": 0.0,
+            "endorsement": endorsement, "discovery": discovery
+        })
+    }
+
+    fn run(hits: &[Value], federated_first: bool) -> Vec<String> {
+        let weights = Weights {
+            federated_first,
+            ..Weights::default()
+        };
+        rerank(
+            hits,
+            "q",
+            1_700_000_000,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &weights,
+            None,
+        )
+        .into_iter()
+        .map(|r| r.hit["id"].as_str().unwrap().to_string())
+        .collect()
+    }
+
+    #[test]
+    fn an_endorsed_document_outranks_an_unendorsed_neighbour() {
+        // Adjacent positions: the web's verdict must be able to swap them.
+        let hits = [doc("plain", 0.0, "link"), doc("endorsed", 0.6, "link")];
+        assert_eq!(run(&hits, false), vec!["endorsed", "plain"]);
+    }
+
+    #[test]
+    fn an_endorsement_cannot_bridge_twenty_positions() {
+        let mut hits: Vec<Value> = (0..20)
+            .map(|i| doc(&format!("d{i}"), 0.0, "link"))
+            .collect();
+        hits.push(doc("late-but-endorsed", 1.0, "link"));
+        let order = run(&hits, false);
+        assert_eq!(
+            order[0], "d0",
+            "a fully endorsed page twenty deep stays below the top"
+        );
+    }
+
+    #[test]
+    fn a_crawled_page_the_web_returned_joins_the_leading_tier() {
+        let hits = [
+            doc("local-best", 0.0, "link"),
+            doc("crawled-then-endorsed", 0.3, "sitemap"),
+            doc("born-federated", 0.0, "federation"),
+        ];
+        let order = run(&hits, true);
+        assert_eq!(
+            order[2], "local-best",
+            "the unendorsed page trails the tier"
+        );
+        assert!(order[..2].contains(&"crawled-then-endorsed".to_string()));
+        assert!(order[..2].contains(&"born-federated".to_string()));
+    }
+
+    #[test]
+    fn the_defaults_still_pass_the_relevance_rule_with_endorsement() {
+        Weights::default().check().unwrap();
     }
 }
