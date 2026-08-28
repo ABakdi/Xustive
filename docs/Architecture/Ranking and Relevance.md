@@ -25,8 +25,9 @@ updated: 2026-08-27
 | **Lexical retrieval + base rank** | Meilisearch ranking rules | normalised query, operators applied | top `search.candidate_pool` (200) |
 | **Expansion leg** (conditional) | second Meilisearch query | expanded terms ([[Query Expander]]) | merged into the pool |
 | **Semantic leg** (optional, `vector.text_enabled`) | text embedder + Qdrant `text_bge` | query embedding | fused by RRF into the pool |
-| **Re-rank + collapse** | `rank::rerank`, in-process | fused pool | top page (20 by default, 50 max) |
-| **Federated merge** (optional, `federation.enabled`) | after re-rank | SearXNG hits via the [[Federation Gateway]] | strip / blended cards, deduped by URL |
+| **Re-rank + collapse** | `rank::rerank`, in-process | fused pool | top page (20 by default, 50 max), the endorsed tier first |
+| **Cross-encoder fusion** (optional, `reranker.enabled`, M13) | `rank::fuse_rrf` after the sidecar scores the top `top_n` | the page | the page, re-ordered by RRF within tiers |
+| **Federated merge** (optional, `federation.enabled`) | after re-rank | SearXNG hits via the [[Federation Gateway]] | strip / blended cards, deduped by URL; every hit is also *distilled* — endorsed on its document ([[ADR-0031]]) |
 
 Stage 1 is tuned in index settings and is cheap. The re-rank is where Algeria-specific signals
 (freshness by intent, source trust, domain authority, the reader's language, anonymous clicks) are
@@ -58,12 +59,16 @@ re-rank below 8 %.
 
 ```
 ["words", "typo", "proximity", "attribute", "sort", "exactness",
- "published_at:desc",
- "quality_score:desc"]
+ "endorsement:desc",
+ "quality_score:desc",
+ "published_at:desc"]
 ```
 
 (The design named these `freshness_desc` / `quality_desc`; Meilisearch custom rules are
-`<attribute>:desc`.)
+`<attribute>:desc`.) The custom rules only ever break ties among documents equal under the
+text rules — and on a small index many are. Until M13 the first tie-breaker was the date, so
+the newest page won every tie; since [[ADR-0031 - The Web's Verdict Is a Signal on Our Own
+Documents]] the web's verdict decides first (`endorsement`, §3.2), then quality, then date.
 
 Searchable attributes, in priority order (`attribute` rule uses this order; the ordering is
 load-bearing):
@@ -97,6 +102,7 @@ A query made only of stop words is refused before it reaches the engine
 
 ```
 final = w_rel · rel
+      + w_endorse · endorsement
       + w_fresh · freshness
       + w_trust · trust
       + w_auth · authority
@@ -109,6 +115,7 @@ final = w_rel · rel
 | Signal | Default weight | Definition |
 |:---|:---|:---|
 | `rel` | **0.55** | engine position normalised: `exp(−pos / 10)` |
+| `endorsement` | **0.09** | the web's verdict on the page, `Document.endorsement ∈ [0, 1]` (§3.2); 0 when the federation never returned it |
 | `freshness` | **0.10** | `exp(−age_days / τ)`, τ from the intent table below |
 | `trust` | **0.06** | source `trust_tier` from `data/sources/seeds.tsv`: A = 1.0, B = 0.6, C = 0.3; unknown source = B |
 | `authority` | **0.09** | domain fame (§3.1), keyed on the host so discovery pages get it too |
@@ -117,8 +124,9 @@ final = w_rel · rel
 | `ui_language` | **0.10** | 1 when the document is in the language the reader chose in the nav bar (Darija and Arabic count as each other), else 0 |
 | `spam_score` | **0.15** | penalty, from [[Enrichment Pipeline]] |
 
-**The rule that governs everything here: textual relevance dominates.** The additive side weights
-sum to 0.47, deliberately below the relevance gap across twenty positions (0.48). That bound is
+**The rule that governs everything here: textual relevance dominates.** The checked side weights
+(freshness, trust, authority, quality, interaction, endorsement) sum to 0.46, deliberately below
+the relevance gap across twenty positions (0.48). That bound is
 what makes "relevance dominates" true by construction rather than by hoping the numbers work out;
 each time a signal was added (interaction in M6, the reader's language later) the others were
 rebalanced *down* rather than the side budget widened. The unit tests pin it
@@ -131,6 +139,42 @@ candidates are near-equally relevant and the engine's order between them is clos
 and 0.48 across twenty (nothing climbs the list on side signals alone). The design's
 `engagement_norm` (0.08) and `comment_evidence` (0.07) signals are not implemented: no social
 platform is collected, and comments are not searched (§1).
+
+### 3.0 The endorsed tier
+
+When `federated_first` is on (the default), the page is sorted by **tier, then score**: a
+document the web endorsed — `endorsement > 0`, or the older `discovery = "federation"`
+provenance — ranks above every unendorsed local match for the query. A tier, not a weight:
+the index is small and the metasearch engines' judgement of a page is worth more than ours
+until the corpus grows. It applies within the matched pool only, so the relevance rule is
+untouched: an endorsed page still has to match. Live web cards (`from_web`) lead the merged
+page in the engine's order, and the endorsed local documents follow.
+
+### 3.2 Endorsement — the web's verdict ([[ADR-0031]], M13)
+
+Every hit the [[Federation Gateway]] returns is a *sighting*: its 1-based rank, SearXNG's
+merged score (`Σ weight / position` over the engines that returned it) and those engines. The
+API's endorse sink folds each sighting into `Document.web` — `seen`, `engines` (union),
+`best_rank`, best `score`, first/last seen — as a partial update, so the document keeps it
+through the full crawl that later replaces a thin eager copy. Existing documents are always
+updated (a page we crawled that the web keeps returning is the case that matters); a URL not
+yet indexed gets its record when its eager document is on the way, and is otherwise left to
+the crawl-feed.
+
+The flat signal: `endorsement = 0.5 · min(1, ln(1 + seen) / ln 11) + 0.5 / best_rank` — half
+for how often, saturating at ten sightings; half for how high. Returned once at position 1:
+0.55; ten times at 1: 1.0; once at 10: 0.15. It only grows (no decay yet — §8).
+
+### 3.3 The cross-encoder, fused by reciprocal rank ([[ADR-0032]], M13)
+
+Off by default (`[reranker]`, and a switch on the console's Compute page). When on, the top
+`top_n` (20) results of the page — title and excerpt, never the body — go to
+`services/reranker` (Qwen3-Reranker-0.6B, INT8 ONNX, CPU) under `timeout_ms` (400). The
+model's order and stage 2's are fused by `Σ 1/(60 + rank)` *within each tier* (`fuse_rrf`), so
+the endorsed tier stays ahead whatever the model thinks and neither list can move a document
+further than the other allows. The unscored tail keeps its order. On timeout or error the page
+goes out as stage 2 ranked it and `xustive_degraded_total{stage="reranker"}` ticks;
+`xustive_rerank_duration_seconds` times the round trip. `explain.model` carries the score.
 
 ### 3.1 Domain authority — the "famous websites" signal
 
@@ -271,6 +315,10 @@ Arabizi, 20 % French, 10 % English, 5 % mixed) remains the target.
       by sentiment would editorialise results)
 - [ ] Per-wilaya geo boost when the query names a place? (`geo.wilaya` is filterable, not weighted)
 - [ ] Human judgements for the golden set (see §6).
+- [ ] Should endorsement decay? `web.seen` only grows; a page the web returned often in 2026
+      and never since keeps its tier. A half-life on `last_seen_at` is the obvious fix (M13).
+- [ ] Learn the weights from the M11 events once the volume allows (unbiased LTR, position
+      bias corrected) instead of hand-set defaults.
 
 ## Related
 

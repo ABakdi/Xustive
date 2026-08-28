@@ -49,6 +49,8 @@ updated: 2026-08-27
 | [[ADR-0028 - Reverse Image Search Sends Words to the Web, Never the Picture]] | accepted, in progress | The picture is read locally; SearXNG gets labels, never the image; visual ranking local only, the crawl closes the loop |
 | [[ADR-0029 - Raw Queries May Leave, Identities Never; First-Party Data Comes Later]] | accepted 2026-08-27, amends 0008/0018/0020/0028 | Raw queries, images and audio may go to third parties without any identity; the policy admits leaks are possible; first-party collection (incl. identifiable) comes later and is never shared |
 | [[ADR-0030 - First-Party Search Data, Kept to Learn From]] | accepted 2026-08-27, in progress | Searches, results shown, opens and reports kept as events with a first-party visitor cookie; documents carry hits; retention and deletion; never shared |
+| [[ADR-0031 - The Web's Verdict Is a Signal on Our Own Documents]] | accepted 2026-08-28, follows 0017 | Every federated sighting is recorded on the document (`web`, `endorsement`), whether born from the federation or crawled; endorsement breaks retrieval ties, is a bounded re-rank weight, and defines the leading tier; distillation is immediate and first in the crawl |
+| [[ADR-0032 - A Cross-Encoder Reranks the Top of the Page, Fused by Reciprocal Rank]] | accepted 2026-08-28 | Qwen3-Reranker-0.6B sidecar (CPU) rescores the top 20; fused with stage 2 by RRF within tiers; off by default, timeout-bounded, measured before it is turned on |
 
 ---
 

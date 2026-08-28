@@ -153,6 +153,9 @@ Start, stop and restart live here.
 
 ### 4.3 Crawler → Documents
 
+Since M13 the list carries a **web** column — `×seen · #best rank`, the engines on hover — and a
+*most endorsed* sort chip ([[ADR-0031]]).
+
 Everything indexed, newest first, and the section the whole console exists for.
 
 - **Search** across title, URL and body. Backed by Meilisearch, so it is the same engine the
@@ -193,6 +196,9 @@ score and the raw document beside each result. Health covers document counts by 
 source, index size, settings drift, and the last migration.
 
 ### 4.8 System
+
+Compute carries the **Cross-encoder reranker** switch beside AI summaries (M13, [[ADR-0032]]);
+the ranking editor has an *endorsement* slider inside the checked side total.
 
 Compute device and the politeness bypass, which exist today, plus a log tail with a level filter.
 The log tail never shows query text — that is enforced elsewhere and stated here so nobody adds it.

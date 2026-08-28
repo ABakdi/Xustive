@@ -17,7 +17,8 @@ progress: T01–T05 built 2026-08-28; open — T03.2's Run-eval action
 > from the console with validation and persist across a restart; no admin page is display-only
 > where the backend has a control; a command palette reaches every page and action; the console
 > stays inside a measured bundle budget; the docs describe the console that exists.
-> Parent: [[TODO]] · Previous: [[Milestone 11 - Learning from Readers]] · Components:
+> Parent: [[TODO]] · Previous: [[Milestone 11 - Learning from Readers]] · Next:
+> [[Milestone 13 - Distilled Ranking]] · Components:
 > [[UI - Admin Console]], [[Search Events]], [[Observability]]
 
 ## Why This Milestone Exists

@@ -126,13 +126,19 @@ None owned. Transient inputs (query, tool responses) and transient outputs (craw
 
 ## 6. Provenance
 
-Each hit carries `engine`; a blended card is flagged `from_web` in the search response, and the
-eager document is `source_id = "federation"` / `discovery = Federation`, so a federated result is
-distinguishable in ranking explanations and on the console. A crawl-feed entry records the channel,
+Each hit carries `engine` (the credited one), `engines` (every engine that returned the URL),
+`rank` and SearXNG's merged `score` (M13-T01.1); a blended card is flagged `from_web` in the
+search response, and the eager document is `source_id = "federation"` / `discovery = Federation`,
+so a federated result is distinguishable in ranking explanations and on the console. Since
+[[ADR-0031 - The Web's Verdict Is a Signal on Our Own Documents]] every hit is also
+**distilled**: the API's endorse sink writes the sighting onto the document's `web` record and
+`endorsement` signal — for a page we already held as much as for a new one — and the ranking
+reads it ([[Ranking and Relevance]] §3.2). A crawl-feed entry records the channel,
 not the query — consistent with the `weak_coverage` discovery funnel ([[Crawler Orchestrator]]).
 
-**Blend** (`merge_federated`): page 1 only; each hit not already present is *appended* as a
-`from_web` card, deduplicated by the URL-derived id **and** by canonical URL (BUG-007 — a page the
+**Blend** (`merge_federated`): page 1 only; each hit not already present becomes a `from_web`
+card — *leading* the page in the engine's order when `federated_first` is on (the default),
+appended otherwise — deduplicated by the URL-derived id **and** by canonical URL (BUG-007 — a page the
 crawler found on its own carries a ULID id, so id-only dedup showed the same URL twice). The strip
 wait is `budget_ms` minus a 150 ms shaping margin; the detached fetch keeps running and indexes
 regardless, so a slow SearXNG costs the *next* search nothing.

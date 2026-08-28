@@ -49,6 +49,7 @@ updated: 2026-08-27
 | M10 | [[Milestone 10 - Reverse Image Search]] | **built 2026-08-27**, two gate items open | Picture in, pictures out: local CLIP/pHash first, SearXNG by derived labels (ADR-0028), extension and style chips from the results; golden set 29/29 originals, 27/29 re-encodes (the misses are placeholders); open: a quiet-machine/GPU latency run, the proxy redirect test |
 | M11 | [[Milestone 11 - Learning from Readers]] | **built 2026-08-27** (T05 docs/gates closing) | First-party search/click/report events with a visitor cookie (ADR-0030), hits on documents, *Not relevant* on every card, `/admin/searches`, sweep/forget/rebuild-hits |
 | M12 | [[Milestone 12 - The Operator's Console]] | **built 2026-08-28** (Run-eval action open) | Vitals ring + chart kit, overview rebuilt, runtime settings that persist (ranking editor, budgets, switches), time on Searches/Evaluation/Queue, sort by hits, command palette, sidebar dots, admin bundle budget |
+| M13 | [[Milestone 13 - Distilled Ranking]] | **built 2026-08-28** (T04.4 measurement open) | Federated hits distilled and endorsed on documents (ADR-0031): `web`/`endorsement`, tie-break in retrieval, endorsed tier and weight in the re-rank, crawl-feed front-promoted; optional cross-encoder sidecar fused by RRF (ADR-0032), off by default |
 
 ```
 M0 ──► M1 ──► M1B ──► M2 ──► M6 ──► M7 ──► M8 ──► M9        (closed, in this order)

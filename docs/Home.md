@@ -178,6 +178,8 @@ Sidecars: `stt-sidecar` (faster-whisper), `ocr-sidecar` (Unlimited-OCR, GPU), `c
 - [[Milestone 9 - Images and Videos]] — closed 2026-08-26 (Images/Videos verticals, thumb proxy)
 - [[Milestone 10 - Reverse Image Search]] — built 2026-08-27 (picture in, pictures out; ADR-0028); two gate items open
 - [[Milestone 11 - Learning from Readers]] — built 2026-08-27 (first-party search events, ADR-0030; PRIV-006/007/008/013 now have their source)
+- [[Milestone 12 - The Operator's Console]] — built 2026-08-28 (charts from a vitals ring, runtime settings that persist, a command palette)
+- [[Milestone 13 - Distilled Ranking]] — built 2026-08-28 (the web's verdict endorsed on documents, ADR-0031; a CPU cross-encoder fused by RRF, ADR-0032)
 - [[Privacy Relaxation Audit]] — 2026-08-27, after [[ADR-0029 - Raw Queries May Leave, Identities Never; First-Party Data Comes Later]]: seventeen ranked items the old privacy rule held back
 
 ---

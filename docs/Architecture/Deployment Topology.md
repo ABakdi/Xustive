@@ -111,7 +111,7 @@ web tier ([[ADR-0014 - Knowledge Panel from Wikipedia via the Web Tier]]). See
 
 **Dev ports** (all bound to `127.0.0.1`, overridable in `.env`): Meilisearch 7700, Qdrant 6333,
 Redis **6390** (not 6379 — another local stack owning 6379 is common), redis-signals 6391, OCR
-8091, CLIP 8092, STT 8093, text-embed 8094, federator 8095, Prometheus 9090, Grafana 3001. The
+8091, CLIP 8092, STT 8093, text-embed 8094, federator 8095, reranker 8096, Prometheus 9090, Grafana 3001. The
 API listens on 8080 and the web tier on 3000; the web tier proxies `/api/v1/*` so the browser
 talks to one origin.
 
