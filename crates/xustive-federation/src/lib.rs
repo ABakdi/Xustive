@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Serialisable both ways: the [[Federation Gateway]] serialises these in its `/federate` response,
 /// and the serving API deserialises them to blend — one shared shape, no drift between the two.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FederatedHit {
     pub url: String,
     pub title: String,
@@ -35,6 +35,14 @@ pub struct FederatedHit {
     pub engine: String,
     /// 1-based position in SearXNG's returned order.
     pub rank: usize,
+    /// SearXNG's merged score for the hit — the sum over the engines that returned it of
+    /// `weight / position` — kept because it is the metasearch verdict the local index distils
+    /// ([[ADR-0031]], M13-T01.1). `0.0` when the response carried none.
+    #[serde(default)]
+    pub score: f32,
+    /// Every engine that returned the URL, not just the credited one. Empty when unnamed.
+    #[serde(default)]
+    pub engines: Vec<String>,
     /// The image or video this hit *is*, for the Images and Videos categories (M9-T06). `None` for
     /// web hits, and defaulted on the wire so a gateway and an API of different builds still agree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -113,6 +121,8 @@ struct SearxngResult {
     engine: String,
     #[serde(default)]
     engines: Vec<String>,
+    #[serde(default)]
+    score: f64,
     /// `images.html` / `videos.html` — how SearXNG says what kind of result this is.
     // `Option`, not `String` with a default: several engines send `null` rather than omitting a
     // field, and `#[serde(default)]` on a `String` refuses `null`.
@@ -144,14 +154,16 @@ pub fn parse_results(body: &str) -> Vec<FederatedHit> {
         .filter(|r| !r.url.trim().is_empty())
         .enumerate()
         .map(|(i, r)| {
-            let engine = if !r.engine.trim().is_empty() {
-                r.engine
-            } else {
-                r.engines
-                    .into_iter()
-                    .find(|e| !e.trim().is_empty())
-                    .unwrap_or_default()
-            };
+            let mut engines: Vec<String> = r
+                .engines
+                .iter()
+                .map(|e| e.trim().to_string())
+                .filter(|e| !e.is_empty())
+                .collect();
+            if !r.engine.trim().is_empty() && !engines.iter().any(|e| e == r.engine.trim()) {
+                engines.insert(0, r.engine.trim().to_string());
+            }
+            let engine = engines.first().cloned().unwrap_or_default();
             let img_src = non_empty(r.img_src.unwrap_or_default());
             let media = match r.template.as_deref().unwrap_or("") {
                 // An image hit without an image is a web hit that lost its way; dropped below.
@@ -181,6 +193,8 @@ pub fn parse_results(body: &str) -> Vec<FederatedHit> {
                 snippet: r.content,
                 engine,
                 rank: i + 1,
+                score: r.score as f32,
+                engines,
                 media,
             }
         })
@@ -410,6 +424,8 @@ mod tests {
             snippet: "s".into(),
             engine: "e".into(),
             rank: 1,
+            score: 0.0,
+            engines: Vec::new(),
             media: None,
         };
         let json = serde_json::to_string(&hit).unwrap();

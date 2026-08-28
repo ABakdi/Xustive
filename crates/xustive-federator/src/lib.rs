@@ -268,6 +268,8 @@ mod tests {
                 snippet: "s".into(),
                 engine: "duckduckgo".into(),
                 rank: 1,
+                score: 0.0,
+                engines: Vec::new(),
                 media: None,
             }],
             partial: true,

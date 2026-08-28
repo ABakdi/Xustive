@@ -123,13 +123,18 @@ pub fn documents_settings() -> Value {
             "hits.opens", "hits.reports"
         ],
         "sortableAttributes": [
-            "published_at", "crawled_at", "quality_score", "engagement.likes", "hits.opens", "hits.reports"],
+            "published_at", "crawled_at", "quality_score", "engagement.likes", "hits.opens", "hits.reports",
+            // The web's verdict (ADR-0031, M13), for the documents console.
+            "endorsement"],
         "displayedAttributes": [
             "id", "title", "url", "canonical_url", "excerpt", "source_type", "source_id",
             "domain", "author", "published_at", "published_at_precision", "sentiment",
             "engagement", "language", "media", "simhash", "quality_score", "comments_count",
             // Shown in the admin document list as a provenance badge (crawler vs external tools).
             "discovery",
+            // The web's verdict and its summary (ADR-0031, M13-T01): the endorse sink reads
+            // `web` back to fold a new sighting in, the console shows it.
+            "web", "endorsement",
             // The concepts a document covers, so the query pipeline can aggregate them across a
             // page's top results into "related searches" (M7-T03) without a second round trip.
             "entities", "topics",
@@ -142,8 +147,12 @@ pub fn documents_settings() -> Value {
         // freshness and quality as tie-breakers *after* textual relevance, never before it.
         "rankingRules": [
             "words", "typo", "proximity", "attribute", "sort", "exactness",
-            "published_at:desc",
-            "quality_score:desc"
+            // Among equal text matches the web's verdict decides (ADR-0031, M13-T02.1), then
+            // quality, then date. Before M13 the tie-break was date first, so on a small index
+            // the newest page won the tie — not the one the web or readers rate.
+            "endorsement:desc",
+            "quality_score:desc",
+            "published_at:desc"
         ],
         "typoTolerance": {
             "enabled": true,
@@ -421,8 +430,8 @@ mod tests {
             assert_eq!(pk, "id", "{name} should key on id");
         }
         // A tripwire, not a fact: an index added here needs settings written on purpose, and the
-        // count failing is how the author is asked whether they did that. Four since M8 added
-        // `knowledge`.
-        assert_eq!(all().len(), 4);
+        // count failing is how the author is asked whether they did that. Five since M11 added
+        // `events`.
+        assert_eq!(all().len(), 5);
     }
 }

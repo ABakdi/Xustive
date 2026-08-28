@@ -423,6 +423,14 @@ pub struct Document {
     /// How completely this document was enriched (M2-T06.2). `Partial` means a repass is owed.
     #[serde(default)]
     pub enrichment_level: EnrichmentLevel,
+    /// What the web said about this page: every time query-time federation returned it, whether
+    /// the document was born from that hit or crawled on our own ([[ADR-0031]], M13-T01.2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web: Option<WebEndorsement>,
+    /// `web` folded to one number in `[0, 1]` so the index can break ties on it
+    /// (`endorsement:desc`) and the re-rank can weight it. `0.0` when never endorsed.
+    #[serde(default)]
+    pub endorsement: f32,
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
 }
@@ -430,6 +438,75 @@ pub struct Document {
 fn default_true() -> bool {
     true
 }
+
+/// The web's verdict on a page, distilled from query-time federation ([[ADR-0031]]).
+///
+/// Written by the API's endorse sink on every federated sighting and merged into the document
+/// (a partial update), so a full crawl replacing a thin document keeps it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WebEndorsement {
+    /// How many searches the federation returned this URL for.
+    #[serde(default)]
+    pub seen: u32,
+    /// The engines that returned it, union over sightings, capped at [`Self::MAX_ENGINES`].
+    #[serde(default)]
+    pub engines: Vec<String>,
+    /// The best (lowest) 1-based rank SearXNG ever gave it. `0` = unknown.
+    #[serde(default)]
+    pub best_rank: u32,
+    /// The best SearXNG merged score seen (`Σ weight / position` over engines).
+    #[serde(default)]
+    pub score: f32,
+    #[serde(default)]
+    pub first_seen_at: i64,
+    #[serde(default)]
+    pub last_seen_at: i64,
+}
+
+impl WebEndorsement {
+    pub const MAX_ENGINES: usize = 12;
+
+    /// One more sighting folded in.
+    pub fn fold(&mut self, rank: u32, score: f32, engines: &[String], now: i64) {
+        self.seen = self.seen.saturating_add(1);
+        if rank > 0 && (self.best_rank == 0 || rank < self.best_rank) {
+            self.best_rank = rank;
+        }
+        if score > self.score {
+            self.score = score;
+        }
+        for e in engines {
+            if self.engines.len() >= Self::MAX_ENGINES {
+                break;
+            }
+            if !e.is_empty() && !self.engines.iter().any(|k| k == e) {
+                self.engines.push(e.clone());
+            }
+        }
+        if self.first_seen_at == 0 {
+            self.first_seen_at = now;
+        }
+        self.last_seen_at = now;
+    }
+
+    /// The flat signal in `[0, 1]`: half for *how often* the web returned the page (log-scaled,
+    /// saturating at ten sightings), half for *how high* it was best placed (`1 / best_rank`).
+    /// A page returned once at position 1 scores 0.55; ten times at position 1, 1.0; once at
+    /// position 10, 0.15.
+    pub fn signal(&self) -> f32 {
+        if self.seen == 0 {
+            return 0.0;
+        }
+        let often = ((1.0 + self.seen as f32).ln() / 11f32.ln()).min(1.0);
+        let high = if self.best_rank == 0 {
+            0.0
+        } else {
+            1.0 / self.best_rank as f32
+        };
+        (0.5 * often + 0.5 * high).clamp(0.0, 1.0)
+    }
+}
+
 fn default_schema_version() -> u32 {
     SCHEMA_VERSION
 }
@@ -485,6 +562,8 @@ impl Document {
             access_path: None,
             discovery: DiscoveryChannel::Unknown,
             enrichment_level: EnrichmentLevel::Full,
+            web: None,
+            endorsement: 0.0,
             schema_version: SCHEMA_VERSION,
         }
     }
