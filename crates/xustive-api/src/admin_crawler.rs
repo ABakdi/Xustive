@@ -224,6 +224,7 @@ pub async fn documents(
         .sort(&[match params.sort.as_deref() {
             Some("opens") => "hits.opens:desc",
             Some("reports") => "hits.reports:desc",
+            Some("endorsement") => "endorsement:desc",
             _ => "crawled_at:desc",
         }]);
     if !list_filters.is_empty() {

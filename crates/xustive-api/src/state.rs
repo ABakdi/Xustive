@@ -122,6 +122,10 @@ pub struct AppState {
     pub token_context: Arc<std::sync::RwLock<HashMap<String, (String, Vec<String>)>>>,
     /// The first-party events sink ([[ADR-0030]]); `None` when `[collection] enabled = false`.
     pub events: Option<crate::events::EventSink>,
+    /// The web's verdict written onto documents ([[ADR-0031]], M13).
+    pub endorse: crate::endorse::EndorseSink,
+    /// The cross-encoder client ([[ADR-0032]], M13); the runtime switch gates its use.
+    pub reranker: Option<crate::reranker::Reranker>,
     /// The console's short memory of the system's vitals (M12), started after the state exists.
     pub timeseries: Option<crate::timeseries::Ring>,
     /// Live crawl counters, connected **once** with a shared auto-reconnecting manager. Reused by
@@ -348,6 +352,8 @@ impl AppState {
         // The sink always exists (an idle task costs nothing); the runtime switch gates the writes,
         // so collection can be turned on from the console without a restart (M12-T02).
         let events = Some(crate::events::EventSink::start(search.clone()));
+        let endorse = crate::endorse::EndorseSink::start(search.clone());
+        let reranker = crate::reranker::Reranker::new(&config.reranker);
         let runtime = Arc::new(crate::runtime::RuntimeSettings::from_config(
             &config,
             load_ranking_weights(),
@@ -384,6 +390,8 @@ impl AppState {
             interaction_tokens: Arc::new(std::sync::RwLock::new(HashMap::new())),
             token_context: Arc::new(std::sync::RwLock::new(HashMap::new())),
             events,
+            endorse,
+            reranker,
             timeseries: None,
             crawl_stats: Arc::new(std::sync::RwLock::new(None)),
             limiter: Arc::new(RateLimiter::new()),

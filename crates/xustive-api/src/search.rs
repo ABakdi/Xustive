@@ -719,16 +719,46 @@ pub async fn handler(
         }
         None => std::collections::HashMap::new(),
     };
-    let ranked = rank::rerank(
+    let weights = state.runtime.ranking();
+    let mut ranked = rank::rerank(
         &hits.hits,
         &normalized,
         xustive_core::now_unix(),
         trust,
         state.authority.as_ref(),
         &interaction_of,
-        &state.runtime.ranking(),
+        &weights,
         Some(ui_lang),
     );
+    // The cross-encoder on the top of the page ([[ADR-0032]], M13-T04.3): its order fused with
+    // ours by reciprocal rank, within tiers. Bounded by the client's timeout; a miss leaves the
+    // page as stage 2 ranked it and counts as a degraded stage, never as an error.
+    if state.runtime.reranker_enabled() && page == 1 {
+        if let Some(model) = state.reranker.as_ref() {
+            let top: Vec<String> = ranked
+                .iter()
+                .take(model.top_n)
+                .map(|r| crate::reranker::passage_of(&r.hit))
+                .collect();
+            let started = Instant::now();
+            match model.scores(&raw, &top).await {
+                Some(scores) => {
+                    ranked = rank::fuse_rrf(ranked, &scores, weights.federated_first);
+                    state.metrics.observe(
+                        metrics::RERANK_DURATION,
+                        metrics::RERANK_DURATION_HELP,
+                        &[],
+                        started.elapsed().as_secs_f64(),
+                    );
+                }
+                None => state.metrics.incr(
+                    metrics::DEGRADED,
+                    metrics::DEGRADED_HELP,
+                    &[("stage", "reranker")],
+                ),
+            }
+        }
+    }
     state.metrics.observe(
         metrics::SEARCH_DURATION,
         metrics::SEARCH_DURATION_HELP,
@@ -1119,6 +1149,9 @@ pub(crate) fn ingest_federated(
         title: String,
         snippet: String,
         lang: xustive_core::Lang,
+        rank: u32,
+        score: f32,
+        engines: Vec<String>,
         /// The image or video the hit was (M9-T06), stored on the eager document so the Images
         /// and Videos tabs find it locally next time, before the crawl lands.
         media: Vec<xustive_core::model::Media>,
@@ -1137,6 +1170,9 @@ pub(crate) fn ingest_federated(
             host: safe.authority(),
             title: h.title.clone(),
             snippet: h.snippet.clone(),
+            rank: h.rank as u32,
+            score: h.score,
+            engines: h.engines.clone(),
             // The hit's OWN language, from its title + snippet (BUG-023): stamping the query's
             // detected language mislabelled every cross-language result — a French query indexing
             // an English page put `fr` on it, corrupting the language filter and facet until the
@@ -1178,6 +1214,21 @@ pub(crate) fn ingest_federated(
     if entries.is_empty() {
         return;
     }
+
+    // 0. The web's verdict, onto the documents ([[ADR-0031]], M13-T01.3): existing ones always,
+    //    new ones when the eager document that will carry the text is on its way too.
+    state.endorse.record(
+        entries
+            .iter()
+            .map(|e| crate::endorse::Sighting {
+                id: xustive_core::id_for_url(&e.curl),
+                rank: e.rank,
+                score: e.score,
+                engines: e.engines.clone(),
+                create: eager,
+            })
+            .collect(),
+    );
 
     tokio::spawn(async move {
         // 1. Eager index — thin documents to the index queue, overwritten later by the full crawl.
@@ -1731,6 +1782,8 @@ mod tests {
             snippet: "web snippet".into(),
             engine: "duckduckgo".into(),
             rank: 1,
+            score: 0.0,
+            engines: Vec::new(),
             media: None,
         }
     }
@@ -1789,6 +1842,7 @@ mod tests {
         merge_federated(
             &mut results,
             &[fed_hit(url_a), fed_hit("https://example.dz/b")],
+            false,
         );
 
         // The crawled URL stayed a single, local (non-web) result — it converged.
@@ -1814,7 +1868,7 @@ mod tests {
         let url = "https://example.dz/organic";
         let mut results = vec![local_card("01ARZ3NDEKTSV4RRFFQ69G5FAV".into(), url)];
 
-        merge_federated(&mut results, &[fed_hit(url)]);
+        merge_federated(&mut results, &[fed_hit(url)], false);
 
         assert_eq!(results.len(), 1, "same URL must not appear twice");
         assert!(!results[0].from_web, "the local result wins");
