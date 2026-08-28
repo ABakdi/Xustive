@@ -374,10 +374,50 @@ pub async fn report(
 // ---------------------------------------------------------------------------------------------
 // Admin: the overview an operator acts on
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
+#[serde(default)]
 pub struct OverviewParams {
-    #[serde(default)]
     pub days: Option<u32>,
+    /// Filters (M12): a term the query must contain, the event kind, the vertical, the interface
+    /// language, one visitor id. Each narrows the scan; the totals, lists and days follow.
+    pub q: Option<String>,
+    pub kind: Option<String>,
+    pub vertical: Option<String>,
+    pub ui: Option<String>,
+    pub visitor: Option<String>,
+    /// `page` and `per_page` for the raw events table, over the same filtered scan.
+    pub page: Option<usize>,
+    pub per_page: Option<usize>,
+}
+
+/// The Meilisearch filter for the overview's window and filters — one place, so the scan and
+/// the table agree.
+fn overview_filter(p: &OverviewParams, since: i64) -> String {
+    let mut f = vec![format!("at >= {since}")];
+    let word = |v: &Option<String>, max: usize| -> Option<String> {
+        v.as_deref()
+            .map(str::trim)
+            .filter(|s| {
+                !s.is_empty()
+                    && s.len() <= max
+                    && s.bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            })
+            .map(str::to_string)
+    };
+    if let Some(k) = word(&p.kind, 12) {
+        f.push(format!("kind = {k}"));
+    }
+    if let Some(v) = word(&p.vertical, 12) {
+        f.push(format!("vertical = {v}"));
+    }
+    if let Some(u) = word(&p.ui, 4) {
+        f.push(format!("ui = {u}"));
+    }
+    if let Some(v) = word(&p.visitor, 26).filter(|v| v.len() == 26) {
+        f.push(format!("visitor = \"{v}\""));
+    }
+    f.join(" AND ")
 }
 
 /// `GET /api/v1/admin/events/overview?days=7`.
@@ -408,9 +448,15 @@ pub async fn overview(
     let mut offset = 0usize;
     const PAGE: usize = 1000;
     const MAX: usize = 50_000;
+    let filter = overview_filter(&p, since);
+    let term =
+        p.q.as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && s.len() <= 80)
+            .unwrap_or("");
     loop {
-        let q = xustive_search::Query::new("")
-            .filter(format!("at >= {since}"))
+        let q = xustive_search::Query::new(term)
+            .filter(filter.clone())
             .sort(&["at:desc"])
             .limit(PAGE)
             .offset(offset);
@@ -527,11 +573,18 @@ pub async fn overview(
     // reports. Days are UTC; the console labels them as dates, not hours.
     let mut daily: std::collections::BTreeMap<i64, (u32, u32, u32, u32)> =
         std::collections::BTreeMap::new();
+    let mut latency: std::collections::BTreeMap<i64, (u64, u32)> =
+        std::collections::BTreeMap::new();
     for s in &searches {
         let e = daily.entry(s.at / 86_400).or_default();
         e.0 += 1;
         if s.total_hits == Some(0) {
             e.2 += 1;
+        }
+        if let Some(ms) = s.latency_ms {
+            let l = latency.entry(s.at / 86_400).or_default();
+            l.0 += ms;
+            l.1 += 1;
         }
     }
     for c in &clicks {
@@ -546,7 +599,11 @@ pub async fn overview(
     let daily_rows: Vec<Value> = (first_day..=last_day)
         .map(|d| {
             let (s, c, z, r) = daily.get(&d).copied().unwrap_or_default();
-            json!({ "day": d * 86_400, "searches": s, "clicks": c, "zero_results": z, "reports": r })
+            let lat = latency
+                .get(&d)
+                .filter(|(_, n)| *n > 0)
+                .map(|(sum, n)| sum / *n as u64);
+            json!({ "day": d * 86_400, "searches": s, "clicks": c, "zero_results": z, "reports": r, "latency_ms": lat })
         })
         .collect();
     let mut recent: Vec<&Event> = searches
@@ -555,6 +612,15 @@ pub async fn overview(
         .chain(reports.iter())
         .collect();
     recent.sort_by(|a, b| b.at.cmp(&a.at));
+    let per_page = p.per_page.unwrap_or(50).clamp(10, 200);
+    let page = p.page.unwrap_or(1).max(1);
+    let total_events = recent.len();
+    let page_rows: Vec<&Event> = recent
+        .iter()
+        .skip((page - 1) * per_page)
+        .take(per_page)
+        .copied()
+        .collect();
 
     Ok(Json(json!({
         "enabled": true,
@@ -577,7 +643,11 @@ pub async fn overview(
         "top_queries": top.iter().take(50).map(|(q, n, h, c)| json!({ "query": q, "count": n, "results": h, "clicks": c })).collect::<Vec<_>>(),
         "most_opened": most_opened.iter().take(30).map(|(d, v)| doc_row(d, v)).collect::<Vec<_>>(),
         "reported": reported.iter().take(50).map(|(d, v)| doc_row(d, v)).collect::<Vec<_>>(),
-        "recent": recent.iter().take(100).collect::<Vec<_>>(),
+        "recent": page_rows,
+        "events_total": total_events,
+        "page": page,
+        "per_page": per_page,
+        "filter": { "q": term, "kind": p.kind, "vertical": p.vertical, "ui": p.ui, "visitor": p.visitor },
     })))
 }
 

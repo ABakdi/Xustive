@@ -30,7 +30,7 @@ const SLIDERS: [keyof RankingWeights, string][] = [
 
 export function checkWeights(w: RankingWeights): string | null {
   for (const [k] of SLIDERS) {
-    const v = w[k]
+    const v = w[k] as number
     if (typeof v !== 'number' || Number.isNaN(v) || v < 0 || v > 1) return `${k} must be between 0 and 1`
   }
   if (w.per_domain_cap < 1 || w.per_domain_cap > 20) return 'per-domain cap must be between 1 and 20'
@@ -67,7 +67,7 @@ export function RankingEditor() {
 
   const side = w.freshness + w.trust + w.authority + w.quality + w.interaction
   const gap20 = w.relevance * (1 - Math.exp(-20 / RELEVANCE_DECAY))
-  const set = (k: keyof RankingWeights, v: number) => setW({ ...w, [k]: v })
+  const set = (k: keyof RankingWeights, v: number | boolean) => setW({ ...w, [k]: v })
 
   return (
     <div className="max-w-2xl">
@@ -81,14 +81,19 @@ export function RankingEditor() {
       <div className="mb-2 h-1.5 w-full overflow-hidden rounded" style={{ background: 'var(--viz-seq-1)' }} aria-hidden>
         <div className="h-full rounded" style={{ width: `${Math.min(100, (side / Math.max(gap20, 0.001)) * 100)}%`, background: side >= gap20 ? 'var(--viz-critical)' : side > gap20 * 0.85 ? 'var(--viz-warning)' : 'var(--viz-1)' }} />
       </div>
+      <label className="mb-3 flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={w.federated_first} onChange={(e) => setW({ ...w, federated_first: e.target.checked })} />
+        <span className="font-medium">Federated results first</span>
+        <span className="text-xs" style={{ color: 'var(--fg-faint)' }}>pages a proper search engine returned for the query rank above local matches — a tier, not a weight</span>
+      </label>
       <ul className="m-0 flex flex-col gap-2 p-0" style={{ listStyle: 'none' }}>
         {SLIDERS.map(([k, hint]) => (
           <li key={k} className="grid items-center gap-3" style={{ gridTemplateColumns: '150px 1fr 56px' }}>
             <label htmlFor={`rk-${k}`} className="text-sm" title={hint}>
               {k.replace(/_/g, ' ')}
             </label>
-            <input id={`rk-${k}`} type="range" min={0} max={1} step={0.01} value={w[k]} onChange={(e) => set(k, Number(e.target.value))} title={hint} />
-            <input type="number" min={0} max={1} step={0.01} value={w[k]} onChange={(e) => set(k, Number(e.target.value))} className="w-14 rounded border px-1 py-0.5 text-end text-xs" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', fontVariantNumeric: 'tabular-nums' }} aria-label={`${k} value`} />
+            <input id={`rk-${k}`} type="range" min={0} max={1} step={0.01} value={w[k] as number} onChange={(e) => set(k, Number(e.target.value))} title={hint} />
+            <input type="number" min={0} max={1} step={0.01} value={w[k] as number} onChange={(e) => set(k, Number(e.target.value))} className="w-14 rounded border px-1 py-0.5 text-end text-xs" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', fontVariantNumeric: 'tabular-nums' }} aria-label={`${k} value`} />
           </li>
         ))}
         {(['per_domain_cap', 'simhash_collapse_distance'] as const).map((k) => (
@@ -97,7 +102,7 @@ export function RankingEditor() {
             <span className="text-xs" style={{ color: 'var(--fg-faint)' }}>
               {k === 'per_domain_cap' ? 'results per domain on a page (1–20)' : 'near-duplicate pages collapsed within this simhash distance (0–16)'}
             </span>
-            <input id={`rk-${k}`} type="number" min={k === 'per_domain_cap' ? 1 : 0} max={k === 'per_domain_cap' ? 20 : 16} step={1} value={w[k]} onChange={(e) => set(k, Number(e.target.value))} className="w-14 rounded border px-1 py-0.5 text-end text-xs" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} />
+            <input id={`rk-${k}`} type="number" min={k === 'per_domain_cap' ? 1 : 0} max={k === 'per_domain_cap' ? 20 : 16} step={1} value={w[k] as number} onChange={(e) => set(k, Number(e.target.value))} className="w-14 rounded border px-1 py-0.5 text-end text-xs" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} />
           </li>
         ))}
       </ul>

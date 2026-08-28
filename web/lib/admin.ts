@@ -470,7 +470,10 @@ export interface EventsOverview {
   reported?: EventDocRow[]
   recent?: EventRow[]
   /** Per UTC day over the window (M12-T03.1). */
-  daily?: { day: number; searches: number; clicks: number; zero_results: number; reports: number }[]
+  daily?: { day: number; searches: number; clicks: number; zero_results: number; reports: number; latency_ms?: number | null }[]
+  events_total?: number
+  page?: number
+  per_page?: number
 }
 export interface EventDocRow {
   doc: string
@@ -499,8 +502,24 @@ export interface EventRow {
   reason?: string
   latency_ms?: number
 }
-export function getEventsOverview(days: number) {
-  return (signal?: AbortSignal) => getJSON<EventsOverview>(`/events/overview?days=${days}`, signal)
+export interface EventsFilter {
+  days: number
+  q?: string
+  kind?: string
+  vertical?: string
+  ui?: string
+  visitor?: string
+  page?: number
+}
+export function getEventsOverview(f: EventsFilter | number) {
+  const p = new URLSearchParams()
+  const filter: EventsFilter = typeof f === 'number' ? { days: f } : f
+  p.set('days', String(filter.days))
+  for (const k of ['q', 'kind', 'vertical', 'ui', 'visitor'] as const) {
+    if (filter[k]) p.set(k, filter[k]!)
+  }
+  if (filter.page) p.set('page', String(filter.page))
+  return (signal?: AbortSignal) => getJSON<EventsOverview>(`/events/overview?${p}`, signal)
 }
 export function getVisitorEvents(visitor: string, signal?: AbortSignal) {
   return getJSON<{ visitor: string; events: EventRow[] }>(`/events/visitor?visitor=${encodeURIComponent(visitor)}`, signal)
@@ -538,6 +557,7 @@ export function getTimeseries(hours: number) {
 
 /** What the console may change at runtime and keep (M12-T02). */
 export interface RankingWeights {
+  federated_first: boolean
   relevance: number
   ui_language: number
   freshness: number

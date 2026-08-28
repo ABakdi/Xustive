@@ -116,6 +116,13 @@ const RELEVANCE_DECAY: f32 = 10.0;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Weights {
+    /// Results that came through a proper search engine — the SearXNG federation, live or
+    /// already eager-indexed (`discovery = "federation"`) — rank above every local result that
+    /// matched the same query. A tier, not a weight: our index is small and the metasearch
+    /// engine's judgement of a page is worth more than our own until the corpus grows, so the
+    /// preference is absolute within the matched pool and leaves the relevance-gap rule intact.
+    #[serde(default = "default_true")]
+    pub federated_first: bool,
     /// Textual relevance. Deliberately the largest by a wide margin.
     pub relevance: f32,
     /// A document written in the language the reader chose in the nav bar. A tie-breaker like
@@ -188,9 +195,14 @@ impl Weights {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl Default for Weights {
     fn default() -> Self {
         Self {
+            federated_first: true,
             // The additive side weights (freshness+trust+authority+quality+interaction) sum to 0.43,
             // deliberately below the relevance gap across twenty positions (~0.48). That bound is
             // what makes "relevance dominates" true by construction rather than by hoping the
@@ -397,10 +409,23 @@ pub fn rerank(
         })
         .collect();
 
+    // Origin first when the operator says so, score within: a page a proper search engine
+    // returned for this query outranks what our small index scored higher on its own.
+    let tier = |r: &Ranked| -> u8 {
+        if weights.federated_first
+            && r.hit.get("discovery").and_then(Value::as_str) == Some("federation")
+        {
+            1
+        } else {
+            0
+        }
+    };
     scored.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        tier(b).cmp(&tier(a)).then_with(|| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     });
 
     let scored = collapse_near_duplicates(scored, weights.simhash_collapse_distance);
@@ -911,6 +936,51 @@ mod tests {
         // trigger stays in charge where the score is unavailable.
         assert!(!top_result_is_weak(&[]));
         assert!(!top_result_is_weak(&[json!({"title": "no score here"})]));
+    }
+
+    #[test]
+    fn a_federated_document_outranks_a_better_scored_local_one_when_asked() {
+        let now = 1_700_000_000;
+        let local = serde_json::json!({
+            "id": "L", "url": "https://a.dz/x", "domain": "a.dz", "title": "algerie",
+            "published_at": now, "published_at_precision": "day", "language": "fr",
+            "quality_score": 1.0, "discovery": "link"
+        });
+        let fed = serde_json::json!({
+            "id": "F", "url": "https://b.dz/y", "domain": "b.dz", "title": "page",
+            "published_at": now - 86_400 * 400, "published_at_precision": "day", "language": "en",
+            "quality_score": 0.2, "discovery": "federation"
+        });
+        let trust: HashMap<String, TrustTier> = HashMap::new();
+        let auth: HashMap<String, f32> = HashMap::new();
+        let inter: HashMap<String, f32> = HashMap::new();
+        let w = Weights::default();
+        let r = rerank(
+            &[local.clone(), fed.clone()],
+            "algerie",
+            now,
+            &trust,
+            &auth,
+            &inter,
+            &w,
+            Some("fr"),
+        );
+        assert_eq!(r[0].hit["id"], "F", "the federated page sorts first");
+        let w = Weights {
+            federated_first: false,
+            ..Weights::default()
+        };
+        let r = rerank(
+            &[local, fed],
+            "algerie",
+            now,
+            &trust,
+            &auth,
+            &inter,
+            &w,
+            Some("fr"),
+        );
+        assert_eq!(r[0].hit["id"], "L", "off, the score decides");
     }
 
     #[test]

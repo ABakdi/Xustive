@@ -811,7 +811,11 @@ pub async fn handler(
     // once a URL has been crawled it appears as a normal local result and its web card drops out. The
     // ids also flow into impression/click capture below, so interaction ranking (M6) covers them too.
     if page == 1 && !federated_hits.is_empty() {
-        merge_federated(&mut results, &federated_hits);
+        merge_federated(
+            &mut results,
+            &federated_hits,
+            state.runtime.ranking().federated_first,
+        );
     }
     // The convergence measure (M7-T09.2): of the cards served on federation-armed first pages, how
     // many came from the web vs the local index. Counted on *every* armed page-1 search — including
@@ -1461,6 +1465,7 @@ pub(crate) fn to_card(hit: &Value) -> ResultCard {
 fn merge_federated(
     results: &mut Vec<ResultCard>,
     federated_hits: &[xustive_ingest::federation::FederatedHit],
+    federated_first: bool,
 ) {
     let mut seen_ids: std::collections::HashSet<String> =
         results.iter().map(|c| c.id.clone()).collect();
@@ -1471,14 +1476,23 @@ fn merge_federated(
         .iter()
         .filter_map(|c| canonical_of(&c.url))
         .collect();
+    let mut web: Vec<ResultCard> = Vec::new();
     for hit in federated_hits {
         let Some(canonical) = canonical_of(&hit.url) else {
             continue;
         };
         let id = xustive_core::id_for_url(&canonical);
         if seen_ids.insert(id.clone()) && seen_urls.insert(canonical.clone()) {
-            results.push(federated_card(hit, &canonical, id));
+            web.push(federated_card(hit, &canonical, id));
         }
+    }
+    // Federated first (Weights::federated_first): the engine's answers lead the page, in the
+    // engine's order, and the local results follow. Otherwise they trail, as before.
+    if federated_first {
+        web.append(results);
+        *results = web;
+    } else {
+        results.append(&mut web);
     }
 }
 
@@ -1727,7 +1741,7 @@ mod tests {
             detail: Some("1980 x 1200".into()),
         });
         let mut results = Vec::new();
-        merge_federated(&mut results, &[img]);
+        merge_federated(&mut results, &[img], false);
         assert_eq!(results[0].media.len(), 1);
         assert_eq!(results[0].media[0].kind, "image");
         assert_eq!(
@@ -1744,7 +1758,7 @@ mod tests {
             detail: Some("184.0".into()),
         });
         let mut results = Vec::new();
-        merge_federated(&mut results, &[vid]);
+        merge_federated(&mut results, &[vid], false);
         let m = &results[0].media[0];
         assert_eq!(m.kind, "video");
         assert_eq!(m.provider.as_deref(), Some("youtube"));

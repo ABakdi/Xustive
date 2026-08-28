@@ -10,7 +10,7 @@ import {
   type EventRow,
   type EventsOverview,
 } from '@/lib/admin'
-import { PageHead, StatusLine, Table, Td, Th, usePoll } from '@/components/admin/ui'
+import { PageHead, Section, StatusLine, Table, Td, Th, usePoll } from '@/components/admin/ui'
 import { Bars, LineChart } from '@/components/admin/charts'
 import { CollectionSwitch } from '@/components/admin/Switches'
 
@@ -26,7 +26,15 @@ import { CollectionSwitch } from '@/components/admin/Switches'
  */
 export default function SearchesPage() {
   const [days, setDays] = useState(7)
-  const { data, error } = usePoll<EventsOverview>(getEventsOverview(days), 30_000)
+  // The filters (M12): every chart, list and the table follow the same slice.
+  const [term, setTerm] = useState('')
+  const [applied, setApplied] = useState('')
+  const [kind, setKind] = useState('')
+  const [vertical, setVertical] = useState('')
+  const [ui, setUi] = useState('')
+  const [visitorFilter, setVisitorFilter] = useState('')
+  const [page, setPage] = useState(1)
+  const { data, error } = usePoll<EventsOverview>(getEventsOverview({ days, q: applied, kind, vertical, ui, visitor: visitorFilter, page }), 30_000)
   const [visitor, setVisitor] = useState('')
   const [visitorEvents, setVisitorEvents] = useState<EventRow[] | null>(null)
   const [note, setNote] = useState('')
@@ -73,6 +81,44 @@ export default function SearchesPage() {
 
       {data?.enabled && t ? (
         <>
+          <form
+            className="mb-3 flex flex-wrap items-center gap-2 text-sm"
+            onSubmit={(e) => {
+              e.preventDefault()
+              setApplied(term.trim())
+              setPage(1)
+            }}
+          >
+            <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="search terms…" dir="auto" className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 220 }} aria-label="Filter by query text" />
+            <select value={kind} onChange={(e) => { setKind(e.target.value); setPage(1) }} className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Kind">
+              <option value="">any kind</option>
+              <option value="search">searches</option>
+              <option value="click">opens</option>
+              <option value="report">reports</option>
+            </select>
+            <select value={vertical} onChange={(e) => { setVertical(e.target.value); setPage(1) }} className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Vertical">
+              <option value="">any tab</option>
+              <option value="all">all</option>
+              <option value="news">news</option>
+              <option value="files">files</option>
+              <option value="images">images</option>
+              <option value="videos">videos</option>
+            </select>
+            <select value={ui} onChange={(e) => { setUi(e.target.value); setPage(1) }} className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Interface language">
+              <option value="">any language</option>
+              <option value="ar">Arabic</option>
+              <option value="ary">Darija</option>
+              <option value="fr">French</option>
+              <option value="en">English</option>
+            </select>
+            <input value={visitorFilter} onChange={(e) => { setVisitorFilter(e.target.value.trim()); setPage(1) }} placeholder="visitor id" className="rounded border px-2 py-1 font-mono text-xs" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', width: 250 }} aria-label="Visitor id" />
+            <button type="submit" className="chip chip-active cursor-pointer">Filter</button>
+            {(applied || kind || vertical || ui || visitorFilter) && (
+              <button type="button" className="chip cursor-pointer" onClick={() => { setTerm(''); setApplied(''); setKind(''); setVertical(''); setUi(''); setVisitorFilter(''); setPage(1) }}>
+                Clear
+              </button>
+            )}
+          </form>
           <p className="mb-4 flex flex-wrap items-center gap-3 text-sm" style={{ color: 'var(--fg-muted)' }}>
             <span>Window:</span>
             {[1, 7, 30, 90].map((d) => (
@@ -115,6 +161,13 @@ export default function SearchesPage() {
                   { name: 'searches', values: (data.daily ?? []).map((d) => d.searches) },
                   { name: 'opened a result', values: (data.daily ?? []).map((d) => d.clicks) },
                 ]}
+              />
+              <LineChart
+                title="Search latency, mean per day (ms)"
+                labels={(data.daily ?? []).map((d) => new Date(d.day * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}
+                series={[{ name: 'latency', values: (data.daily ?? []).map((d) => d.latency_ms ?? null) }]}
+                unit="ms"
+                area
               />
               <LineChart
                 title="Got nothing, and reported, per day"
@@ -163,7 +216,17 @@ export default function SearchesPage() {
             {visitorEvents && <EventTable rows={visitorEvents} />}
           </Section>
 
-          <Section title="Recent events" hint="The last hundred, newest first.">
+          <Section
+            title="Events"
+            hint={`${(data.events_total ?? 0).toLocaleString()} in this slice, newest first.`}
+            actions={
+              <>
+                <button type="button" className="chip cursor-pointer" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>← newer</button>
+                <span className="text-xs" style={{ color: 'var(--fg-faint)' }}>page {data.page ?? page}</span>
+                <button type="button" className="chip cursor-pointer" disabled={(data.page ?? page) * (data.per_page ?? 50) >= (data.events_total ?? 0)} onClick={() => setPage((p) => p + 1)}>older →</button>
+              </>
+            }
+          >
             <EventTable rows={data.recent ?? []} />
           </Section>
         </>
@@ -172,15 +235,6 @@ export default function SearchesPage() {
   )
 }
 
-function Section({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
-  return (
-    <section className="mb-8">
-      <h2 className="m-0 text-base font-semibold">{title}</h2>
-      <p className="m-0 mb-2 text-xs" style={{ color: 'var(--fg-faint)' }}>{hint}</p>
-      {children}
-    </section>
-  )
-}
 
 function QueryTable({ rows, cols }: { rows: Record<string, string | number>[]; cols: string[] }) {
   if (rows.length === 0) return <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>Nothing in this window.</p>

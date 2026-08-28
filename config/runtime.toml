@@ -3,6 +3,10 @@
 
 [federation]
 enabled = true
+budget_ms = 900
+fetch_budget_ms = 6000
+max_hits = 25
+eager_index = true
 
 [collection]
 
