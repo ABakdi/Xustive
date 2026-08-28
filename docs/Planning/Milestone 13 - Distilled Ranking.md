@@ -179,6 +179,22 @@ thin document with a full one.
   worker's crawl batches and the M13 settings reindex, so an endorsement shows on a document
   seconds to minutes after the search rather than at once. The read side (`endorsement:desc`,
   the tier, the weight) is live from the restart.
+- **The federation had been silent all day.** Every engine the SearXNG image enables by
+  default — Brave, DuckDuckGo, Google CSE, Startpage — had suspended this instance ("too many
+  requests", CAPTCHA), so `/federate` returned `{"hits": [], "partial": true}` and nothing was
+  distilled. Fixed in `services/searxng/settings.yml`: Wikipedia, Wikidata, Bing, Qwant, Mojeek
+  and Yahoo enabled (Bing answers; Mojeek denies scrapers, Qwant CAPTCHAs, Yahoo errors — the
+  list stays, suspensions expire), the per-engine timeout raised from 3 s to 4 s, and the
+  gateway's `fetch_budget_ms` widened to 8000 from the console (the 900 ms strip wait is
+  unchanged: the live strip is empty on a 4 s fetch by design — the next search is the payoff).
+  The federator image was rebuilt so `score` and `engines` flow (`[(1, 1.0, ['bing']), (2, 0.5,
+  ['bing'])…]`).
+- **The write path, verified.** After the fix above: `endorse: written`, stub records with
+  `seen=1, best_rank=1 → 0.645` (the formula), merged with the eager document when the worker
+  drains the index stream. Two bugs found on the way and fixed in `7cc0711`: a serialised
+  `endorsement: 0.0` on every eager/crawled document zeroed the signal on merge (now omitted
+  when zero), and a sink read that timed out under load dropped its batch (now retried with a
+  widening pause for up to a minute).
 
 ## Related
 
