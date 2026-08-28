@@ -332,6 +332,10 @@ pub const HTTP_REQUESTS: &str = "xustive_http_requests_total";
 pub const HTTP_REQUESTS_HELP: &str = "Total HTTP requests by route and status";
 pub const HTTP_DURATION: &str = "xustive_http_duration_seconds";
 pub const HTTP_DURATION_HELP: &str = "HTTP request duration by route";
+/// The cross-encoder round trip ([[ADR-0032]], M13), seconds.
+pub const RERANK_DURATION: &str = "xustive_rerank_duration_seconds";
+pub const RERANK_DURATION_HELP: &str = "Cross-encoder reranker round trip, seconds";
+
 pub const DEGRADED: &str = "xustive_degraded_total";
 pub const DEGRADED_HELP: &str =
     "Requests that skipped a stage to stay inside the deadline, by stage";

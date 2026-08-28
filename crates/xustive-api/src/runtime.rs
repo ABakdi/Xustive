@@ -30,6 +30,8 @@ pub struct RuntimeSettings {
     pub eager_index: AtomicBool,
     pub collection_enabled: AtomicBool,
     pub summaries_enabled: AtomicBool,
+    /// The cross-encoder reranker ([[ADR-0032]], M13-T04.2).
+    pub reranker_enabled: AtomicBool,
     pub interaction_enabled: AtomicBool,
     /// Which fields came from `runtime.toml` rather than the config, for the console to say so.
     overridden: RwLock<Vec<&'static str>>,
@@ -49,6 +51,7 @@ impl RuntimeSettings {
             ("federation.eager_index", o.federation.eager_index.is_some()),
             ("collection.enabled", o.collection.enabled.is_some()),
             ("ml.summaries_enabled", o.ml.summaries_enabled.is_some()),
+            ("ml.reranker_enabled", o.ml.reranker_enabled.is_some()),
             ("interaction.enabled", o.interaction.enabled.is_some()),
             ("ranking", o.ranking.is_some()),
         ] {
@@ -69,6 +72,7 @@ impl RuntimeSettings {
             eager_index: AtomicBool::new(config.federation.eager_index),
             collection_enabled: AtomicBool::new(config.collection.enabled),
             summaries_enabled: AtomicBool::new(config.ml.summaries_enabled),
+            reranker_enabled: AtomicBool::new(config.reranker.enabled),
             interaction_enabled: AtomicBool::new(config.interaction.enabled),
             overridden: RwLock::new(overridden),
         }
@@ -84,6 +88,10 @@ impl RuntimeSettings {
         self.summaries_enabled.load(Ordering::Relaxed)
     }
 
+    pub fn reranker_enabled(&self) -> bool {
+        self.reranker_enabled.load(Ordering::Relaxed)
+    }
+
     /// The effective settings, with what is overridden — the console's `GET`.
     pub fn snapshot(&self) -> Value {
         json!({
@@ -95,7 +103,7 @@ impl RuntimeSettings {
                 "eager_index": self.eager_index.load(Ordering::Relaxed),
             },
             "collection": { "enabled": self.collection_enabled() },
-            "ml": { "summaries_enabled": self.summaries_enabled() },
+            "ml": { "summaries_enabled": self.summaries_enabled(), "reranker_enabled": self.reranker_enabled() },
             "interaction": { "enabled": self.interaction_enabled.load(Ordering::Relaxed) },
             "overridden": self.overridden.read().map(|v| v.clone()).unwrap_or_default(),
         })
@@ -129,6 +137,7 @@ pub struct SwitchPatch {
 #[serde(default)]
 pub struct MlPatch {
     pub summaries_enabled: Option<bool>,
+    pub reranker_enabled: Option<bool>,
 }
 
 /// The bounds a change must respect — the same ones a config file would be held to.
@@ -230,6 +239,10 @@ pub async fn patch(
         r.summaries_enabled.store(v, Ordering::Relaxed);
         changed.push("ml.summaries_enabled");
     }
+    if let Some(Some(v)) = p.ml.as_ref().map(|m| m.reranker_enabled) {
+        r.reranker_enabled.store(v, Ordering::Relaxed);
+        changed.push("ml.reranker_enabled");
+    }
     if let Some(Some(v)) = p.interaction.as_ref().map(|i| i.enabled) {
         r.interaction_enabled.store(v, Ordering::Relaxed);
         // The anonymous store connects or lets go at once; a failure to connect is reported
@@ -263,6 +276,9 @@ pub async fn patch(
     }
     if changed.contains(&"ml.summaries_enabled") {
         o.ml.summaries_enabled = Some(r.summaries_enabled());
+    }
+    if changed.contains(&"ml.reranker_enabled") {
+        o.ml.reranker_enabled = Some(r.reranker_enabled());
     }
     if changed.contains(&"interaction.enabled") {
         o.interaction.enabled = Some(r.interaction_enabled.load(Ordering::Relaxed));

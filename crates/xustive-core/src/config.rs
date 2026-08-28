@@ -691,6 +691,33 @@ pub struct SttConfig {
     pub max_audio_bytes: usize,
 }
 
+/// The cross-encoder reranker sidecar ([[ADR-0032]], M13-T04): the top of the page re-read by
+/// Qwen3-Reranker-0.6B and fused with the stage-2 order by reciprocal rank. Off by default —
+/// it needs `services/reranker` running with its weights — and bounded by a timeout so a slow
+/// sidecar never delays a page; the runtime switch in the console overrides `enabled`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RerankerConfig {
+    pub enabled: bool,
+    /// The sidecar's rerank endpoint. Internal network, not internet egress.
+    pub endpoint: String,
+    /// Hard per-request timeout, milliseconds. Past it the page is served as stage 2 ranked it.
+    pub timeout_ms: u64,
+    /// How many candidates from the top of the page the model reads (1–50).
+    pub top_n: usize,
+}
+
+impl Default for RerankerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: "http://127.0.0.1:8096/rerank".into(),
+            timeout_ms: 400,
+            top_n: 20,
+        }
+    }
+}
+
 impl Default for SttConfig {
     fn default() -> Self {
         Self {
@@ -881,6 +908,8 @@ pub struct Config {
     pub vector: VectorConfig,
     #[serde(default)]
     pub stt: SttConfig,
+    /// The cross-encoder reranker ([[ADR-0032]], M13).
+    pub reranker: RerankerConfig,
 }
 
 impl Default for Config {
@@ -902,6 +931,7 @@ impl Default for Config {
             media: MediaConfig::default(),
             vector: VectorConfig::default(),
             stt: SttConfig::default(),
+            reranker: RerankerConfig::default(),
         }
     }
 }
@@ -955,6 +985,9 @@ impl Config {
         }
         if let Some(v) = o.collection.enabled {
             self.collection.enabled = v;
+        }
+        if let Some(v) = o.ml.reranker_enabled {
+            self.reranker.enabled = v;
         }
         if let Some(v) = o.ml.summaries_enabled {
             self.ml.summaries_enabled = v;
@@ -1460,6 +1493,9 @@ pub struct CollectionOverrides {
 pub struct MlOverrides {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summaries_enabled: Option<bool>,
+    /// The cross-encoder reranker switch ([[ADR-0032]], M13-T04.2).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reranker_enabled: Option<bool>,
 }
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]

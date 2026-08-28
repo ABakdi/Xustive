@@ -1,0 +1,5 @@
+# Qwen3-Reranker-0.6B as INT8 ONNX through qwen3-embed: ONNX Runtime only, no PyTorch. CPU by
+# default; install onnxruntime-gpu for CUDA (see README).
+qwen3-embed
+fastapi==0.115.*
+uvicorn[standard]==0.32.*

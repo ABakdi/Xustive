@@ -201,6 +201,15 @@ text_dim = 1024
 # Nearest neighbours pulled from the text collection per query before fusion with lexical results.
 text_search_limit = 50
 
+[reranker]
+# The cross-encoder on the top of the page (ADR-0032, M13). Off until services/reranker runs with
+# its weights; the console's Compute page flips it at runtime. 400 ms is the most a CPU search
+# may wait for the model before the page goes out as stage 2 ranked it.
+enabled = false
+endpoint = "http://127.0.0.1:8096/rerank"
+timeout_ms = 400
+top_n = 20
+
 [stt]
 # Voice search. Off by default: needs the STT sidecar (services/stt-sidecar) and its whisper model.
 # Whisper small runs CPU-only, so voice is not GPU-gated. On in dev so the field's voice button
