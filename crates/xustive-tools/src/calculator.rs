@@ -10,6 +10,7 @@
 
 use rust_decimal::prelude::*;
 use rust_decimal::{Decimal, MathematicalOps};
+use std::str::FromStr;
 
 use crate::{fold_digits, Answer, Tool};
 
@@ -26,9 +27,23 @@ impl Tool for Calculator {
 
     fn answer(&self, query: &str) -> Option<Answer> {
         let folded = fold_digits(query);
+        // The question words of three languages, and the symbols a keyboard offers for the
+        // operators, so "what is 2+2", "combien font 3 × 4" and "احسب 15% من 80" all count.
+        let folded = normalise_phrasing(&folded);
         let expr = folded.trim().trim_end_matches('=').trim();
         if expr.is_empty() {
             return None;
+        }
+        // Percent of a number: "15% of 80" / "15% de 80" / "15٪ من 80".
+        if let Some((shown, value)) = percent_of(expr) {
+            return Some(Answer {
+                tool: self.name(),
+                confidence: 0.97,
+                interpretation: shown,
+                value: render(value),
+                detail: None,
+                as_of: None,
+            });
         }
 
         // A bare number is not a calculation. Someone typing `2026` wants the year, not a
@@ -81,6 +96,110 @@ impl Tool for Calculator {
 }
 
 /// Format for display: trim trailing zeros, group thousands.
+/// Strip the words that ask, and map the symbols people type to the ones the parser reads.
+fn normalise_phrasing(q: &str) -> String {
+    const LEAD: &[&str] = &[
+        "what is",
+        "what's",
+        "whats",
+        "calculate",
+        "compute",
+        "calcul",
+        "calcule",
+        "calculer",
+        "combien font",
+        "combien fait",
+        "combien vaut",
+        "combien",
+        "quel est",
+        "احسب",
+        "ما هو",
+        "ما ناتج",
+        "كم يساوي",
+        "كم تساوي",
+        "كم",
+        "شحال",
+        "قداش",
+    ];
+    let mut s = q
+        .trim()
+        .trim_end_matches(['?', '؟', '!'])
+        .trim()
+        .to_lowercase();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for lead in LEAD {
+            if let Some(rest) = s.strip_prefix(lead) {
+                if rest.starts_with(' ')
+                    || rest.starts_with(|c: char| c.is_ascii_digit() || c == '(')
+                {
+                    s = rest.trim_start().to_string();
+                    changed = true;
+                }
+            }
+        }
+    }
+    // Keyboard and locale symbols → the parser's operators. A lone `x` between numbers is a
+    // multiplication sign to most people ("3 x 4"), never a variable here.
+    let s = s
+        .replace(['×', '✕'], "*")
+        .replace('÷', "/")
+        .replace('٪', "%")
+        .replace('،', ",")
+        .replace('−', "-")
+        .replace("plus", "+")
+        .replace("moins", "-")
+        .replace("fois", "*")
+        .replace("divisé par", "/")
+        .replace("زائد", "+")
+        .replace("ناقص", "-")
+        .replace("ضرب", "*")
+        .replace("تقسيم", "/");
+    let re_x = regex_lite_x(&s);
+    re_x
+}
+
+/// `3 x 4` → `3 * 4`, without touching `0x1f` or a word containing x.
+fn regex_lite_x(s: &str) -> String {
+    let b: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    for (i, &c) in b.iter().enumerate() {
+        let is_x = c == 'x' || c == 'X';
+        let before = b[..i].iter().rev().find(|ch| !ch.is_whitespace()).copied();
+        let after = b[i + 1..].iter().find(|ch| !ch.is_whitespace()).copied();
+        if is_x
+            && before.is_some_and(|ch| ch.is_ascii_digit() || ch == ')')
+            && after.is_some_and(|ch| ch.is_ascii_digit() || ch == '(')
+            && (i == 0 || b[i - 1].is_whitespace() || b[i - 1].is_ascii_digit())
+        {
+            out.push('*');
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// "15% of 80" in three languages → (what was read, the value).
+fn percent_of(expr: &str) -> Option<(String, Decimal)> {
+    let t: Vec<&str> = expr.split_whitespace().collect();
+    // Shapes: `15% of 80`, `15 % of 80`, `15% de 80`, `15% من 80`.
+    let (pct, rest) = match t.as_slice() {
+        [p, of, n] if p.ends_with('%') => (p.trim_end_matches('%'), (*of, *n)),
+        [p, "%", of, n] => (*p, (*of, *n)),
+        _ => return None,
+    };
+    let (of, n) = rest;
+    if !matches!(of, "of" | "de" | "du" | "des" | "من") {
+        return None;
+    }
+    let pct = Decimal::from_str(pct).ok()?;
+    let n = Decimal::from_str(&n.replace(',', "")).ok()?;
+    let value = pct.checked_mul(n)?.checked_div(Decimal::from(100))?;
+    Some((format!("{pct}% × {n}"), value))
+}
+
 fn render(value: Decimal) -> String {
     let value = value.normalize();
     let text = value.to_string();
@@ -502,5 +621,31 @@ mod tests {
             answer.interpretation
         );
         assert_eq!(answer.as_of, None, "arithmetic is timeless");
+    }
+}
+
+#[cfg(test)]
+mod phrasing {
+    use super::*;
+
+    fn value(q: &str) -> String {
+        Calculator.answer(q).map(|a| a.value).unwrap_or_default()
+    }
+
+    #[test]
+    fn percent_of_in_three_languages() {
+        assert_eq!(value("15% of 80"), "12");
+        assert_eq!(value("15% de 80"), "12");
+        assert_eq!(value("15٪ من 80"), "12");
+        assert_eq!(value("احسب 15% من 80"), "12");
+    }
+
+    #[test]
+    fn question_words_and_keyboard_symbols() {
+        assert_eq!(value("what is 2+2"), "4");
+        assert_eq!(value("combien font 3 × 4"), "12");
+        assert_eq!(value("3 x 4"), "12");
+        assert_eq!(value("كم يساوي 10 ÷ 4"), "2.5");
+        assert_eq!(value("calculate (2+3)*4"), "20");
     }
 }

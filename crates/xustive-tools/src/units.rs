@@ -50,7 +50,17 @@ const UNITS: &[Unit] = &[
         names: ("متر", "mètre"),
         dimension: Dimension::Length,
         per_base: "1",
-        aliases: &["m", "metre", "meter", "metres", "meters", "متر"],
+        aliases: &[
+            "m",
+            "metre",
+            "meter",
+            "metres",
+            "meters",
+            "mètre",
+            "mètres",
+            "متر",
+            "أمتار",
+        ],
     },
     Unit {
         name: "kilometre",
@@ -63,6 +73,8 @@ const UNITS: &[Unit] = &[
             "kilometer",
             "kilometres",
             "kilometers",
+            "kilomètre",
+            "kilomètres",
             "كلم",
             "كيلومتر",
         ],
@@ -72,14 +84,31 @@ const UNITS: &[Unit] = &[
         names: ("سنتيمتر", "centimètre"),
         dimension: Dimension::Length,
         per_base: "0.01",
-        aliases: &["cm", "centimetre", "centimeter", "سم", "سنتيمتر"],
+        aliases: &[
+            "cm",
+            "centimetre",
+            "centimeter",
+            "centimètre",
+            "centimètres",
+            "سم",
+            "سنتيمتر",
+            "سنتم",
+        ],
     },
     Unit {
         name: "millimetre",
         names: ("مليمتر", "millimètre"),
         dimension: Dimension::Length,
         per_base: "0.001",
-        aliases: &["mm", "millimetre", "millimeter", "ملم"],
+        aliases: &[
+            "mm",
+            "millimetre",
+            "millimeter",
+            "millimètre",
+            "millimètres",
+            "ملم",
+            "مليمتر",
+        ],
     },
     Unit {
         name: "mile",
@@ -93,14 +122,16 @@ const UNITS: &[Unit] = &[
         names: ("قدم", "pied"),
         dimension: Dimension::Length,
         per_base: "0.3048",
-        aliases: &["ft", "foot", "feet", "pied", "pieds", "قدم"],
+        aliases: &["ft", "foot", "feet", "pied", "pieds", "قدم", "أقدام"],
     },
     Unit {
         name: "inch",
         names: ("بوصة", "pouce"),
         dimension: Dimension::Length,
         per_base: "0.0254",
-        aliases: &["in", "inch", "inches", "pouce", "بوصة", "إنش"],
+        aliases: &[
+            "in", "inch", "inches", "pouce", "pouces", "بوصة", "إنش", "انش",
+        ],
     },
     // --- mass ---------------------------------------------------------------------------
     Unit {
@@ -124,7 +155,9 @@ const UNITS: &[Unit] = &[
         names: ("غرام", "gramme"),
         dimension: Dimension::Mass,
         per_base: "0.001",
-        aliases: &["g", "gram", "gramme", "grams", "grammes", "غرام", "جرام"],
+        aliases: &[
+            "g", "gram", "gramme", "grams", "grammes", "غرام", "جرام", "غ",
+        ],
     },
     Unit {
         name: "tonne",
@@ -138,7 +171,16 @@ const UNITS: &[Unit] = &[
         names: ("رطل", "livre"),
         dimension: Dimension::Mass,
         per_base: "0.45359237",
-        aliases: &["lb", "lbs", "pound", "pounds", "livre", "livres", "رطل"],
+        aliases: &[
+            "lb",
+            "lbs",
+            "pound",
+            "pounds",
+            "livre",
+            "livres",
+            "رطل",
+            "باوند",
+        ],
     },
     // The Algerian qintar is 100 kg, not the Ottoman or the imperial hundredweight. Produce and
     // grain are quoted in it constantly and no international converter knows it exists.
@@ -207,7 +249,16 @@ const UNITS: &[Unit] = &[
         names: ("لتر", "litre"),
         dimension: Dimension::Volume,
         per_base: "1",
-        aliases: &["l", "litre", "liter", "litres", "liters", "لتر"],
+        aliases: &[
+            "l",
+            "litre",
+            "liter",
+            "litres",
+            "liters",
+            "لتر",
+            "لترات",
+            "ليتر",
+        ],
     },
     Unit {
         name: "millilitre",
@@ -289,7 +340,12 @@ impl Unit {
 }
 
 /// Words meaning "to", across the languages people mix.
-const TO: &[&str] = &["to", "in", "en", "into", "as", "الى", "إلى", "بال", "ب"];
+/// The words between the two units. English, French and Arabic — a reader asks in whatever
+/// language they think in, and the connector is the one word the grammar hinges on.
+const TO: &[&str] = &[
+    "to", "in", "into", "as", "=", "->", "→", "en", "vers", "à", "a", "au", "aux", "إلى", "الى",
+    "ل", "الي", "بـ", "ب",
+];
 
 pub struct UnitConverter;
 
@@ -309,6 +365,7 @@ impl Tool for UnitConverter {
     /// Convert, rendering unit names in `lang`.
     fn answer_in(&self, query: &str, lang: &str) -> Option<Answer> {
         let folded = fold_digits(query).to_lowercase();
+        let folded = strip_question(&folded);
         // An arithmetic operator means this is an expression, not a single quantity, and this tool
         // converts one quantity. `5 km + 3 miles in m` used to answer "5000 metre" — it read the
         // first term and silently dropped the rest, which is a wrong answer rather than a missing
@@ -317,13 +374,26 @@ impl Tool for UnitConverter {
         if folded.contains('+') || folded.contains('*') || folded.contains('/') {
             return None;
         }
-        let tokens: Vec<&str> = folded.split_whitespace().collect();
+        let mut tokens: Vec<&str> = folded.split_whitespace().collect();
+        // "how many miles in 10 km" / "combien de miles dans 10 km": the target comes first.
+        // Rewritten to the canonical order before parsing, so one grammar serves both.
+        let reordered;
+        if let Some((target, rest)) = target_first(&tokens) {
+            reordered = format!("{} {} {}", rest.join(" "), TO[0], target.join(" "));
+            tokens = reordered.split_whitespace().collect();
+        }
         if tokens.len() < 2 {
             return None;
         }
 
         // `<amount> <from> [to] <target>`, where the amount may be glued to its unit (`5km`).
         let (amount, rest) = split_amount(&tokens)?;
+        // Arabic glues the preposition to the unit: `بالميل` is "in the mile". Peel it, so the
+        // token is both the separator and the target.
+        let rest: Vec<&str> = rest
+            .iter()
+            .flat_map(|t| peel_arabic_preposition(t))
+            .collect();
         let separator = rest.iter().position(|t| TO.contains(t));
 
         // Without a separator this is far more likely to be ordinary prose than a conversion:
@@ -331,7 +401,12 @@ impl Tool for UnitConverter {
         let split = separator?;
         let (from_tokens, to_tokens) = (&rest[..split], &rest[split + 1..]);
 
-        let from = lookup(from_tokens)?;
+        // "كم" is the question word ("how many") and, after a number, the everyday Arabic
+        // abbreviation of kilometre. The question reading was stripped above; what is left is km.
+        let from = match from_tokens {
+            ["كم"] => lookup(&["كلم"])?,
+            _ => lookup(from_tokens)?,
+        };
         let to = lookup(to_tokens)?;
         if from.dimension != to.dimension {
             // Refusing is the point. A confident answer to "5 km in kilograms" is worse than none.
@@ -362,6 +437,96 @@ impl Tool for UnitConverter {
             as_of: None,
         })
     }
+}
+
+/// Drop the words that ask rather than state: "convert", "how many", "combien font", "كم يساوي".
+/// Whatever the language, what follows is the quantity.
+fn strip_question(q: &str) -> String {
+    const LEAD: &[&str] = &[
+        "convert",
+        "conversion",
+        "convertir",
+        "convertis",
+        "convertissez",
+        "how many",
+        "how much",
+        "what is",
+        "what's",
+        "whats",
+        "combien de",
+        "combien font",
+        "combien fait",
+        "combien vaut",
+        "combien",
+        "quel est",
+        "c'est quoi",
+        "كم يساوي",
+        "كم تساوي",
+        "كم هو",
+        "كم",
+        "حول",
+        "حوّل",
+        "ما هو",
+        "ما يساوي",
+        "شحال",
+        "قداش",
+    ];
+    let mut s = q
+        .trim()
+        .trim_end_matches(['?', '؟', '!'])
+        .trim()
+        .to_string();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for lead in LEAD {
+            if let Some(rest) = s.strip_prefix(lead) {
+                if rest.is_empty() || rest.starts_with(' ') {
+                    s = rest.trim_start().to_string();
+                    changed = true;
+                }
+            }
+        }
+    }
+    s
+}
+
+/// `miles in 10 km` → (`["miles"]`, `["10", "km"]`): the target named first, the quantity after
+/// the connector. Only when the first token is a known unit and a later token is a connector.
+fn target_first<'a>(tokens: &[&'a str]) -> Option<(Vec<&'a str>, Vec<&'a str>)> {
+    if tokens.len() < 3 || lookup(&tokens[..1]).is_none() {
+        return None;
+    }
+    let sep = tokens
+        .iter()
+        .position(|t| TO.contains(t) || *t == "dans" || *t == "في")?;
+    let rest = &tokens[sep + 1..];
+    // The quantity must start with a number for the rewrite to be safe.
+    let first = rest.first()?;
+    let starts_numeric = first.chars().next().is_some_and(|c| c.is_ascii_digit());
+    if !starts_numeric {
+        // "how many miles in a km" — a count of one.
+        let article = matches!(*first, "a" | "an" | "one" | "un" | "une" | "واحد");
+        if !article || rest.len() < 2 {
+            return None;
+        }
+        let mut q = vec!["1"];
+        q.extend_from_slice(&rest[1..]);
+        return Some((tokens[..sep].to_vec(), q));
+    }
+    Some((tokens[..sep].to_vec(), rest.to_vec()))
+}
+
+/// `بالميل` → `["ب", "ميل"]`, `للمتر` → `["ل", "متر"]`; anything else unchanged.
+fn peel_arabic_preposition(token: &str) -> Vec<&str> {
+    for (prefix, sep) in [("بال", "ب"), ("لل", "ل"), ("ب", "ب"), ("ل", "ل")] {
+        if let Some(rest) = token.strip_prefix(prefix) {
+            if !rest.is_empty() && lookup(&[rest]).is_some() {
+                return vec![sep, rest];
+            }
+        }
+    }
+    vec![token]
 }
 
 fn split_amount<'a>(tokens: &[&'a str]) -> Option<(Decimal, Vec<&'a str>)> {
@@ -615,5 +780,32 @@ mod locale_tests {
         assert_ne!(q.display("ar"), q.name);
         assert_ne!(q.display("fr"), q.name);
         assert_eq!(q.display("en"), q.name);
+    }
+}
+
+#[cfg(test)]
+mod phrasing {
+    use super::*;
+
+    fn value(q: &str) -> String {
+        UnitConverter.answer(q).map(|a| a.value).unwrap_or_default()
+    }
+
+    #[test]
+    fn asks_in_three_languages_are_conversions() {
+        assert!(value("convert 5 kg to lb").starts_with("11.02"));
+        assert!(value("3 mètres en pieds").starts_with("9.84"));
+        assert!(value("كم يساوي 10 كلم بالميل").starts_with("6.21"));
+        assert!(value("10 كم بالميل").starts_with("6.21"));
+        assert!(value("combien de miles dans 10 km").starts_with("6.21"));
+        assert!(value("how many feet in a metre").starts_with("3.28"));
+        assert!(value("5 kilos en livres").starts_with("11.02"));
+        assert!(value("حول 100 متر إلى قدم").starts_with("328"));
+    }
+
+    #[test]
+    fn prose_still_declines() {
+        assert!(UnitConverter.answer("5 kilos de tomates").is_none());
+        assert!(UnitConverter.answer("combien coûte un kilo").is_none());
     }
 }

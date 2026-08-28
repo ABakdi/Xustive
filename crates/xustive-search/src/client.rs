@@ -140,7 +140,7 @@ impl Query {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Hits<T> {
     #[serde(default = "Vec::new")]

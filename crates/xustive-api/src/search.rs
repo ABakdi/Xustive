@@ -554,11 +554,17 @@ pub async fn handler(
             if !sort.is_empty() {
                 narrow = narrow.sort(&sort);
             }
-            state
-                .search
-                .search::<Value>(&index, &narrow)
-                .await
-                .map_err(ApiError::from)?
+            match state.search.search::<Value>(&index, &narrow).await {
+                Ok(h) => h,
+                // The engine is busy and a tool already answered: "15% of 80 = 12" with no web
+                // results beats a 504 that hides the answer the reader came for.
+                Err(_) if instant.is_some() => xustive_search::Hits::default(),
+                Err(e) => return Err(ApiError::from(e)),
+            }
+        }
+        Err(e) if instant.is_some() => {
+            tracing::warn!(error = %e, "retrieval failed; answering with the instant answer only");
+            xustive_search::Hits::default()
         }
         Err(e) => return Err(ApiError::from(e)),
     };
