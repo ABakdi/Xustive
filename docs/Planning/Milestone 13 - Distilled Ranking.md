@@ -6,7 +6,7 @@ tags:
 milestone: 13
 status: in-progress
 updated: 2026-08-28
-progress: specified 2026-08-28; T01–T04 in build
+progress: T01–T03 built 2026-08-28; T04 built and measured (too slow on CPU, stays off); open — T04.4 eval before/after, endorsement decay
 ---
 # Milestone 13 - Distilled Ranking
 
@@ -164,6 +164,21 @@ thin document with a full one.
 | Frontier order | unit test: federated URL pops before an organic depth-0 URL on the same host |
 | Reranker off by default, bounded | config default; timeout test; `degraded{stage="reranker"}` |
 | Measured | eval report before/after in `eval/reports/`, numbers in this file |
+
+## Measurements (2026-08-28, CPU-only, 12 threads)
+
+- **Reranker latency.** Qwen3-Reranker-0.6B INT8 ONNX through `qwen3-embed` on the reference
+  CPU: **0.72 s for one pair, 3.4 s for five, 13.9 s for twenty** — linear, so the library
+  scores pairs one at a time. Against a 400 ms budget the switch stays **off**. Two ways
+  forward, neither taken yet: `onnxruntime-gpu` on the T1000 (the model is ~570 MB, fits), or a
+  smaller cross-encoder; either is measured the same way before the default changes. The
+  contract test passes (the relevant passage scores above the irrelevant one), the model loads
+  in ~40 s, and the port is **8096** (8095 is the federator).
+- **Endorsement write path.** The sink's first batch (75 sightings from a handful of dev
+  searches) is one `documentAdditionOrUpdate` task on Meilisearch; in dev it queues behind the
+  worker's crawl batches and the M13 settings reindex, so an endorsement shows on a document
+  seconds to minutes after the search rather than at once. The read side (`endorsement:desc`,
+  the tier, the weight) is live from the restart.
 
 ## Related
 
