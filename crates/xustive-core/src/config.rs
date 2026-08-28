@@ -938,6 +938,9 @@ impl Config {
 
     /// Apply the console's runtime overrides onto the loaded config.
     pub fn apply_runtime(&mut self, o: &RuntimeOverrides) {
+        if let Some(v) = o.federation.enabled {
+            self.federation.enabled = v;
+        }
         if let Some(v) = o.federation.budget_ms {
             self.federation.budget_ms = v;
         }
@@ -1433,6 +1436,10 @@ pub struct RuntimeOverrides {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FederationOverrides {
+    /// The runtime switch itself: flipped on the Integrations page, it must survive a restart
+    /// or the console lies about the state it left the system in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub budget_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]

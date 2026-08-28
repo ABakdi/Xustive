@@ -1,0 +1,11 @@
+# Written by the operator console (M12). Applied after the config file and the
+# environment on every start; delete a key here to fall back to the config file.
+
+[federation]
+enabled = true
+
+[collection]
+
+[ml]
+
+[interaction]

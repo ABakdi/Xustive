@@ -522,6 +522,33 @@ pub async fn overview(
             })
         })
         .count();
+
+    // Per day, for the charts (M12-T03.1): searches, searches with a click, zero results,
+    // reports. Days are UTC; the console labels them as dates, not hours.
+    let mut daily: std::collections::BTreeMap<i64, (u32, u32, u32, u32)> =
+        std::collections::BTreeMap::new();
+    for s in &searches {
+        let e = daily.entry(s.at / 86_400).or_default();
+        e.0 += 1;
+        if s.total_hits == Some(0) {
+            e.2 += 1;
+        }
+    }
+    for c in &clicks {
+        daily.entry(c.at / 86_400).or_default().1 += 1;
+    }
+    for r in &reports {
+        daily.entry(r.at / 86_400).or_default().3 += 1;
+    }
+    // Fill the window's empty days so the line does not skip them.
+    let first_day = since / 86_400;
+    let last_day = now() / 86_400;
+    let daily_rows: Vec<Value> = (first_day..=last_day)
+        .map(|d| {
+            let (s, c, z, r) = daily.get(&d).copied().unwrap_or_default();
+            json!({ "day": d * 86_400, "searches": s, "clicks": c, "zero_results": z, "reports": r })
+        })
+        .collect();
     let mut recent: Vec<&Event> = searches
         .iter()
         .chain(clicks.iter())
@@ -544,6 +571,7 @@ pub async fn overview(
             "searches_with_a_click": clicked_searches,
             "visitors": searches.iter().filter_map(|s| s.visitor.as_ref()).collect::<std::collections::HashSet<_>>().len(),
         },
+        "daily": daily_rows,
         "zero_results": zero.iter().take(50).map(|(q, n)| json!({ "query": q, "count": n })).collect::<Vec<_>>(),
         "unopened": unopened.iter().take(50).map(|(q, n, h)| json!({ "query": q, "count": n, "results": h })).collect::<Vec<_>>(),
         "top_queries": top.iter().take(50).map(|(q, n, h, c)| json!({ "query": q, "count": n, "results": h, "clicks": c })).collect::<Vec<_>>(),

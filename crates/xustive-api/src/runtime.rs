@@ -156,6 +156,20 @@ fn check(p: &Patch) -> Result<(), String> {
     Ok(())
 }
 
+/// Persist one switch the older `/integrations` endpoint flips (federation, external summaries),
+/// so a restart keeps what the console set. Best-effort: a write failure is logged, never fatal.
+pub fn persist_switch(state: &AppState, name: &str, value: bool) {
+    let path_cfg = state.config.config_path.as_deref();
+    let mut o = RuntimeOverrides::load(path_cfg).unwrap_or_default();
+    match name {
+        "federation" => o.federation.enabled = Some(value),
+        _ => return,
+    }
+    if let Err(e) = o.save(path_cfg) {
+        tracing::warn!(error = %e, switch = name, "switch applied but not persisted");
+    }
+}
+
 /// `GET /api/v1/admin/settings`.
 pub async fn get(
     State(state): State<AppState>,

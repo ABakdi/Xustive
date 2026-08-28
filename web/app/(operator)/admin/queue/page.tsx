@@ -4,6 +4,8 @@ import { useState } from 'react'
 
 import { dropDeadOne, getQueue, replayDeadOne, replayDlq, type QueueStatus } from '@/lib/admin'
 import { PageHead, usePoll } from '@/components/admin/ui'
+import { LineChart } from '@/components/admin/charts'
+import { getTimeseries } from '@/lib/admin'
 
 function Tile({ n, label }: { n: number | string; label: string }) {
   return (
@@ -21,6 +23,7 @@ function Tile({ n, label }: { n: number | string; label: string }) {
  */
 export default function QueuePage() {
   const { data, error } = usePoll<QueueStatus>(getQueue, 5_000)
+  const { data: ts } = usePoll(getTimeseries(6), 30_000)
   const [msg, setMsg] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -110,6 +113,18 @@ export default function QueuePage() {
       )}
 
       <div className="mb-8">
+      {(ts?.points.length ?? 0) > 1 && (
+        <div className="mb-8">
+          <LineChart
+            title="Frontier and in-flight, last 6 h"
+            labels={(ts?.points ?? []).map((p) => { const d = new Date(p.at * 1000); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` })}
+            series={[
+              { name: 'waiting', values: (ts?.points ?? []).map((p) => p.frontier_waiting) },
+              { name: 'in flight', values: (ts?.points ?? []).map((p) => p.inflight) },
+            ]}
+          />
+        </div>
+      )}
         <h2 className="mb-2 text-lg font-semibold">Dead letters</h2>
         {dead.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>None — nothing has been given up on.</p>

@@ -11,6 +11,7 @@ import {
   type EventsOverview,
 } from '@/lib/admin'
 import { PageHead, StatusLine, Table, Td, Th, usePoll } from '@/components/admin/ui'
+import { Bars, LineChart } from '@/components/admin/charts'
 import { CollectionSwitch } from '@/components/admin/Switches'
 
 /**
@@ -105,11 +106,32 @@ export default function SearchesPage() {
             ))}
           </div>
 
-          <Section title="Searched, got nothing" hint="A coverage gap, a missing synonym, or a spelling — add the synonym, crawl the source, or both.">
-            <QueryTable rows={data.zero_results ?? []} cols={['count']} />
+          {(data.daily?.length ?? 0) > 1 && (
+            <div className="mb-8 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
+              <LineChart
+                title="Searches and opens, per day"
+                labels={(data.daily ?? []).map((d) => new Date(d.day * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}
+                series={[
+                  { name: 'searches', values: (data.daily ?? []).map((d) => d.searches) },
+                  { name: 'opened a result', values: (data.daily ?? []).map((d) => d.clicks) },
+                ]}
+              />
+              <LineChart
+                title="Got nothing, and reported, per day"
+                labels={(data.daily ?? []).map((d) => new Date(d.day * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}
+                series={[
+                  { name: 'got nothing', values: (data.daily ?? []).map((d) => d.zero_results) },
+                  { name: 'reported', values: (data.daily ?? []).map((d) => d.reports) },
+                ]}
+              />
+            </div>
+          )}
+
+          <Section title="Searched, got nothing" hint="A coverage gap, a missing synonym, or a spelling — add the synonym, crawl the source, or both. A bar opens the query.">
+            <Bars items={(data.zero_results ?? []).slice(0, 20).map((r) => ({ label: r.query, value: r.count }))} onPick={(it) => window.open(`/ar/search?q=${encodeURIComponent(it.label)}`, '_blank')} />
           </Section>
-          <Section title="Searched, never opened" hint="Results came back and nobody opened one, more than once: the ranking put the wrong thing first. Run the query.">
-            <QueryTable rows={data.unopened ?? []} cols={['count', 'results']} />
+          <Section title="Searched, never opened" hint="Results came back and nobody opened one, more than once: the ranking put the wrong thing first. A bar opens the query.">
+            <Bars items={(data.unopened ?? []).slice(0, 20).map((r) => ({ label: r.query, value: r.count, hint: `${r.results} results` }))} onPick={(it) => window.open(`/ar/search?q=${encodeURIComponent(it.label)}`, '_blank')} />
           </Section>
           <Section title="Reported as not relevant" hint="Readers said this result was wrong for these queries. Look at the page, then at the query.">
             <DocTable rows={data.reported ?? []} />

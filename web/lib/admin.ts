@@ -466,6 +466,8 @@ export interface EventsOverview {
   most_opened?: EventDocRow[]
   reported?: EventDocRow[]
   recent?: EventRow[]
+  /** Per UTC day over the window (M12-T03.1). */
+  daily?: { day: number; searches: number; clicks: number; zero_results: number; reports: number }[]
 }
 export interface EventDocRow {
   doc: string

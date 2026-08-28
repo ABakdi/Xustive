@@ -2,6 +2,7 @@
 
 import { getChannels } from '@/lib/admin'
 import { PageHead, StatusLine, Table, Td, Th, pct, usePoll } from '@/components/admin/ui'
+import { Bars } from '@/components/admin/charts'
 
 export default function DiscoveryPage() {
   const { data, error } = usePoll(getChannels, 10_000)
@@ -24,6 +25,12 @@ export default function DiscoveryPage() {
               ? 'No discovery activity recorded yet.'
               : 'Loading…'}
       </StatusLine>
+      {data && data.length > 0 && (
+        <div className="mb-6 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+          <Bars title="Discovered, by channel" items={data.map((c) => ({ label: c.channel, value: c.discovered }))} />
+          <Bars title="Indexed, by channel" items={data.map((c) => ({ label: c.channel, value: c.indexed }))} color="var(--viz-3)" />
+        </div>
+      )}
       <Table
         head={
           <>

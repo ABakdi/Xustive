@@ -687,6 +687,8 @@ pub async fn set_integrations(
             state
                 .federation_enabled
                 .store(update.enabled, Ordering::Relaxed);
+            // Kept across restarts (M12-T02): the console must not lie after a reboot.
+            crate::runtime::persist_switch(&state, "federation", update.enabled);
             tracing::info!(peer = ?peer, enabled = update.enabled, "federation toggled via admin");
             Ok(Json(json!({
                 "ok": true,

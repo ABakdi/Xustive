@@ -1,6 +1,7 @@
 'use client'
 
 import { getEval, type EvalReport } from '@/lib/admin'
+import { LineChart } from '@/components/admin/charts'
 import { PageHead, StatusLine, Table, Td, Th, usePoll } from '@/components/admin/ui'
 
 const pct = (v?: number) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
@@ -72,6 +73,28 @@ export default function EvaluationPage() {
       {evals.length > 0 ? (
         <div className="mb-8">
           <h2 className="mb-2 text-lg font-semibold">Eval runs</h2>
+      {/* The one genuine trend the repo keeps (M12-T03.2): every dated report on one axis. */}
+      {(() => {
+        const runs = (data?.reports ?? [])
+          .filter((r) => (r.kind === 'eval' || r.kind === 'baseline') && r.ndcg_at_10 != null)
+          .sort((a, b) => (a.generated_at ?? a.file).localeCompare(b.generated_at ?? b.file))
+        if (runs.length < 2) return null
+        const label = (r: (typeof runs)[number]) => (r.generated_at ? new Date(r.generated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : r.file.replace(/\.json$/, ''))
+        return (
+          <div className="mb-8">
+            <LineChart
+              title="Golden set over time"
+              labels={runs.map(label)}
+              series={[
+                { name: 'nDCG@10', values: runs.map((r) => r.ndcg_at_10 ?? null) },
+                { name: 'MRR@10', values: runs.map((r) => r.mrr_at_10 ?? null) },
+                { name: 'recall@50', values: runs.map((r) => r.recall_at_50 ?? null) },
+              ]}
+              format={(n) => n.toFixed(3)}
+            />
+          </div>
+        )
+      })()}
           <Table
             head={
               <>
