@@ -13,6 +13,7 @@ use anyhow::Result;
 use clap::Parser;
 use xustive_toold::store::Store;
 use xustive_toold::{knowledge, rates, weather, Dataset};
+use xustive_tools::place::Place;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -89,8 +90,16 @@ async fn main() -> Result<()> {
         tracing::warn!(meili = %args.meili, "could not build a Meilisearch client; knowledge harvest is off");
     }
 
+    let mut pass: u64 = 0;
     loop {
-        let stats = fetch_weather(&client, &store).await;
+        // The wilayas every pass; the world cities every fourth, which at a thirty-minute
+        // cadence is every two hours — inside the staleness limit, and a third of the requests.
+        let mut places = weather::targets();
+        if pass % weather::WORLD_EVERY == 0 {
+            places.extend(weather::world_targets());
+        }
+        pass += 1;
+        let stats = fetch_weather(&client, &store, &places).await;
         tracing::info!(
             written = stats.written,
             rejected = stats.rejected,
@@ -139,7 +148,7 @@ struct Stats {
     failed: usize,
 }
 
-async fn fetch_weather(client: &reqwest::Client, store: &Store) -> Stats {
+async fn fetch_weather(client: &reqwest::Client, store: &Store, places: &[Place]) -> Stats {
     let dataset = weather::Weather;
     let mut stats = Stats::default();
     let now = xustive_core::now_unix();
@@ -148,8 +157,9 @@ async fn fetch_weather(client: &reqwest::Client, store: &Store) -> Stats {
     // indistinguishable from one never fetched.
     let ttl = dataset.staleness_limit().as_secs() * 4;
 
-    for wilaya in weather::targets() {
-        let key = weather::key(dataset.key_prefix(), wilaya.code);
+    for place in places {
+        let name = place.name("fr");
+        let key = weather::key(dataset.key_prefix(), &place.key());
         let previous = store
             .get::<weather::Forecast>(&key)
             .await
@@ -157,11 +167,11 @@ async fn fetch_weather(client: &reqwest::Client, store: &Store) -> Stats {
             .flatten()
             .map(|c| c.payload);
 
-        match weather::fetch(client, wilaya, now, previous.as_ref()).await {
+        match weather::fetch(client, place, now, previous.as_ref()).await {
             Ok(fresh) => match store.put(&key, &fresh, ttl).await {
                 Ok(()) => stats.written += 1,
                 Err(e) => {
-                    tracing::warn!(wilaya = wilaya.code, error = %e, "could not write");
+                    tracing::warn!(place = name, error = %e, "could not write");
                     stats.failed += 1;
                 }
             },
@@ -169,21 +179,17 @@ async fn fetch_weather(client: &reqwest::Client, store: &Store) -> Stats {
                 // The previous value is kept, not cleared. Slightly old and correct beats fresh
                 // and wrong, and clearing would turn one bad publisher response into a missing
                 // card for the next three hours.
-                tracing::warn!(
-                    wilaya = wilaya.code,
-                    reason,
-                    "rejected; keeping previous value"
-                );
+                tracing::warn!(place = name, reason, "rejected; keeping previous value");
                 stats.rejected += 1;
             }
             Err(e) => {
-                tracing::warn!(wilaya = wilaya.code, error = %e, "fetch failed");
+                tracing::warn!(place = name, error = %e, "fetch failed");
                 stats.failed += 1;
             }
         }
 
-        // Paced. 58 requests in a burst is rude to a free publisher that asks for nothing in
-        // return, and there is no deadline here worth being rude for.
+        // Paced. Fifty-eight requests in a burst is rude to a free publisher that asks for
+        // nothing in return, and there is no deadline here worth being rude for.
         tokio::time::sleep(Duration::from_millis(250)).await;
     }
     stats

@@ -139,7 +139,7 @@ which [[Performance Budgets]] forbids.
 | Calculator | `calculator` / `calc` | `45*1.19`, `15% of 2000`, `2000 + 19%`, `sqrt(64)`, `٤٥ × ٥` | Exact decimal (`rust_decimal`) first; `fend-core` fallback for unit-aware expressions (§7). |
 | Unit converter | `unit-converter` / `convert` | `5 km en miles`, `30°C to F`, `2 قنطار كيلو` | Length, mass, temperature, area, volume, speed, data. **Qintar (100 kg) and sa'a (400 m²)** which no international converter carries. Names rendered per `ui`. |
 | Currency | `currency` / `currency` | `20 eur dzd`, `100 dollar en dinar`, `20 eur + 5 usd in dzd` | Cache-backed. **Official rate only** — see §8. Twenty currencies. |
-| Weather | `weather` / `weather` | `طقس وهران`, `météo Alger`, `weather` | Cache-backed. Now, 48 h hourly, 7 days, per wilaya. `طقس` alone means "here": wilaya guessed from a **local GeoIP database**, coarsened to a wilaya, never stored ([[ADR-0020 - Approximate Location from a Local Database]]). The card always says which place it assumed. |
+| Weather | `weather` / `weather` | `طقس وهران`, `météo Alger`, `weather paris`, `weather` | Cache-backed. Now, 48 h hourly, 7 days, for the 58 wilayas **and ~90 world cities** (§Weather places). `طقس` alone means "here": wilaya guessed from a **local GeoIP database**, coarsened to a wilaya, never stored ([[ADR-0020 - Approximate Location from a Local Database]]). The card always says which place it assumed, and a city carries its country. |
 | Prayer times | `prayer-times` / `salat` | `مواقيت الصلاة`, `heure priere Setif` | Computed locally; §10. |
 | Date | `date` / `date` | `12 août 2026 hijri`, `days between 1/1/2026 and 1/7/2026` | Gregorian → Hijri (tabular civil calendar, and the card says so) and day arithmetic. Maghrebi month names (`أوت`, not `أغسطس`). No world clock. |
 | Wilaya reference | `wilaya` / `wilaya` | `code postal bejaia`, `ولاية 06` | 58 wilayas: code, postal, dial, seat coordinates. Compiled in; also the coordinate source for prayer and weather. |
@@ -327,6 +327,33 @@ Every one is invisible beyond a missing card.
 - [ ] Should the calculator accept a leading `=` like a spreadsheet?
 - [ ] Does the translator card need a "report a bad translation" affordance, given no logging?
 - [ ] Exam-results week is one day of extreme, predictable traffic — capacity handling?
+
+## Weather places, and the one thing this tool must never do
+
+Until 2026-08-29 the detector knew only the 58 wilayas, and anything else it did not recognise
+fell through to the default: **`weather paris` answered with Algiers**, confidently, with no hint
+that the question had been changed. Reported by the operator; it is the exact failure mode
+[[ADR-0022 - Entity Resolution Prefers Silence to a Wrong Panel]] rules on for panels, and the
+same rule applies here.
+
+Three cases, and each has one correct behaviour:
+
+| The query | What happens |
+|:---|:---|
+| Names a place we hold — a wilaya, or a world city | answer for **that** place; a city is labelled with its country (`Paris, France`), in the interface language |
+| Names nothing (`طقس`, `weather today`) | answer for here — GeoIP coarsened to a wilaya, and the card says it assumed |
+| Names a place we do not hold (`weather kinshasa`) | **no card at all.** The web results below are already about the place they asked for; a card about somewhere else is worse than none |
+
+"Names nothing" and "names something unknown" are told apart by what is left of the query once
+the trigger and the connective words of three languages are removed
+(`weather::names_somewhere`).
+
+**The world list is curated, not geocoded** (`xustive_tools::city`, ~90 cities): the Maghreb, the
+Arab world, the diaspora's cities in France and beyond, and the capitals that appear in a
+newsroom — with aliases for the short forms people type (`مكة` for `مكة المكرمة`, `Kuwait` for
+`Kuwait City`). A geocoder would mean a live lookup on the search path, and the serving plane has
+no route to the internet by design ([[Tool Data Plane]]). Adding a city is one line and a fetch
+cycle.
 
 ## Related
 

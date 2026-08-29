@@ -70,6 +70,7 @@ ones age out:
 
 ```jsonc
 tool:weather:v2:31             // wilaya code; v2 added the hourly series and days 6–7 (M8-T05.2)
+tool:weather:v2:c-paris        // a world city, namespaced so wilaya keys stay bare (2026-08-29)
 tool:rates:v1                  // one table, all currencies against USD
 {
   "fetched_at": 1786000000,
@@ -93,12 +94,20 @@ entry indistinguishable from one never fetched.
 | Dataset | Cadence | Source | Staleness limit | Status |
 |:---|:---|:---|:---|:---|
 | Weather, 58 wilayas | 30 min | Open-Meteo (CC-BY-4.0, no key) | 3 h | built |
+| Weather, ~90 world cities | 2 h (every 4th pass) | Open-Meteo | 3 h | built 2026-08-29 |
 | Currency, official | 6 h | `open.er-api.com` (exchangerate-api open access, attribution) | 48 h | built |
 | Knowledge entities | weekly per entity | Wikidata `wbgetentities` + Wikipedia extracts (ar/fr/en) | — (Meilisearch, not Redis) | built |
 | Currency, parallel | — | no honest source | — | **not built** (2026-08-27) — see §7 |
 | Fuel prices | — | compiled into `xustive-tools` with an effective date | — | not a fetch: administered value ([[Instant Answers]] §6.2) |
 | Sports fixtures & results | — | — | — | not built (2026-08-27) |
 | Exam result portals | — | links compiled into `xustive-tools` | — | not a fetch |
+
+The world cities ride along on every fourth pass (`WORLD_EVERY`), which is a refresh every two
+hours — inside the three-hour staleness limit, at a quarter of the request cost of putting them
+on the wilaya cadence. Their forecasts are fetched with `timezone=auto` and the response's own
+`utc_offset_seconds` is used to read the observation time: reading a Tokyo reading as Algiers
+time made it look nine hours old, and every world city was rejected as implausible on the first
+run. Their temperature bounds are the world's (−70…60 °C), not Algeria's (−25…58 °C).
 
 Fixed cadence, never per-request. 58 wilayas every 30 minutes is 116 requests an hour: a trivial
 load for the publisher, and — the point — **a request pattern that reveals nothing**, because it

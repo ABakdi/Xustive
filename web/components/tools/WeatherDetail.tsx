@@ -33,7 +33,7 @@ export function WeatherDetail({
         humidity?: unknown
         feels_like?: unknown
         assumed_place?: unknown
-        wilaya?: { ar?: string; fr?: string }
+        place?: { key?: string; name?: string; country?: string | null }
         source?: unknown
       }
     | undefined

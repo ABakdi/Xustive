@@ -54,9 +54,9 @@ pub async fn sample(state: &AppState) -> Vec<(&'static str, u64)> {
     // Weather: 58 wilaya entries in the Redis tool cache.
     let mut oldest: Option<u64> = None;
     let mut present = 0usize;
-    for wilaya in xustive_toold::weather::targets() {
+    for place in xustive_toold::weather::targets() {
         if let Ok(Some(cached)) = cache
-            .get::<Forecast>(&key(Weather.key_prefix(), wilaya.code))
+            .get::<Forecast>(&key(Weather.key_prefix(), &place.key()))
             .await
         {
             present += 1;

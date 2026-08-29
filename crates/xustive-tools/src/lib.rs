@@ -24,11 +24,13 @@
 //! no card.
 
 pub mod calculator;
+pub mod city;
 pub mod currency;
 pub mod datetime;
 pub mod deep;
 pub mod exam;
 pub mod fuel;
+pub mod place;
 pub mod prayer;
 pub mod translator;
 pub mod transliterate;

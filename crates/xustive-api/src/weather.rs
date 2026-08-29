@@ -23,6 +23,15 @@ pub async fn answer(
     peer: Option<std::net::SocketAddr>,
 ) -> Option<xustive_tools::Answer> {
     let mut request = xustive_tools::weather::detect(query)?;
+
+    // The reader named a place, and it is not one we hold a forecast for. Answering with their
+    // own city instead is not a fallback — it is a confident wrong answer, and it is what this
+    // tool did until 2026-08-29 (`weather paris` returned Algiers). Say nothing: the web results
+    // below the card are about the place they actually asked for.
+    if request.unknown_place {
+        return None;
+    }
+
     let cache = state.tool_cache.as_ref()?;
 
     // Nobody named a place, so guess one from where the reader is connecting from — a local
@@ -32,13 +41,13 @@ pub async fn answer(
     if !request.named {
         if let Some(geo) = state.geoip.as_ref() {
             if let Some(w) = crate::ratelimit::client_ip(peer).and_then(|ip| geo.wilaya_of(ip)) {
-                request.wilaya = w;
+                request.place = xustive_tools::place::Place::Wilaya(w);
             }
         }
     }
 
     let cached = cache
-        .get::<Forecast>(&key(Weather.key_prefix(), request.wilaya.code))
+        .get::<Forecast>(&key(Weather.key_prefix(), &request.place.key()))
         .await
         .ok()
         .flatten()?;
@@ -48,18 +57,12 @@ pub async fn answer(
     // is already generous for a current temperature, and a card that shows yesterday's weather
     // with a note is still a card showing yesterday's weather.
     if cached.is_stale(now, Weather.staleness_limit()) {
-        tracing::debug!(
-            wilaya = request.wilaya.code,
-            "weather is stale; withholding"
-        );
+        tracing::debug!(place = %request.place.key(), "weather is stale; withholding");
         return None;
     }
 
     let f = &cached.payload;
-    let place = match ui_lang {
-        "fr" | "en" => request.wilaya.name_fr,
-        _ => request.wilaya.name_ar,
-    };
+    let place = request.place.name(ui_lang);
 
     let days: Vec<serde_json::Value> = f
         .days
@@ -92,10 +95,17 @@ pub async fn answer(
     Some(xustive_tools::Answer {
         tool: "weather",
         confidence: request.confidence,
-        interpretation: place.to_string(),
+        // A city carries its country: `Paris` alone is also a town in Texas, and the reader
+        // should be able to see at a glance that we answered for the one they meant.
+        interpretation: match request.place.country(ui_lang) {
+            // The Arabic comma, in an Arabic line. A Latin one reads as a typo there.
+            Some(country) if ui_lang == "ar" || ui_lang == "ary" => format!("{place}، {country}"),
+            Some(country) => format!("{place}, {country}"),
+            None => place.to_string(),
+        },
         value: format!("{}°", f.temperature_c.round()),
         detail: Some(serde_json::json!({
-            "wilaya": { "code": request.wilaya.code, "ar": request.wilaya.name_ar, "fr": request.wilaya.name_fr },
+            "place": { "key": request.place.key(), "name": place, "country": request.place.country(ui_lang) },
             "temperature": f.temperature_c.round(),
             "feels_like": f.feels_like_c.round(),
             "code": f.code,

@@ -1,4 +1,5 @@
-//! Weather for the 58 wilayas.
+//! Weather for the 58 wilayas — and, since 2026-08-29, for the world cities in
+//! [`xustive_tools::city`], on a slower schedule ([[Instant Answers]] §weather).
 //!
 //! From Open-Meteo: CC-BY licensed, no API key, and — the reason it was chosen over the
 //! alternatives — no per-user call. We fetch 58 places every thirty minutes on a fixed schedule,
@@ -11,7 +12,8 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use xustive_tools::wilaya::{Wilaya, WILAYAS};
+use xustive_tools::place::Place;
+use xustive_tools::wilaya::WILAYAS;
 
 use crate::validate::{self, Rejected};
 use crate::{Cached, Dataset, FetchError};
@@ -35,10 +37,11 @@ impl Dataset for Weather {
     }
 }
 
-/// One wilaya's forecast, as the card needs it.
+/// One place's forecast, as the card needs it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Forecast {
-    pub wilaya: u8,
+    /// The place key ([`Place::key`]): a wilaya code, or `c-<slug>` for a world city.
+    pub place: String,
     pub temperature_c: f64,
     pub feels_like_c: f64,
     /// WMO weather code. Mapped to an icon and a label by the client rather than here, so the
@@ -73,8 +76,8 @@ pub struct Day {
     pub code: u8,
 }
 
-pub fn key(prefix: &str, wilaya: u8) -> String {
-    format!("{prefix}:{wilaya}")
+pub fn key(prefix: &str, place: &str) -> String {
+    format!("{prefix}:{place}")
 }
 
 /// Bounds for Algeria.
@@ -84,6 +87,11 @@ pub fn key(prefix: &str, wilaya: u8) -> String {
 const MIN_C: f64 = -25.0;
 const MAX_C: f64 = 58.0;
 
+/// The world is colder and hotter than Algeria. Wide enough for Yakutsk and Kuwait, narrow
+/// enough that a Fahrenheit reading (a summer 100 °F) is still caught.
+const WORLD_MIN_C: f64 = -70.0;
+const WORLD_MAX_C: f64 = 60.0;
+
 /// How much of the hourly series to keep. Two days: beyond that an hourly figure is false
 /// precision, and a graph with 168 points is a smear rather than a forecast.
 const HOURS_KEPT: usize = 48;
@@ -91,10 +99,19 @@ const HOURS_KEPT: usize = 48;
 /// The Open-Meteo response, as much of it as we use.
 #[derive(Debug, Deserialize)]
 struct ApiResponse {
+    /// The offset of the place's own clock, which `timezone=auto` makes vary per city. Without
+    /// it every non-Algerian reading looked hours old and was rejected as implausible.
+    #[serde(default = "algiers_offset")]
+    utc_offset_seconds: i64,
     current: Current,
     daily: Daily,
     #[serde(default)]
     hourly: Option<Hourly>,
+}
+
+/// What Algeria's clock is, for a response that did not say.
+fn algiers_offset() -> i64 {
+    3_600
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,20 +140,21 @@ struct Daily {
     weather_code: Vec<u8>,
 }
 
-/// Fetch one wilaya.
+/// Fetch one place.
 pub async fn fetch(
     client: &reqwest::Client,
-    wilaya: &Wilaya,
+    place: &Place,
     now: i64,
     previous: Option<&Forecast>,
 ) -> Result<Cached<Forecast>, FetchError> {
+    let (latitude, longitude) = place.coordinates();
     let url = format!(
         "https://api.open-meteo.com/v1/forecast?latitude={:.4}&longitude={:.4}\
          &current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m\
          &daily=weather_code,temperature_2m_max,temperature_2m_min\
          &hourly=temperature_2m,precipitation_probability,weather_code\
-         &timezone=Africa%2FAlgiers&forecast_days=7",
-        wilaya.latitude, wilaya.longitude
+         &timezone=auto&forecast_days=7",
+        latitude, longitude
     );
 
     let response = client
@@ -152,7 +170,7 @@ pub async fn fetch(
         .await
         .map_err(|e| FetchError::Parse(e.to_string()))?;
 
-    build(body, wilaya, now, previous)
+    build(body, place, now, previous)
 }
 
 /// Turn a response into a validated cache entry.
@@ -161,26 +179,34 @@ pub async fn fetch(
 /// because these are the checks that only ever run against data we did not write.
 fn build(
     body: ApiResponse,
-    wilaya: &Wilaya,
+    place: &Place,
     now: i64,
     previous: Option<&Forecast>,
 ) -> Result<Cached<Forecast>, FetchError> {
     let reject = |r: Rejected| FetchError::Rejected(r.to_string());
+    // Algeria's bounds are tight enough to catch a sensor fault; a city elsewhere needs the
+    // world's, or every Moscow winter would be rejected as implausible.
+    let (min_c, max_c) = if place.is_wilaya() {
+        (MIN_C, MAX_C)
+    } else {
+        (WORLD_MIN_C, WORLD_MAX_C)
+    };
 
     // The publisher's own observation time, not ours.
-    let observed_at = parse_local_time(&body.current.time).ok_or_else(|| {
-        reject(Rejected::Missing {
-            field: "current.time".into(),
-        })
-    })?;
+    let observed_at =
+        parse_local_time(&body.current.time, body.utc_offset_seconds).ok_or_else(|| {
+            reject(Rejected::Missing {
+                field: "current.time".into(),
+            })
+        })?;
     validate::timestamp(observed_at, now, Duration::from_secs(6 * 3600)).map_err(reject)?;
 
-    validate::bounded("temperature", body.current.temperature_2m, MIN_C, MAX_C).map_err(reject)?;
+    validate::bounded("temperature", body.current.temperature_2m, min_c, max_c).map_err(reject)?;
     validate::bounded(
         "apparent_temperature",
         body.current.apparent_temperature,
-        MIN_C,
-        MAX_C,
+        min_c,
+        max_c,
     )
     .map_err(reject)?;
     validate::bounded("humidity", body.current.relative_humidity_2m, 0.0, 100.0).map_err(reject)?;
@@ -221,8 +247,8 @@ fn build(
         }));
     }
     for day in &days {
-        validate::bounded("daily high", day.high_c, MIN_C, MAX_C).map_err(reject)?;
-        validate::bounded("daily low", day.low_c, MIN_C, MAX_C).map_err(reject)?;
+        validate::bounded("daily high", day.high_c, min_c, max_c).map_err(reject)?;
+        validate::bounded("daily low", day.low_c, min_c, max_c).map_err(reject)?;
         // A low above its high means the two series are misaligned, which would render as a
         // forecast that is merely odd rather than obviously broken.
         if day.low_c > day.high_c {
@@ -260,7 +286,7 @@ fn build(
         None => Vec::new(),
     };
     for hour in &hours {
-        validate::bounded("hourly temperature", hour.temperature_c, MIN_C, MAX_C)
+        validate::bounded("hourly temperature", hour.temperature_c, min_c, max_c)
             .map_err(reject)?;
         validate::bounded(
             "precipitation chance",
@@ -277,7 +303,7 @@ fn build(
         source: "open-meteo".into(),
         licence: "CC-BY-4.0".into(),
         payload: Forecast {
-            wilaya: wilaya.code,
+            place: place.key(),
             temperature_c: body.current.temperature_2m,
             feels_like_c: body.current.apparent_temperature,
             code: body.current.weather_code,
@@ -293,7 +319,7 @@ fn build(
 ///
 /// The response is in Africa/Algiers because we asked for it, and Algeria is UTC+1 year-round
 /// with no daylight saving — so one fixed offset is correct rather than a simplification.
-fn parse_local_time(text: &str) -> Option<i64> {
+fn parse_local_time(text: &str, utc_offset_seconds: i64) -> Option<i64> {
     let (date, time) = text.split_once('T')?;
     let mut parts = date.split('-');
     let year: i64 = parts.next()?.parse().ok()?;
@@ -305,24 +331,39 @@ fn parse_local_time(text: &str) -> Option<i64> {
     let minute: i64 = hm.next()?.parse().ok()?;
 
     let days = xustive_tools::datetime::days_from_civil(year, month, day);
-    Some(days * 86_400 + hour * 3_600 + minute * 60 - 3_600)
+    Some(days * 86_400 + hour * 3_600 + minute * 60 - utc_offset_seconds)
 }
 
-/// Every wilaya, for the scheduler to walk.
-pub fn targets() -> &'static [Wilaya] {
-    WILAYAS
+/// Every wilaya, for the scheduler to walk on each pass.
+pub fn targets() -> Vec<Place> {
+    WILAYAS.iter().map(Place::Wilaya).collect()
 }
+
+/// The world cities, walked on a slower schedule ([`WORLD_EVERY`]): they change no faster than
+/// Algeria's weather, but they are the part of the list that could grow without limit, and the
+/// publisher's free tier is a real ceiling.
+pub fn world_targets() -> Vec<Place> {
+    xustive_tools::city::CITIES
+        .iter()
+        .map(Place::City)
+        .collect()
+}
+
+/// How many wilaya passes go by between two world passes. At the 30-minute cadence that is a
+/// world refresh every two hours, inside the three-hour staleness limit.
+pub const WORLD_EVERY: u64 = 4;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn algiers() -> &'static Wilaya {
-        xustive_tools::wilaya::by_code(16).unwrap()
+    fn algiers() -> Place {
+        Place::Wilaya(xustive_tools::wilaya::by_code(16).unwrap())
     }
 
     fn response(temp: f64, time: &str) -> ApiResponse {
         ApiResponse {
+            utc_offset_seconds: 3_600,
             current: Current {
                 time: time.into(),
                 temperature_2m: temp,
@@ -348,7 +389,7 @@ mod tests {
 
     /// 7 August 2026, 12:00 Algiers time.
     fn now() -> i64 {
-        parse_local_time("2026-08-07T12:00").unwrap()
+        parse_local_time("2026-08-07T12:00", 3_600).unwrap()
     }
 
     #[test]
@@ -356,7 +397,7 @@ mod tests {
         // Open-Meteo sends null past the model horizon rather than omitting the entry. That is
         // "not forecast", which is 0 — rejecting the whole response over it would lose a valid
         // forecast to a field nobody reads.
-        let cached = build(response(31.0, "2026-08-07T11:30"), algiers(), now(), None).unwrap();
+        let cached = build(response(31.0, "2026-08-07T11:30"), &algiers(), now(), None).unwrap();
         assert_eq!(cached.payload.hours.len(), 2);
         assert_eq!(cached.payload.hours[0].precipitation_chance, 10.0);
         assert_eq!(cached.payload.hours[1].precipitation_chance, 0.0);
@@ -368,7 +409,7 @@ mod tests {
         // stopped sending hourly data should cost the graph, not the weather.
         let mut body = response(31.0, "2026-08-07T11:30");
         body.hourly = None;
-        let cached = build(body, algiers(), now(), None).unwrap();
+        let cached = build(body, &algiers(), now(), None).unwrap();
         assert!(cached.payload.hours.is_empty());
         assert_eq!(cached.payload.temperature_c, 31.0);
     }
@@ -378,14 +419,14 @@ mod tests {
         // The hourly series gets the same bounds as everything else — it is the same sensor.
         let mut body = response(31.0, "2026-08-07T11:30");
         body.hourly.as_mut().unwrap().temperature_2m = vec![31.0, 900.0];
-        assert!(build(body, algiers(), now(), None).is_err());
+        assert!(build(body, &algiers(), now(), None).is_err());
     }
 
     #[test]
     fn a_plausible_response_is_accepted_with_the_publishers_time() {
-        let cached = build(response(31.0, "2026-08-07T11:30"), algiers(), now(), None).unwrap();
+        let cached = build(response(31.0, "2026-08-07T11:30"), &algiers(), now(), None).unwrap();
         assert_eq!(cached.payload.temperature_c, 31.0);
-        assert_eq!(cached.payload.wilaya, 16);
+        assert_eq!(cached.payload.place, "16");
         assert_eq!(cached.source, "open-meteo");
         // Observed half an hour before we asked, and the age reflects that rather than the fetch.
         assert_eq!(cached.fetched_at, now());
@@ -396,17 +437,17 @@ mod tests {
     fn an_impossible_temperature_is_refused() {
         // A sensor fault, or Fahrenheit arriving where Celsius was expected. Either way it must
         // never reach a card, because the card cannot tell.
-        assert!(build(response(300.0, "2026-08-07T11:30"), algiers(), now(), None).is_err());
-        assert!(build(response(-80.0, "2026-08-07T11:30"), algiers(), now(), None).is_err());
+        assert!(build(response(300.0, "2026-08-07T11:30"), &algiers(), now(), None).is_err());
+        assert!(build(response(-80.0, "2026-08-07T11:30"), &algiers(), now(), None).is_err());
     }
 
     #[test]
     fn a_sudden_jump_is_held_against_the_previous_reading() {
-        let first = build(response(31.0, "2026-08-07T11:00"), algiers(), now(), None).unwrap();
+        let first = build(response(31.0, "2026-08-07T11:00"), &algiers(), now(), None).unwrap();
         // Thirty degrees colder half an hour later is a fault anywhere on earth.
         let second = build(
             response(1.0, "2026-08-07T11:30"),
-            algiers(),
+            &algiers(),
             now(),
             Some(&first.payload),
         );
@@ -415,7 +456,7 @@ mod tests {
         // An ordinary change passes.
         let normal = build(
             response(28.0, "2026-08-07T11:30"),
-            algiers(),
+            &algiers(),
             now(),
             Some(&first.payload),
         );
@@ -426,10 +467,10 @@ mod tests {
     fn the_movement_guard_works_near_freezing() {
         // A fractional guard divides by almost nothing at 0 °C and rejects every ordinary
         // reading, which is why this one is absolute.
-        let first = build(response(0.5, "2026-08-07T11:00"), algiers(), now(), None).unwrap();
+        let first = build(response(0.5, "2026-08-07T11:00"), &algiers(), now(), None).unwrap();
         let second = build(
             response(2.5, "2026-08-07T11:30"),
-            algiers(),
+            &algiers(),
             now(),
             Some(&first.payload),
         );
@@ -440,7 +481,7 @@ mod tests {
     fn a_future_observation_is_refused() {
         // Trusting it would make the entry look permanently fresh and silence every staleness
         // check that follows.
-        assert!(build(response(31.0, "2026-08-08T12:00"), algiers(), now(), None).is_err());
+        assert!(build(response(31.0, "2026-08-08T12:00"), &algiers(), now(), None).is_err());
     }
 
     #[test]
@@ -449,7 +490,7 @@ mod tests {
         // that looks merely odd rather than obviously broken.
         let mut body = response(31.0, "2026-08-07T11:30");
         body.daily.temperature_2m_min = vec![40.0, 41.0];
-        assert!(build(body, algiers(), now(), None).is_err());
+        assert!(build(body, &algiers(), now(), None).is_err());
     }
 
     #[test]
@@ -459,23 +500,35 @@ mod tests {
         body.daily.temperature_2m_max.clear();
         body.daily.temperature_2m_min.clear();
         body.daily.weather_code.clear();
-        assert!(build(body, algiers(), now(), None).is_err());
+        assert!(build(body, &algiers(), now(), None).is_err());
     }
 
     #[test]
     fn local_time_parsing_accounts_for_the_algerian_offset() {
         // Algeria is UTC+1 all year with no daylight saving, so one fixed offset is correct
         // rather than a simplification.
-        let noon_local = parse_local_time("2026-08-07T12:00").unwrap();
+        let noon_local = parse_local_time("2026-08-07T12:00", 3_600).unwrap();
         let eleven_utc = xustive_tools::datetime::days_from_civil(2026, 8, 7) * 86_400 + 11 * 3600;
         assert_eq!(noon_local, eleven_utc);
-        assert!(parse_local_time("nonsense").is_none());
-        assert!(parse_local_time("2026-08-07").is_none());
+        // The publisher's clock, not ours: with `timezone=auto` a Tokyo reading arrives in
+        // Tokyo time, and reading it as Algiers time made it look nine hours old — which is how
+        // every world city came back "implausible" the first time (2026-08-29).
+        let tokyo = parse_local_time("2026-08-07T20:00", 9 * 3_600).unwrap();
+        let algiers = parse_local_time("2026-08-07T12:00", 3_600).unwrap();
+        assert_eq!(tokyo, algiers, "the same instant, two clocks");
+
+        assert!(parse_local_time("nonsense", 3_600).is_none());
+        assert!(parse_local_time("2026-08-07", 3_600).is_none());
     }
 
     #[test]
     fn every_wilaya_is_a_target() {
         assert_eq!(targets().len(), 58);
+        assert!(world_targets().len() > 50, "the world list is worth having");
+        assert!(
+            targets().iter().all(|p| p.is_wilaya()),
+            "the every-pass list is Algeria's"
+        );
     }
 
     #[test]
@@ -485,6 +538,13 @@ mod tests {
         // search reveal nothing.
         let per_hour = 3600 / Weather.cadence().as_secs() * targets().len() as u64;
         assert_eq!(per_hour, 116);
+        // The world list rides along every fourth pass, so its cost is a quarter of its size.
+        let world_per_hour =
+            3600 / (Weather.cadence().as_secs() * WORLD_EVERY) * world_targets().len() as u64;
+        assert!(
+            per_hour + world_per_hour < 400,
+            "still trivial for the publisher: {per_hour} + {world_per_hour} an hour"
+        );
         assert!(Weather.staleness_limit() > Weather.cadence() * 2);
     }
 }
