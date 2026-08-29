@@ -52,7 +52,11 @@ impl Tool for Calculator {
         // `%` is deliberately not in this set. `50%` alone parses fine and evaluates to 0.5, but
         // it is far more often part of a search — "50% off", "50% des Algériens" — than a
         // question about a number. It needs a real operator alongside it to count.
-        if !expr.chars().any(|c| "+-*/^(".contains(c)) {
+        //
+        // Since the calculator became scientific, a function, a constant, a factorial, a
+        // degree sign or `mod` next to a number counts too: "ln 5", "5!", "2 pi", "cos 60°",
+        // "10 mod 3" are calculations with no operator character in them.
+        if !expr.chars().any(|c| "+-*/^(".contains(c)) && !scientific(expr) {
             return None;
         }
         // Nor is a lone leading minus: `-5` is a number, and `-covid` is a search operator.
@@ -121,11 +125,17 @@ fn normalise_phrasing(q: &str) -> String {
         "شحال",
         "قداش",
     ];
-    let mut s = q
-        .trim()
-        .trim_end_matches(['?', '؟', '!'])
-        .trim()
-        .to_lowercase();
+    let mut s = q.trim().trim_end_matches(['?', '؟']).trim().to_string();
+    // A trailing `!` is punctuation ("2+2!") unless it follows a number or a bracket, when it
+    // is a factorial ("5!", "(2+3)!") and stays.
+    while s.ends_with('!') {
+        let before = s[..s.len() - 1].chars().last();
+        if before.is_some_and(|c| c.is_ascii_digit() || c == ')') {
+            break;
+        }
+        s.pop();
+    }
+    let mut s = s.trim().to_lowercase();
     let mut changed = true;
     while changed {
         changed = false;
@@ -148,6 +158,13 @@ fn normalise_phrasing(q: &str) -> String {
         .replace('٪', "%")
         .replace('،', ",")
         .replace('−', "-")
+        // A degree sign is an angle to a calculator ("cos 60°"), never a unit to carry into
+        // the answer; the converter, not this tool, reads "°c".
+        .replace("°c", " celsius")
+        .replace("°f", " fahrenheit")
+        .replace('°', "°")
+        .replace('π', " pi ")
+        .replace('√', " sqrt ")
         .replace("plus", "+")
         .replace("moins", "-")
         .replace("fois", "*")
@@ -156,8 +173,79 @@ fn normalise_phrasing(q: &str) -> String {
         .replace("ناقص", "-")
         .replace("ضرب", "*")
         .replace("تقسيم", "/");
-    let re_x = regex_lite_x(&s);
-    re_x
+    let s = wrap_degrees(&s);
+    regex_lite_x(&s)
+}
+
+/// `cos 60°` → `cos (60 deg)`: the engine reads `cos 60 deg` as `(cos 60) deg`, an angle of
+/// nonsense, so the number and its sign are bracketed together.
+fn wrap_degrees(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out: Vec<char> = Vec::with_capacity(s.len() + 8);
+    for &c in &chars {
+        if c != '°' {
+            out.push(c);
+            continue;
+        }
+        // Walk back over the number (digits, a decimal point) to bracket it.
+        let mut start = out.len();
+        while start > 0 && (out[start - 1].is_ascii_digit() || out[start - 1] == '.') {
+            start -= 1;
+        }
+        if start == out.len() {
+            out.extend(" deg ".chars());
+            continue;
+        }
+        let number: String = out.drain(start..).collect();
+        // Already bracketed on its own — `tan(45°)` — needs no second pair.
+        let already = start > 0
+            && out[start - 1] == '('
+            && chars.get(out.len() + number.len() + 1) == Some(&')');
+        if already {
+            out.extend(number.chars());
+            out.extend(" deg".chars());
+        } else {
+            out.push('(');
+            out.extend(number.chars());
+            out.extend(" deg)".chars());
+        }
+    }
+    out.into_iter().collect()
+}
+
+/// Whether an operator-less expression still reads as a calculation: a digit alongside a
+/// function name, a constant, a factorial, a degree sign or `mod`. Word-bounded, so "pi" in
+/// "pizza" or "e" in "ecole" do not count.
+fn scientific(expr: &str) -> bool {
+    const WORDS: &[&str] = &[
+        "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "ln", "log", "log2",
+        "log10", "exp", "sqrt", "cbrt", "abs", "floor", "ceil", "round", "pi", "mod", "e", "i",
+    ];
+    let has_digit = expr.chars().any(|c| c.is_ascii_digit());
+    if !has_digit {
+        return false;
+    }
+    if expr.contains(['!', '°', '√', 'π']) {
+        return true;
+    }
+    let words = expr
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty());
+    let mut has_word = false;
+    let mut all_known = true;
+    for w in words {
+        if w.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            continue;
+        }
+        // "2pi", "3i", "60deg": a number glued to a known word.
+        let bare = w.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.');
+        if WORDS.contains(&bare) || bare == "deg" || bare == "rad" {
+            has_word = true;
+        } else {
+            all_known = false;
+        }
+    }
+    has_word && all_known
 }
 
 /// `3 x 4` → `3 * 4`, without touching `0x1f` or a word containing x.
@@ -571,7 +659,11 @@ mod tests {
         assert_eq!(eval("sqrt(64)").as_deref(), Some("8"));
         assert_eq!(eval("abs(0 - 7)").as_deref(), Some("7"));
         assert_eq!(eval("round(2.6)").as_deref(), Some("3"));
-        assert_eq!(eval("sqrt(0 - 4)"), None, "no imaginary results");
+        // Imaginary results are answers since the calculator became scientific.
+        assert!(
+            eval("sqrt(0 - 4)").is_some_and(|v| v.contains("2i")),
+            "sqrt(-4) is 2i now"
+        );
         assert_eq!(eval("ln(0)"), None);
     }
 
@@ -646,6 +738,9 @@ mod phrasing {
         assert_eq!(value("combien font 3 × 4"), "12");
         assert_eq!(value("3 x 4"), "12");
         assert_eq!(value("كم يساوي 10 ÷ 4"), "2.5");
+        assert_eq!(value("cos 60°"), "0.5");
+        assert_eq!(value("5!"), "120");
+        assert!(value("(2+3i)*(1-i)").contains("5 + i"));
         assert_eq!(value("calculate (2+3)*4"), "20");
     }
 }

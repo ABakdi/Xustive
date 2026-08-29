@@ -89,7 +89,7 @@ export function ToolCard({
           <DismissTool tool={answer.tool} label={t.hideTool} />
         </div>
       )}
-      {answer.tool === 'calculator' && <Calculator initial={answer.interpretation} t={t} />}
+      {answer.tool === 'calculator' && <Calculator initial={answer.interpretation} fallback={answer.value} t={t} />}
       {answer.tool === 'unit-converter' && (
         <Converter amount={convAmount} from={rateFrom} to={rateTo} t={t} locale={locale} />
       )}

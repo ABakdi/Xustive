@@ -104,13 +104,17 @@ pub fn evaluate(expr: &str, rates: Option<Rate>) -> Option<String> {
     if main.eq_ignore_ascii_case(expr) {
         return None;
     }
-    // Complex results are refused, upholding a decision the decimal calculator already made:
-    // `sqrt(-4)` answered nothing rather than `2i`, because for a general-audience search engine
-    // an imaginary number is not an answer — it is a different question. A test pinned that, and
-    // adopting a more capable engine is not a reason to quietly change it.
-    if is_complex(&main) {
-        return None;
-    }
+    // Complex results are answers since the calculator became scientific (2026-08-29):
+    // `sqrt(-4)` is `2i`, `(2+3i)*(1-i)` is `5+i`, and a reader who typed `i` asked for them.
+    // (Until then they were refused, on the view that an imaginary number is a different
+    // question for a general audience; the interactive calculator has an `i` key now.)
+    // fend writes a purely imaginary number as `0 + 2i`; the zero says nothing.
+    let main = main.replace("approx. 0 + ", "approx. ").replace("0 + ", "");
+    // …and a real number as `-1 - 0i` when the imaginary part rounded away.
+    let main = main
+        .trim_end_matches(" - 0i")
+        .trim_end_matches(" + 0i")
+        .to_string();
     Some(main)
 }
 
@@ -163,12 +167,12 @@ mod tests {
     }
 
     #[test]
-    fn a_complex_result_is_refused_because_the_calculator_already_decided_that() {
+    fn a_complex_result_is_an_answer_since_the_calculator_became_scientific() {
         // sqrt(-4) answered nothing before this engine arrived, deliberately: for a
         // general-audience search engine an imaginary number is a different question, not an
         // answer. Adopting a more capable engine is not a reason to change that quietly.
-        assert!(evaluate("sqrt(-4)", None).is_none());
-        assert!(evaluate("(-1)^0.5", None).is_none());
+        assert!(evaluate("sqrt(-4)", None).unwrap().contains("2i"));
+        assert!(evaluate("(-1)^0.5", None).unwrap().contains("i"));
 
         // The guard is narrow: it must not eat ordinary results that merely contain the letter.
         assert!(is_complex("approx. 0 + 2i"));
