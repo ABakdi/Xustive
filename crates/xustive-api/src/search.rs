@@ -31,6 +31,8 @@ use xustive_search::filter::SPAM_THRESHOLD;
 #[derive(Debug, Deserialize)]
 pub struct SearchParams {
     pub q: Option<String>,
+    /// `exact=1`: search the query as typed, never corrected — the "search instead for" link.
+    pub exact: Option<String>,
     #[serde(default)]
     pub page: Option<usize>,
     #[serde(default)]
@@ -70,7 +72,11 @@ pub struct QueryInfo {
     pub language: &'static str,
     pub language_confidence: f32,
     pub expanded_terms: Vec<String>,
+    /// A spelling the corpus and past searches make more likely (`spell.rs`), verified by a
+    /// search of its own. `corrected_applied` says whether the results below are *its* results
+    /// (the typed query found nothing) or the typed query's, with this one offered.
     pub corrected: Option<String>,
+    pub corrected_applied: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -611,6 +617,78 @@ pub async fn handler(
     // sort puts first), whose score says nothing about match quality, and the leg fired on nearly
     // every recency-sorted search (BUG-013). The count half stays: too few results is too few
     // results in any order.
+    // --- "did you mean" (spelling) ----------------------------------------------------
+    // The corrector proposes from the vocabulary; a search of the proposal decides. Applied —
+    // the page shows the corrected query's results — only when the typed query found nothing
+    // or a weak top result and the correction finds more; otherwise offered as a link. Never
+    // shown unverified. Only on the first page with no explicit sort, and inside the deadline.
+    let mut corrected: Option<String> = None;
+    let mut corrected_applied = false;
+    let exact = params
+        .exact
+        .as_deref()
+        .is_some_and(|v| v == "1" || v == "true");
+    if page == 1 && sort.is_empty() && !exact && deadline.allows(Stage::Expansion) {
+        if let Some(candidate) = state.spelling().correct(&normalized) {
+            let mut probe = Query::new(&candidate)
+                .limit(pool)
+                .offset(0)
+                .ranking_score(true)
+                .highlight(&["excerpt", "title"]);
+            if want_facets {
+                probe = probe.facets(&["source_type", "sentiment.label", "language"]);
+            }
+            if let Some(expr) = filters.to_expression(SPAM_THRESHOLD) {
+                probe = probe.filter(expr);
+            }
+            if let Ok(alt) = state.search.search::<Value>(&index, &probe).await {
+                // Better means more results, or — when both hit the engine's count cap — a
+                // stronger top match: `recete` matches 2,000 documents through typo tolerance
+                // and so does `recette`, but the latter's top result scores far higher.
+                let top = |h: &[Value]| {
+                    h.first()
+                        .and_then(|d| d.get("_rankingScore"))
+                        .and_then(Value::as_f64)
+                        .unwrap_or(0.0)
+                };
+                // Two different bars, because the two outcomes cost differently.
+                //
+                // *Offering* a correction costs the reader a line of text they can ignore, so
+                // it is enough that the corrected query does not do worse — both queries often
+                // hit the engine's count cap (typo tolerance finds *something* for anything),
+                // and then the count says nothing at all.
+                //
+                // *Applying* it replaces what they asked for, so it takes a weak or empty
+                // result of their own and a strong one from the correction.
+                let own_top = top(&hits.hits);
+                let alt_top = top(&alt.hits);
+                let offer = !alt.hits.is_empty()
+                    && (alt.estimated_total_hits >= hits.estimated_total_hits
+                        || alt_top >= own_top - 0.01);
+                let own_weak = hits.hits.is_empty() || top_result_is_weak(&hits.hits);
+                let apply = offer
+                    && own_weak
+                    && !top_result_is_weak(&alt.hits)
+                    && (alt.estimated_total_hits > hits.estimated_total_hits
+                        || alt_top > own_top + 0.05);
+                if apply {
+                    hits = alt;
+                    corrected = Some(candidate);
+                    corrected_applied = true;
+                } else if offer {
+                    corrected = Some(candidate);
+                }
+                if corrected.is_some() {
+                    state.metrics.incr(
+                        metrics::SPELLING,
+                        metrics::SPELLING_HELP,
+                        &[("applied", if corrected_applied { "yes" } else { "no" })],
+                    );
+                }
+            }
+        }
+    }
+
     let few_or_weak = hits.hits.len() < EXPANSION_THRESHOLD
         || (sort.is_empty() && top_result_is_weak(&hits.hits));
     let expanded_terms = if few_or_weak && deadline.allows(Stage::Expansion) {
@@ -1056,7 +1134,8 @@ pub async fn handler(
             language: language.as_str(),
             language_confidence: confidence,
             expanded_terms,
-            corrected: None,
+            corrected: corrected.clone(),
+            corrected_applied,
         },
         summary_token,
         interaction_token,
@@ -1890,6 +1969,7 @@ mod tests {
     #[test]
     fn filters_parse_csv_lists() {
         let p = SearchParams {
+            exact: None,
             ui: None,
             q: Some("x".into()),
             page: None,
@@ -1913,6 +1993,7 @@ mod tests {
     #[test]
     fn the_news_vertical_filters_to_dated_web_documents() {
         let p = SearchParams {
+            exact: None,
             ui: None,
             q: Some("x".into()),
             page: None,
@@ -1938,6 +2019,7 @@ mod tests {
     #[test]
     fn an_unknown_vertical_falls_back_to_all() {
         let p = SearchParams {
+            exact: None,
             ui: None,
             q: Some("x".into()),
             page: None,
@@ -1963,6 +2045,7 @@ mod tests {
     #[test]
     fn unknown_facet_value_is_a_client_error() {
         let p = SearchParams {
+            exact: None,
             ui: None,
             q: Some("x".into()),
             page: None,

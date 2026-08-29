@@ -336,6 +336,10 @@ pub const HTTP_DURATION_HELP: &str = "HTTP request duration by route";
 pub const RERANK_DURATION: &str = "xustive_rerank_duration_seconds";
 pub const RERANK_DURATION_HELP: &str = "Cross-encoder reranker round trip, seconds";
 
+/// "Did you mean" corrections shown, by whether the page used them.
+pub const SPELLING: &str = "xustive_spelling_total";
+pub const SPELLING_HELP: &str = "Spelling corrections offered or applied";
+
 pub const DEGRADED: &str = "xustive_degraded_total";
 pub const DEGRADED_HELP: &str =
     "Requests that skipped a stage to stay inside the deadline, by stage";

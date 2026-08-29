@@ -34,6 +34,29 @@ use serde_json::Value;
 
 use crate::state::AppState;
 
+/// `GET /admin/spelling?q=…` — what the corrector makes of a query, token by token.
+///
+/// The vocabulary is built from the corpus and the search log, so "why was this not corrected?"
+/// is a data question, not a code one; this is how an operator answers it without a rebuild.
+pub async fn spelling_debug(
+    State(state): State<AppState>,
+    AxumQuery(params): AxumQuery<SuggestParams>,
+) -> Json<Value> {
+    let vocab = state.spelling();
+    let q = params.q.unwrap_or_default();
+    let normalized = xustive_text::normalize(&q);
+    Json(serde_json::json!({
+        "words": vocab.len(),
+        "query": q,
+        "normalized": normalized,
+        "corrected": vocab.correct(&normalized),
+        "tokens": normalized
+            .split_whitespace()
+            .map(|t| vocab.explain(t))
+            .collect::<Vec<_>>(),
+    }))
+}
+
 pub const DEFAULT_LIMIT: usize = 8;
 pub const MAX_LIMIT: usize = 20;
 /// Below this, a prefix matches so much that the suggestions are noise.

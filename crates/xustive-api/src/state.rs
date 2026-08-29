@@ -79,6 +79,8 @@ pub struct AppState {
     /// Prefix index for autocomplete. Built once at startup from the curated list; corpus
     /// terms are added by [`Self::refresh_suggestions`] once the index is reachable.
     pub suggest: Arc<std::sync::RwLock<Arc<crate::suggest::PrefixIndex>>>,
+    /// The spelling vocabulary behind "did you mean" (`spell.rs`), refreshed with the suggestions.
+    pub spell: Arc<std::sync::RwLock<Arc<crate::spell::Vocabulary>>>,
     /// Cache the tool data plane fills. `None` when Redis is unreachable, which is not fatal:
     /// tools that need it render nothing and everything else is unaffected.
     pub tool_cache: Option<xustive_toold::store::Store>,
@@ -166,6 +168,116 @@ impl AppState {
         if let Ok(mut slot) = self.suggest.write() {
             *slot = Arc::new(built);
         }
+        self.refresh_spelling().await;
+    }
+
+    /// Rebuild the spelling vocabulary: titles and excerpts of the newest documents (read off
+    /// the documents endpoint, which costs no search), plus the queries readers ran that found
+    /// something ([[ADR-0030]]). Swapped in atomically; a failure keeps the previous table.
+    pub async fn refresh_spelling(&self) {
+        use serde_json::Value;
+        let index = self.documents_index();
+        // A client of its own, with a background budget. The shared one carries the *search*
+        // timeout (1.2 s): reading two thousand documents at a time loses that race whenever
+        // Meilisearch is indexing, and the vocabulary silently fell back to a handful of words.
+        let Ok(reader) = xustive_search::MeiliClient::new(
+            &self.config.search.meili_url,
+            &self.config.search.meili_key,
+            std::time::Duration::from_secs(30),
+        ) else {
+            return;
+        };
+        let mut texts: Vec<String> = Vec::new();
+        // Sampled across the whole corpus, not the first N documents: the documents endpoint
+        // returns them in insertion order, so a prefix is whatever was crawled first — one slice
+        // of one language, in which `couscous` and `tlemcen` are rare and the corrector then
+        // "fixes" them into whatever that slice does contain.
+        let total = self
+            .search
+            .stats(&index)
+            .await
+            .map(|s| s.number_of_documents)
+            .unwrap_or(0);
+        // Most of the corpus, not a sample of it. Frequencies are the whole signal — the
+        // corrector's rule is "twenty times more common" — and on twenty thousand documents the
+        // counts are too noisy to tell a rare French word from a typo (`hopital` in 3 documents
+        // against `hospital` in 13 says nothing). A hundred windows of two thousand covers two
+        // hundred thousand documents in about a minute, in the background, once an hour.
+        const WINDOWS: u64 = 100;
+        const PER_WINDOW: u64 = 2_000;
+        let total = total.max(PER_WINDOW);
+        let stride = (total / WINDOWS).max(PER_WINDOW);
+        let mut failures = 0u32;
+        for w in 0..WINDOWS {
+            let offset = w * stride;
+            if offset >= total {
+                break;
+            }
+            match reader
+                .documents_page_fields(&index, offset, PER_WINDOW, &["title", "excerpt"])
+                .await
+            {
+                Ok(page) if !page.is_empty() => {
+                    // One string per document: the vocabulary counts a word once per page.
+                    for d in page {
+                        let title = d.get("title").and_then(Value::as_str).unwrap_or("");
+                        let excerpt = d.get("excerpt").and_then(Value::as_str).unwrap_or("");
+                        if !title.is_empty() || !excerpt.is_empty() {
+                            texts.push(format!("{title} {excerpt}"));
+                        }
+                    }
+                }
+                Ok(_) => break,
+                // One slow window is not a reason to abandon the vocabulary; several in a row
+                // means the engine is busy and the previous table should simply stay in place.
+                Err(e) => {
+                    failures += 1;
+                    tracing::warn!(error = %e, offset, "spelling: window unreadable");
+                    if failures >= 3 {
+                        break;
+                    }
+                }
+            }
+        }
+        let mut queries: Vec<String> = Vec::new();
+        if let Ok(events) = reader.resolve(xustive_search::settings::EVENTS).await {
+            let q = xustive_search::Query::new("").limit(10_000);
+            if let Ok(r) = reader.search::<Value>(&events, &q).await {
+                queries.extend(r.hits.iter().filter_map(|e| {
+                    let found = e.get("total_hits").and_then(Value::as_u64).unwrap_or(0) > 0;
+                    let is_search = e.get("kind").and_then(Value::as_str) == Some("search");
+                    (found && is_search)
+                        .then(|| {
+                            e.get("normalized")
+                                .and_then(Value::as_str)
+                                .map(str::to_string)
+                        })
+                        .flatten()
+                }));
+            }
+        }
+        if texts.is_empty() && queries.is_empty() {
+            return;
+        }
+        let built = crate::spell::Vocabulary::build(texts.into_iter(), queries.into_iter());
+        // A table smaller than the one in place means the read went badly, not that the corpus
+        // shrank. Keeping the old one is always better than correcting from a thin vocabulary.
+        if built.len() < self.spelling().len() / 2 {
+            tracing::warn!(
+                words = built.len(),
+                held = self.spelling().len(),
+                "spelling: build came back thin; keeping the previous vocabulary"
+            );
+            return;
+        }
+        tracing::info!(words = built.len(), "spelling vocabulary built");
+        if let Ok(mut slot) = self.spell.write() {
+            *slot = Arc::new(built);
+        }
+    }
+
+    pub fn spelling(&self) -> Arc<crate::spell::Vocabulary> {
+        self.spell.read().map(|s| s.clone()).unwrap_or_default()
     }
 
     /// Titles from the index, as suggestion candidates.
@@ -376,6 +488,9 @@ impl AppState {
             documents_index: Arc::new(std::sync::RwLock::new(documents_index)),
             suggest: Arc::new(std::sync::RwLock::new(Arc::new(
                 crate::suggest::PrefixIndex::build(&curated, &[]),
+            ))),
+            spell: Arc::new(std::sync::RwLock::new(Arc::new(
+                crate::spell::Vocabulary::default(),
             ))),
             // Connecting lazily and tolerating failure. The serving plane must start whether or
             // not the fetcher has ever run — a cold system has no cached weather by definition.

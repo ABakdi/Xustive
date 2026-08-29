@@ -109,6 +109,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     state.timeseries = Some(xustive_api::timeseries::start(state.clone()));
     state.resolve_index().await;
     state.refresh_suggestions().await;
+    // …and again every hour, so suggestions and the spelling vocabulary follow the corpus.
+    {
+        let state = state.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(3_600));
+            tick.tick().await;
+            loop {
+                tick.tick().await;
+                state.refresh_suggestions().await;
+            }
+        });
+    }
     // Connect the anonymous interaction store if enabled (M6). Non-fatal if Redis is down.
     state.connect_interactions().await;
     // Connect the shared crawl-stats manager (Live page + metrics). Non-fatal; self-heals later.

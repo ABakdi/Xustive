@@ -27,6 +27,7 @@ pub mod ratelimit;
 pub mod reranker;
 pub mod runtime;
 pub mod search;
+pub mod spell;
 pub mod state;
 pub mod stt;
 pub mod suggest;
@@ -230,6 +231,7 @@ pub fn app(state: AppState) -> Router {
         .route("/timeseries", get(timeseries::handler))
         // What the console may change and keep (M12-T02).
         .route("/settings", get(runtime::get).patch(runtime::patch))
+        .route("/spelling", get(suggest::spelling_debug))
         .route("/events/overview", get(events::overview))
         .route("/events/visitor", get(events::visitor))
         .route("/events/forget", axum::routing::post(events::forget))

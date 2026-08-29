@@ -39,7 +39,7 @@ import { readDensity, readTheme } from '@/lib/theme'
  */
 export const dynamic = 'force-dynamic'
 
-const FILTER_PARAMS = ['lang', 'source', 'sentiment'] as const
+const FILTER_PARAMS = ['lang', 'source', 'sentiment', 'exact'] as const
 
 type SearchParams = Record<string, string | string[] | undefined>
 
@@ -180,6 +180,33 @@ export default async function SearchPage({
           (<span className="numeric">{formatNumber(lang, data.took_ms)}</span> {t.took})
         </bdi>
       </p>
+
+      {/* "Did you mean": a spelling the corpus and past searches make more likely, verified by a
+          search of its own (`spell.rs`). Applied — these are its results — when the typed query
+          found nothing; otherwise offered. The link re-runs the search with the other form. */}
+      {data.query.corrected && (
+        <p className="mb-4 text-sm" style={{ color: 'var(--fg-muted)' }} dir="auto">
+          {data.query.corrected_applied ? (
+            <>
+              {t.showingResultsFor}{' '}
+              <strong style={{ color: 'var(--fg)' }}><bdi>{data.query.corrected}</bdi></strong>
+              {' · '}
+              {t.searchInsteadFor}{' '}
+              <a className="underline" href={`/${lang}/search?q=${encodeURIComponent(q)}&exact=1`} style={{ color: 'var(--accent)' }}>
+                <bdi>{q}</bdi>
+              </a>
+            </>
+          ) : (
+            <>
+              {t.didYouMean}{' '}
+              <a className="underline" href={`/${lang}/search?q=${encodeURIComponent(data.query.corrected)}`} style={{ color: 'var(--accent)', fontWeight: 550 }}>
+                <bdi>{data.query.corrected}</bdi>
+              </a>
+              ?
+            </>
+          )}
+        </p>
+      )}
 
       <Verticals lang={lang} q={q} active={vertical} t={t} />
 

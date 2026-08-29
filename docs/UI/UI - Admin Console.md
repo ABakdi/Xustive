@@ -197,6 +197,10 @@ source, index size, settings drift, and the last migration.
 
 ### 4.8 System
 
+`GET /admin/spelling?q=…` (no page yet) answers "why was this query not corrected?": the
+vocabulary size and, per token, its shape, document frequency, the candidates weighed and the
+one chosen ([[Query Pipeline]] §4.3.1).
+
 Compute carries the **Cross-encoder reranker** switch beside AI summaries (M13, [[ADR-0032]]);
 the ranking editor has an *endorsement* slider inside the checked side total.
 

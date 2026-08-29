@@ -19,6 +19,21 @@ updated: 2026-08-27
 
 ---
 
+## Did you mean
+
+Above the vertical tabs, below the result count. Two forms, one line each, both `dir="auto"` so
+the corrected query reads correctly in either script:
+
+- **Offered** — *Did you mean **couscous algerien**?* — the correction is a link that re-runs the
+  search with it.
+- **Applied** — *Showing results for **annaba** · Search instead for annba* — the results below
+  are the correction's; the link back carries `exact=1`, which tells the API to search what was
+  typed and correct nothing.
+
+Server-rendered with the rest of the page: the correction arrives in the search response
+(`query.corrected`, `query.corrected_applied`), so it is there before any JavaScript runs. See
+[[Query Pipeline]] §4.3.1 for when each form appears.
+
 ## 1. Layout
 
 The page is one Server Component (`export const dynamic = 'force-dynamic'`) with a small `Shell`

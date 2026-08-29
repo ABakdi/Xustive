@@ -66,6 +66,10 @@ export interface SearchResponse {
     language: string
     language_confidence: number
     expanded_terms: string[]
+    /** A spelling the corpus makes more likely, verified by a search; `corrected_applied` when
+     *  the results shown are its results (the typed query found nothing). */
+    corrected?: string | null
+    corrected_applied?: boolean
   }
   summary_token: string | null
   /** Opaque token the click beacon returns to attribute a click to this query without the query

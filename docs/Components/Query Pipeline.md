@@ -104,6 +104,55 @@ stripped to nothing by the tokeniser. If the pool is empty and `is_all_stop_word
 list the index is configured with, ≤ 6 tokens), re-issue it quoted: Meilisearch keeps stop words
 inside a phrase.
 
+### 4.3.1 "Did you mean" — spelling correction (`spell.rs`, 2026-08-29)
+
+Meilisearch tolerates typos *inside* retrieval; what it cannot do is tell the reader that another
+spelling would have found better pages, or show them those pages when what they typed found
+nothing. Two parts, and the second is the one that decides:
+
+**The vocabulary.** Word → number of *documents* it appears in, built in the background
+(`AppState::refresh_spelling`, at startup and hourly) from the titles and excerpts of up to
+200 000 documents sampled across the whole index, plus the wilaya names as a seed, plus the
+queries readers ran that found something ([[ADR-0030]]). Three rules that were each paid for by
+a wrong correction:
+
+- **Counted once per document.** A word repeated down a page's navigation is one page's opinion;
+  counting every occurrence let a single misspelled site outvote the correct spelling.
+- **Past queries reinforce, never introduce.** A misspelled query returns results — that is what
+  typo tolerance is for — so feeding query words in blind teaches the vocabulary every typo
+  anyone typed. Seven test searches for `tlemcan` gave it a frequency above the real `tlemcen`.
+- **The wilayas are seeded above every threshold.** The corpus holds more of the English and
+  French web than of the Algerian one; without the seed, `alger` looks like a misspelling of
+  `aller`.
+
+**The corrector.** Each token is compared on its *shape* — Arabic orthographic variants folded
+([[Language Detector]]'s `fold`) and Latin accents removed — so `algerien` and `algérien` are one
+word, and a reader typing without accents is never "corrected" into a different language. A token
+is replaced by the most frequent word within Damerau–Levenshtein distance 1 (2 for words over six
+shape-characters) that satisfies:
+
+| Guard | Value | Because |
+|:---|:---|:---|
+| First letter never changes | — | `wehran` (Oran, in Arabizi) is one edit from `tehran` |
+| Unknown token (< 4 documents) | candidate ≥ 4 documents | the token is noise, not a word |
+| Known token (≥ 4 documents) | candidate ≥ **20×** the token | `hopital` (3) vs `hospital` (13), `universite` (21) vs `university` (138) — frequency alone cannot tell a rare French word from a typo; twenty times can |
+| Very common token (≥ 200 documents) | never corrected | at that point it is simply a word |
+
+**The search decides.** The corrector only proposes; a second retrieval of the proposal settles
+it, on page one, with no explicit sort, inside the deadline ladder, and skipped entirely for
+`exact=1`:
+
+- **Offered** ("did you mean…") when the corrected query does no worse — both queries usually hit
+  the engine's 2 000-hit cap, so the count alone says nothing.
+- **Applied** (the page shows the corrected query's results, with *search instead for* pointing
+  back at `exact=1`) only when what was typed found nothing or a weak top result and the
+  correction found more. A correction is never shown unverified.
+
+`query.corrected` and `query.corrected_applied` carry it in the response;
+`xustive_spelling_total{applied}` counts it; `GET /admin/spelling?q=…` shows the vocabulary size
+and, per token, its shape, its document frequency, the candidates weighed and the one chosen —
+so "why was this not corrected?" is answerable without a rebuild.
+
 ### 4.4 Expanded leg — conditional
 
 Runs when the primary leg found fewer than `EXPANSION_THRESHOLD` (5) hits, or its top
