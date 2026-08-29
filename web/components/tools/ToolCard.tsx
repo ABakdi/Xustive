@@ -4,6 +4,8 @@ import type { Messages } from '@/lib/i18n/messages'
 import { CopyButton } from './CopyButton'
 import { WeatherDetail } from './WeatherDetail'
 import { DismissTool } from './DismissTool'
+import { Calculator } from './Calculator'
+import { Converter } from './Converter'
 
 /**
  * The instant-answer card.
@@ -55,6 +57,12 @@ export function ToolCard({
   // gap between "this is the official price" and "this is today's price" is the whole difference.
   const administered = detail?.administered === true
 
+  // The two tools that are a *tool* rather than an answer (M13 follow-up): the query's
+  // expression or conversion is loaded into a working calculator / converter below, and the
+  // headline value is theirs to show.
+  const interactive = answer.tool === 'calculator' || answer.tool === 'unit-converter'
+  const convAmount = typeof (detail as { amount?: unknown } | undefined)?.amount === 'string' ? String((detail as { amount?: string }).amount) : ''
+
   const stale = answer.as_of
     ? new Intl.DateTimeFormat(locale === 'ary' ? 'ar' : locale, {
         hour: '2-digit',
@@ -76,6 +84,17 @@ export function ToolCard({
         <bdi>{answer.interpretation}</bdi>
       </p>
 
+      {interactive && (
+        <div className="mt-1 flex items-baseline justify-end gap-3">
+          <DismissTool tool={answer.tool} label={t.hideTool} />
+        </div>
+      )}
+      {answer.tool === 'calculator' && <Calculator initial={answer.interpretation} t={t} />}
+      {answer.tool === 'unit-converter' && (
+        <Converter amount={convAmount} from={rateFrom} to={rateTo} t={t} locale={locale} />
+      )}
+
+      {!interactive && (
       <div className="mt-1 flex items-baseline gap-3">
         {official ? (
           // The official portal, as a link. No result is shown or stored — only the way to the one
@@ -101,6 +120,7 @@ export function ToolCard({
         <CopyButton value={answer.value} label={t.copy} copied={t.copied} />
         <DismissTool tool={answer.tool} label={t.hideTool} />
       </div>
+      )}
 
       {/* Other readings, when the tool says its answer is a guess among several.
 
