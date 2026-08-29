@@ -48,7 +48,7 @@ Every design choice below follows from this:
 | Dispatch on the search path | `crates/xustive-api/src/search.rs` (`instant` field) |
 | Tool inventory for the settings page | `crates/xustive-api/src/tools.rs` → `GET /api/v1/tools` |
 | Translation stream | `crates/xustive-api/src/translate.rs` → `POST /api/v1/translate`, `GET /api/v1/languages` |
-| Cards | `web/components/tools/ToolCard.tsx`, `WeatherDetail.tsx`, `TranslateCard.tsx`, `DismissTool.tsx`, `CopyButton.tsx`; opt-out cookie in `web/lib/tools.ts` |
+| Cards | `web/components/tools/ToolCard.tsx`, `Calculator.tsx`, `Converter.tsx`, `WeatherDetail.tsx`, `TranslateCard.tsx`, `DismissTool.tsx`, `CopyButton.tsx`; `web/lib/calc.ts`, `web/lib/units.ts`; opt-out cookie in `web/lib/tools.ts` |
 
 ## 4. Interface
 
@@ -260,6 +260,16 @@ say which reckoning it used makes an ordinary disagreement with the local mosque
 defect. Where they disagree, the mosque is right.
 
 ## 11. Rendering
+
+**Two tools are tools, not answers** (2026-08-29). The calculator and the unit converter render
+as working instruments loaded from the query: `Calculator.tsx` — the expression in an editable
+field, a keypad (`( ) % ⌫ / 7 8 9 ÷ / … / √ C =`), keyboard input, the result live on every
+keystroke, `=` committing it as the next expression; `Converter.tsx` — the amount in a box, the
+two units in menus grouped by dimension (changing the source unit keeps the target inside the
+same dimension), a swap, the result and the unit rate live. Both evaluate locally
+(`web/lib/calc.ts`, `web/lib/units.ts`, a mirror of the API's grammar and table) so the first
+number shown equals the API's answer and every change after it costs no request. Labels and
+unit names follow the interface language (ar/fr/en; Darija uses the Arabic names).
 
 Tool cards sit **above the results and below the search box**, carrying the assert rule from
 [[UI - Design Language]] — the mark that means the engine is asserting rather than listing.
