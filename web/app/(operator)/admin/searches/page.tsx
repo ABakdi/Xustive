@@ -89,14 +89,14 @@ export default function SearchesPage() {
               setPage(1)
             }}
           >
-            <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="search terms…" dir="auto" className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 220 }} aria-label="Filter by query text" />
-            <select value={kind} onChange={(e) => { setKind(e.target.value); setPage(1) }} className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Kind">
+            <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="search terms…" dir="auto" className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)'}} aria-label="Filter by query text" />
+            <select value={kind} onChange={(e) => { setKind(e.target.value); setPage(1) }} className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Kind">
               <option value="">any kind</option>
               <option value="search">searches</option>
               <option value="click">opens</option>
               <option value="report">reports</option>
             </select>
-            <select value={vertical} onChange={(e) => { setVertical(e.target.value); setPage(1) }} className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Vertical">
+            <select value={vertical} onChange={(e) => { setVertical(e.target.value); setPage(1) }} className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Vertical">
               <option value="">any tab</option>
               <option value="all">all</option>
               <option value="news">news</option>
@@ -104,7 +104,7 @@ export default function SearchesPage() {
               <option value="images">images</option>
               <option value="videos">videos</option>
             </select>
-            <select value={ui} onChange={(e) => { setUi(e.target.value); setPage(1) }} className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Interface language">
+            <select value={ui} onChange={(e) => { setUi(e.target.value); setPage(1) }} className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Interface language">
               <option value="">any language</option>
               <option value="ar">Arabic</option>
               <option value="ary">Darija</option>
@@ -203,7 +203,7 @@ export default function SearchesPage() {
                 onChange={(e) => setVisitor(e.target.value)}
                 placeholder="visitor id (26 characters)"
                 className="rounded border px-2 py-1 font-mono text-xs"
-                style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 300 }}
+                style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)'}}
               />
               <button type="button" className="chip chip-active cursor-pointer" onClick={() => void lookup()} disabled={visitor.trim().length !== 26}>
                 Look up

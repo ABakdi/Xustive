@@ -73,7 +73,9 @@ export function Converter({
 
   return (
     <div className="mt-2 max-w-md">
-      <div className="grid items-center gap-2" style={{ gridTemplateColumns: 'minmax(90px, 1fr) minmax(0, 1.4fr) auto minmax(0, 1.4fr)' }}>
+      {/* Amount and source on the first row, swap and target on the second, until there is room
+          for all four ([[UI - Responsive]] §3). */}
+      <div className="grid items-center gap-2 [grid-template-columns:minmax(80px,1fr)_minmax(0,1.6fr)] sm:[grid-template-columns:minmax(90px,1fr)_minmax(0,1.4fr)_auto_minmax(0,1.4fr)]">
         <input
           value={amount}
           onChange={(e) => setAmount(e.target.value)}

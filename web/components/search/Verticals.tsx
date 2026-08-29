@@ -43,7 +43,7 @@ export function Verticals({
 
   return (
     <nav
-      className="mb-5 flex gap-1 border-b text-sm"
+      className="scroll-x bleed mb-5 flex gap-1 border-b text-sm"
       style={{ borderColor: 'var(--line)' }}
       aria-label={t.verticalAll}
     >
@@ -53,7 +53,7 @@ export function Verticals({
           <Link
             key={tab.id}
             href={href(tab.id)}
-            className="-mb-px border-b-2 px-3 py-1.5 no-underline"
+            className="-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-1.5 no-underline"
             aria-current={on ? 'page' : undefined}
             style={{
               borderBottomColor: on ? 'var(--accent)' : 'transparent',

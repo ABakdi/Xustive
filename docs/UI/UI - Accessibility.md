@@ -225,5 +225,6 @@ pass is the one that finds the problems that matter, and it remains a milestone 
 
 ## Related
 
+[[UI - Responsive]] ·
 [[UI - Design Language]] · [[UI - Component Library]] · [[UI - RTL and Localization]] ·
 [[UI - States and Errors]] · [[UI - Results Page]] · [[UI - Voice Search]] · [[Testing Strategy]]

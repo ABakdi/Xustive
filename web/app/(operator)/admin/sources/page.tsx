@@ -136,7 +136,7 @@ export default function SourcesPage() {
 
       {/* Category filter chips + totals. */}
       <div className="mb-5 flex flex-wrap items-center gap-1.5 text-sm">
-        <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="url, note or category…" className="rounded border px-2 py-1 text-sm" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 220 }} aria-label="Filter sources" />
+        <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="url, note or category…" className="w-full rounded border px-2 py-1 text-sm sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)'}} aria-label="Filter sources" />
         <button
           type="button"
           onClick={() => setFilter('')}

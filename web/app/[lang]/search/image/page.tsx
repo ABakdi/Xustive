@@ -47,7 +47,7 @@ export default async function ReverseImagePage({
         </div>
       </div>
 
-      <main className="mx-auto max-w-5xl px-6 py-6">
+      <main className="mx-auto max-w-5xl px-[var(--pad)] py-6">
         <h1 className="mb-1 text-2xl font-semibold">{tt.reverseTitle}</h1>
         <p className="mb-6 text-sm" style={{ color: 'var(--fg-muted)' }}>
           {tt.reverseIntro}

@@ -264,6 +264,7 @@ clone — that description belonged to the vanilla-JS renderer this page replace
 
 ## Related
 
+[[UI - Responsive]] ·
 [[UI - Component Library]] · [[UI - Knowledge Panel]] · [[UI - Filters and Facets]] ·
 [[UI - Search Verticals]] · [[UI - States and Errors]] · [[API Contract]] · [[Summarizer]] ·
 [[Ranking and Relevance]] · [[UI - Accessibility]]

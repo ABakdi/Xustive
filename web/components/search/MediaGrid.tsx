@@ -46,7 +46,7 @@ export function ImageGrid({ results, t, lang }: { results: Result[]; t: Messages
   return (
     <ul
       className="m-0 grid list-none gap-3 p-0"
-      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
+      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 150px), 1fr))' }}
       aria-label={t.verticalImages}
     >
       {tiles.map((tile) => (
@@ -128,7 +128,7 @@ export function VideoList({ results, t }: { results: Result[]; t: Messages }) {
   return (
     <ul
       className="m-0 grid list-none gap-4 p-0"
-      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}
+      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 150px), 1fr))' }}
       aria-label={t.verticalVideos}
     >
       {tiles.map((tile) => {

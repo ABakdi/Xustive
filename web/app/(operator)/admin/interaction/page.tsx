@@ -58,7 +58,7 @@ export default function InteractionPage() {
           <section className="mb-8">
             <h2 className="mb-2 text-base font-semibold">Search history</h2>
             <p className="mb-2">
-              <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="filter queries…" dir="auto" className="rounded border px-2 py-1 text-sm" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 220 }} aria-label="Filter queries" />
+              <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="filter queries…" dir="auto" className="w-full rounded border px-2 py-1 text-sm sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)'}} aria-label="Filter queries" />
             </p>
             <p className="mb-2 text-xs" style={{ color: 'var(--fg-faint)' }}>
               Every term searched, how many results it returned, and how many of those were clicked.
@@ -66,28 +66,30 @@ export default function InteractionPage() {
               its counts{(data.k_anonymity ?? 1) > 1 ? `, surfaced only above the k-floor of ${data.k_anonymity ?? 1}` : ''}.
             </p>
             {data.top_queries && data.top_queries.length > 0 ? (
-              <table className="w-full max-w-2xl border-collapse text-sm">
-                <thead>
-                  <tr style={{ color: 'var(--fg-muted)' }}>
-                    <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>Term</th>
-                    <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>Category</th>
-                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>Searches</th>
-                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>Results</th>
-                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>Clicks</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.top_queries.filter((q) => !needle || q.query.toLowerCase().includes(needle.toLowerCase())).map((q) => (
-                    <tr key={q.query}>
-                      <td className="border-b py-1" style={{ borderColor: 'var(--line)' }} dir="auto">{q.query}</td>
-                      <td className="border-b py-1" style={{ borderColor: 'var(--line)' }}>{q.category}</td>
-                      <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{q.count}</td>
-                      <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{q.result_count ?? '—'}</td>
-                      <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{q.clicks ?? 0}</td>
+              <div className="scroll-x">
+                <table className="w-full max-w-2xl border-collapse text-sm">
+                  <thead>
+                    <tr style={{ color: 'var(--fg-muted)' }}>
+                      <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>Term</th>
+                      <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>Category</th>
+                      <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>Searches</th>
+                      <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>Results</th>
+                      <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>Clicks</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {data.top_queries.filter((q) => !needle || q.query.toLowerCase().includes(needle.toLowerCase())).map((q) => (
+                      <tr key={q.query}>
+                        <td className="border-b py-1" style={{ borderColor: 'var(--line)' }} dir="auto">{q.query}</td>
+                        <td className="border-b py-1" style={{ borderColor: 'var(--line)' }}>{q.category}</td>
+                        <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{q.count}</td>
+                        <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{q.result_count ?? '—'}</td>
+                        <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{q.clicks ?? 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>
                 No searches recorded yet{(data.k_anonymity ?? 1) > 1 ? ' above the anonymity floor' : ''}.
@@ -118,36 +120,38 @@ export default function InteractionPage() {
               floor). These are what the interaction signal rewards in ranking.
             </p>
             {data.ctr_leaders && data.ctr_leaders.length > 0 ? (
-              <table className="w-full max-w-3xl border-collapse text-sm">
-                <thead>
-                  <tr style={{ color: 'var(--fg-muted)' }}>
-                    <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>result</th>
-                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>CTR</th>
-                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>clicks</th>
-                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>shown</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.ctr_leaders.map((d) => (
-                    <tr key={d.doc}>
-                      <td className="border-b py-1" style={{ borderColor: 'var(--line)' }}>
-                        {d.url ? (
-                          <a href={d.url} className="no-underline hover:underline" style={{ color: 'var(--accent)' }} dir="auto">
-                            {d.title || d.url}
-                          </a>
-                        ) : (
-                          <span className="font-mono text-xs">{d.doc}</span>
-                        )}
-                      </td>
-                      <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>
-                        {(d.ctr * 100).toFixed(0)}%
-                      </td>
-                      <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{d.clicks}</td>
-                      <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{d.impressions}</td>
+              <div className="scroll-x">
+                <table className="w-full max-w-3xl border-collapse text-sm">
+                  <thead>
+                    <tr style={{ color: 'var(--fg-muted)' }}>
+                      <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>result</th>
+                      <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>CTR</th>
+                      <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>clicks</th>
+                      <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>shown</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {data.ctr_leaders.map((d) => (
+                      <tr key={d.doc}>
+                        <td className="border-b py-1" style={{ borderColor: 'var(--line)' }}>
+                          {d.url ? (
+                            <a href={d.url} className="no-underline hover:underline" style={{ color: 'var(--accent)' }} dir="auto">
+                              {d.title || d.url}
+                            </a>
+                          ) : (
+                            <span className="font-mono text-xs">{d.doc}</span>
+                          )}
+                        </td>
+                        <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>
+                          {(d.ctr * 100).toFixed(0)}%
+                        </td>
+                        <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{d.clicks}</td>
+                        <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{d.impressions}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>Nothing above the floor yet.</p>
             )}

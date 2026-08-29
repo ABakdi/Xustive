@@ -45,9 +45,13 @@ export function ImageSearchDialog({ lang, t }: { lang: string; t: Messages }) {
   return (
     <dialog
       ref={ref}
-      className="w-[min(96vw,64rem)] rounded-lg border p-0"
-      // Centred explicitly: the global reset zeroes margins, which takes a modal to the corner.
-      style={{ borderColor: 'var(--line-strong)', background: 'var(--bg)', color: 'var(--fg)', maxHeight: '90vh', margin: 'auto' }}
+      // A sheet on a phone, a centred panel from `sm` ([[UI - Responsive]] §2.8). The width has
+      // to be set here rather than in the stylesheet: a utility class beats an element selector.
+      className="mx-auto mb-0 mt-auto max-h-[90dvh] w-full rounded-lg border p-0 sm:m-auto sm:w-[min(96vw,64rem)]"
+      // Margin and height are classes, not inline styles: the global reset zeroes margins (which
+      // takes a modal to the corner) and the phone layout needs to override them at a breakpoint,
+      // which an inline style would win against ([[UI - Responsive]] §2.8).
+      style={{ borderColor: 'var(--line-strong)', background: 'var(--bg)', color: 'var(--fg)' }}
       onCancel={(e) => {
         e.preventDefault()
         close()
@@ -58,7 +62,7 @@ export function ImageSearchDialog({ lang, t }: { lang: string; t: Messages }) {
       }}
       aria-label={tt.reverseTitle}
     >
-      <div className="max-h-[90vh] overflow-y-auto p-5">
+      <div className="max-h-[85dvh] overflow-y-auto p-5 sm:max-h-[90dvh]">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <h2 className="m-0 text-lg font-semibold">{tt.reverseTitle}</h2>

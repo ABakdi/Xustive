@@ -73,18 +73,20 @@ export default function ConfigPage() {
       {msg ? <p className="mb-4 text-sm" style={{ color: 'var(--warn)' }}>{msg}</p> : null}
 
       {scalars.filter(([k, v]) => matches(k, v)).length > 0 ? (
-        <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
-          <tbody>
-            {scalars
-              .filter(([k, v]) => matches(k, v))
-              .map(([k, v]) => (
-                <tr key={k}>
-                  <td className="border-b py-1 pr-4 font-mono text-xs" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
-                  <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{renderValue(v)}</td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+        <div className="scroll-x">
+          <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
+            <tbody>
+              {scalars
+                .filter(([k, v]) => matches(k, v))
+                .map(([k, v]) => (
+                  <tr key={k}>
+                    <td className="border-b py-1 pr-4 font-mono text-xs" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
+                    <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{renderValue(v)}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
 
       {sections.map(([name, section]) => {
@@ -93,20 +95,22 @@ export default function ConfigPage() {
         return (
           <section key={name} className="mb-6">
             <h2 className="mb-1 text-base font-semibold">[{name}]</h2>
-            <table className="w-full max-w-2xl border-collapse text-sm">
-              <tbody>
-                {rows.map(([k, v]) => (
-                  <tr key={k}>
-                    <td className="border-b py-1 pr-4 font-mono text-xs" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
-                    <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>
-                      {typeof v === 'object' && v !== null && !Array.isArray(v)
-                        ? JSON.stringify(v)
-                        : renderValue(v)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="scroll-x">
+              <table className="w-full max-w-2xl border-collapse text-sm">
+                <tbody>
+                  {rows.map(([k, v]) => (
+                    <tr key={k}>
+                      <td className="border-b py-1 pr-4 font-mono text-xs" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
+                      <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>
+                        {typeof v === 'object' && v !== null && !Array.isArray(v)
+                          ? JSON.stringify(v)
+                          : renderValue(v)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         )
       })}

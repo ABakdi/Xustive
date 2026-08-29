@@ -271,5 +271,6 @@ inline-end side of the field in both directions with no direction-specific rule.
 
 ## Related
 
+[[UI - Responsive]] ·
 [[UI - Design Language]] · [[UI - Component Library]] · [[UI - Accessibility]] · [[Language Detector]] ·
 [[Query Expander]] · [[Content Parser]] · [[UI Specification]]

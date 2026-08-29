@@ -114,6 +114,9 @@
   --z-toast: 50;
 
   --result-gap: 12px;
+  /* The page gutter ([[UI - Responsive]] §2.2). One value, so a strip that must bleed to the
+     screen edge can cancel it with `-mx-[var(--pad)]` instead of guessing. */
+  --pad: 1rem;
   --measure: 680px;
 
   color-scheme: light;
@@ -570,4 +573,68 @@ dialog::backdrop {
   font-size: var(--text-xs);
   box-shadow: var(--shadow-lift);
   white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Responsive ([[UI - Responsive]]). Mobile-first: the rules above are the phone's, and these add.
+   --------------------------------------------------------------------------------------------- */
+
+@media (min-width: 640px) {
+  :root {
+    --pad: 1.5rem;
+  }
+}
+
+/* Wide content scrolls inside itself, never by widening the page: tab strips, tables, keypads.
+   The scrollbar is hidden because these are short strips a thumb swipes, and `contain` stops a
+   horizontal swipe from turning into a browser back-gesture. */
+.scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/* A strip that starts and ends flush with the screen edge while its page keeps its gutter. */
+.bleed {
+  margin-inline: calc(var(--pad) * -1);
+  padding-inline: var(--pad);
+}
+
+/* Thumbs, not mice. Applied to controls only — a 40px line box inside a paragraph would be a
+   worse bug than the small target it fixed. */
+@media (pointer: coarse) {
+  button,
+  select,
+  summary,
+  [role='button'],
+  input:not([type='range']),
+  .chip,
+  nav a {
+    min-block-size: 40px;
+  }
+  .chip,
+  nav a {
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/* Dialogs are sheets on a phone and centred panels from `sm` ([[UI - Responsive]] §2.8). */
+@media (max-width: 639px) {
+  /* `dialog[open]`, not `dialog`: a utility class on the element would otherwise win. */
+  dialog[open] {
+    margin: auto auto 0;
+    inline-size: 100%;
+    max-inline-size: 100%;
+    max-block-size: 90dvh;
+    border-start-start-radius: 14px;
+    border-start-end-radius: 14px;
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+    padding-block-end: max(1rem, env(safe-area-inset-bottom));
+  }
 }

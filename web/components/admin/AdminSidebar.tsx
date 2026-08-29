@@ -77,7 +77,9 @@ export function AdminSidebar() {
   const path = usePathname()
   let lastGroup: string | null = null
   return (
-    <nav className="flex flex-col gap-px sticky top-4 self-start">
+    <nav className="scroll-x bleed -mt-1 flex gap-1 border-b pb-1 md:sticky md:top-4 md:mt-0 md:flex-col md:gap-px md:overflow-visible md:border-0 md:pb-0 md:[margin-inline:0] md:[padding-inline:0] md:self-start"
+      style={{ borderColor: 'var(--line)' }}
+    >
       {SECTIONS.map((s) => {
         // /admin must match exactly; the others match themselves (not their string-prefixes).
         const active = s.href === '/admin' ? path === '/admin' : path === s.href
@@ -85,7 +87,7 @@ export function AdminSidebar() {
           s.group && s.group !== lastGroup ? (
             <div
               key={`g-${s.group}`}
-              className="mt-4 px-2 text-[0.6875rem] tracking-[0.08em]"
+              className="hidden px-2 text-[0.6875rem] tracking-[0.08em] md:mt-4 md:block"
               style={{ color: 'var(--fg-faint)' }}
             >
               {s.group}
@@ -93,14 +95,15 @@ export function AdminSidebar() {
           ) : null
         lastGroup = s.group || lastGroup
         return (
-          <div key={s.href}>
+          <div key={s.href} className="shrink-0">
             {header}
             <Link
               href={s.href}
-              className="block border-l-2 px-2.5 py-1.5 text-sm no-underline"
+              className="block whitespace-nowrap border-b-2 border-l-0 px-2.5 py-1.5 text-sm no-underline md:border-b-0 md:border-l-2"
               style={{
                 color: active ? 'var(--fg)' : 'var(--fg-muted)',
                 borderLeftColor: active ? 'var(--accent)' : 'transparent',
+                borderBottomColor: active ? 'var(--accent)' : 'transparent',
                 fontWeight: active ? 600 : 400,
               }}
             >

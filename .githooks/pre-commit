@@ -6,4 +6,5 @@ cd "$(git rev-parse --show-toplevel)"
 cargo fmt --all -- --check || { echo "run: cargo fmt --all"; exit 1; }
 ./scripts/lint-telemetry.sh
 ./scripts/lint-compose.sh
+./scripts/lint-responsive.sh
 ./scripts/lint-docs.sh

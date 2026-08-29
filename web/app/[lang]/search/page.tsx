@@ -404,12 +404,15 @@ async function Shell({
           zIndex: 'var(--z-sticky)' as unknown as number,
         }}
       >
-        <div className="mx-auto flex max-w-3xl items-center gap-4 px-6 py-2.5">
+        {/* Two rows on a phone — wordmark and toggles, then the field across the full width —
+            and one row from `sm`. Measured at 360 px, the single-row version squeezed the search
+            field to a sliver: the most important control on the page ([[UI - Responsive]] §2.5). */}
+        <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-3 gap-y-2 px-[var(--pad)] py-2.5">
           <Wordmark lang={lang} size="sm" />
-          <div className="min-w-0 flex-1">
+          <div className="order-last min-w-0 basis-full sm:order-none sm:basis-auto sm:flex-1">
             <SearchBox lang={lang} t={t} initialQuery={q} compact />
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="ms-auto flex shrink-0 items-center gap-1 sm:ms-0">
             <LangSwitcher current={lang} label={t.language} />
             <ThemeToggle
               current={theme}
@@ -423,7 +426,7 @@ async function Shell({
         </div>
       </header>
 
-      <main className="mx-auto min-w-0 max-w-3xl px-6 py-6 lg:max-w-5xl">
+      <main className="mx-auto min-w-0 max-w-3xl px-[var(--pad)] py-6 lg:max-w-5xl">
         {banner}
         {aside ? (
           // Two columns on large screens: results (capped for readability) + a sticky knowledge

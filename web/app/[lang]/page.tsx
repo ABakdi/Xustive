@@ -30,7 +30,7 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
             />
       </div>
 
-      <main className="mx-auto flex max-w-xl flex-col justify-center px-6" style={{ minBlockSize: '76dvh' }}>
+      <main className="mx-auto flex max-w-xl flex-col justify-center px-[var(--pad)]" style={{ minBlockSize: '76dvh' }}>
         <div className="w-full">
           <div className="mb-2.5">
             <Wordmark lang={lang} />

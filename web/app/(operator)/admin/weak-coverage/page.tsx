@@ -50,7 +50,7 @@ export default function WeakCoveragePage() {
       </StatusLine>
       {data?.enabled && terms.length > 0 ? (
         <p className="mb-2">
-          <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="filter terms…" dir="auto" className="rounded border px-2 py-1 text-sm" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 220 }} aria-label="Filter terms" />
+          <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="filter terms…" dir="auto" className="w-full rounded border px-2 py-1 text-sm sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)'}} aria-label="Filter terms" />
         </p>
       ) : null}
       {data?.enabled && terms.length > 0 ? (

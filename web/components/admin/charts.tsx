@@ -151,22 +151,24 @@ function DataTable({ labels, series, format }: { labels: string[]; series: Serie
   const f = format ?? ((n: number) => compact(n))
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-xs" style={{ fontVariantNumeric: 'tabular-nums' }}>
-        <thead>
-          <tr style={{ color: 'var(--fg-faint)' }}>
-            <th className="py-1 text-start font-normal"></th>
-            {series.map((s) => <th key={s.name} className="py-1 text-end font-normal">{s.name}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {labels.map((l, i) => (
-            <tr key={l + i} style={{ borderTop: '1px solid var(--line)' }}>
-              <td className="py-1 text-start">{l}</td>
-              {series.map((s) => <td key={s.name} className="py-1 text-end">{s.values[i] === null || s.values[i] === undefined ? '—' : f(s.values[i] as number)}</td>)}
+      <div className="scroll-x">
+        <table className="w-full text-xs" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          <thead>
+            <tr style={{ color: 'var(--fg-faint)' }}>
+              <th className="py-1 text-start font-normal"></th>
+              {series.map((s) => <th key={s.name} className="py-1 text-end font-normal">{s.name}</th>)}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {labels.map((l, i) => (
+              <tr key={l + i} style={{ borderTop: '1px solid var(--line)' }}>
+                <td className="py-1 text-start">{l}</td>
+                {series.map((s) => <td key={s.name} className="py-1 text-end">{s.values[i] === null || s.values[i] === undefined ? '—' : f(s.values[i] as number)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

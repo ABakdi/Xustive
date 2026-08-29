@@ -357,5 +357,6 @@ navigation.
 
 ## Related
 
+[[UI - Responsive]] ·
 [[UI - Accessibility]] · [[UI - RTL and Localization]] ·
 [[UI - Component Library]] · [[Instant Answers]] · [[ADR-0010 - Next.js for the Frontend]]

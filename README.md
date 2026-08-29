@@ -300,6 +300,7 @@ Screens, states, the design language, and the rules for right-to-left and access
 - [UI - Image Search](docs/UI/UI%20-%20Image%20Search.md)
 - [UI - Knowledge Panel](docs/UI/UI%20-%20Knowledge%20Panel.md)
 - [UI - Results Page](docs/UI/UI%20-%20Results%20Page.md)
+- [UI - Responsive](docs/UI/UI%20-%20Responsive.md)
 - [UI - RTL and Localization](docs/UI/UI%20-%20RTL%20and%20Localization.md)
 - [UI - Search Verticals](docs/UI/UI%20-%20Search%20Verticals.md)
 - [UI - States and Errors](docs/UI/UI%20-%20States%20and%20Errors.md)

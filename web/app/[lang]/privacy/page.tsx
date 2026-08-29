@@ -25,7 +25,7 @@ export default async function Privacy({ params }: { params: Promise<{ lang: stri
   const t = messages(lang)
 
   return (
-    <main className="mx-auto max-w-xl px-6 py-16">
+    <main className="mx-auto max-w-xl px-[var(--pad)] py-16">
       {/* Wordmark is itself a link home — wrapping it in another Link nested <a> inside <a>
           (invalid HTML, hydration warnings). BUG-014. */}
       <Wordmark lang={lang} size="sm" />

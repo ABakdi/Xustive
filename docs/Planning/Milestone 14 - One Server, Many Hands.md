@@ -51,14 +51,14 @@ machine has a fixed amount of:
 
 ## What already exists, and what has to be built
 
-| Exists | Where |
-|:---|:---|
-| The crawl pipeline as a library — frontier, fetcher, parser, enrichment, media | `xustive-ingest`, driven by `crawld` |
-| Bounded frontier with per-host politeness, budgets and ceilings | [[PROB-001 - Bounded Frontier and Queue]] |
-| An index queue with batching, bisection and a dead-letter queue | `xustive-queue`, `xustive-cli worker` |
-| Sidecars with narrow HTTP contracts (CLIP, OCR, STT, text-embed, reranker) | `services/*` |
-| Signals recomputed server-side (quality, spam, authority, endorsement) | `xustive-ingest::enrichment`, `xustive-search::rank`, `endorse.rs` |
-| A console that shows and steers | [[Milestone 12 - The Operator's Console]] |
+| Exists                                                                         | Where                                                              |
+| :----------------------------------------------------------------------------- | :----------------------------------------------------------------- |
+| The crawl pipeline as a library — frontier, fetcher, parser, enrichment, media | `xustive-ingest`, driven by `crawld`                               |
+| Bounded frontier with per-host politeness, budgets and ceilings                | [[PROB-001 - Bounded Frontier and Queue]]                          |
+| An index queue with batching, bisection and a dead-letter queue                | `xustive-queue`, `xustive-cli worker`                              |
+| Sidecars with narrow HTTP contracts (CLIP, OCR, STT, text-embed, reranker)     | `services/*`                                                       |
+| Signals recomputed server-side (quality, spam, authority, endorsement)         | `xustive-ingest::enrichment`, `xustive-search::rank`, `endorse.rs` |
+| A console that shows and steers                                                | [[Milestone 12 - The Operator's Console]]                          |
 
 | Missing | Consequence |
 |:---|:---|

@@ -48,17 +48,17 @@ function EditRow({ row, cols, onDone }: { row: SourceHealthRow; cols: number; on
       <td colSpan={cols} className="border-b px-3 py-3" style={{ borderColor: 'var(--line)', background: 'var(--bg-raised, transparent)' }}>
         <div className="flex flex-wrap items-end gap-4 text-xs">
           <span className="flex gap-1">
-            <button type="button" disabled={busy} onClick={() => send({ id: row.id, action: 'approve' })} className="rounded border px-2 py-1" style={btn}>
+            <button type="button" disabled={busy} onClick={() => send({ id: row.id, action: 'approve' })} className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={btn}>
               approve
             </button>
-            <button type="button" disabled={busy} onClick={() => send({ id: row.id, action: 'activate' })} className="rounded border px-2 py-1" style={btn}>
+            <button type="button" disabled={busy} onClick={() => send({ id: row.id, action: 'activate' })} className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={btn}>
               activate
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => send({ id: row.id, action: 'disable', reason: reason || undefined })}
-              className="rounded border px-2 py-1"
+              className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]"
               style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}
             >
               disable
@@ -67,7 +67,7 @@ function EditRow({ row, cols, onDone }: { row: SourceHealthRow; cols: number; on
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="reason (kept in the registry)"
-              className="rounded border px-2 py-1"
+              className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]"
               style={{ ...btn, minInlineSize: '180px' }}
             />
           </span>
@@ -108,7 +108,7 @@ function EditRow({ row, cols, onDone }: { row: SourceHealthRow; cols: number; on
                     },
                   })
                 }
-                className="rounded border px-2 py-1"
+                className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]"
                 style={btn}
               >
                 {busy ? 'saving…' : 'save policy'}
@@ -159,12 +159,12 @@ export default function SourceHealthPage() {
       </StatusLine>
       {msg ? <p className="mb-3 text-sm" style={{ color: 'var(--fg-muted)' }}>{msg}</p> : null}
       <p className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-        <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="source id or domain…" className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 220 }} aria-label="Filter sources" />
-        <select value={lifecycle} onChange={(e) => setLifecycle(e.target.value)} className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Lifecycle">
+        <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="source id or domain…" className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)'}} aria-label="Filter sources" />
+        <select value={lifecycle} onChange={(e) => setLifecycle(e.target.value)} className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Lifecycle">
           <option value="">any lifecycle</option>
           {lifecycles.map((l) => <option key={l} value={l}>{l}</option>)}
         </select>
-        <select value={tier} onChange={(e) => setTier(e.target.value)} className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Tier">
+        <select value={tier} onChange={(e) => setTier(e.target.value)} className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Tier">
           <option value="">any tier</option>
           {tiers.map((t) => <option key={t} value={t}>tier {t}</option>)}
         </select>

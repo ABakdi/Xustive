@@ -124,8 +124,8 @@ export default function LivePage() {
 
       <h2 className="mb-2 mt-8 text-lg font-semibold">Recent URLs</h2>
       <p className="mb-2 flex flex-wrap items-center gap-2 text-sm">
-        <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="host or url…" className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)', minWidth: 220 }} aria-label="Filter recent URLs" />
-        <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className="rounded border px-2 py-1" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Outcome">
+        <input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="host or url…" className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)'}} aria-label="Filter recent URLs" />
+        <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className="w-full rounded border px-2 py-1 sm:w-auto sm:w-full sm:w-auto sm:min-w-[220px]" style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }} aria-label="Outcome">
           <option value="">any outcome</option>
           {Array.from(new Set((s?.recent ?? []).map((u) => String((u as { outcome?: string }).outcome ?? '')).filter(Boolean))).sort().map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
@@ -149,7 +149,7 @@ export default function LivePage() {
         ))}
       </Table>
 
-      <div className="mt-8 grid gap-8" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)' }}>
+      <div className="mt-8 grid gap-8" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))' }}>
         <div>
           <h2 className="mb-2 text-lg font-semibold">Skips</h2>
           <Table head={<><Th>reason</Th><Th num>count</Th></>}>

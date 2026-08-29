@@ -77,7 +77,7 @@ export default function MaintenancePage() {
             placeholder="example.dz"
             dir="ltr"
             autoComplete="off"
-            className="min-h-10 min-w-[260px] rounded border px-3 py-1.5"
+            className="min-h-10 w-full sm:w-auto sm:min-w-[260px] rounded border px-3 py-1.5"
             style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }}
             suppressHydrationWarning
           />
@@ -109,7 +109,7 @@ export default function MaintenancePage() {
                   onChange={(e) => setConfirm(e.target.value)}
                   dir="ltr"
                   autoComplete="off"
-                  className="min-h-10 min-w-[260px] rounded border px-3 py-1.5"
+                  className="min-h-10 w-full sm:w-auto sm:min-w-[260px] rounded border px-3 py-1.5"
                   style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }}
                   suppressHydrationWarning
                 />

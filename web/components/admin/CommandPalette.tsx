@@ -101,7 +101,7 @@ export function CommandPalette() {
 
   return (
     <div className="fixed inset-0 flex items-start justify-center p-6" style={{ background: 'rgba(0,0,0,0.45)', zIndex: 'var(--z-modal)' as unknown as number }} onClick={() => setOpen(false)} role="dialog" aria-label="Command palette">
-      <div className="mt-[10vh] w-full max-w-lg rounded-lg border" style={{ borderColor: 'var(--line-strong)', background: 'var(--bg)', boxShadow: 'var(--shadow-pop)' }} onClick={(e) => e.stopPropagation()}>
+      <div className="mt-[10dvh] w-full max-w-lg rounded-lg border" style={{ borderColor: 'var(--line-strong)', background: 'var(--bg)', boxShadow: 'var(--shadow-pop)' }} onClick={(e) => e.stopPropagation()}>
         <input
           ref={input}
           value={q}
@@ -116,7 +116,7 @@ export function CommandPalette() {
           style={{ borderColor: 'var(--line)', color: 'var(--fg)' }}
           aria-label="Command"
         />
-        <ul className="m-0 max-h-[50vh] list-none overflow-y-auto p-1">
+        <ul className="m-0 max-h-[50dvh] list-none overflow-y-auto p-1">
           {items.map((it, i) => (
             <li key={it.id}>
               <button

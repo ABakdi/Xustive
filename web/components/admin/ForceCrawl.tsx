@@ -56,7 +56,7 @@ export function ForceCrawl() {
           placeholder="https://example.dz/page"
           dir="ltr"
           autoComplete="off"
-          className="min-h-10 min-w-[280px] rounded border px-3 py-1.5 text-sm"
+          className="min-h-10 w-full sm:w-auto sm:min-w-[280px] rounded border px-3 py-1.5 text-sm"
           style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }}
           suppressHydrationWarning
         />

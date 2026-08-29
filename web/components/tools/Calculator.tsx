@@ -104,7 +104,7 @@ export function Calculator({ initial, fallback, t }: { initial: string; fallback
               onClick={() => press(key)}
               aria-label={key.k === '⌫' ? t.calcBackspace : key.k === 'C' ? t.calcClear : isEq ? t.calcEquals : label}
               aria-pressed={isMode ? mode === 'rad' : undefined}
-              className={`${key.kind === 'fn' ? '' : 'numeric'} cursor-pointer rounded-lg border py-2 text-sm`}
+              className={`${key.kind === 'fn' ? '' : 'numeric'} min-h-11 cursor-pointer rounded-lg border py-2 text-sm`}
               style={{
                 gridColumn: key.wide ? 'span 2' : undefined,
                 borderColor: isEq ? 'var(--accent)' : 'var(--line)',

@@ -106,30 +106,32 @@ export default function IntegrationsPage() {
             ) : null}
           </label>
 
-          <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
-            <tbody>
-              {[
-                ['Configured', fed.configured ? 'yes' : 'no'],
-                ['Runtime switch', fed.enabled ? 'on' : 'off'],
-                ['Gateway (API calls this)', fed.federator_url || '—'],
-                ['SearXNG (gateway calls this)', fed.searxng_url || '—'],
-                ['Latency budget', `${fed.budget_ms} ms`],
-                ['Max hits / query', String(fed.max_hits)],
-                ['Gateway reachable', fed.reachable_from_api ? 'yes — healthy' : 'no — start the federation profile'],
-                ['Circuit breaker', fed.breaker],
-                ['Eager index', fed.eager_index ? 'on — results indexed immediately (thin), then crawled' : 'off — crawl-feed only (slower to appear)'],
-              ].map(([k, v]) => (
-                <tr key={k}>
-                  <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>
-                    {k}
-                  </td>
-                  <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>
-                    {v}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="scroll-x">
+            <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
+              <tbody>
+                {[
+                  ['Configured', fed.configured ? 'yes' : 'no'],
+                  ['Runtime switch', fed.enabled ? 'on' : 'off'],
+                  ['Gateway (API calls this)', fed.federator_url || '—'],
+                  ['SearXNG (gateway calls this)', fed.searxng_url || '—'],
+                  ['Latency budget', `${fed.budget_ms} ms`],
+                  ['Max hits / query', String(fed.max_hits)],
+                  ['Gateway reachable', fed.reachable_from_api ? 'yes — healthy' : 'no — start the federation profile'],
+                  ['Circuit breaker', fed.breaker],
+                  ['Eager index', fed.eager_index ? 'on — results indexed immediately (thin), then crawled' : 'off — crawl-feed only (slower to appear)'],
+                ].map(([k, v]) => (
+                  <tr key={k}>
+                    <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>
+                      {k}
+                    </td>
+                    <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>
+                      {v}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {/* The budgets and the eager index, editable since M12-T02; kept across restarts. */}
           <h3 className="mb-2 text-sm font-semibold">Budgets</h3>
@@ -171,22 +173,24 @@ export default function IntegrationsPage() {
               <span style={{ color: 'var(--fg-faint)' }}> — configure the gateway first</span>
             ) : null}
           </label>
-          <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
-            <tbody>
-              {[
-                ['Configured (gateway reachable path)', ext.configured ? 'yes' : 'no — set federation.federator_url'],
-                ['Runtime switch', ext.enabled ? 'on' : 'off'],
-                ['Provider endpoint & key', 'held by the gateway (EXTERNAL_LLM_URL / EXTERNAL_LLM_KEY env) — never on the serving plane'],
-                ['Summaries served externally', ext.attempts_ok.toLocaleString()],
-                ['Fell back to local', ext.attempts_failed.toLocaleString()],
-              ].map(([k, v]) => (
-                <tr key={k}>
-                  <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
-                  <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{v}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="scroll-x">
+            <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
+              <tbody>
+                {[
+                  ['Configured (gateway reachable path)', ext.configured ? 'yes' : 'no — set federation.federator_url'],
+                  ['Runtime switch', ext.enabled ? 'on' : 'off'],
+                  ['Provider endpoint & key', 'held by the gateway (EXTERNAL_LLM_URL / EXTERNAL_LLM_KEY env) — never on the serving plane'],
+                  ['Summaries served externally', ext.attempts_ok.toLocaleString()],
+                  ['Fell back to local', ext.attempts_failed.toLocaleString()],
+                ].map(([k, v]) => (
+                  <tr key={k}>
+                    <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
+                    <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{v}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       ) : (
         <p className="mb-6 text-sm" style={{ color: 'var(--fg-faint)' }}>Loading…</p>
@@ -196,28 +200,30 @@ export default function IntegrationsPage() {
       <h2 className="mb-2 mt-8 text-lg font-semibold">Semantic search (dense text)</h2>
       {semantic ? (
         semantic.configured ? (
-          <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
-            <tbody>
-              {[
-                ['Enabled', semantic.enabled ? 'yes' : 'no (configured, switch off)'],
-                ['Embedder', semantic.embedder_endpoint ?? '—'],
-                ['Reachable', semantic.reachable ? 'yes — healthy' : 'no — start the semantic profile'],
-                ['Circuit breaker', semantic.breaker ?? '—'],
-                ['Collection', `${semantic.collection ?? '—'} (${semantic.dim ?? '?'}-d)`],
-                [
-                  'Documents embedded',
-                  semantic.documents_embedded == null
-                    ? 'Qdrant unreachable'
-                    : semantic.documents_embedded.toLocaleString(),
-                ],
-              ].map(([k, v]) => (
-                <tr key={k}>
-                  <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
-                  <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{v}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="scroll-x">
+            <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
+              <tbody>
+                {[
+                  ['Enabled', semantic.enabled ? 'yes' : 'no (configured, switch off)'],
+                  ['Embedder', semantic.embedder_endpoint ?? '—'],
+                  ['Reachable', semantic.reachable ? 'yes — healthy' : 'no — start the semantic profile'],
+                  ['Circuit breaker', semantic.breaker ?? '—'],
+                  ['Collection', `${semantic.collection ?? '—'} (${semantic.dim ?? '?'}-d)`],
+                  [
+                    'Documents embedded',
+                    semantic.documents_embedded == null
+                      ? 'Qdrant unreachable'
+                      : semantic.documents_embedded.toLocaleString(),
+                  ],
+                ].map(([k, v]) => (
+                  <tr key={k}>
+                    <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
+                    <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{v}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <p className="mb-6 text-sm" style={{ color: 'var(--fg-muted)' }}>
             Off. Enable <code>[vector] text_enabled</code> and start the <code>semantic</code> compose
@@ -230,24 +236,26 @@ export default function IntegrationsPage() {
       <h2 className="mb-2 mt-4 text-lg font-semibold">Image similarity (CLIP)</h2>
       {image ? (
         image.configured ? (
-          <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
-            <tbody>
-              {[
-                ['Embedder', image.embedder_endpoint ?? '—'],
-                ['Reachable', image.reachable ? 'yes — healthy' : 'no — start the vector profile'],
-                ['Collection', image.collection ?? '—'],
-                [
-                  'Images embedded',
-                  image.images_embedded == null ? 'Qdrant unreachable' : image.images_embedded.toLocaleString(),
-                ],
-              ].map(([k, v]) => (
-                <tr key={k}>
-                  <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
-                  <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{v}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="scroll-x">
+            <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
+              <tbody>
+                {[
+                  ['Embedder', image.embedder_endpoint ?? '—'],
+                  ['Reachable', image.reachable ? 'yes — healthy' : 'no — start the vector profile'],
+                  ['Collection', image.collection ?? '—'],
+                  [
+                    'Images embedded',
+                    image.images_embedded == null ? 'Qdrant unreachable' : image.images_embedded.toLocaleString(),
+                  ],
+                ].map(([k, v]) => (
+                  <tr key={k}>
+                    <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
+                    <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{v}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <p className="mb-6 text-sm" style={{ color: 'var(--fg-muted)' }}>
             Off. Enable <code>[vector] enabled</code> and start the <code>vector</code> compose profile
@@ -260,32 +268,34 @@ export default function IntegrationsPage() {
       {eff ? (
         <>
           <h2 className="mb-2 mt-4 text-lg font-semibold">Effectiveness (since API start)</h2>
-          <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
-            <tbody>
-              {[
-                [
-                  'Federation contributed',
-                  `${eff.federation_searches_hits.toLocaleString()} searches with hits · ${eff.federation_searches_empty.toLocaleString()} empty`,
-                ],
-                ['URLs fed to the index', eff.federation_urls_fed.toLocaleString()],
-                [
-                  'Blend share (convergence)',
-                  eff.blend_cards_web + eff.blend_cards_local > 0
-                    ? `${((100 * eff.blend_cards_web) / (eff.blend_cards_web + eff.blend_cards_local)).toFixed(1)}% from the web (${eff.blend_cards_web.toLocaleString()} web · ${eff.blend_cards_local.toLocaleString()} local) — falling means the index is catching up`
-                    : 'no federation-armed searches yet',
-                ],
-                [
-                  'Semantic added recall',
-                  `${eff.semantic_fused_recall.toLocaleString()} searches · ${eff.semantic_fused_reinforce.toLocaleString()} only reinforced lexical`,
-                ],
-              ].map(([k, v]) => (
-                <tr key={k}>
-                  <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
-                  <td className="border-b py-1 tabular-nums" style={{ borderColor: 'var(--line)' }}>{v}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="scroll-x">
+            <table className="mb-6 w-full max-w-2xl border-collapse text-sm">
+              <tbody>
+                {[
+                  [
+                    'Federation contributed',
+                    `${eff.federation_searches_hits.toLocaleString()} searches with hits · ${eff.federation_searches_empty.toLocaleString()} empty`,
+                  ],
+                  ['URLs fed to the index', eff.federation_urls_fed.toLocaleString()],
+                  [
+                    'Blend share (convergence)',
+                    eff.blend_cards_web + eff.blend_cards_local > 0
+                      ? `${((100 * eff.blend_cards_web) / (eff.blend_cards_web + eff.blend_cards_local)).toFixed(1)}% from the web (${eff.blend_cards_web.toLocaleString()} web · ${eff.blend_cards_local.toLocaleString()} local) — falling means the index is catching up`
+                      : 'no federation-armed searches yet',
+                  ],
+                  [
+                    'Semantic added recall',
+                    `${eff.semantic_fused_recall.toLocaleString()} searches · ${eff.semantic_fused_reinforce.toLocaleString()} only reinforced lexical`,
+                  ],
+                ].map(([k, v]) => (
+                  <tr key={k}>
+                    <td className="border-b py-1 pr-4" style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}>{k}</td>
+                    <td className="border-b py-1 tabular-nums" style={{ borderColor: 'var(--line)' }}>{v}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <p className="mb-6 text-xs" style={{ color: 'var(--fg-faint)' }}>
             Counters since the API last started. Full time-series live in Grafana (dev:{' '}
             <code>localhost:3001</code>).

@@ -252,6 +252,7 @@ lint: ## Format check, clippy, and the privacy/topology/docs lints
 	cargo clippy --workspace --all-targets -- -D warnings
 	./scripts/lint-telemetry.sh
 	./scripts/lint-compose.sh
+	./scripts/lint-responsive.sh
 	./scripts/lint-docs.sh
 	./scripts/lint-no-face.sh
 	./scripts/check-alerts.sh

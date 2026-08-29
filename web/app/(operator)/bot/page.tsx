@@ -32,26 +32,28 @@ export default function BotPage() {
         you found it in your logs, this page is how you control it.
       </p>
 
-      <table className="mt-6 w-full border-collapse text-sm">
-        <tbody>
-          <tr>
-            <th className="border-b py-2 pr-4 text-left align-top" style={{ borderColor: 'var(--line)' }}>User-agent</th>
-            <td className="border-b py-2" style={{ borderColor: 'var(--line)' }}><code>{USER_AGENT}</code></td>
-          </tr>
-          <tr>
-            <th className="border-b py-2 pr-4 text-left align-top" style={{ borderColor: 'var(--line)' }}>robots.txt token</th>
-            <td className="border-b py-2" style={{ borderColor: 'var(--line)' }}><code>{UA_TOKEN}</code></td>
-          </tr>
-          <tr>
-            <th className="border-b py-2 pr-4 text-left align-top" style={{ borderColor: 'var(--line)' }}>Default delay</th>
-            <td className="border-b py-2" style={{ borderColor: 'var(--line)' }}>{DEFAULT_DELAY_S} s per host</td>
-          </tr>
-          <tr>
-            <th className="py-2 pr-4 text-left align-top">Concurrent requests per host</th>
-            <td className="py-2">1</td>
-          </tr>
-        </tbody>
-      </table>
+      <div className="scroll-x">
+        <table className="mt-6 w-full border-collapse text-sm">
+          <tbody>
+            <tr>
+              <th className="border-b py-2 pr-4 text-left align-top" style={{ borderColor: 'var(--line)' }}>User-agent</th>
+              <td className="border-b py-2" style={{ borderColor: 'var(--line)' }}><code>{USER_AGENT}</code></td>
+            </tr>
+            <tr>
+              <th className="border-b py-2 pr-4 text-left align-top" style={{ borderColor: 'var(--line)' }}>robots.txt token</th>
+              <td className="border-b py-2" style={{ borderColor: 'var(--line)' }}><code>{UA_TOKEN}</code></td>
+            </tr>
+            <tr>
+              <th className="border-b py-2 pr-4 text-left align-top" style={{ borderColor: 'var(--line)' }}>Default delay</th>
+              <td className="border-b py-2" style={{ borderColor: 'var(--line)' }}>{DEFAULT_DELAY_S} s per host</td>
+            </tr>
+            <tr>
+              <th className="py-2 pr-4 text-left align-top">Concurrent requests per host</th>
+              <td className="py-2">1</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       <h2 className="mt-8 text-lg font-semibold">Slow it down</h2>
       <p className="mt-1 text-sm">

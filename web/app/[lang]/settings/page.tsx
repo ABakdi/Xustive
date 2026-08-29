@@ -45,7 +45,7 @@ export default async function Settings({ params }: { params: Promise<{ lang: str
             />
       </div>
 
-      <main className="mx-auto max-w-xl px-6 pb-20">
+      <main className="mx-auto max-w-xl px-[var(--pad)] pb-20">
         <div className="mb-8">
           <Wordmark lang={lang} />
         </div>

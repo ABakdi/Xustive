@@ -40,7 +40,7 @@ export default async function OcrToolPage({
         </div>
       </div>
 
-      <main className="mx-auto max-w-xl px-6 py-6">
+      <main className="mx-auto max-w-xl px-[var(--pad)] py-6">
         <h1 className="mb-1 text-2xl font-semibold">{t.ocrTitle}</h1>
         <p className="mb-6 text-sm" style={{ color: 'var(--fg-muted)' }}>
           {t.ocrIntro}

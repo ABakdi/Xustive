@@ -180,40 +180,42 @@ export default function ComputePage() {
           default Qwen2.5-3B is non-commercial — an operator planning a launch needs to see it. */}
       <h2 className="mb-2 text-lg font-semibold">Models</h2>
       {models.length > 0 ? (
-        <table className="mb-8 w-full max-w-2xl border-collapse text-sm">
-          <thead>
-            <tr style={{ color: 'var(--fg-muted)' }}>
-              <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>id</th>
-              <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>role</th>
-              <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>size</th>
-              <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>licence</th>
-              <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>present</th>
-            </tr>
-          </thead>
-          <tbody>
-            {models.map((m) => (
-              <tr key={m.spec.id}>
-                <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{m.spec.id}</td>
-                <td className="border-b py-1" style={{ borderColor: 'var(--line)' }}>{m.spec.role}</td>
-                <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>
-                  {m.spec.size_mib} MB
-                  {m.present && m.actual_mib > 0 && m.actual_mib !== m.spec.size_mib
-                    ? ` (${m.actual_mib} on disk)`
-                    : ''}
-                </td>
-                <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>
-                  {m.spec.licence}
-                  {!m.spec.commercial_use ? (
-                    <strong style={{ color: 'var(--warn)' }}> — non-commercial</strong>
-                  ) : null}
-                </td>
-                <td className="border-b py-1" style={{ borderColor: 'var(--line)' }}>
-                  {m.present ? 'yes' : <span style={{ color: 'var(--fg-faint)' }}>no</span>}
-                </td>
+        <div className="scroll-x">
+          <table className="mb-8 w-full max-w-2xl border-collapse text-sm">
+            <thead>
+              <tr style={{ color: 'var(--fg-muted)' }}>
+                <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>id</th>
+                <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>role</th>
+                <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>size</th>
+                <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>licence</th>
+                <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>present</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {models.map((m) => (
+                <tr key={m.spec.id}>
+                  <td className="border-b py-1 font-mono text-xs" style={{ borderColor: 'var(--line)' }}>{m.spec.id}</td>
+                  <td className="border-b py-1" style={{ borderColor: 'var(--line)' }}>{m.spec.role}</td>
+                  <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>
+                    {m.spec.size_mib} MB
+                    {m.present && m.actual_mib > 0 && m.actual_mib !== m.spec.size_mib
+                      ? ` (${m.actual_mib} on disk)`
+                      : ''}
+                  </td>
+                  <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>
+                    {m.spec.licence}
+                    {!m.spec.commercial_use ? (
+                      <strong style={{ color: 'var(--warn)' }}> — non-commercial</strong>
+                    ) : null}
+                  </td>
+                  <td className="border-b py-1" style={{ borderColor: 'var(--line)' }}>
+                    {m.present ? 'yes' : <span style={{ color: 'var(--fg-faint)' }}>no</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <p className="mb-8 text-sm" style={{ color: 'var(--fg-faint)' }}>No models registered.</p>
       )}
@@ -269,7 +271,7 @@ export default function ComputePage() {
             onChange={(e) => setLogFilter(e.target.value)}
             placeholder="debug"
             autoComplete="off"
-            className="min-h-10 min-w-[240px] rounded border px-3 py-1.5"
+            className="min-h-10 w-full sm:w-auto sm:min-w-[240px] rounded border px-3 py-1.5"
             style={{ borderColor: 'var(--line)', background: 'var(--bg)', color: 'var(--fg)' }}
             suppressHydrationWarning
           />

@@ -125,54 +125,56 @@ export default function QueuePage() {
           <p className="text-sm" style={{ color: 'var(--fg-faint)' }}>None — nothing has been given up on.</p>
         ) : (
           <>
-            <table className="mb-4 w-full max-w-4xl border-collapse text-sm">
-              <thead>
-                <tr style={{ color: 'var(--fg-muted)' }}>
-                  <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>url</th>
-                  <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>reason</th>
-                  <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>attempts</th>
-                  <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>failed at</th>
-                  <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {dead.filter((d) => !d.entry_id || !gone.has(d.entry_id)).map((d, i) => (
-                  <tr key={`${d.url}-${i}`}>
-                    <td className="border-b py-1" style={{ borderColor: 'var(--line)' }} title={d.url} dir="ltr">
-                      <span className="line-clamp-1">{d.url || '(no url)'}</span>
-                    </td>
-                    <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>{d.reason}</td>
-                    <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{d.attempts}</td>
-                    <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>
-                      {d.failed_at ? new Date(d.failed_at * 1000).toLocaleString() : '—'}
-                    </td>
-                    <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>
-                      {d.entry_id ? (
-                        <span className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => actOne(d.entry_id!, 'replay')}
-                            className="rounded border px-2 py-0.5"
-                            style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}
-                          >
-                            replay
-                          </button>
-                          {/* Drop discards the payload for good, so it takes a second click. */}
-                          <button
-                            type="button"
-                            onClick={() => (armed === d.entry_id ? actOne(d.entry_id!, 'drop') : setArmed(d.entry_id!))}
-                            className="rounded border px-2 py-0.5"
-                            style={{ borderColor: armed === d.entry_id ? 'var(--warn)' : 'var(--line)', color: armed === d.entry_id ? 'var(--warn)' : 'var(--fg-muted)' }}
-                          >
-                            {armed === d.entry_id ? 'drop for good?' : 'drop'}
-                          </button>
-                        </span>
-                      ) : null}
-                    </td>
+            <div className="scroll-x">
+              <table className="mb-4 w-full max-w-4xl border-collapse text-sm">
+                <thead>
+                  <tr style={{ color: 'var(--fg-muted)' }}>
+                    <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>url</th>
+                    <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>reason</th>
+                    <th className="border-b py-1 text-end" style={{ borderColor: 'var(--line)' }}>attempts</th>
+                    <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}>failed at</th>
+                    <th className="border-b py-1 text-start" style={{ borderColor: 'var(--line)' }}></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {dead.filter((d) => !d.entry_id || !gone.has(d.entry_id)).map((d, i) => (
+                    <tr key={`${d.url}-${i}`}>
+                      <td className="border-b py-1" style={{ borderColor: 'var(--line)' }} title={d.url} dir="ltr">
+                        <span className="line-clamp-1">{d.url || '(no url)'}</span>
+                      </td>
+                      <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>{d.reason}</td>
+                      <td className="border-b py-1 text-end tabular-nums" style={{ borderColor: 'var(--line)' }}>{d.attempts}</td>
+                      <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>
+                        {d.failed_at ? new Date(d.failed_at * 1000).toLocaleString() : '—'}
+                      </td>
+                      <td className="border-b py-1 text-xs" style={{ borderColor: 'var(--line)' }}>
+                        {d.entry_id ? (
+                          <span className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => actOne(d.entry_id!, 'replay')}
+                              className="rounded border px-2 py-0.5"
+                              style={{ borderColor: 'var(--line)', color: 'var(--fg-muted)' }}
+                            >
+                              replay
+                            </button>
+                            {/* Drop discards the payload for good, so it takes a second click. */}
+                            <button
+                              type="button"
+                              onClick={() => (armed === d.entry_id ? actOne(d.entry_id!, 'drop') : setArmed(d.entry_id!))}
+                              className="rounded border px-2 py-0.5"
+                              style={{ borderColor: armed === d.entry_id ? 'var(--warn)' : 'var(--line)', color: armed === d.entry_id ? 'var(--warn)' : 'var(--fg-muted)' }}
+                            >
+                              {armed === d.entry_id ? 'drop for good?' : 'drop'}
+                            </button>
+                          </span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             {!confirming ? (
               <button
