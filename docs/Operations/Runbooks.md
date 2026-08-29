@@ -423,3 +423,24 @@ not in CI) exists precisely so query text never leaves the box ([[ADR-0008 - No 
 
 [[Operating Xustive]] · [[Observability]] · [[Error Handling and Resilience]] ·
 [[Performance Budgets]] · [[Milestone 4 - Quality and Operations]] · [[Security and Privacy]]
+
+## Indexing slowed down (documents a minute fell by an order of magnitude)
+
+Symptoms: the Documents count climbs by thousands a day instead of tens of thousands; Meilisearch
+batches of a few hundred documents take tens of minutes; the worker logs `transient index
+failure; leaving for retry … search backend timed out`; the index stream sits at its cap.
+
+Check, in this order — it is nearly always the first one:
+
+1. `curl -s :7700/stats | jq .usedDatabaseSize` against the container's memory limit
+   (`docker inspect xustive-meilisearch --format '{{.HostConfig.Memory}}'`). The limit counts
+   the page cache and the index is memory-mapped: if the index does not fit, every batch is
+   read back from disk. Confirm with the container cgroup's `memory.events` (`max` in the
+   millions) and `docker stats` block-I/O read in terabytes. Raise `mem_limit` in
+   `deploy/docker-compose.yml` and `docker compose up -d meilisearch`. (PROB-004.)
+2. `curl -s :7700/indexes/documents/settings | jq .proximityPrecision` — must be
+   `byAttribute`; `xustive migrate` applies it (a one-off reindex, ~25 min for 270k documents).
+3. Only then the crawler side: PROB-002's levers (host diversity, politeness floors).
+
+Record: [[Problems#PROB-004 — Indexing throughput decays as the index grows (260 → 10 documents a minute)|PROB-004]]
+and [[PROB-004 - Index Throughput Decay]].

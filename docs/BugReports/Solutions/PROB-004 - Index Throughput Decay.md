@@ -48,8 +48,17 @@ the number to watch is in `/stats`.
 Before (08-27 → 08-29): 8–21 documents per processing-minute, 16–18 minutes of queue wait per
 task, 3,000–5,000 documents an hour.
 
-After (08-29, once task 9224 — the `byAttribute` reindex — finished): see the figures appended
-below by the measurement that closed this record.
+After (08-29 10:16–10:19 UTC, the first thirteen batches once task 9224 — the `byAttribute`
+reindex, 270k documents in 23.5 min — finished): **316 documents per processing-minute over
+the window, 600–1,000 within a batch**; batches of 150–460 documents take 16–41 s (they took
+~20 min the day before); mean queue wait 5.9 min and falling as the backlog drains; consumer
+lag 5,040 → 110. Container memory 14.8 GiB of 16 (page cache, as intended), block I/O back to
+a normal read/write ratio. Roughly 30× the 08-28 rate, above the day-one 260.
+
+Still to watch: the consumer group's pending list (107 k entries, most of them for messages
+the stream has already trimmed) is a leftover, not a load — the worker reclaims what still
+exists; a `XAUTOCLAIM`/`XPENDING` sweep of dead ids is a small follow-up. And the rule in §2:
+the index will outgrow 16 GB too, eventually.
 
 ## 4. Left undone, deliberately
 
