@@ -4,6 +4,7 @@ tags:
   - capacity
   - performance
 date: 2026-08-25
+updated: 2026-08-29
 status: resolved
 ---
 # Problems Register
@@ -12,7 +13,7 @@ status: resolved
 > privacy posture held back now that [[ADR-0029 - Raw Queries May Leave, Identities Never; First-Party Data Comes Later]]
 > has relaxed it — seventeen items, ranked, none fixed yet.
 
-> All three problems are solved; each entry links to its solution document, indexed in
+> All four problems are solved; each entry links to its solution document, indexed in
 > [[README|Solutions/]] ([Solutions/README.md](<Solutions/README.md>)). The analyses below are
 > preserved as the record of what was wrong.
 
@@ -159,6 +160,73 @@ documented in the solution. The analysis below is preserved as the record.
 5. **Don't add worker processes for indexing yet**: fetching is the bound for a polite crawler;
    Meilisearch's single writer handles thousands of small docs/s in large batches. Revisit only if
    stream lag grows while fetchers are saturated.
+
+## PROB-004 — Indexing throughput decays as the index grows (260 → 10 documents a minute)
+
+**Status: SOLVED 2026-08-29 — see [[PROB-004 - Index Throughput Decay|the solution document]]
+([Solutions/PROB-004 - Index Throughput Decay.md](<Solutions/PROB-004 - Index Throughput Decay.md>)).**
+Two causes, both on Meilisearch and neither in our code: a container memory limit smaller than
+the memory-mapped index, and the `byWord` proximity database. The analysis below is the record.
+
+**Severity at discovery: high (the corpus stopped growing at a useful rate; crawled pages were
+being discarded from a full queue)**
+
+### What the operator saw
+
+"Close to 200k documents the first day, only 78k since." True, and the daily count understates
+it because the stack was down for parts of 08-27 and 08-28. The honest metric is what
+Meilisearch indexed per minute *of its own processing time*, from its task history (9,164
+`documentAdditionOrUpdate` tasks):
+
+| Day | Documents indexed | Tasks | Meilisearch processing | **Docs / processing-minute** | Mean wait in queue |
+|:---|---:|---:|---:|---:|---:|
+| 08-26 | 168,624 | 8,390 | 10.8 h | **260** | 0 min |
+| 08-27 | 42,045 | 272 | 33.4 h | **21** | 18 min |
+| 08-28 | 28,914 | 274 | 60.2 h | **8** | 17 min |
+| 08-29 (to 09:00) | 33,289 | 228 | 55.7 h | **10** | 16 min |
+
+Per hour (documents with `indexed_at` in the hour): 35,000 at the 08-26 16:00 peak, 3,000–5,000
+an hour ever since. A 500-document batch that took two minutes on day one took twenty on day
+three (batch 8545: 1,075 documents, 3 tasks, 47 % after 21 minutes; the step that dominated was
+"post-processing words").
+
+### The mechanics
+
+1. **The cgroup limit counts the page cache, and the index is memory-mapped.** Meilisearch
+   keeps its index in LMDB, an mmap'd file, and relies on the kernel's page cache to hold the
+   working set. The container ran with `mem_limit: 5g` while the `documents` index grew to
+   12.5 GB used (24 GB on disk). The kernel's own counters for the container on 08-29
+   (`memory.stat`, `memory.events`): file cache pinned at **4.87 GiB** of the 5 GiB cap,
+   `memory.max` reached **90,522,303** times, **914,714,859** working-set refaults, 71.8 M major
+   faults; `docker stats` block I/O **44.1 TB read** for 619 GB written. Every batch re-read the
+   parts of the index it merged into from NVMe instead of memory. Day one was fast because the
+   index was small enough to fit.
+2. **`proximityPrecision: byWord`** (the default) builds the word-pair proximity database —
+   every pair of words within a window, per document. It is the largest database Meilisearch
+   maintains and the one whose cost grows fastest with text volume; bodies here are 5,900
+   characters on average (p90 12,700, p99 42,700), with `translit_body` indexed on top.
+   Meilisearch's own guidance for large text indexes is `byAttribute`.
+3. **The consequence upstream**: the crawler outran the indexer. The index stream sat at its
+   20,000-entry cap (`XADD MAXLEN ~`), the consumer group carried 98,005 pending entries and a
+   lag of 5,040, and the worker logged `transient index failure; leaving for retry` every five
+   minutes (`search backend timed out`) — Meilisearch too busy to even accept the batch. Crawled
+   pages waited hours or fell off the trimmed stream.
+
+Not causes, checked and excluded: disk (NVMe, KIOXIA), host memory (31 GB, 19 GB in cache),
+Redis (552 MB of 1 GB), the crawler's own rate (PROB-002's levers unchanged), the M11/M13
+partial updates (a few hundred small tasks a day, auto-batched).
+
+### Recommendations (ranked)
+
+1. **Raise the Meilisearch container's memory limit above the index's used size, with room to
+   grow** — 16 GB on the 31 GB dev host (`deploy/docker-compose.yml`), and re-check
+   `usedDatabaseSize` in `/stats` as the corpus grows. A one-line change with the largest effect.
+2. **`proximityPrecision: byAttribute`** in `documents_settings()` — a one-off reindex, then
+   every batch is cheaper for good. Proximity still ranks, by attribute rather than by word
+   distance.
+3. Watch, do not act yet: the `MEILI_MAX_INDEXING_MEMORY` budget (raised 3 → 4 GB), the
+   stream cap (20,000 entries is a *bytes* decision — PROB-001), and a body-length cap at
+   indexing (p99 is 42,700 characters; a cap would save little at the median).
 
 ## PROB-003 — The admin console exposes a fraction of what tunes, measures, and controls the system
 

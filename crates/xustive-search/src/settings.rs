@@ -145,6 +145,12 @@ pub fn documents_settings() -> Value {
         ],
         // `words`..`exactness` are the Meilisearch defaults; the two custom rules add
         // freshness and quality as tie-breakers *after* textual relevance, never before it.
+        // `byAttribute`, not the default `byWord` (PROB-004, 2026-08-29): the word-pair
+        // proximity database is the most expensive thing Meilisearch builds per batch, and on
+        // 5 000-character bodies it dominated indexing time as the index grew. Proximity still
+        // ranks — by attribute rather than by exact word distance — and indexing is several
+        // times faster, which is the trade Meilisearch documents for large text indexes.
+        "proximityPrecision": "byAttribute",
         "rankingRules": [
             "words", "typo", "proximity", "attribute", "sort", "exactness",
             // Among equal text matches the web's verdict decides (ADR-0031, M13-T02.1), then

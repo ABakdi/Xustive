@@ -26,7 +26,12 @@ services:
     # Production ceiling is 32 GB / 8 vCPU. This development slice is tuned for a 12-core host that
     # also runs the release-mode crawler, index worker and API: Meili gets half the cores for a
     # bulk index and the other half stays free for the fetch/parse pipeline feeding it.
-    mem_limit: 5g
+    # 16g, not 5g (PROB-004, 2026-08-29): a cgroup memory limit counts the page cache, and
+    # Meilisearch's LMDB index is memory-mapped — once the index outgrew 5 GiB every batch
+    # re-read it from disk (90 M limit hits, 900 M working-set refaults, 44 TB read) and
+    # indexing fell from 260 to 10 documents a minute. The limit must exceed the index's used
+    # size (`/stats` usedDatabaseSize, 12.5 GB on 2026-08-29) with room to grow.
+    mem_limit: 16g
     cpus: 6.0
     environment:
       MEILI_ENV: development
@@ -35,7 +40,7 @@ services:
       # API at all, so search-only and index-only credentials cannot exist.
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
       MEILI_NO_ANALYTICS: "true"
-      MEILI_MAX_INDEXING_MEMORY: 3Gb
+      MEILI_MAX_INDEXING_MEMORY: 4Gb
       # Six of the host's twelve cores for indexing — three times the old cap, so a backlog drains
       # fast, while the remaining six keep the crawler and worker fetching and parsing in parallel.
       MEILI_MAX_INDEXING_THREADS: 6

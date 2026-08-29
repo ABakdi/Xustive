@@ -82,6 +82,7 @@ back. For now the alias and the concrete index usually share a name.
       "domain","author","published_at","published_at_precision","sentiment","engagement",
       "language","media","simhash","quality_score","comments_count","discovery","entities",
       "topics","body_len"],
+  "proximityPrecision": "byAttribute",   // PROB-004: byWord's word-pair database dominated indexing
   "rankingRules": ["words","typo","proximity","attribute","sort","exactness",
                    "endorsement:desc","quality_score:desc","published_at:desc"],
   "typoTolerance": { "enabled": true,
