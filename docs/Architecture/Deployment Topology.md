@@ -302,7 +302,62 @@ and a job that fails three times goes to `q:index:dead`.
 - `model-init` as a Compose job; model provisioning is scripts plus READMEs.
 - `cargo-chef` dependency caching in the Rust Dockerfiles.
 
+## 11. Three deployments of the same system
+
+Specified in [[Milestone 14 - One Server, Many Hands]]; §1–§10 above describe the first of them,
+which is what exists today.
+
+| | **One server** | **One server, many hands** | **Many servers** |
+|:---|:---|:---|:---|
+| Runs | everything in §2 on one host | the same, plus the [[Contribution Coordinator]] | the same, sharded, under Kubernetes (§12) |
+| Crawls with | one IP, one host at a time | its own IP **and** every volunteer's ([[ADR-0033]]) | the same, from a crawler Deployment |
+| GPU work | one card, mostly deferred | volunteers' cards, batch only ([[ADR-0034]]) | a GPU node pool **and** volunteers |
+| Index | one Meilisearch | one Meilisearch | N shards, routed by us ([[ADR-0035]]) |
+| Install | `docker compose up` | the above, plus an ingress for `/contrib` and keys | `helm install` |
+| Ceiling | host memory ([[Problems#PROB-004\|PROB-004]]) and host diversity ([[PROB-002 - Crawl and Index Throughput]]) | volunteers, and the single index | shards × their memory |
+
+The step from the first to the second is **one route group and one ingress** — no new datastore,
+no new process. The step to the third changes where things run, not what they do: the search
+path, the ranking and the console are identical, which is the test [[ADR-0035]] sets for itself.
+
+**The prerequisite for both steps is authentication**, which does not exist today: the API has no
+keys and `/admin` is open (M14-T01). Nothing here may face the internet before it does.
+
+## 12. Kubernetes
+
+One chart, `deploy/helm/xustive`, with the compose topology preserved where it matters — the
+network segregation of §3 becomes NetworkPolicies, and the only pods allowed to leave the cluster
+are the federator and the crawler.
+
+| Workload | Kind | Notes |
+|:---|:---|:---|
+| `api` | Deployment + HPA | stateless; CPU/latency-scaled; the search path is unchanged by sharding |
+| `coordinator` | Deployment | the same image, `--role coordinator`, behind the **contributor** ingress with its own rate limits and key scope |
+| `web` | Deployment | Next.js tier |
+| `worker` | Deployment + KEDA | scaled on `q:index` stream length — the queue depth is already the signal the console draws |
+| `crawld` | Deployment (1) | the operator's own crawler; egress-allowed |
+| `federator` | Deployment | the one allow-listed hop to SearXNG ([[ADR-0017]]) |
+| sidecars (CLIP, OCR, STT, text-embed, reranker) | Deployments | `nodeSelector` on the GPU pool; CPU replicas where the model allows |
+| `meilisearch-0..N` | StatefulSet | one PVC each, one shard each; **memory limit above that shard's `usedDatabaseSize`** ([[Problems#PROB-004\|PROB-004]]) |
+| `redis-queue`, `redis-signals` | StatefulSet | queue is durable, signals are not |
+| `qdrant` | StatefulSet | vectors |
+| Prometheus, Grafana | Deployments | as today |
+
+**Sharding.** `search.shards` lists the shard services; rendezvous hashing on the document id
+picks the owner. Reads fan out and merge before the existing re-rank; writes route by id; a slow
+shard degrades like any other stage. Adding a shard is a StatefulSet replica plus
+`xustive shard rebalance`, which moves about `1/N` of the corpus and nothing else.
+
+**Orchestrating the volunteers.** They are not pods and never become pods. The coordinator holds
+their leases in Redis, so scaling the coordinator is horizontal and a restart costs nothing worse
+than a set of expiring leases. The contributor ingress is a separate host so it can be
+rate-limited, or switched off, without touching search.
+
+**Backups.** A per-shard Meilisearch dump on a CronJob to object storage, plus the Redis queue's
+AOF; the restore runbook and its RTO live in [[Runbooks]].
+
 ## Related
 
 [[System Architecture]] · [[Observability]] · [[Security and Privacy]] ·
-[[Error Handling and Resilience]] · [[Running Xustive]]
+[[Error Handling and Resilience]] · [[Running Xustive]] ·
+[[Milestone 14 - One Server, Many Hands]] · [[Contribution Coordinator]] · [[Community Node]]

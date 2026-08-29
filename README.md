@@ -161,6 +161,7 @@ they lack.
 | 11 Learning from readers | built 2026-08-27 — first-party search events, hits on documents, "not relevant", the admin page ([spec](docs/Planning/Milestone%2011%20-%20Learning%20from%20Readers.md)) |
 | 12 The operator's console | built 2026-08-28 — charts from a 24 h vitals ring, runtime settings that persist, controls on every page, a command palette ([spec](docs/Planning/Milestone%2012%20-%20The%20Operator%27s%20Console.md)) |
 | 13 Distilled ranking | built 2026-08-28 — every federated hit is distilled into the index and endorsed on its document (ADR-0031); endorsed documents lead the page and break ties in retrieval; an optional CPU cross-encoder fused by reciprocal rank (ADR-0032) ([spec](docs/Planning/Milestone%2013%20-%20Distilled%20Ranking.md)) |
+| 14 One server, many hands | specified 2026-08-29 — a volunteer runs one command and their machine crawls (or lends its GPU) for the engine, verified before it is believed; the index shards across servers; a Helm chart ([spec](docs/Planning/Milestone%2014%20-%20One%20Server%2C%20Many%20Hands.md)) |
 
 The current, verified picture — open items, what is deliberately not built, and what is next —
 is kept in **[TODO](docs/Planning/TODO.md)**; the problem register is
@@ -281,6 +282,9 @@ Why the system is the way it is. Index: [Decision Log](docs/Decisions/Decision%2
 - [ADR-0030 - First-Party Search Data, Kept to Learn From](docs/Decisions/ADR-0030%20-%20First-Party%20Search%20Data%2C%20Kept%20to%20Learn%20From.md)
 - [ADR-0031 - The Web's Verdict Is a Signal on Our Own Documents](docs/Decisions/ADR-0031%20-%20The%20Web%27s%20Verdict%20Is%20a%20Signal%20on%20Our%20Own%20Documents.md)
 - [ADR-0032 - A Cross-Encoder Reranks the Top of the Page, Fused by Reciprocal Rank](docs/Decisions/ADR-0032%20-%20A%20Cross-Encoder%20Reranks%20the%20Top%20of%20the%20Page%2C%20Fused%20by%20Reciprocal%20Rank.md)
+- [ADR-0033 - Volunteer Crawling, Verified Before It Is Believed](docs/Decisions/ADR-0033%20-%20Volunteer%20Crawling%2C%20Verified%20Before%20It%20Is%20Believed.md)
+- [ADR-0034 - Volunteer GPUs Do Batch Work, Never a Reader's Query](docs/Decisions/ADR-0034%20-%20Volunteer%20GPUs%20Do%20Batch%20Work%2C%20Never%20a%20Reader%27s%20Query.md)
+- [ADR-0035 - Sharding in Our Own Router](docs/Decisions/ADR-0035%20-%20Sharding%20in%20Our%20Own%20Router.md)
 
 ### User interface
 
@@ -333,6 +337,7 @@ differently says so.
 - [Milestone 11 - Learning from Readers](docs/Planning/Milestone%2011%20-%20Learning%20from%20Readers.md)
 - [Milestone 12 - The Operator's Console](docs/Planning/Milestone%2012%20-%20The%20Operator%27s%20Console.md)
 - [Milestone 13 - Distilled Ranking](docs/Planning/Milestone%2013%20-%20Distilled%20Ranking.md)
+- [Milestone 14 - One Server, Many Hands](docs/Planning/Milestone%2014%20-%20One%20Server%2C%20Many%20Hands.md)
 - [TODO](docs/Planning/TODO.md) — the verified current picture
 - [Problems](docs/BugReports/Problems.md) — the problem register
 - [Privacy Relaxation Audit](docs/BugReports/Privacy%20Relaxation%20Audit.md) — what the original privacy posture held back, ranked, after ADR-0029

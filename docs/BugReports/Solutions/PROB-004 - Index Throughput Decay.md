@@ -11,7 +11,7 @@ status: solved
 
 > Problem: [[Problems#PROB-004 — Indexing throughput decays as the index grows (260 → 10 documents a minute)|Problems register → PROB-004]] ([../Problems.md](../Problems.md))
 > Related: [[PROB-002 - Crawl and Index Throughput]] (the pipeline side, unchanged here);
-> [[Search Index]] §4.2 (the settings); [[Operating Xustive]] (the capacity check below).
+> [[Search Index]] §4.2 (the settings-); [[Operating Xustive]] (the capacity check below).
 > Outcome: **Meilisearch gets the memory its index needs and stops building its most expensive
 > database.** Measured before/after in §3.
 

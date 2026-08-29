@@ -180,6 +180,7 @@ Sidecars: `stt-sidecar` (faster-whisper), `ocr-sidecar` (Unlimited-OCR, GPU), `c
 - [[Milestone 11 - Learning from Readers]] — built 2026-08-27 (first-party search events, ADR-0030; PRIV-006/007/008/013 now have their source)
 - [[Milestone 12 - The Operator's Console]] — built 2026-08-28 (charts from a vitals ring, runtime settings that persist, a command palette)
 - [[Milestone 13 - Distilled Ranking]] — built 2026-08-28 (the web's verdict endorsed on documents, ADR-0031; a CPU cross-encoder fused by RRF, ADR-0032)
+- [[Milestone 14 - One Server, Many Hands]] — specified 2026-08-29 (volunteer crawling and GPUs, ADR-0033/0034; sharding in our router, ADR-0035; Kubernetes)
 - [[Privacy Relaxation Audit]] — 2026-08-27, after [[ADR-0029 - Raw Queries May Leave, Identities Never; First-Party Data Comes Later]]: seventeen ranked items the old privacy rule held back
 
 ---

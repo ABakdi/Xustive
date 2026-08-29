@@ -50,6 +50,7 @@ updated: 2026-08-27
 | M11 | [[Milestone 11 - Learning from Readers]] | **built 2026-08-27** (T05 docs/gates closing) | First-party search/click/report events with a visitor cookie (ADR-0030), hits on documents, *Not relevant* on every card, `/admin/searches`, sweep/forget/rebuild-hits |
 | M12 | [[Milestone 12 - The Operator's Console]] | **built 2026-08-28** (Run-eval action open) | Vitals ring + chart kit, overview rebuilt, runtime settings that persist (ranking editor, budgets, switches), time on Searches/Evaluation/Queue, sort by hits, command palette, sidebar dots, admin bundle budget |
 | M13 | [[Milestone 13 - Distilled Ranking]] | **built 2026-08-28** (T04.4 measurement open) | Federated hits distilled and endorsed on documents (ADR-0031): `web`/`endorsement`, tie-break in retrieval, endorsed tier and weight in the re-rank, crawl-feed front-promoted; optional cross-encoder sidecar fused by RRF (ADR-0032), off by default |
+| M14 | [[Milestone 14 - One Server, Many Hands]] | **specified 2026-08-29**, nothing built | One server, then the community, then many: volunteer crawling and volunteer GPUs behind a Contribution Coordinator that verifies before it believes (ADR-0033/0034), sharding in our own router (ADR-0035), a Helm chart. Blocked on T01 — the API has no authentication at all |
 
 ```
 M0 ──► M1 ──► M1B ──► M2 ──► M6 ──► M7 ──► M8 ──► M9        (closed, in this order)
