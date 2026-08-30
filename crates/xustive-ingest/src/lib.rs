@@ -48,7 +48,10 @@ pub mod spam;
 pub mod text_embed;
 pub mod topics;
 pub mod video;
-pub mod weak_coverage;
+/// Moved to its own leaf crate so the tool fetcher can use it without linking the crawl pipeline
+/// (and its native OCR libraries). Re-exported here because every existing caller says
+/// `xustive_ingest::weak_coverage`, and a rename would be churn for no reader's benefit.
+pub use xustive_signals::weak_coverage;
 
 pub use fetch::{FetchConfig, FetchError, Fetched, Fetcher};
 pub use parse::{ParseConfig, ParseError, Parsed, Parser};

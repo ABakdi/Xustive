@@ -392,7 +392,7 @@ async fn demand_seeds(
     if args.signals.trim().is_empty() {
         return Vec::new();
     }
-    let Some(store) = xustive_ingest::weak_coverage::WeakCoverage::connect_in(
+    let Some(store) = xustive_signals::weak_coverage::WeakCoverage::connect_in(
         &args.signals,
         "entity",
         args.k_anonymity.max(1),

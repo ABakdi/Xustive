@@ -51,10 +51,18 @@ pub async fn sample(state: &AppState) -> Vec<(&'static str, u64)> {
     let now = xustive_core::now_unix();
     let mut out = Vec::new();
 
-    // Weather: 58 wilaya entries in the Redis tool cache.
+    // Weather: every place in the Redis tool cache — the 58 wilayas *and* the world cities.
+    //
+    // The cities belong here for a reason paid for on 2026-08-30: they are refreshed on a slower
+    // pass, so when the fetcher was running old code the wilayas stayed fresh and the cities went
+    // silently stale. The console said weather was healthy while `weather dubai` answered nothing.
     let mut oldest: Option<u64> = None;
     let mut present = 0usize;
-    for place in xustive_toold::weather::targets() {
+    let places: Vec<_> = xustive_toold::weather::targets()
+        .into_iter()
+        .chain(xustive_toold::weather::world_targets())
+        .collect();
+    for place in places {
         if let Ok(Some(cached)) = cache
             .get::<Forecast>(&key(Weather.key_prefix(), &place.key()))
             .await

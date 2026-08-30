@@ -1,0 +1,18 @@
+[package]
+name = "xustive-signals"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Redis-backed, k-anonymous signal stores read by the serving plane and the fetchers."
+
+[dependencies]
+# Deliberately a leaf: redis and nothing else. This crate exists so a process that needs a signal
+# store does not have to link the crawl pipeline — and with it the native OCR libraries
+# (leptonica/tesseract) that broke the tool fetcher's Docker image, exactly as they broke the
+# gateway's before it (see xustive-federator).
+redis = { version = "0.27", default-features = false, features = ["tokio-comp"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

@@ -12,6 +12,7 @@ pdf-extract = "0.7"
 xustive-core = { path = "../xustive-core", features = ["resolve"] }
 xustive-federation = { path = "../xustive-federation" }
 xustive-media = { path = "../xustive-media" }
+xustive-signals = { path = "../xustive-signals" }
 xustive-vector = { path = "../xustive-vector" }
 xustive-text = { path = "../xustive-text" }
 xustive-lang = { path = "../xustive-lang" }

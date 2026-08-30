@@ -10,7 +10,10 @@ description = "Scheduled fetch of external tool data into a cache the serving pl
 xustive-core = { path = "../xustive-core" }
 xustive-tools = { path = "../xustive-tools" }
 xustive-knowledge = { path = "../xustive-knowledge" }
-xustive-ingest = { path = "../xustive-ingest" }
+# Not xustive-ingest: this process needs one signal store, and the crawl pipeline would drag in
+# leptonica/tesseract, which do not build in this image and have no business in the one process
+# that talks to the open internet.
+xustive-signals = { path = "../xustive-signals" }
 xustive-search = { path = "../xustive-search" }
 serde.workspace = true
 serde_json.workspace = true

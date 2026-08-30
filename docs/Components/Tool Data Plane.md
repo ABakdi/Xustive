@@ -102,6 +102,15 @@ entry indistinguishable from one never fetched.
 | Sports fixtures & results | — | — | — | not built (2026-08-27) |
 | Exam result portals | — | links compiled into `xustive-tools` | — | not a fetch |
 
+**The fetcher links no crawl code.** `xustive-toold` needed exactly one thing from
+`xustive-ingest` — the weak-coverage signal store — and got the whole crawl pipeline with it,
+including the native OCR libraries (leptonica/tesseract). Those do not build in this image, so
+`deploy/Dockerfile.toold` failed silently for two weeks and the container ran a stale binary:
+the wilayas kept refreshing (old code knew them) while the world cities went stale three hours
+after every restart, and `weather dubai` answered nothing while `weather` answered fine
+(2026-08-30). The store now lives in its own leaf crate, `xustive-signals`, which is redis and
+nothing else — the same move [[Federation Gateway]] made for the same reason.
+
 The world cities ride along on every fourth pass (`WORLD_EVERY`), which is a refresh every two
 hours — inside the three-hour staleness limit, at a quarter of the request cost of putting them
 on the wilaya cadence. Their forecasts are fetched with `timezone=auto` and the response's own
