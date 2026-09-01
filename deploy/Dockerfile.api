@@ -1,0 +1,46 @@
+# The serving plane.
+#
+# Two native dependencies decide the shape of this image: llama.cpp (the summariser, compiled
+# from source — the slow part of the build) and leptonica/tesseract (OCR, pulled in through
+# xustive-media). Both are build-time *and* run-time: the binary links them dynamically, so the
+# slim runtime stage installs the libraries, not the headers.
+#
+# Build without the summariser on a small VPS:
+#   docker build -f deploy/Dockerfile.api --build-arg FEATURES=  -t xustive-api .
+FROM rust:1-slim AS build
+ARG FEATURES=summariser
+WORKDIR /src
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      pkg-config libssl-dev cmake make git g++ clang libclang-dev \
+      libleptonica-dev libtesseract-dev \
+    && rm -rf /var/lib/apt/lists/*
+# llama.cpp's bindgen formats its generated bindings, and the slim toolchain ships without
+# rustfmt — the build fails with "'rustfmt' is not installed", which reads like a lint problem
+# rather than a missing component.
+RUN rustup component add rustfmt
+COPY . .
+RUN if [ -n "$FEATURES" ]; then \
+      cargo build --release -p xustive-api --features "$FEATURES"; \
+    else \
+      cargo build --release -p xustive-api --no-default-features; \
+    fi
+
+# Trixie, matching `rust:1-slim` — which moved to Debian 13. A runtime image one release behind
+# the builder links against different sonames: the binaries wanted libleptonica.so.6 and bookworm
+# ships .so.5, so every container started and immediately died on a missing library.
+FROM debian:trixie-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates libssl3 libleptonica6 libtesseract5 tesseract-ocr-eng \
+      curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --no-create-home --uid 10001 xustive
+COPY --from=build /src/target/release/xustive-api /usr/local/bin/xustive-api
+# Config and models are mounted, never baked: a config file in an image is a secret waiting to
+# be published, and a 2 GB model in a layer is a 2 GB pull on every deploy.
+WORKDIR /app
+USER xustive
+EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=3s --start-period=180s --retries=5 \
+  CMD curl -fsS http://127.0.0.1:8080/healthz || exit 1
+ENTRYPOINT ["/usr/local/bin/xustive-api"]
+CMD ["--config", "/app/config/prod.toml"]

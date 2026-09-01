@@ -10,7 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libs
 COPY . .
 RUN cargo build --release -p xustive-toold
 
-FROM debian:bookworm-slim
+# Trixie, matching `rust:1-slim` — which moved to Debian 13. A runtime image one release behind
+# the builder links against different sonames: the binaries wanted libleptonica.so.6 and bookworm
+# ships .so.5, so every container started and immediately died on a missing library.
+FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --no-create-home xustive

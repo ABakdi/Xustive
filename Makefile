@@ -1,3 +1,4 @@
+PROD := -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml
 .DEFAULT_GOAL := help
 # The base file is the production topology; the dev override adds a host-reachable network,
 # because in development xustive-api runs on the host rather than inside `core`.
@@ -139,6 +140,60 @@ worker: ## Drain the index queue into Meilisearch
 .PHONY: dlq
 dlq: ## Dead letters: make dlq A=stats|peek|replay
 	cargo run --release -q -p xustive-cli -- --config $(CONFIG) dlq $(or $(A),stats)
+
+.PHONY: preflight
+preflight: ## Check this host is ready to deploy (env, DNS, ports, memory)
+	./scripts/preflight.sh
+
+.PHONY: admin-password
+admin-password: ## Hash a console password for XUSTIVE_ADMIN_PASSWORD_HASH in .env
+	@docker run --rm -it caddy:2-alpine caddy hash-password
+
+.PHONY: secrets
+secrets: ## Print fresh values for the two keys a deployment needs
+	@echo "XUSTIVE_ADMIN_KEY=$$(openssl rand -base64 32)"
+	@echo "MEILI_MASTER_KEY=$$(openssl rand -base64 32)"
+	@echo
+	@echo "Paste them into .env, then: make admin-password"
+
+.PHONY: deploy
+deploy: preflight ## Build and start the whole stack on this host (production)
+	docker compose $(PROD) build
+	docker compose $(PROD) up -d
+	@echo
+	@echo "Up. First deployment? Now run:  make deploy-migrate"
+	@echo "Then watch it come alive:       make deploy-logs"
+
+.PHONY: deploy-migrate
+deploy-migrate: ## Create the indexes and apply settings inside the deployed stack
+	docker compose $(PROD) run --rm worker --config /app/config/prod.toml migrate
+
+.PHONY: deploy-seed
+deploy-seed: ## Seed the crawl frontier from the source registry
+	docker compose $(PROD) run --rm crawld --config /app/config/prod.toml seed
+
+.PHONY: deploy-logs
+deploy-logs: ## Tail the deployed stack
+	docker compose $(PROD) logs -f --tail=80
+
+.PHONY: deploy-ps
+deploy-ps: ## What is running, and is it healthy
+	docker compose $(PROD) ps
+
+.PHONY: deploy-down
+deploy-down: ## Stop the deployed stack (data volumes are kept)
+	docker compose $(PROD) down
+
+.PHONY: deploy-update
+deploy-update: ## Pull the latest code, rebuild, restart with no data loss
+	git pull --ff-only
+	docker compose $(PROD) build
+	docker compose $(PROD) up -d
+	docker compose $(PROD) run --rm worker --config /app/config/prod.toml migrate
+
+.PHONY: index-size
+index-size: ## The PROB-004 check: the index must fit inside Meilisearch's memory limit
+	@./scripts/index-size.sh
 
 .PHONY: backup
 backup: ## Snapshot Meili+Qdrant+Redis+registry off-host: make backup [DEST=dir]

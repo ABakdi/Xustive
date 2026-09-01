@@ -1,0 +1,26 @@
+# The crawl plane: one image, three roles — `crawld`, `worker`, and the one-shot commands
+# (`migrate`, `seed`, `dlq`, `events`, `shard`). They share a binary because they share the
+# pipeline; they are separate *services* because they scale and fail differently.
+FROM rust:1-slim AS build
+WORKDIR /src
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      pkg-config libssl-dev cmake g++ clang libclang-dev \
+      libleptonica-dev libtesseract-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY . .
+RUN cargo build --release -p xustive-cli
+
+# Trixie, matching `rust:1-slim` — which moved to Debian 13. A runtime image one release behind
+# the builder links against different sonames: the binaries wanted libleptonica.so.6 and bookworm
+# ships .so.5, so every container started and immediately died on a missing library.
+FROM debian:trixie-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates libssl3 libleptonica6 libtesseract5 \
+      tesseract-ocr-eng tesseract-ocr-fra tesseract-ocr-ara \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --no-create-home --uid 10002 xustive
+COPY --from=build /src/target/release/xustive-cli /usr/local/bin/xustive-cli
+WORKDIR /app
+USER xustive
+ENTRYPOINT ["/usr/local/bin/xustive-cli"]
+CMD ["--config", "/app/config/prod.toml", "crawld"]

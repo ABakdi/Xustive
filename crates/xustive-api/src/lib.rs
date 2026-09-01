@@ -9,6 +9,7 @@ pub mod admin_crawler;
 pub mod admin_eval;
 pub mod admin_maintenance;
 pub mod admin_queue;
+pub mod auth;
 pub mod currency;
 pub mod dataage;
 pub mod deadline;
@@ -325,7 +326,15 @@ pub fn app(state: AppState) -> Router {
                 .merge(interaction_routes)
                 .merge(knowledge_routes),
         )
-        .nest("/api/v1/admin", admin_api)
+        // Everything under /admin is behind the key (M14-T01). The layer wraps the whole group,
+        // so a route added later is protected by existing rather than by remembering.
+        .nest(
+            "/api/v1/admin",
+            admin_api.layer(middleware::from_fn_with_state(
+                state.clone(),
+                auth::require_admin,
+            )),
+        )
         .merge(ops)
         // The 8 KB default guards the text endpoints. OCR is deliberately outside it (see above).
         .layer(RequestBodyLimitLayer::new(

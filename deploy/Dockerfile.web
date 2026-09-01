@@ -1,0 +1,28 @@
+# The Next.js tier. `output: 'standalone'` puts the server and only the dependencies it actually
+# imports into `.next/standalone`, so this image is a few hundred megabytes rather than a few
+# gigabytes of node_modules.
+FROM node:22-slim AS deps
+WORKDIR /app
+COPY web/package.json web/package-lock.json* ./
+RUN npm ci --no-audit --no-fund
+
+FROM node:22-slim AS build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY web/ ./
+# The API URL is read at *runtime* by the rewrite, so nothing about the deployment is baked here.
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+FROM node:22-slim
+WORKDIR /app
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+RUN useradd --system --no-create-home --uid 10003 xustive
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
+COPY --from=build /app/public ./public
+USER xustive
+EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=3s --start-period=30s --retries=5 \
+  CMD node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "server.js"]

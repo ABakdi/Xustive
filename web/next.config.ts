@@ -19,6 +19,9 @@ const config: NextConfig = {
   agentRules: false,
   // Fewer bytes and one less thing that can differ between dev and prod.
   compress: true,
+  // A self-contained server bundle, so the production image carries the app and its used
+  // dependencies rather than the whole node_modules tree ([[Deploying to a VPS]]).
+  output: 'standalone',
 
   // The rewrite proxy's default timeout is 30 s, and a summary on CPU takes about that long —
   // under load a little more. Past the default the proxy hangs up the socket and the summary

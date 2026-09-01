@@ -1,0 +1,80 @@
+# The edge. TLS, the two guards the browser needs, and nothing clever.
+#
+# Caddy gets and renews the certificate itself (ACME/Let's Encrypt) — that is the whole reason it
+# is here rather than nginx: one line of configuration instead of a certbot cron job.
+
+{
+	email {$XUSTIVE_ACME_EMAIL}
+	# The admin API of Caddy itself, not ours. Off: nothing needs it and it is a second control
+	# surface on the same box.
+	admin off
+}
+
+{$XUSTIVE_DOMAIN} {
+	encode zstd gzip
+
+	# Four routes, most specific first.
+	#
+	# The API is reached here rather than through the Next.js rewrite, because a rewrite's
+	# destination is compiled into `routes-manifest.json` at **build time**: an image built once
+	# and deployed anywhere would forever proxy to whatever URL the builder had. One hop fewer,
+	# and the web image stops caring where the API lives.
+
+	# 1. The admin API. Two locks: a password here, and the API's own key injected upstream so
+	#    the API refuses anything that did not come through this block.
+	@adminapi path /api/v1/admin/*
+	handle @adminapi {
+		basic_auth {
+			{$XUSTIVE_ADMIN_USER} {$XUSTIVE_ADMIN_PASSWORD_HASH}
+		}
+		request_header Authorization "Bearer {$XUSTIVE_ADMIN_KEY}"
+		reverse_proxy api:8080
+	}
+
+	# 2. The console's pages, behind the same password.
+	@console path /admin*
+	handle @console {
+		basic_auth {
+			{$XUSTIVE_ADMIN_USER} {$XUSTIVE_ADMIN_PASSWORD_HASH}
+		}
+		reverse_proxy web:3000
+	}
+
+	# 3. The public API. Streamed responses (summaries, translation) need a long read timeout —
+	#    the API's own deadlines are what bound the work, not this.
+	@api path /api/v1/*
+	handle @api {
+		reverse_proxy api:8080 {
+			transport http {
+				read_timeout 120s
+			}
+		}
+	}
+
+	# 4. Everything else is the search engine itself.
+	handle {
+		reverse_proxy web:3000
+	}
+
+	header {
+		# HSTS: a year, subdomains included. Only ever set on a name you control.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		# The app sets its own Referrer-Policy and Permissions-Policy; these are the two the
+		# edge is better placed to guarantee.
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+		# The query string is the one thing that must never reach a log file ([[ADR-0008]] as
+		# amended by [[ADR-0029]]: raw queries may go to a search partner, never to disk here).
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "\\?.*" "?[redacted]"
+			}
+		}
+	}
+}

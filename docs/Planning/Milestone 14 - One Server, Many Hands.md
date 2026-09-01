@@ -5,9 +5,9 @@ tags:
   - deployment
   - community
 milestone: 14
-status: specified
+status: in-progress
 updated: 2026-08-29
-progress: specified 2026-08-29; nothing built
+progress: specified 2026-08-29; T01.2 (admin auth) and the single-server deployment built 2026-09-01
 ---
 # Milestone 14 - One Server, Many Hands
 
@@ -62,7 +62,7 @@ machine has a fixed amount of:
 
 | Missing | Consequence |
 |:---|:---|
-| **Any authentication at all** on the API, including `/admin` | nothing here can be exposed to the internet until it exists (T01) |
+| ~~Any authentication on `/admin`~~ — **built 2026-09-01** | a per-handler helper existed but guarded one route of thirty-two; the key is now enforced group-wide, both header forms, and the API refuses to start on a public address without one |
 | A coordinator: enrollment, leases, submission, verification, reputation | there is no way to give work out or to check what comes back |
 | A node binary and a one-line installer | a volunteer would have to build Rust and read a config file |
 | Shard routing | the API talks to exactly one Meilisearch |
@@ -97,12 +97,14 @@ smaller change than a licence ([[ADR-0035]]).
 
 ## Tasks
 
-### T01 — Authentication, before anything is exposed *(blocking)*
+### T01 — Authentication, before anything is exposed *(**T01.2 built 2026-09-01**; scoped keys still open)*
 - **T01.1** API keys with scopes (`admin`, `contrib`, `read`) in a `keys` index, `Authorization:
   Bearer`, constant-time compare, rotation, and a startup refusal to bind a non-loopback address
   without one. The console gets a key management page.
-- **T01.2** Every `/admin` route behind `admin`; the new `/contrib` routes behind `contrib`;
-  everything else public and rate-limited as today.
+- **T01.2** ✅ Every `/admin` route is behind the key (`auth::require_admin` wraps the whole
+  group, so a route added later is protected by existing); `Authorization: Bearer` or
+  `X-Admin-Key`, constant-time; no key configured means loopback only; a public bind with no key
+  refuses to start. The `/contrib` scopes wait for the coordinator.
 - **T01.3** Per-key rate limits and quotas, and an audit line per admin mutation.
 
 ### T02 — The coordinator ([[Contribution Coordinator]])

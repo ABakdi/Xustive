@@ -60,16 +60,16 @@ pub(crate) fn authorise(
 ) -> Result<(), Denied> {
     let configured = state.config.api.admin_key.as_bytes();
     if !configured.is_empty() {
-        let presented = headers
-            .get("x-admin-key")
-            .map(|v| v.as_bytes())
-            .unwrap_or_default();
-        return if constant_time_eq(presented, configured) {
+        // Either header, the same two [[crate::auth]] accepts group-wide: this per-handler check
+        // predates that middleware and now backs it up, and two gates that disagree about what a
+        // valid credential looks like is worse than one gate.
+        let presented = crate::auth::presented(headers).unwrap_or_default();
+        return if constant_time_eq(presented.as_bytes(), configured) {
             Ok(())
         } else {
             Err(Denied {
                 code: "admin_key_required",
-                message: "this endpoint requires a valid X-Admin-Key header",
+                message: "this endpoint requires a valid admin key (X-Admin-Key or Authorization: Bearer)",
             })
         };
     }

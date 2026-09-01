@@ -1,0 +1,153 @@
+# The serving plane, for a real deployment.
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml up -d
+#
+# The base file is already the production topology for the *data* plane — no published ports,
+# `core` internal, limits everywhere. This adds the four things a base file cannot have because
+# they only exist once there is a machine with a name: the API, the web tier, the crawl
+# processes, and a TLS edge in front of them.
+#
+# The only port published on the host is Caddy's 80/443. Everything else talks over the internal
+# networks, which is what keeps [[ADR-0008]]'s promise structural rather than aspirational: the
+# API and Meilisearch are not reachable from the internet even if a firewall rule is wrong.
+
+services:
+  # --- the edge -------------------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    container_name: xustive-caddy
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 1.0
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      # The hostname the certificate is issued for, and the account it is issued to.
+      XUSTIVE_DOMAIN: ${XUSTIVE_DOMAIN:?set XUSTIVE_DOMAIN in .env}
+      XUSTIVE_ACME_EMAIL: ${XUSTIVE_ACME_EMAIL:?set XUSTIVE_ACME_EMAIL in .env}
+      # Injected into admin requests so the browser never holds the API's admin key; the operator
+      # authenticates to Caddy with a password instead (XUSTIVE_ADMIN_USER / _PASSWORD_HASH).
+      XUSTIVE_ADMIN_KEY: ${XUSTIVE_ADMIN_KEY:?set XUSTIVE_ADMIN_KEY in .env}
+      XUSTIVE_ADMIN_USER: ${XUSTIVE_ADMIN_USER:-admin}
+      XUSTIVE_ADMIN_PASSWORD_HASH: ${XUSTIVE_ADMIN_PASSWORD_HASH:?run `make admin-password` and put the hash in .env}
+    volumes:
+      - ../deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    # `serve` as well as `edge`: the API is reached directly (see the Caddyfile), not through
+    # the web tier's rewrite, whose destination is baked at build time.
+    networks: [edge, serve]
+    depends_on:
+      web: {condition: service_healthy}
+
+  # --- the serving plane ----------------------------------------------------------------------
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+    image: xustive-web:latest
+    container_name: xustive-web
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 2.0
+    environment:
+      XUSTIVE_API_URL: http://api:8080
+      NODE_ENV: production
+    networks: [edge, serve]
+    depends_on:
+      api: {condition: service_healthy}
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+      args:
+        # Empty for a machine without the RAM or the patience for llama.cpp; summaries then say
+        # they are unavailable instead of being silently absent.
+        FEATURES: ${XUSTIVE_API_FEATURES-summariser}
+    image: xustive-api:latest
+    container_name: xustive-api
+    restart: unless-stopped
+    # A 10M-document deployment wants more; see [[Performance Budgets]] §7. The summariser is
+    # what makes this large — without it, 2g is plenty.
+    mem_limit: ${XUSTIVE_API_MEM:-6g}
+    cpus: ${XUSTIVE_API_CPUS:-4.0}
+    environment:
+      XUSTIVE_BIND_ADDR: 0.0.0.0:8080
+      # The lock on /api/v1/admin/*. The API refuses to start on a public address without it.
+      XUSTIVE_ADMIN_KEY: ${XUSTIVE_ADMIN_KEY:?set XUSTIVE_ADMIN_KEY in .env}
+      MEILI_URL: http://meilisearch:7700
+      MEILI_KEY: ${MEILI_KEY:-}
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: ${RUST_LOG:-info}
+      XUSTIVE_LOG_JSON: "true"
+      XUSTIVE_MODEL_DIR: /app/models
+    volumes:
+      - ../config:/app/config:ro
+      - ../data:/app/data:ro
+      - ${XUSTIVE_MODEL_DIR:-../models}:/app/models:ro
+    networks: [serve, core, obs]
+    depends_on:
+      meilisearch: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  # --- the crawl plane ------------------------------------------------------------------------
+  crawld:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.cli
+    image: xustive-cli:latest
+    container_name: xustive-crawld
+    restart: unless-stopped
+    mem_limit: ${XUSTIVE_CRAWLD_MEM:-3g}
+    cpus: ${XUSTIVE_CRAWLD_CPUS:-3.0}
+    command: ["--config", "/app/config/prod.toml", "crawld"]
+    environment:
+      MEILI_URL: http://meilisearch:7700
+      MEILI_KEY: ${MEILI_KEY:-}
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: ${RUST_LOG:-info}
+      XUSTIVE_LOG_JSON: "true"
+    volumes:
+      - ../config:/app/config:ro
+      - ../data:/app/data:ro
+    # The one plane that reaches the open web, plus the queue it produces to.
+    networks: [core, ingest]
+    depends_on:
+      redis: {condition: service_healthy}
+
+  worker:
+    image: xustive-cli:latest
+    container_name: xustive-worker
+    restart: unless-stopped
+    mem_limit: ${XUSTIVE_WORKER_MEM:-2g}
+    cpus: ${XUSTIVE_WORKER_CPUS:-2.0}
+    command: ["--config", "/app/config/prod.toml", "worker"]
+    environment:
+      MEILI_URL: http://meilisearch:7700
+      MEILI_KEY: ${MEILI_KEY:-}
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: ${RUST_LOG:-info}
+      XUSTIVE_LOG_JSON: "true"
+    volumes:
+      - ../config:/app/config:ro
+      - ../data:/app/data:ro
+    networks: [core]
+    depends_on:
+      meilisearch: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      crawld: {condition: service_started}
+
+networks:
+  # Caddy to the web tier, and nothing else. It is the only network with a published port.
+  edge:
+  # The web tier to the API. Separate from `core` so the Next.js process cannot reach
+  # Meilisearch, Redis or Qdrant even by accident.
+  serve:
+    internal: true
+
+volumes:
+  caddy_data:
+  caddy_config:

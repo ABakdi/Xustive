@@ -294,13 +294,21 @@ and a job that fails three times goes to `q:index:dead`.
 - [ ] Where do off-host backups physically live, given the data-sovereignty requirement?
 - [ ] Do we need a second availability zone before beta, or is a documented RTO acceptable?
 
-## 10. Not Built Yet (2026-08-27)
+## 10. Not Built Yet
 
-- Images and Compose services for `xustive-api`, the Next.js web tier, `crawld` and `worker`;
-  they run on the host. The `edge` network and the `caddy` TLS terminator from the original plan
-  are therefore also unbuilt.
+Built since (2026-09-01), and now described in [[Deploying to a VPS]]: images for `xustive-api`
+(`Dockerfile.api`), the Next.js tier (`Dockerfile.web`, `output: 'standalone'`) and the crawl
+plane (`Dockerfile.cli`, one image serving `crawld`, `worker` and the one-shot commands); the
+`edge` network and the Caddy terminator; `docker-compose.prod.yml`; `make preflight` /
+`make deploy`.
+
+Still outstanding:
+
 - `model-init` as a Compose job; model provisioning is scripts plus READMEs.
-- `cargo-chef` dependency caching in the Rust Dockerfiles.
+- `cargo-chef` dependency caching in the Rust Dockerfiles — the API image recompiles llama.cpp
+  from scratch on any source change, which is 15–30 minutes.
+- Everything in [[Milestone 14 - One Server, Many Hands]]: volunteer contributions, sharding,
+  the Helm chart.
 
 ## 11. Three deployments of the same system
 
