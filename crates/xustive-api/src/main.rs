@@ -104,6 +104,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let bind = config.api.bind_addr.clone();
+
+    // Refuse to serve an open admin surface on a public address (M14-T01). Checked here rather
+
+    // than in config validation because the key arrives from the environment, so only the running
+
+    // process knows whether one was supplied.
+
+    config.deployment_guard()?;
     let mut state = AppState::new(config)?;
     // The console's vitals ring (M12): samples the registry every 30 s from here on.
     state.timeseries = Some(xustive_api::timeseries::start(state.clone()));

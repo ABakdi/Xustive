@@ -1043,6 +1043,47 @@ impl Config {
         }
     }
 
+    /// The check that runs when the process is about to serve, not when the file is read.
+    ///
+    /// The admin key comes from the environment (`XUSTIVE_ADMIN_KEY`), never from a committed
+    /// TOML file, so `config/prod.toml` is legitimately keyless on disk and only the running
+    /// process knows whether one was supplied. An open admin surface on a public address is the
+    /// one misconfiguration that cannot be survived — `/admin` can pause the crawler, rewrite
+    /// ranking weights and read the search log — so this refuses to serve rather than serving it
+    /// to the internet (M14-T01).
+    pub fn deployment_guard(&self) -> Result<(), ConfigError> {
+        if self.api.admin_key.trim().is_empty() {
+            // Development binds `0.0.0.0` so a phone on the same wifi can reach the laptop, and
+            // that is fine: with no key configured the middleware serves the admin surface to
+            // loopback callers *only*. What must never happen is a real deployment doing the same.
+            let deployed = !matches!(self.environment.as_str(), "dev" | "ci" | "test");
+            let public = self
+                .api
+                .bind_addr
+                .parse::<std::net::SocketAddr>()
+                .map(|a| !a.ip().is_loopback())
+                .unwrap_or(false);
+            if deployed && public {
+                return Err(ConfigError::Value {
+                    key: "api.admin_key".into(),
+                    msg: format!(
+                        "must be set in a {} deployment binding a non-loopback address ({}). \
+                         Set XUSTIVE_ADMIN_KEY — `make secrets` prints one",
+                        self.environment, self.api.bind_addr
+                    ),
+                });
+            }
+        } else if self.api.admin_key.trim().len() < 16 {
+            return Err(ConfigError::Value {
+                key: "api.admin_key".into(),
+                msg: "must be at least 16 characters — it is the only thing between the \
+                      internet and the controls"
+                    .into(),
+            });
+        }
+        Ok(())
+    }
+
     fn validate(&self) -> Result<(), ConfigError> {
         // k-anonymity floors, enforced where EVERY binary passes (BUG-035): the API-only
         // `interaction.guard()` left crawld and the CLI loading the same config with no check, and
@@ -1114,32 +1155,6 @@ impl Config {
             return Err(ConfigError::Value {
                 key: "ml.device".into(),
                 msg: format!("{:?} is not one of auto, gpu, cpu", self.ml.device),
-            });
-        }
-        // An open admin surface on a public address is the one misconfiguration that cannot be
-        // survived: `/admin` can pause the crawler, rewrite ranking weights, replay dead letters
-        // and forget a visitor. Refuse to start rather than serve it to the internet — M14-T01,
-        // the blocker every deployment task in that milestone sits behind.
-        if self.api.admin_key.trim().is_empty() {
-            let public = self
-                .api
-                .bind_addr
-                .parse::<std::net::SocketAddr>()
-                .map(|a| !a.ip().is_loopback())
-                .unwrap_or(false);
-            if public {
-                return Err(ConfigError::Value {
-                    key: "api.admin_key".into(),
-                    msg: format!(
-                        "must be set when binding a non-loopback address ({}).                          Set XUSTIVE_ADMIN_KEY (32+ random bytes) or bind 127.0.0.1",
-                        self.api.bind_addr
-                    ),
-                });
-            }
-        } else if self.api.admin_key.trim().len() < 16 {
-            return Err(ConfigError::Value {
-                key: "api.admin_key".into(),
-                msg: "must be at least 16 characters — it is the only thing between the                       internet and the controls".into(),
             });
         }
         if self.api.bind_addr.parse::<std::net::SocketAddr>().is_err() {
@@ -1571,6 +1586,7 @@ mod admin_key_guard {
 
     fn cfg(bind: &str, key: &str) -> Config {
         let mut c = Config::default();
+        c.environment = "prod".into();
         c.api.bind_addr = bind.into();
         c.api.admin_key = key.into();
         c
@@ -1578,21 +1594,35 @@ mod admin_key_guard {
 
     #[test]
     fn a_public_bind_without_an_admin_key_refuses_to_start() {
-        let err = cfg("0.0.0.0:8080", "").validate().unwrap_err();
+        let err = cfg("0.0.0.0:8080", "").deployment_guard().unwrap_err();
         assert!(format!("{err}").contains("admin_key"), "{err}");
     }
 
     #[test]
     fn loopback_without_a_key_is_the_development_default() {
-        assert!(cfg("127.0.0.1:8080", "").validate().is_ok());
+        assert!(cfg("127.0.0.1:8080", "").deployment_guard().is_ok());
+    }
+
+    #[test]
+    fn development_may_bind_the_network_without_a_key() {
+        // `make run-api` binds 0.0.0.0 so a phone on the same wifi can reach it. The admin
+        // surface is still loopback-only there — the middleware enforces that, not this check.
+        let mut c = Config::default();
+        c.api.bind_addr = "0.0.0.0:8080".into();
+        c.api.admin_key = String::new();
+        assert_eq!(c.environment, "dev");
+        assert!(
+            c.deployment_guard().is_ok(),
+            "development must not need a key"
+        );
     }
 
     #[test]
     fn a_public_bind_with_a_real_key_is_allowed_and_a_short_one_is_not() {
         assert!(cfg("0.0.0.0:8080", "0123456789abcdef0123")
-            .validate()
+            .deployment_guard()
             .is_ok());
-        let err = cfg("0.0.0.0:8080", "short").validate().unwrap_err();
+        let err = cfg("0.0.0.0:8080", "short").deployment_guard().unwrap_err();
         assert!(format!("{err}").contains("16 characters"), "{err}");
     }
 }
