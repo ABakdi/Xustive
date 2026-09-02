@@ -94,8 +94,26 @@ address without one** ([[Security and Privacy]]). Losing either lock does not op
 | See what is healthy | `make deploy-ps` |
 | Tail everything | `make deploy-logs` |
 | **Check the index still fits its memory** | `make index-size` — do this whenever the corpus doubles |
-| Back up | `make backup DEST=/srv/backups` ([[Runbooks]]) |
+| Back up | **pause the crawl first** (below), then `make backup DEST=/srv/backups` |
 | Stop | `make deploy-down` (volumes are kept) |
+
+### Backing up
+
+The corpus lives in Meilisearch, and its snapshot **queues behind indexing**: on a busy instance
+the request sits in the task queue until the indexer is idle, and then writes the whole index —
+tens of minutes for a 24 GB one. So a backup on a running crawler looks like a hang and, before
+2026-09-02, quietly produced an archive with everything in it *except* the corpus.
+
+```bash
+docker compose $PROD stop crawld worker      # let the index queue drain
+make backup DEST=/srv/backups                # waits up to MEILI_SNAPSHOT_TIMEOUT (30 min)
+docker compose $PROD start crawld worker
+```
+
+`scripts/backup.sh` now **fails** (non-zero, loudly) if the Meilisearch snapshot is not captured.
+Everything else — Qdrant vectors, the Redis frontier, the source registry — is a warning, because
+each can be rebuilt from the corpus or from this repository. The corpus cannot be rebuilt from
+them.
 
 ### The one number to watch
 

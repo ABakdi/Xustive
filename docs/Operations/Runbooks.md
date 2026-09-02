@@ -444,3 +444,16 @@ Check, in this order — it is nearly always the first one:
 
 Record: [[Problems#PROB-004 — Indexing throughput decays as the index grows (260 → 10 documents a minute)|PROB-004]]
 and [[PROB-004 - Index Throughput Decay]].
+
+## A backup that reports success but has no corpus in it
+
+Fixed 2026-09-02, and worth knowing because the symptom was silence: `scripts/backup.sh` waited
+two minutes for the Meilisearch snapshot, gave up, and reported "completed with warnings" while
+shipping an archive containing only the registry, the Redis dump and the vectors.
+
+A snapshot **queues behind indexing**. On a crawler that is running, the task can sit enqueued
+indefinitely; once it starts, it writes the whole index (tens of minutes at 24 GB). So:
+
+- Stop `crawld` and `worker`, let the index queue drain, then back up.
+- The script waits `MEILI_SNAPSHOT_TIMEOUT` (default 1800 s) and prints what it is waiting for.
+- A missing corpus snapshot is now a **hard failure**, not a warning.

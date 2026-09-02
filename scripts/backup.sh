@@ -22,6 +22,8 @@
 set -euo pipefail
 
 MEILI_URL="${MEILI_URL:-http://127.0.0.1:7700}"
+# How long to wait for the snapshot. It queues behind indexing and then writes the whole index.
+MEILI_SNAPSHOT_TIMEOUT="${MEILI_SNAPSHOT_TIMEOUT:-1800}"
 QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
 MEILI_CONTAINER="${MEILI_CONTAINER:-xustive-meilisearch}"
 REDIS_CONTAINER="${REDIS_CONTAINER:-xustive-redis}"
@@ -35,7 +37,12 @@ mkdir -p "$DEST"
 
 echo "→ backing up to $DEST"
 warned=0
+failed=0
 warn() { echo "  ⚠ $*" >&2; warned=1; }
+# Meilisearch holds the corpus: everything else can be rebuilt from it or from the repository, and
+# it cannot be rebuilt from them. A run that does not capture it has not backed anything up worth
+# having, so it fails rather than reporting a warning nobody reads.
+fatal() { echo "  ✗ $*" >&2; failed=1; }
 
 # --- Meilisearch ---------------------------------------------------------------------------------
 # On-demand snapshot: enqueue, poll the task, then copy the file out of the container volume.
@@ -44,31 +51,67 @@ meili_backup() {
   task="$(curl -fsS -X POST "$MEILI_URL/snapshots")" || { warn "meili: snapshot request failed"; return; }
   uid="$(printf '%s' "$task" | sed -n 's/.*"taskUid":\([0-9]*\).*/\1/p')"
   [ -n "$uid" ] || { warn "meili: no taskUid in response"; return; }
-  echo "  meili: snapshot task $uid enqueued; waiting…"
-  for _ in $(seq 1 120); do
+  # Two minutes was not enough and the difference is invisible: the poll gave up, the file was
+  # not there yet, and the run reported "completed with warnings" while shipping a backup with no
+  # corpus in it. A snapshot queues behind whatever the indexer is doing and then writes the whole
+  # index — on a 24 GB index, tens of minutes. Wait properly, say what it is waiting for, and let
+  # the operator raise the ceiling.
+  local waited=0 every=5
+  echo "  meili: snapshot task $uid enqueued; waiting (up to ${MEILI_SNAPSHOT_TIMEOUT}s)…"
+  while :; do
     status="$(curl -fsS "$MEILI_URL/tasks/$uid" | sed -n 's/.*"status":"\([a-z]*\)".*/\1/p')"
     case "$status" in
       succeeded) break ;;
-      failed|canceled) warn "meili: snapshot $status"; return ;;
+      failed|canceled)
+        fatal "meili: snapshot $status — the corpus is NOT backed up"
+        return ;;
     esac
-    sleep 1
+    if [ "$waited" -ge "$MEILI_SNAPSHOT_TIMEOUT" ]; then
+      fatal "meili: snapshot still '$status' after ${waited}s — the corpus is NOT backed up. \
+Raise MEILI_SNAPSHOT_TIMEOUT, or pause the crawler (the snapshot queues behind indexing)."
+      return
+    fi
+    # A long wait with no output looks like a hang; say so once a minute.
+    if [ $((waited % 60)) -eq 0 ] && [ "$waited" -gt 0 ]; then
+      echo "  meili: still $status after ${waited}s…"
+    fi
+    sleep "$every"
+    waited=$((waited + every))
   done
   # The snapshot lands in Meili's snapshot directory; copy it out if docker is available. The path
   # depends on MEILI_SNAPSHOT_DIR / the deployment — try the common locations and warn if none held
   # a file, rather than silently shipping a backup with no Meili in it.
   if command -v docker >/dev/null 2>&1; then
     local f=""
-    for dir in /meili_data/snapshots /meili_data/data.ms/snapshots /snapshots; do
+    for dir in ${MEILI_SNAPSHOT_DIR:-} /meili_data/snapshots /meili_data/data.ms/snapshots /snapshots; do
+      [ -n "$dir" ] || continue
       f="$(docker exec "$MEILI_CONTAINER" sh -c "ls -t $dir/*.snapshot 2>/dev/null | head -1" | tr -d '\r')"
       [ -n "$f" ] && break
     done
+    # Last resort: ask the filesystem rather than guessing where this build writes.
+    if [ -z "$f" ]; then
+      f="$(docker exec "$MEILI_CONTAINER" sh -c "find / -name '*.snapshot' -type f 2>/dev/null | head -1" | tr -d '\r')"
+    fi
+    # Check there is room before starting: a `docker cp` that fills the disk leaves a truncated
+    # file that looks like a backup, and takes the machine down with it. (Found the hard way on
+    # 2026-09-02 — the copy died at "disk quota exceeded" halfway through 5 GB.)
+    if [ -n "$f" ]; then
+      local need avail
+      need="$(docker exec "$MEILI_CONTAINER" stat -c %s "$f" 2>/dev/null || echo 0)"
+      avail="$(df -PB1 "$DEST" 2>/dev/null | tail -1 | awk '{print $4}')"
+      if [ "${need:-0}" -gt 0 ] && [ "${avail:-0}" -gt 0 ] &&
+         [ "$avail" -lt $((need + need / 10)) ]; then
+        fatal "meili: the snapshot is $((need / 1000000)) MB and only $((avail / 1000000)) MB is free at $DEST — the corpus is NOT backed up"
+        return
+      fi
+    fi
     if [ -n "$f" ] && docker cp "$MEILI_CONTAINER:$f" "$DEST/meili.snapshot" 2>/dev/null; then
       echo "  meili: → $DEST/meili.snapshot"
     else
-      warn "meili: snapshot task succeeded but no .snapshot file was found to copy — set MEILI_SNAPSHOT_DIR / check the snapshot path for this deployment"
+      fatal "meili: snapshot task succeeded but no .snapshot file was found — the corpus is NOT backed up. Set MEILI_SNAPSHOT_DIR to this deployment's snapshot directory"
     fi
   else
-    warn "meili: snapshot created in the volume, but docker is unavailable to copy it out"
+    fatal "meili: snapshot created in the volume, but docker is unavailable to copy it out — the corpus is NOT backed up"
   fi
 }
 
@@ -140,6 +183,10 @@ registry_backup
 
 echo "→ manifest:"
 sed 's/^/  /' "$DEST/manifest.txt"
+if [ "${failed:-0}" -eq 1 ]; then
+  echo "→ FAILED: the Meilisearch corpus was not captured. This backup is not a backup." >&2
+  exit 1
+fi
 if [ "$warned" -eq 1 ]; then
   echo "→ completed with warnings (see above). This is expected where a store or docker is absent." >&2
 else
