@@ -140,6 +140,16 @@ services:
       redis: {condition: service_healthy}
       crawld: {condition: service_started}
 
+  # --- observability -------------------------------------------------------------------------
+  # Only reachable through Caddy, at /grafana, behind the console's password. Its own admin
+  # password is a second lock, and it is not `admin` in a deployment.
+  grafana:
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${XUSTIVE_GRAFANA_PASSWORD:?set XUSTIVE_GRAFANA_PASSWORD in .env}
+      GF_SERVER_ROOT_URL: https://${XUSTIVE_DOMAIN}/grafana
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    networks: [obs, edge]
+
 networks:
   # Caddy to the web tier, and nothing else. It is the only network with a published port.
   edge:

@@ -349,7 +349,7 @@ are the federator and the crawler.
 | `meilisearch-0..N` | StatefulSet | one PVC each, one shard each; **memory limit above that shard's `usedDatabaseSize`** ([[Problems#PROB-004\|PROB-004]]) |
 | `redis-queue`, `redis-signals` | StatefulSet | queue is durable, signals are not |
 | `qdrant` | StatefulSet | vectors |
-| Prometheus, Grafana | Deployments | as today |
+| Prometheus, Grafana | Deployments | as today; Grafana reachable only through the edge at `/grafana`, behind the console password |
 
 **Sharding.** `search.shards` lists the shard services; rendezvous hashing on the document id
 picks the owner. Reads fan out and merge before the existing re-rank; writes route by id; a slow

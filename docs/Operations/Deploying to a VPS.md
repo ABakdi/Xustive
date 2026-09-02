@@ -52,8 +52,9 @@ make deploy-seed
 make deploy-logs
 ```
 
-Then open `https://your-domain` for search, and `https://your-domain/admin` for the console —
-the browser asks for the password you hashed in step 2.
+Then open `https://your-domain` for search, `https://your-domain/admin` for the console, and
+`https://your-domain/grafana` for the dashboards — all three behind the password you hashed in
+step 2 (Grafana asks for its own as well, `XUSTIVE_GRAFANA_PASSWORD`).
 
 ## What is running, and what is exposed
 
@@ -102,6 +103,12 @@ address without one** ([[Security and Privacy]]). Losing either lock does not op
 limit. Past about 80 % of the limit, raise `meilisearch.mem_limit` in
 `deploy/docker-compose.yml` and restart that one service. Ignoring it does not degrade
 gracefully — indexing fell from 260 to 8 documents a minute the day it happened here.
+
+### The dashboards
+
+Prometheus and Grafana run on an internal network with no published port — on a deployed box the
+only way in is `/grafana`, through Caddy, behind both passwords. That is deliberate: a metrics
+endpoint on the open internet is a map of the system for anyone who asks.
 
 ### Models
 

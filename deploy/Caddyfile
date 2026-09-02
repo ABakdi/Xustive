@@ -40,7 +40,18 @@
 		reverse_proxy web:3000
 	}
 
-	# 3. The public API. Streamed responses (summaries, translation) need a long read timeout —
+	# 3. The dashboards. On a laptop Grafana is a published port; on a deployed box it sits on an
+	#    internal network with no route in, so without this the operator has metrics they cannot
+	#    look at. Behind the same password as the console, and behind Grafana's own login.
+	@grafana path /grafana*
+	handle @grafana {
+		basic_auth {
+			{$XUSTIVE_ADMIN_USER} {$XUSTIVE_ADMIN_PASSWORD_HASH}
+		}
+		reverse_proxy grafana:3000
+	}
+
+	# 4. The public API. Streamed responses (summaries, translation) need a long read timeout —
 	#    the API's own deadlines are what bound the work, not this.
 	@api path /api/v1/*
 	handle @api {
@@ -51,7 +62,7 @@
 		}
 	}
 
-	# 4. Everything else is the search engine itself.
+	# 5. Everything else is the search engine itself.
 	handle {
 		reverse_proxy web:3000
 	}

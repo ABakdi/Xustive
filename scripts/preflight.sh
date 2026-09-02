@@ -34,6 +34,8 @@ need XUSTIVE_ACME_EMAIL "where the certificate authority sends expiry warnings"
 need XUSTIVE_ADMIN_KEY "openssl rand -base64 32 — the API refuses to start on a public address without it"
 need XUSTIVE_ADMIN_PASSWORD_HASH "make admin-password"
 need MEILI_MASTER_KEY "openssl rand -base64 32 — without it Meilisearch has no authentication at all"
+need XUSTIVE_GRAFANA_PASSWORD "the dashboards' own login, at /grafana"
+if [ "${XUSTIVE_GRAFANA_PASSWORD:-}" = "admin" ]; then bad "XUSTIVE_GRAFANA_PASSWORD is still 'admin'"; fi
 if [ -n "${XUSTIVE_ADMIN_KEY:-}" ] && [ "${#XUSTIVE_ADMIN_KEY}" -lt 16 ]; then
   bad "XUSTIVE_ADMIN_KEY is shorter than 16 characters; the API will refuse it"
 fi

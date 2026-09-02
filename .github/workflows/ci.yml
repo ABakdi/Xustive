@@ -73,6 +73,49 @@ jobs:
       - name: Egress test
         run: ./scripts/test-egress.sh
 
+  images:
+    name: the deployment images still build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Every one of these broke silently at some point, and nothing noticed until a feature
+      # went quiet in production: the tool fetcher's image failed for two weeks (it linked the
+      # crawl pipeline's native OCR libraries), and the API's failed on a missing `rustfmt`, a
+      # missing `make`, and a runtime image one Debian release behind the builder. A deployment
+      # image that no longer builds is a deployment that silently keeps running old code.
+      - name: Tool fetcher
+        uses: docker/build-push-action@v6
+        with: {context: ., file: deploy/Dockerfile.toold, push: false, cache-from: 'type=gha,scope=toold', cache-to: 'type=gha,mode=max,scope=toold'}
+      - name: Federation gateway
+        uses: docker/build-push-action@v6
+        with: {context: ., file: deploy/Dockerfile.federator, push: false, cache-from: 'type=gha,scope=federator', cache-to: 'type=gha,mode=max,scope=federator'}
+      - name: Crawl plane
+        uses: docker/build-push-action@v6
+        with: {context: ., file: deploy/Dockerfile.cli, push: false, cache-from: 'type=gha,scope=cli', cache-to: 'type=gha,mode=max,scope=cli'}
+      - name: Web tier
+        uses: docker/build-push-action@v6
+        with: {context: ., file: deploy/Dockerfile.web, push: false, cache-from: 'type=gha,scope=web', cache-to: 'type=gha,mode=max,scope=web'}
+      # Without the summariser: llama.cpp compiles for twenty minutes and would make every push
+      # wait for it. This still catches the whole class of failure above — native libraries,
+      # toolchain components, base-image drift — because those are the same either way.
+      - name: Serving plane (no summariser)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.api
+          push: false
+          build-args: FEATURES=
+          cache-from: 'type=gha,scope=api'
+          cache-to: 'type=gha,mode=max,scope=api'
+      - name: The edge configuration parses
+        run: |
+          docker run --rm -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -e XUSTIVE_DOMAIN=example.dz -e XUSTIVE_ACME_EMAIL=ci@example.dz \
+            -e XUSTIVE_ADMIN_KEY=ci -e XUSTIVE_ADMIN_USER=ci \
+            -e XUSTIVE_ADMIN_PASSWORD_HASH='$2a$14$abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQR' \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+
   test:
     name: unit · integration
     runs-on: ubuntu-latest

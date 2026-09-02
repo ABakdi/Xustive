@@ -28,6 +28,7 @@ questions with no pass/fail assertion. So the strategy has two tracks:
 |:---|:---|:---|
 | **Correctness** | does it do what it says? | hard pass/fail, blocks merge |
 | **Quality** | is the output good? | metric thresholds + regression bands, blocks merge on regression |
+| **the deployment images still build** | CI, every push | the tool fetcher's image failed for two weeks and nobody noticed until world-city weather went quiet; the API's failed on a missing `rustfmt`, a missing `make`, and a runtime base one Debian release behind the builder |
 
 Ignoring the second track is how a search engine passes all its tests and returns bad results.
 

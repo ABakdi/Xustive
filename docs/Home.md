@@ -37,20 +37,20 @@ social media posts, serving results in **Arabic, Darija, French, and English**.
 Seventeen Rust crates under `crates/`, one Next.js app under `web/`, five sidecars under
 `services/`. The mapping from crate to note, so a reader can go either way:
 
-| Crate | What it is | Note |
-|:---|:---|:---|
-| `xustive-api` | Axum HTTP surface, `/api/v1/*`, rate limits, admin | [[API Gateway]] · [[API Contract]] |
-| `xustive-core` | config, error taxonomy, `SafeUrl`, circuit breaker, registry | [[Security and Privacy]] |
-| `xustive-search` | Meilisearch client, index settings, operators, authority | [[Search Index]] |
-| `xustive-text` · `xustive-lang` | normalisation; detection, expansion, sentiment | [[Language Detector]] · [[Query Expander]] · [[Sentiment Engine]] |
-| `xustive-ingest` | fetch, robots, parse, frontier, dedup, enrichment, SERP, proxy/session/fingerprint | [[Crawler Orchestrator]] · [[Web Fetcher]] · [[Content Parser]] |
-| `xustive-queue` | Redis Streams: produce, consume-group, ack, reclaim, DLQ | [[Task Queue]] |
-| `xustive-ml` | llama.cpp summariser/translator, device selection | [[Summarizer]] |
-| `xustive-media` · `xustive-vector` | OCR + pHash; Qdrant CLIP/text ANN | [[Image Pipeline]] · [[Vector Index]] |
-| `xustive-tools` · `xustive-toold` | instant answers; scheduled fetch of rates/weather/entities | [[Instant Answers]] · [[Tool Data Plane]] |
-| `xustive-knowledge` | entity model, `knowledge` index, resolver, Wikidata parser | [[ADR-0019 - The Knowledge Layer]] |
-| `xustive-federation` · `xustive-federator` | SearXNG client; the one egress gateway | [[Federation Gateway]] |
-| `xustive-cli` · `xustive-loadgen` | operator commands (migrate, crawl, eval…); load generator | [[Running Xustive]] · [[Performance Budgets]] |
+| Crate                                      | What it is                                                                         | Note                                                              |
+| :----------------------------------------- | :--------------------------------------------------------------------------------- | :---------------------------------------------------------------- |
+| `xustive-api`                              | Axum HTTP surface, `/api/v1/*`, rate limits, admin                                 | [[API Gateway]] · [[API Contract]]                                |
+| `xustive-core`                             | config, error taxonomy, `SafeUrl`, circuit breaker, registry                       | [[Security and Privacy]]                                          |
+| `xustive-search`                           | Meilisearch client, index settings, operators, authority                           | [[Search Index]]                                                  |
+| `xustive-text` · `xustive-lang`            | normalisation; detection, expansion, sentiment                                     | [[Language Detector]] · [[Query Expander]] · [[Sentiment Engine]] |
+| `xustive-ingest`                           | fetch, robots, parse, frontier, dedup, enrichment, SERP, proxy/session/fingerprint | [[Crawler Orchestrator]] · [[Web Fetcher]] · [[Content Parser]]   |
+| `xustive-queue`                            | Redis Streams: produce, consume-group, ack, reclaim, DLQ                           | [[Task Queue]]                                                    |
+| `xustive-ml`                               | llama.cpp summariser/translator, device selection                                  | [[Summarizer]]                                                    |
+| `xustive-media` · `xustive-vector`         | OCR + pHash; Qdrant CLIP/text ANN                                                  | [[Image Pipeline]] · [[Vector Index]]                             |
+| `xustive-tools` · `xustive-toold`          | instant answers; scheduled fetch of rates/weather/entities                         | [[Instant Answers]] · [[Tool Data Plane]]                         |
+| `xustive-knowledge`                        | entity model, `knowledge` index, resolver, Wikidata parser                         | [[ADR-0019 - The Knowledge Layer]]                                |
+| `xustive-federation` · `xustive-federator` | SearXNG client; the one egress gateway                                             | [[Federation Gateway]]                                            |
+| `xustive-cli` · `xustive-loadgen`          | operator commands (migrate, crawl, eval…); load generator                          | [[Running Xustive]] · [[Performance Budgets]]                     |
 
 Sidecars: `stt-sidecar` (faster-whisper), `ocr-sidecar` (Unlimited-OCR, GPU), `clip-embed`,
 `text-embed` (bge-m3), `searxng`. See [[Deployment Topology]].
